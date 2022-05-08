@@ -11,10 +11,10 @@ module FastApiJL
         body = IOBuffer(HTTP.payload(req))
         if eof(body)
             # no request body
-            response_body = handle(ROUTER, req)
+            response_body = HTTP.handle(ROUTER, req)
         else
             # there's a body, so pass it on to the handler we dispatch to
-            response_body = handle(ROUTER, req, JSON3.read(body))
+            response_body = HTTP.handle(ROUTER, req, JSON3.read(body))
         end
         return HTTP.Response(200, JSON3.write(response_body))
     end
@@ -37,9 +37,12 @@ module FastApiJL
         end
     end
 
+    function start(port=8081)
+        HTTP.serve(JSONHandler, Sockets.localhost, port)
+    end
 
-    function start()
-        HTTP.serve(ROUTER, Sockets.localhost, 8081)
+    function start(customHandler::Function, port=8081)
+        HTTP.serve(req ->customHandler(req, JSONHandler), Sockets.localhost, port)
     end
 
 end

@@ -12,4 +12,10 @@ Api.@get "/test" function (req::HTTP.Request)
     return "test"
 end
 
+Api.@get("/multi",
+    function (req::HTTP.Request)
+        return "multi"
+    end
+)
+
 Api.start()

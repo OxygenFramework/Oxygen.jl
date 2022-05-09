@@ -11,7 +11,7 @@ module FastApiJL
     end
 
     function start(customHandler::Function, port=8081)
-        HTTP.serve(req -> customHandler(req), Sockets.localhost, port)
+        HTTP.serve(req -> customHandler(req, ROUTER), Sockets.localhost, port)
     end
 
     macro get(path, func)

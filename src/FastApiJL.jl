@@ -108,13 +108,14 @@ module FastApiJL
             end
         end
 
+        local keygen = (index) -> getvarname(positions[index])
+        local valuegen = (index, value) -> haskey(converters, index) ? converters[index](value) : value
+
         local handlerequest = quote 
             function (req)
                 if $hasParams
                     local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
-                    local keygen = (index, value) -> getvarname($positions[index])
-                    local valuegen = (index, value) -> haskey($converters, index) ? $converters[index](value) : value
-                    local params = Dict(keygen(index, value) => valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
+                    local params = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
                     local action = $(esc(func))
                     action(req, params)
                 else

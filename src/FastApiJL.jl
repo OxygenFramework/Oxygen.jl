@@ -73,8 +73,8 @@ module FastApiJL
         local cleanpath = hasParams ? replace(path, variableRegex => "*") : path 
 
         # track which index the params are located in
-        local pattern = HTTP.URIs.splitpath(path)
-        local paramPositions = Dict(index => replace(value, bracesRegex => "") for (index, value) in enumerate(pattern) if contains(value, bracesRegex)) 
+        local splitpath = HTTP.URIs.splitpath(path)
+        local paramPositions = Dict(index => replace(value, bracesRegex => "") for (index, value) in enumerate(splitpath) if contains(value, bracesRegex)) 
 
         local handleRequest = quote 
             function (req)

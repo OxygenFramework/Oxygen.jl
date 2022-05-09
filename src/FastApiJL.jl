@@ -19,23 +19,48 @@ module FastApiJL
         return HTTP.Response(200, JSON3.write(response_body))
     end
 
+    macro get(path, func)
+        quote 
+            @registerwithparams "GET" $path $(esc(func))
+        end
+    end
+
+    macro post(path, func)
+        quote 
+            @registerwithparams "POST" $path $(esc(func))
+        end
+    end
+
     macro register(method, path, func)
         quote 
             HTTP.@register(ROUTER, $method, $path, $(esc(func)))
         end
     end
 
-    macro get(path, func)
+    macro registerwithparams(method, path, func)
+        # determine if we have parameters defined in our path
+        local hasParams = contains(path, ":")
+        local cleanpath = hasParams ? replace(path, r":[a-z]+" => "*") : path 
+
+        # track which index the params are located in
+        local pattern = HTTP.URIs.splitpath(path)
+        local paramPositions = Dict(index => value for (index, value) in enumerate(pattern) if contains(value, ":")) 
+        
         quote 
-            @register "GET" $path $(esc(func))
+            @register $method $cleanpath function (req)
+                if $hasParams
+                    local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
+                    local params = Dict($paramPositions[index] => value for (index, value) in splitPath if haskey($paramPositions, index))
+                    local action = $(esc(func))
+                    action(req, params)
+                else
+                    local action = $(esc(func))
+                    action(req)
+                end
+            end
         end
     end
 
-    macro post(path, func)
-        quote 
-            @register "POST" $path $(esc(func))
-        end
-    end
 
     function start(port=8081)
         HTTP.serve(JSONHandler, Sockets.localhost, port)

@@ -3,6 +3,7 @@ import .FastApiJL
 import HTTP
 import JSON3
 import StructTypes
+
 struct Animal
     id::Int
     type::String
@@ -21,9 +22,12 @@ Api.@get "/test" function (req::HTTP.Request)
     return 77.88
 end
 
-Api.@get "/multi/*/*" function (req::HTTP.Request)
-    _, a, b = HTTP.URIs.splitpath(req.target)
-    return parse(Float64, a) * parse(Float64, b)
+Api.@get "/add/:a/:b" function (req::HTTP.Request, params)
+    return parse(Float64, params[":a"]) + parse(Float64, params[":b"])
+end
+
+Api.@get "/multi/:a/:b" function (req::HTTP.Request, params)
+    return parse(Float64, params[":a"]) * parse(Float64, params[":b"])
 end
 
 Api.@get("/json",

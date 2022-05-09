@@ -2,6 +2,14 @@ include("../src/FastApiJL.jl")
 import .FastApiJL
 import HTTP
 import JSON3
+import StructTypes
+struct Animal
+    id::Int
+    type::String
+    name::String
+end
+
+StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
 
 Api = FastApiJL
 
@@ -15,7 +23,7 @@ end
 
 Api.@get("/multi",
     function (req::HTTP.Request)
-        return Dict("message" => "hello world")
+        return Dict("message" => "hello world", "animal" => JSON3.write(Animal(1, "feline", "whiskers")))
     end
 )
 

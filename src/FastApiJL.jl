@@ -45,28 +45,37 @@ module FastApiJL
     end
 
     function JSONHandler(req::HTTP.Request)
-        # first check if there's any request body
-        body = IOBuffer(HTTP.payload(req))
-        if eof(body)
-            # no request body
-            response_body = HTTP.handle(ROUTER, req)
-        else
-            # there's a body, so pass it on to the handler we dispatch to
-            response_body = HTTP.handle(ROUTER, req, JSON3.read(body))
+        try
+            # first check if there's any request body
+            body = IOBuffer(HTTP.payload(req))
+            if eof(body)
+                # no request body
+                response_body = HTTP.handle(ROUTER, req)
+            else
+                # there's a body, so pass it on to the handler we dispatch to
+                response_body = HTTP.handle(ROUTER, req, JSON3.read(body))
+            end
+            return HTTP.Response(200, JSON3.write(response_body))
+        catch error
+            @error "ERROR: " exception=(error, catch_backtrace())
+            return HTTP.Response(500, "The Server encountered a problem")
         end
-        return HTTP.Response(200, JSON3.write(response_body))
+
     end
 
+
     macro register(method, path, func)
+        local variableRegex = r"{[a-zA-Z0-9_]+}"
+        local bracesRegex = r"({)|(})"
 
         # determine if we have parameters defined in our path
-        local hasParams = contains(path, ":")
-        local cleanpath = hasParams ? replace(path, r":[a-zA-Z0-9]+" => "*") : path 
+        local hasParams = contains(path, bracesRegex)
+        local cleanpath = hasParams ? replace(path, variableRegex => "*") : path 
 
         # track which index the params are located in
         local pattern = HTTP.URIs.splitpath(path)
-        local paramPositions = Dict(index => value for (index, value) in enumerate(pattern) if contains(value, ":")) 
-        
+        local paramPositions = Dict(index => replace(value, bracesRegex => "") for (index, value) in enumerate(pattern) if contains(value, bracesRegex)) 
+
         local handleRequest = quote 
             function (req)
                 if $hasParams

@@ -61,7 +61,7 @@ module FastApiJL
 
         # determine if we have parameters defined in our path
         local hasParams = contains(path, ":")
-        local cleanpath = hasParams ? replace(path, r":[a-z]+" => "*") : path 
+        local cleanpath = hasParams ? replace(path, r":[A-z]+" => "*") : path 
 
         # track which index the params are located in
         local pattern = HTTP.URIs.splitpath(path)

@@ -21,7 +21,12 @@ Api.@get "/test" function (req::HTTP.Request)
     return 77.88
 end
 
-Api.@get("/multi",
+Api.@get "/multi/*/*" function (req::HTTP.Request)
+    _, a, b = HTTP.URIs.splitpath(req.target)
+    return parse(Float64, a) * parse(Float64, b)
+end
+
+Api.@get("/json",
     function (req::HTTP.Request)
         return Dict("message" => "hello world", "animal" => JSON3.write(Animal(1, "feline", "whiskers")))
     end

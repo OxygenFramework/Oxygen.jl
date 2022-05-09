@@ -63,10 +63,25 @@ module FastApiJL
 
     end
 
+    function parseKey(key)
+        return lowercase(split(key, ":")[1])
+    end
+
+
+    function parseType(value)
+        variableType = lowercase(split(value, ":")[2])
+        if variableType == "float"
+            return (x) -> parse(Float64, x)
+        elseif variableType == "int"
+            return (x) -> parse(Int64, x)
+        else
+            return (x) -> x
+        end
+    end
 
     macro register(method, path, func)
-        local variableRegex = r"{[a-zA-Z0-9_]+}"
-        local bracesRegex = r"({)|(})"
+        local variableRegex = r"{[a-zA-Z0-9_]+:*[a-z]*}"
+        local bracesRegex = r"({)|(})" #|(:[a-z]+)
 
         # determine if we have parameters defined in our path
         local hasParams = contains(path, bracesRegex)
@@ -75,12 +90,17 @@ module FastApiJL
         # track which index the params are located in
         local splitpath = HTTP.URIs.splitpath(path)
         local paramPositions = Dict(index => replace(value, bracesRegex => "") for (index, value) in enumerate(splitpath) if contains(value, bracesRegex)) 
-
+        local paramConverters = Dict(index => parseType(value) for (index, value) in paramPositions if contains(value, ":"))
+       
+        println(paramPositions)
+        # println(paramConverters)
         local handleRequest = quote 
             function (req)
                 if $hasParams
                     local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
-                    local params = Dict($paramPositions[index] => value for (index, value) in splitPath if haskey($paramPositions, index))
+                    local params = Dict(parseKey($paramPositions[index]) => $paramConverters[index](value) for (index, value) in splitPath if haskey($paramPositions, index))
+                     
+                    println("params", params)
                     local action = $(esc(func))
                     action(req, params)
                 else

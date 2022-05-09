@@ -26,6 +26,24 @@ module FastApiJL
         end
     end
 
+    macro put(path, func)
+        quote 
+            @register "PUT" $path $(esc(func))
+        end
+    end
+
+    macro patch(path, func)
+        quote 
+            @register "PATCH" $path $(esc(func))
+        end
+    end
+
+    macro delete(path, func)
+        quote 
+            @register "DELETE" $path $(esc(func))
+        end
+    end
+
     function JSONHandler(req::HTTP.Request)
         # first check if there's any request body
         body = IOBuffer(HTTP.payload(req))

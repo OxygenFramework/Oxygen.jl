@@ -31,8 +31,8 @@ Api.@get "/add/{a}/{b}" function (req::HTTP.Request, params)
     return parse(Float64, params["a"]) + parse(Float64, params["b"])
 end
 
-Api.@get "/multi/{a:float}/{b:int}" function (req::HTTP.Request, params)
-    return params["a"] * params["b"]
+Api.@get "/multi/{c:float}/{d:int}" function (req::HTTP.Request, params)
+    return params["c"] * params["d"]
 end
 
 Api.@get("/json",

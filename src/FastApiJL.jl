@@ -63,12 +63,11 @@ module FastApiJL
 
     end
 
-    function parseKey(key)
+    function getvarname(key)
         return lowercase(split(key, ":")[1])
     end
 
-
-    function parseType(value)
+    function getvartype(value)
         variableType = lowercase(split(value, ":")[2])
         if variableType == "float"
             return (x) -> parse(Float64, x)
@@ -81,26 +80,37 @@ module FastApiJL
 
     macro register(method, path, func)
         local variableRegex = r"{[a-zA-Z0-9_]+:*[a-z]*}"
-        local bracesRegex = r"({)|(})" #|(:[a-z]+)
+        local hasTypeDef = r":[a-z]+"
+        local hasBraces = r"({)|(})"
 
         # determine if we have parameters defined in our path
-        local hasParams = contains(path, bracesRegex)
+        local hasParams = contains(path, variableRegex)
         local cleanpath = hasParams ? replace(path, variableRegex => "*") : path 
 
         # track which index the params are located in
         local splitpath = HTTP.URIs.splitpath(path)
-        local paramPositions = Dict(index => replace(value, bracesRegex => "") for (index, value) in enumerate(splitpath) if contains(value, bracesRegex)) 
-        local paramConverters = Dict(index => parseType(value) for (index, value) in paramPositions if contains(value, ":"))
-       
-        println(paramPositions)
-        # println(paramConverters)
-        local handleRequest = quote 
+        local positions = Dict()
+        local converters = Dict()
+
+        for (index, value) in enumerate(splitpath) 
+            variable = replace(value, hasBraces => "")                
+            # track variable names & positions
+            if contains(value, hasBraces)
+                positions[index] = getvarname(variable)
+            end
+            # track type definitions
+            if contains(variable, hasTypeDef)
+                converters[index] = getvartype(variable)
+            end
+        end
+
+        local handlerequest = quote 
             function (req)
                 if $hasParams
                     local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
-                    local params = Dict(parseKey($paramPositions[index]) => $paramConverters[index](value) for (index, value) in splitPath if haskey($paramPositions, index))
-                     
-                    println("params", params)
+                    local keygen = (index, value) -> getvarname($positions[index])
+                    local valuegen = (index, value) -> haskey($converters, index) ? $converters[index](value) : value
+                    local params = Dict(keygen(index, value) => valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
                     local action = $(esc(func))
                     action(req, params)
                 else
@@ -111,7 +121,7 @@ module FastApiJL
         end
 
         quote 
-            HTTP.@register(ROUTER, $method, $cleanpath, $handleRequest)
+            HTTP.@register(ROUTER, $method, $cleanpath, $handlerequest)
         end
     end
 

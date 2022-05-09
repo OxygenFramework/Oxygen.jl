@@ -99,7 +99,7 @@ module FastApiJL
                 positions[index] = getvarname(variable)
             end
             # track type definitions
-            if contains(variable, hasTypeDef)
+            if contains(value, hasTypeDef)
                 converters[index] = getvartype(variable)
             end
         end

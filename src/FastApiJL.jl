@@ -42,7 +42,7 @@ module FastApiJL
     end
 
     function start(customHandler::Function, port=8081)
-        HTTP.serve(req ->customHandler(req, JSONHandler), Sockets.localhost, port)
+        HTTP.serve(req -> customHandler(req), Sockets.localhost, port)
     end
 
 end

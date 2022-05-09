@@ -69,13 +69,17 @@ module FastApiJL
 
     function getvartype(value)
         variableType = lowercase(split(value, ":")[2])
-        if variableType == "float"
-            return (x) -> parse(Float64, x)
-        elseif variableType == "int"
-            return (x) -> parse(Int64, x)
-        else
-            return (x) -> x
+        typeconverters = [
+            ("int", Int64),
+            ("float", Float64),
+            ("bool", Bool)
+        ]
+        for (name, type) in typeconverters
+            if variableType == name
+                return (x) -> parse(type, x)
+            end
         end
+        return (x) -> x
     end
 
     macro register(method, path, func)

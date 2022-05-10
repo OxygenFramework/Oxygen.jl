@@ -6,12 +6,14 @@ module FastApiJL
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
 
-    function start(host=Sockets.localhost, port=8081; kw...)
-        HTTP.serve(JSONHandler, host, port, kw...)
+    function start(host=Sockets.localhost, port=8081; kwargs...)
+        println("Starting server: $host:$port")
+        HTTP.serve(JSONHandler, host, port, kwargs...)
     end
 
-    function start(customHandler::Function, host=Sockets.localhost, port=8081; kw...)
-        HTTP.serve(req -> customHandler(req, ROUTER), Sockets.localhost, port, kw...)
+    function start(customHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
+        println("Starting server: $host:$port")
+        HTTP.serve(req -> customHandler(req, ROUTER), Sockets.localhost, port, kwargs...)
     end
 
     macro get(path, func)

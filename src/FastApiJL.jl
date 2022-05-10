@@ -6,12 +6,12 @@ module FastApiJL
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
 
-    function start(port=8081)
-        HTTP.serve(JSONHandler, Sockets.localhost, port)
+    function start(host=Sockets.localhost, port=8081; kw...)
+        HTTP.serve(JSONHandler, host, port, kw...)
     end
 
-    function start(customHandler::Function, port=8081)
-        HTTP.serve(req -> customHandler(req, ROUTER), Sockets.localhost, port)
+    function start(customHandler::Function, host=Sockets.localhost, port=8081; kw...)
+        HTTP.serve(req -> customHandler(req, ROUTER), Sockets.localhost, port, kw...)
     end
 
     macro get(path, func)
@@ -108,6 +108,7 @@ module FastApiJL
             end
         end
 
+        # helper functions to generate Key/Value pairs for our params dictionary
         local keygen = (index) -> getvarname(positions[index])
         local valuegen = (index, value) -> haskey(converters, index) ? converters[index](value) : value
 

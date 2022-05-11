@@ -1,8 +1,7 @@
-include("../src/FastApiJL.jl")
-import .FastApiJL
+include("../src/FastApi.jl")
+import .FastApi
 import HTTP
 import JSON3
-import StructTypes
 
 struct Animal
     id::Int
@@ -10,10 +9,9 @@ struct Animal
     name::String
 end
 
-StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
+Api = FastApi
 
-Api = FastApiJL
-
+Api.@addstruct(::Type{Animal})
 
 Api.@post "/datadump" function (req::HTTP.Request)
     return "dump"
@@ -37,7 +35,7 @@ end
 
 Api.@get("/json",
     function (req::HTTP.Request)
-        return Dict("message" => "hello world", "animal" => JSON3.write(Animal(1, "feline", "whiskers")))
+        return Dict("message" => "hello world", "animal" => Animal(1, "cat", "whiskers"))
     end
 )
 

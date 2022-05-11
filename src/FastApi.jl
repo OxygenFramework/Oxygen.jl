@@ -1,10 +1,14 @@
-module FastApiJL
+module FastApi
     import HTTP
-    import Sockets
     import JSON3
+    import Sockets
+    import StructTypes
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
+
+    # Internal Struct Type Definitions
+    StructTypes.StructType(::Type{HTTP.Messages.Response}) = StructTypes.Struct()
 
     function start(host=Sockets.localhost, port=8081; kwargs...)
         println("Starting server: $host:$port")
@@ -43,6 +47,24 @@ module FastApiJL
     macro delete(path, func)
         quote 
             @register "DELETE" $path $(esc(func))
+        end
+    end
+
+    macro addstruct(customType::Expr)
+        quote 
+            StructTypes.StructType($(esc(customType))) = StructTypes.Struct()
+        end
+    end
+
+    macro addorderedstruct(customType::Expr)
+        quote 
+            StructTypes.StructType($(esc(customType))) = StructTypes.OrderedStruct()
+        end
+    end
+
+    macro addmutablestruct(customType::Expr)
+        quote 
+            StructTypes.StructType($(esc(customType))) = StructTypes.Mutable()
         end
     end
 

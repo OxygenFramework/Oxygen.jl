@@ -4,6 +4,9 @@ module FastApi
     import Sockets
     import StructTypes
 
+    include("util.jl")
+    import .Util
+
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
 
@@ -145,6 +148,7 @@ module FastApi
         local valuegen = (index, value) -> haskey(converters, index) ? converters[index](value) : value
       
         local handlerequest = quote 
+            local num_args = Util.countargs($(esc(func)))
             function (req)
                 local uri = HTTP.URI(req.target)
                 local queryparams = HTTP.queryparams(uri.query)
@@ -153,10 +157,14 @@ module FastApi
                     local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
                     local pathParams = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
                     local action = $(esc(func))
-                    action(req, merge(queryparams, pathParams))
+                    if hasQueryParmas
+                        action(req, pathParams, queryparams)
+                    else 
+                        action(req, pathParams)
+                    end
                 else
                     local action = $(esc(func))
-                    if hasQueryParmas
+                    if hasQueryParmas && num_args == 2
                         action(req, queryparams)
                     else 
                         action(req)

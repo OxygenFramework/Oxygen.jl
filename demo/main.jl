@@ -13,8 +13,7 @@ Api = FastApi
 
 Api.@addstruct(::Type{Animal})
 
-Api.@get "/query" function (req::HTTP.Request, a)
-    println(a)
+Api.@get "/query" function (req::HTTP.Request, queryparams)
     return "dump"
 end
 
@@ -30,9 +29,8 @@ Api.@get "/add/{a}/{b}" function (req::HTTP.Request, params)
     return parse(Float64, params["a"]) + parse(Float64, params["b"])
 end
 
-Api.@get "/multi/{c:float}/{d:float}" function (req::HTTP.Request, params)
-    println(params)
-    return params["c"] * params["d"]
+Api.@get "/multi/{c:float}/{d:float}" function (req::HTTP.Request, pathparams, queryparams)
+    return pathparams["c"] * pathparams["d"]
 end
 
 Api.@get("/json",

@@ -79,7 +79,14 @@ module FastApi
                 # there's a body, so pass it on to the handler we dispatch to
                 response_body = HTTP.handle(ROUTER, req, JSON3.read(body))
             end
-            return HTTP.Response(200, JSON3.write(response_body))
+
+            # if a raw HTTP.Response object is returned, then don't do any extra processing on it
+            if isa(response_body, HTTP.Messages.Response)
+                return response_body 
+            else 
+                return HTTP.Response(200, JSON3.write(response_body))
+            end 
+
         catch error
             @error "ERROR: " exception=(error, catch_backtrace())
             return HTTP.Response(500, "The Server encountered a problem")
@@ -107,13 +114,14 @@ module FastApi
     end
 
     macro register(method, path, func)
+
         local variableRegex = r"{[a-zA-Z0-9_]+:*[a-z]*}"
         local hasTypeDef = r":[a-z]+"
         local hasBraces = r"({)|(})"
 
         # determine if we have parameters defined in our path
-        local hasParams = contains(path, variableRegex)
-        local cleanpath = hasParams ? replace(path, variableRegex => "*") : path 
+        local hasPathParams = contains(path, variableRegex)
+        local cleanpath = hasPathParams ? replace(path, variableRegex => "*") : path 
 
         # track which index the params are located in
         local splitpath = HTTP.URIs.splitpath(path)
@@ -135,17 +143,25 @@ module FastApi
         # helper functions to generate Key/Value pairs for our params dictionary
         local keygen = (index) -> getvarname(positions[index])
         local valuegen = (index, value) -> haskey(converters, index) ? converters[index](value) : value
-
+      
+        
         local handlerequest = quote 
             function (req)
-                if $hasParams
+                local uri = HTTP.URI(req.target)
+                local queryparams = HTTP.queryparams(uri.query)
+                local hasQueryParmas = !isempty(queryparams)
+                if $hasPathParams
                     local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
-                    local params = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
+                    local pathParams = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
                     local action = $(esc(func))
-                    action(req, params)
+                    action(req, merge(queryparams, pathParams))
                 else
                     local action = $(esc(func))
-                    action(req)
+                    if hasQueryParmas
+                        action(req, queryparams)
+                    else 
+                        action(req)
+                    end
                 end
             end
         end

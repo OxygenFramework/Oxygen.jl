@@ -13,7 +13,8 @@ Api = FastApi
 
 Api.@addstruct(::Type{Animal})
 
-Api.@post "/datadump" function (req::HTTP.Request)
+Api.@get "/query" function (req::HTTP.Request, a)
+    println(a)
     return "dump"
 end
 
@@ -30,6 +31,7 @@ Api.@get "/add/{a}/{b}" function (req::HTTP.Request, params)
 end
 
 Api.@get "/multi/{c:float}/{d:float}" function (req::HTTP.Request, params)
+    println(params)
     return params["c"] * params["d"]
 end
 

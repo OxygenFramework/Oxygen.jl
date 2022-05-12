@@ -21,7 +21,7 @@ Api.@get "/bah" function (req::HTTP.Request)
     return "wow"
 end
 
-Api.@get "/test" function (req::HTTP.Request)
+Api.@get "/test" function ()
     return 77.88
 end
 

@@ -152,22 +152,27 @@ module FastApi
             function (req)
                 local uri = HTTP.URI(req.target)
                 local queryparams = HTTP.queryparams(uri.query)
-                local hasQueryParmas = !isempty(queryparams)
                 if $hasPathParams
                     local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
                     local pathParams = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
                     local action = $(esc(func))
-                    if hasQueryParmas
+                    if num_args == 3
                         action(req, pathParams, queryparams)
-                    else 
+                    elseif num_args == 2
                         action(req, pathParams)
+                    elseif num_args == 1 
+                        action(req)
+                    else 
+                        action()
                     end
                 else
                     local action = $(esc(func))
-                    if hasQueryParmas && num_args == 2
+                    if num_args == 2
                         action(req, queryparams)
-                    else 
+                    elseif num_args == 1 
                         action(req)
+                    else 
+                        action()
                     end
                 end
             end

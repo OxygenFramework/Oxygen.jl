@@ -156,7 +156,7 @@ module FastApi
                     local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
                     local pathParams = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
                     local action = $(esc(func))
-                    if num_args == 3
+                    if num_args >= 3
                         action(req, pathParams, queryparams)
                     elseif num_args == 2
                         action(req, pathParams)
@@ -167,7 +167,7 @@ module FastApi
                     end
                 else
                     local action = $(esc(func))
-                    if num_args == 2
+                    if num_args >= 2
                         action(req, queryparams)
                     elseif num_args == 1 
                         action(req)

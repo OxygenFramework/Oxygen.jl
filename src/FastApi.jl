@@ -144,7 +144,6 @@ module FastApi
         local keygen = (index) -> getvarname(positions[index])
         local valuegen = (index, value) -> haskey(converters, index) ? converters[index](value) : value
       
-        
         local handlerequest = quote 
             function (req)
                 local uri = HTTP.URI(req.target)

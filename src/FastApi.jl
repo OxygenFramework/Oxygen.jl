@@ -13,14 +13,11 @@ module FastApi
     # Internal Struct Type Definitions
     StructTypes.StructType(::Type{HTTP.Messages.Response}) = StructTypes.Struct()
 
-    function start(host=Sockets.localhost, port=8081; kwargs...)
-        println("Starting server: $host:$port")
-        HTTP.serve(JSONHandler, host, port, kwargs...)
-    end
-
-    function start(customHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
-        println("Starting server: $host:$port")
-        HTTP.serve(req -> customHandler(req, ROUTER), Sockets.localhost, port, kwargs...)
+    struct Request 
+        request :: HTTP.Request
+        body :: Union{JSON3.Object, String, Nothing}
+        pathparams :: Dict
+        queryparams :: Dict
     end
 
     macro get(path, func)
@@ -70,52 +67,7 @@ module FastApi
             StructTypes.StructType($(esc(customType))) = StructTypes.Mutable()
         end
     end
-
-    function JSONHandler(req::HTTP.Request)
-        try
-            # first check if there's any request body
-            body = IOBuffer(HTTP.payload(req))
-            if eof(body)
-                # no request body
-                response_body = HTTP.handle(ROUTER, req)
-            else
-                # there's a body, so pass it on to the handler we dispatch to
-                response_body = HTTP.handle(ROUTER, req, JSON3.read(body))
-            end
-
-            # if a raw HTTP.Response object is returned, then don't do any extra processing on it
-            if isa(response_body, HTTP.Messages.Response)
-                return response_body 
-            else 
-                return HTTP.Response(200, JSON3.write(response_body))
-            end 
-
-        catch error
-            @error "ERROR: " exception=(error, catch_backtrace())
-            return HTTP.Response(500, "The Server encountered a problem")
-        end
-
-    end
-
-    function getvarname(key)
-        return lowercase(split(key, ":")[1])
-    end
-
-    function getvartype(value)
-        variableType = lowercase(split(value, ":")[2])
-        typeconverters = [
-            ("int", Int64),
-            ("float", Float64),
-            ("bool", Bool)
-        ]
-        for (name, type) in typeconverters
-            if variableType == name
-                return (x) -> parse(type, x)
-            end
-        end
-        return (x) -> x
-    end
-
+    
     macro register(method, path, func)
 
         local variableRegex = r"{[a-zA-Z0-9_]+:*[a-z]*}"
@@ -135,46 +87,32 @@ module FastApi
             variable = replace(value, hasBraces => "")                
             # track variable names & positions
             if contains(value, hasBraces)
-                positions[index] = getvarname(variable)
+                positions[index] = Util.getvarname(variable)
             end
             # track type definitions
             if contains(value, hasTypeDef)
-                converters[index] = getvartype(variable)
+                converters[index] = Util.getvartype(variable)
             end
         end
 
         # helper functions to generate Key/Value pairs for our params dictionary
-        local keygen = (index) -> getvarname(positions[index])
+        local keygen = (index) -> Util.getvarname(positions[index])
         local valuegen = (index, value) -> haskey(converters, index) ? converters[index](value) : value
-      
+
         local handlerequest = quote 
             local num_args = Util.countargs($(esc(func)))
-            function (req)
-                local uri = HTTP.URI(req.target)
-                local queryparams = HTTP.queryparams(uri.query)
+            local action = $(esc(func))
+
+            function (req, reqbody...)
+                local body = !isempty(reqbody) ? first(reqbody) : nothing
+                local queryparams = $queryparams(req) 
+                local pathParams = Dict()
                 if $hasPathParams
                     local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
-                    local pathParams = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
-                    local action = $(esc(func))
-                    if num_args >= 3
-                        action(req, pathParams, queryparams)
-                    elseif num_args == 2
-                        action(req, pathParams)
-                    elseif num_args == 1 
-                        action(req)
-                    else 
-                        action()
-                    end
-                else
-                    local action = $(esc(func))
-                    if num_args >= 2
-                        action(req, queryparams)
-                    elseif num_args == 1 
-                        action(req)
-                    else 
-                        action()
-                    end
+                    pathParams = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
                 end
+
+                action(Request(req, body, pathParams, queryparams))
             end
         end
 
@@ -182,5 +120,63 @@ module FastApi
             HTTP.@register(ROUTER, $method, $cleanpath, $handlerequest)
         end
     end
+
+    function start(host=Sockets.localhost, port=8081; kwargs...)
+        println("Starting server: $host:$port")
+        HTTP.serve(defaultHandler, host, port, kwargs...)
+    end
+
+    function start(customHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
+        println("Starting server: $host:$port")
+        HTTP.serve(req -> customHandler(req, ROUTER), Sockets.localhost, port, kwargs...)
+    end
+
+    function queryparams(req::HTTP.Request)
+        local uri = HTTP.URI(req.target)
+        return HTTP.queryparams(uri.query)
+    end
+
+    function body(req::HTTP.Request)
+        requestbody = IOBuffer(HTTP.payload(req))
+        return eof(requestbody) ? nothing : JSON3.read(requestbody)
+    end
+
+    function body(req::HTTP.Request, classtype)
+        requestbody = IOBuffer(HTTP.payload(req))
+        return eof(requestbody) ? nothing : JSON3.read(requestbody, classtype)    
+    end
+
+    function defaultHandler(req::HTTP.Request)
+        try
+            # first check if there's any request body
+            body = IOBuffer(HTTP.payload(req))
+            if eof(body)
+                # no request body
+                response_body = HTTP.handle(ROUTER, req)
+            else
+                # try reading body input as JSON, if not assume it's a string value
+                data = nothing
+                try 
+                    data = JSON3.read(body)
+                catch 
+                    data = read(seekstart(body), String)
+                end
+                # there's a body, so pass it on to the handler we dispatch to
+                response_body = HTTP.handle(ROUTER, req, d)
+            end
+
+            # if a raw HTTP.Response object is returned, then don't do any extra processing on it
+            if isa(response_body, HTTP.Messages.Response)
+                return response_body 
+            else 
+                return HTTP.Response(200, JSON3.write(response_body))
+            end 
+
+        catch error
+            @error "ERROR: " exception=(error, catch_backtrace())
+            return HTTP.Response(500, "The Server encountered a problem")
+        end
+
+    end 
 
 end

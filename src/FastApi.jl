@@ -103,16 +103,15 @@ module FastApi
             local num_args = Util.countargs($(esc(func)))
             local action = $(esc(func))
 
-            function (req, reqbody...)
-                local body = !isempty(reqbody) ? first(reqbody) : nothing
-                local queryparams = $queryparams(req) 
+            function (req)
                 local pathParams = Dict()
                 if $hasPathParams
                     local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
                     pathParams = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
                 end
-
-                action(Request(req, body, pathParams, queryparams))
+                inputs = [req, pathParams]
+                args = splice!(inputs, 1:num_args)
+                action(args...)
             end
         end
 
@@ -136,42 +135,30 @@ module FastApi
         return HTTP.queryparams(uri.query)
     end
 
-    function body(req::HTTP.Request)
-        requestbody = IOBuffer(HTTP.payload(req))
-        return eof(requestbody) ? nothing : JSON3.read(requestbody)
+    function text(req::HTTP.Request)
+        body = IOBuffer(HTTP.payload(req))
+        return eof(body) ? nothing : read(seekstart(body), String)
     end
 
-    function body(req::HTTP.Request, classtype)
-        requestbody = IOBuffer(HTTP.payload(req))
-        return eof(requestbody) ? nothing : JSON3.read(requestbody, classtype)    
+    function json(req::HTTP.Request)
+        body = IOBuffer(HTTP.payload(req))
+        return eof(body) ? nothing : JSON3.read(body)
+    end
+
+    function json(req::HTTP.Request, classtype)
+        body = IOBuffer(HTTP.payload(req))
+        return eof(body) ? nothing : JSON3.read(body, classtype)    
     end
 
     function defaultHandler(req::HTTP.Request)
         try
-            # first check if there's any request body
-            body = IOBuffer(HTTP.payload(req))
-            if eof(body)
-                # no request body
-                response_body = HTTP.handle(ROUTER, req)
-            else
-                # try reading body input as JSON, if not assume it's a string value
-                data = nothing
-                try 
-                    data = JSON3.read(body)
-                catch 
-                    data = read(seekstart(body), String)
-                end
-                # there's a body, so pass it on to the handler we dispatch to
-                response_body = HTTP.handle(ROUTER, req, d)
-            end
-
+            response_body = HTTP.handle(ROUTER, req)
             # if a raw HTTP.Response object is returned, then don't do any extra processing on it
             if isa(response_body, HTTP.Messages.Response)
                 return response_body 
             else 
                 return HTTP.Response(200, JSON3.write(response_body))
             end 
-
         catch error
             @error "ERROR: " exception=(error, catch_backtrace())
             return HTTP.Response(500, "The Server encountered a problem")

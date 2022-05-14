@@ -14,19 +14,19 @@ Api = FastApi
 
 Api.@addstruct(::Type{Animal})
 
-Api.@post "/query" function (req::Api.Request)
+Api.@post "/query" function (req::HTTP.Messages.Request)
     return "dump"
 end
 
-Api.@get "/bah" function (req::Api.Request)
+Api.@get "/bah" function (req::HTTP.Messages.Request)
     return "wow"
 end
 
-Api.@get "/test" function (req::Api.Request)
+Api.@get "/test" function (req::HTTP.Messages.Request)
     return 77.88
 end
 
-Api.@get "/add/{a}/{b}" function (req::Api.Request)
+Api.@get "/add/{a}/{b}" function (req::HTTP.Messages.Request)
     params = req.pathparams
     return parse(Float64, params["a"]) + parse(Float64, params["b"])
 end

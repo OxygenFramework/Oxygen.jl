@@ -2,6 +2,7 @@ include("../src/FastApi.jl")
 import .FastApi
 import HTTP
 import JSON3
+import StructTypes
 
 struct Animal
     id::Int
@@ -11,7 +12,7 @@ end
 
 Api = FastApi
 
-Api.@addstruct(::Type{Animal})
+StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
 
 Api.@post "/query" function (req::HTTP.Request)
     return "dump"

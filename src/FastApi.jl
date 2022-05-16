@@ -102,7 +102,6 @@ module FastApi
         local handlerequest = quote 
             local num_args = Util.countargs($(esc(func)))
             local action = $(esc(func))
-
             function (req)
                 local pathParams = Dict()
                 if $hasPathParams
@@ -133,6 +132,11 @@ module FastApi
     function queryparams(req::HTTP.Request)
         local uri = HTTP.URI(req.target)
         return HTTP.queryparams(uri.query)
+    end
+
+    function binary(req::HTTP.Request)
+        body = IOBuffer(HTTP.payload(req))
+        return eof(body) ? nothing : readavailable(body)
     end
 
     function text(req::HTTP.Request)

@@ -32,11 +32,11 @@ F.@get "/custom-response" function (req::HTTP.Request)
     return HTTP.Response( 200, ["Content-Type" => "text/plain"], body = "$test_value")
 end
 
-F.@get "/add/{a}/{b}" function (req::HTTP.Request, params::Dict)
-    return parse(Float64, params["a"]) + parse(Float64, params["b"])
+F.@get "/add/{a}/{b}" function (req::HTTP.Request, pathparams::Dict)
+    return parse(Float64, pathparams["a"]) + parse(Float64, pathparams["b"])
 end
 
-F.@get "/multi/{c:float}/{d:float}" function (req::HTTP.Request)
+F.@get "/multi/{c:float}/{d:float}" function (req::HTTP.Request, pathparams)
     return pathparams["c"] * pathparams["d"]
 end
 

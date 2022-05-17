@@ -46,11 +46,15 @@ module Main
         return pathparams["c"] * pathparams["d"]
     end
 
-    # Any object retuned from a function will automatically be converted into JSON (by default)
+    # # Any object retuned from a function will automatically be converted into JSON (by default)
     @get "/json" function(req::HTTP.Request)
         return Dict("message" => "hello world", "animal" => Animal(1, "cat", "whiskers"))
     end
 
+    @route ["GET", "POST"] "/demo" function(req)
+        return Animal(1, "cat", "whiskers")
+    end
+ 
     # start the web server
     serve()
 

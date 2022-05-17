@@ -6,18 +6,18 @@ module FastApi
     include("util.jl")
     import .Util
 
-    export @get, @post, @put, @patch, @delete, @register, serve, queryparams, binary, text, json
+    export @get, @post, @put, @patch, @delete, @register, @route, serve, queryparams, binary, text, json
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
 
     function serve(host=Sockets.localhost, port=8081; kwargs...)
-        println("Starting server: $host:$port")
+        println("Starting server: http://$host:$port")
         HTTP.serve(defaultHandler, host, port, kwargs...)
     end
 
     function serve(sucessHandler::Function, errorHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
-        println("Starting server: $host:$port")
+        println("Starting server: http://$host:$port")
         function handle(req)
             try
                 response_body = HTTP.handle(ROUTER, req)
@@ -61,6 +61,9 @@ module FastApi
             # if a raw HTTP.Response object is returned, then don't do any extra processing on it
             if isa(response_body, HTTP.Messages.Response)
                 return response_body 
+            elseif isa(response_body, String)
+                headers = ["Content-Type" => "text/plain; charset=utf-8"]
+                return HTTP.Response(200, headers , body=response_body)
             else 
                 body = JSON3.write(response_body)
                 headers = ["Content-Type" => "application/json; charset=utf-8"]
@@ -74,32 +77,43 @@ module FastApi
 
     macro get(path, func)
         quote 
-            @register "GET" $path $(esc(func))
+            @route ["GET"] $path $(esc(func))
         end
     end
 
     macro post(path, func)
         quote 
-            @register "POST" $path $(esc(func))
+            @route ["POST"] $path $(esc(func))
         end
     end
 
     macro put(path, func)
         quote 
-            @register "PUT" $path $(esc(func))
+            @route ["PUT"] $path $(esc(func))
         end
     end
 
     macro patch(path, func)
         quote 
-            @register "PATCH" $path $(esc(func))
+            @route ["PATCH"] $path $(esc(func))
         end
     end
 
     macro delete(path, func)
         quote 
-            @register "DELETE" $path $(esc(func))
+            @route ["DELETE"] $path $(esc(func))
         end
+    end
+    
+    macro route(methods, path, func)
+        quote 
+            local func = $(esc(func))
+            local path = $path
+            for method in eval($methods)
+                println(method)
+                eval(:(@register $method $path $func))
+            end
+        end  
     end
      
     macro register(method, path, func)

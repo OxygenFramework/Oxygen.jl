@@ -19,7 +19,7 @@ module FastApi
         function handle(req)
             try
                 response_body = HTTP.handle(ROUTER, req)
-                return customHandler(response_body) 
+                return sucessHandler(response_body) 
             catch error
                 @error "ERROR: " exception=(error, catch_backtrace())
                 return errorHandler(error)

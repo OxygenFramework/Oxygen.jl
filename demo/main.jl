@@ -37,8 +37,7 @@ F.@get "/add/{a}/{b}" function (req::HTTP.Request, params::Dict)
 end
 
 F.@get "/multi/{c:float}/{d:float}" function (req::HTTP.Request)
-    return 3
-    # return pathparams["c"] * pathparams["d"]
+    return pathparams["c"] * pathparams["d"]
 end
 
 F.@get("/json",

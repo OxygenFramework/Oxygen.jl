@@ -46,4 +46,4 @@ F.@get("/json",
     end
 )
 
-F.start()
+F.serve()

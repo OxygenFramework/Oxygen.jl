@@ -9,12 +9,12 @@ module FastApi
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
 
-    function start(host=Sockets.localhost, port=8081; kwargs...)
+    function serve(host=Sockets.localhost, port=8081; kwargs...)
         println("Starting server: $host:$port")
         HTTP.serve(defaultHandler, host, port, kwargs...)
     end
 
-    function start(customHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
+    function serve(customHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
         println("Starting server: $host:$port")
         HTTP.serve(req -> customHandler(req, ROUTER), Sockets.localhost, port, kwargs...)
     end

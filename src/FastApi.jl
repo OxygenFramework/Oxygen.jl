@@ -9,94 +9,6 @@ module FastApi
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
 
-    struct Request 
-        request :: HTTP.Request
-        body :: Union{JSON3.Object, String, Nothing}
-        pathparams :: Dict
-        queryparams :: Dict
-    end
-
-    macro get(path, func)
-        quote 
-            @register "GET" $path $(esc(func))
-        end
-    end
-
-    macro post(path, func)
-        quote 
-            @register "POST" $path $(esc(func))
-        end
-    end
-
-    macro put(path, func)
-        quote 
-            @register "PUT" $path $(esc(func))
-        end
-    end
-
-    macro patch(path, func)
-        quote 
-            @register "PATCH" $path $(esc(func))
-        end
-    end
-
-    macro delete(path, func)
-        quote 
-            @register "DELETE" $path $(esc(func))
-        end
-    end
-    
-    macro register(method, path, func)
-
-        local variableRegex = r"{[a-zA-Z0-9_]+:*[a-z]*}"
-        local hasTypeDef = r":[a-z]+"
-        local hasBraces = r"({)|(})"
-
-        # determine if we have parameters defined in our path
-        local hasPathParams = contains(path, variableRegex)
-        local cleanpath = hasPathParams ? replace(path, variableRegex => "*") : path 
-
-        # track which index the params are located in
-        local splitpath = HTTP.URIs.splitpath(path)
-        local positions = Dict()
-        local converters = Dict()
-
-        for (index, value) in enumerate(splitpath) 
-            variable = replace(value, hasBraces => "")                
-            # track variable names & positions
-            if contains(value, hasBraces)
-                positions[index] = Util.getvarname(variable)
-            end
-            # track type definitions
-            if contains(value, hasTypeDef)
-                converters[index] = Util.getvartype(variable)
-            end
-        end
-
-        # helper functions to generate Key/Value pairs for our params dictionary
-        local keygen = (index) -> Util.getvarname(positions[index])
-        local valuegen = (index, value) -> haskey(converters, index) ? converters[index](value) : value
-
-        local handlerequest = quote 
-            local num_args = Util.countargs($(esc(func)))
-            local action = $(esc(func))
-            function (req)
-                local pathParams = Dict()
-                if $hasPathParams
-                    local splitPath = enumerate(HTTP.URIs.splitpath(req.target))
-                    pathParams = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
-                end
-                inputs = [req, pathParams]
-                args = splice!(inputs, 1:num_args)
-                action(args...)
-            end
-        end
-
-        quote 
-            HTTP.@register(ROUTER, $method, $cleanpath, $handlerequest)
-        end
-    end
-
     function start(host=Sockets.localhost, port=8081; kwargs...)
         println("Starting server: $host:$port")
         HTTP.serve(defaultHandler, host, port, kwargs...)
@@ -139,13 +51,97 @@ module FastApi
             if isa(response_body, HTTP.Messages.Response)
                 return response_body 
             else 
-                return HTTP.Response(200, JSON3.write(response_body))
+                body = JSON3.write(response_body)
+                headers = ["Content-Type" => "application/json; charset=utf-8"]
+                return HTTP.Response(200, headers , body=body)
             end 
         catch error
             @error "ERROR: " exception=(error, catch_backtrace())
             return HTTP.Response(500, "The Server encountered a problem")
         end
 
-    end 
+    end
+
+    macro get(path, func)
+        quote 
+            @register "GET" $path $(esc(func))
+        end
+    end
+
+    macro post(path, func)
+        quote 
+            @register "POST" $path $(esc(func))
+        end
+    end
+
+    macro put(path, func)
+        quote 
+            @register "PUT" $path $(esc(func))
+        end
+    end
+
+    macro patch(path, func)
+        quote 
+            @register "PATCH" $path $(esc(func))
+        end
+    end
+
+    macro delete(path, func)
+        quote 
+            @register "DELETE" $path $(esc(func))
+        end
+    end
+     
+    macro register(method, path, func)
+
+        local variableRegex = r"{[a-zA-Z0-9_]+:*[a-z]*}"
+        local hasTypeDef = r":[a-z]+"
+        local hasBraces = r"({)|(})"
+
+        # determine if we have parameters defined in our path
+        local hasPathParams = contains(path, variableRegex)
+        local cleanpath = hasPathParams ? replace(path, variableRegex => "*") : path 
+
+        # track which index the params are located in
+        local splitpath = HTTP.URIs.splitpath(path)
+        local positions = Dict()
+        local converters = Dict()
+
+        for (index, value) in enumerate(splitpath) 
+            variable = replace(value, hasBraces => "")                
+            # track variable names & positions
+            if contains(value, hasBraces)
+                positions[index] = Util.getvarname(variable)
+            end
+            # track type definitions
+            if contains(value, hasTypeDef)
+                converters[index] = Util.getvartype(variable)
+            end
+        end
+
+        # helper functions to generate Key/Value pairs for our params dictionary
+        local keygen = (index) -> Util.getvarname(positions[index])
+        local valuegen = (index, value) -> haskey(converters, index) ? converters[index](value) : value
+
+        local handlerequest = quote 
+            local action = $(esc(func))
+            function (req)
+                # if endpoint has path parameters, make sure the attached function accepts them
+                if $hasPathParams
+                    splitPath = enumerate(HTTP.URIs.splitpath(req.target))
+                    pathParams = Dict($keygen(index) => $valuegen(index, value) for (index, value) in splitPath if haskey($positions, index))
+                    action(req, pathParams)
+                else 
+                    action(req)
+                end
+            end
+        end
+
+        quote 
+            HTTP.@register(ROUTER, $method, $cleanpath, $handlerequest)
+        end
+    end
+
+
 
 end

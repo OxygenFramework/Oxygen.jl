@@ -10,34 +10,41 @@ struct Animal
     name::String
 end
 
-Api = FastApi
+F = FastApi
 
 StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
 
-Api.@post "/query" function (req::HTTP.Request)
-    return "dump"
+
+F.@post "/animal" function (req)
+    return F.json(req, Animal)
 end
 
-Api.@get "/bah" function (req::HTTP.Request)
-    return "wow"
+F.@post "/text-text" function (req::HTTP.Request)
+    return F.text(req)
 end
 
-Api.@get "/test" function (req::HTTP.Request)
-    return 77.88
+F.@post "/echo-json" function (req::HTTP.Request)
+    return F.json(req)
 end
 
-Api.@get "/add/{a}/{b}" function (req::HTTP.Request, params)
+F.@get "/custom-response" function (req::HTTP.Request)
+    test_value = 77.8
+    return HTTP.Response( 200, ["Content-Type" => "text/plain"], body = "$test_value")
+end
+
+F.@get "/add/{a}/{b}" function (req::HTTP.Request, params::Dict)
     return parse(Float64, params["a"]) + parse(Float64, params["b"])
 end
 
-Api.@get "/multi/{c:float}/{d:float}" function (req::HTTP.Request, pathparams::Dict)
-    return pathparams["c"] * pathparams["d"]
+F.@get "/multi/{c:float}/{d:float}" function (req::HTTP.Request)
+    return 3
+    # return pathparams["c"] * pathparams["d"]
 end
 
-Api.@get("/json",
+F.@get("/json",
     function(req::HTTP.Request)
         return Dict("message" => "hello world", "animal" => Animal(1, "cat", "whiskers"))
     end
 )
 
-Api.start()
+F.start()

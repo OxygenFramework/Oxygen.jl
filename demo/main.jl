@@ -36,12 +36,12 @@ module Main
         return HTTP.Response(200, ["Content-Type" => "text/plain"], body = "$test_value")
     end
 
-    # demonstate how to use path params (without type hints)
+    # demonstate how to use path params (without type definitions)
     @get "/add/{a}/{b}" function (req::HTTP.Request, pathparams::Dict)
         return parse(Float64, pathparams["a"]) + parse(Float64, pathparams["b"])
     end
 
-    # demonstate how to use path params with type hints
+    # demonstate how to use path params with type definitions
     @get "/multi/{c:float}/{d:float}" function (req::HTTP.Request, pathparams)
         return pathparams["c"] * pathparams["d"]
     end

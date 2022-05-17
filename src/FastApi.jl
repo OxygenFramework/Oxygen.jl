@@ -14,9 +14,18 @@ module FastApi
         HTTP.serve(defaultHandler, host, port, kwargs...)
     end
 
-    function serve(customHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
+    function serve(sucessHandler::Function, errorHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
         println("Starting server: $host:$port")
-        HTTP.serve(req -> customHandler(req, ROUTER), Sockets.localhost, port, kwargs...)
+        function handle(req)
+            try
+                response_body = HTTP.handle(ROUTER, req)
+                return customHandler(response_body) 
+            catch error
+                @error "ERROR: " exception=(error, catch_backtrace())
+                return errorHandler(error)
+            end
+        end
+        HTTP.serve(req -> handle(req), Sockets.localhost, port, kwargs...)
     end
 
     function queryparams(req::HTTP.Request)
@@ -59,7 +68,6 @@ module FastApi
             @error "ERROR: " exception=(error, catch_backtrace())
             return HTTP.Response(500, "The Server encountered a problem")
         end
-
     end
 
     macro get(path, func)

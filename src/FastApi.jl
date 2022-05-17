@@ -6,6 +6,8 @@ module FastApi
     include("util.jl")
     import .Util
 
+    export @get, @post, @put, @patch, @delete, @register, serve, queryparams, binary, text, json
+
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
 
@@ -149,7 +151,5 @@ module FastApi
             HTTP.@register(ROUTER, $method, $cleanpath, $handlerequest)
         end
     end
-
-
 
 end

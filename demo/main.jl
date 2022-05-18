@@ -47,11 +47,11 @@ module Main
 
     # demonstate how to use path params (without type definitions)
     @get "/add/{a}/{b}" function (req::HTTP.Request, a, b)
-        return parse(Float64,a) + parse(Float64, b)
+        return parse(Float64, a) + parse(Float64, b)
     end
 
     # demonstate how to use path params with type definitions
-    @get "/multi/{c}/{d}" function (req::HTTP.Request, c::Float64, d::Float16)
+    @get "/multi/{c}/{d}" function (req::HTTP.Request, c::Float64, d::Float64)
         return c * d
     end
 

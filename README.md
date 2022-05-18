@@ -53,7 +53,7 @@ end
 # Add a supporting struct type definition to the Animal struct
 StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
 
-@post "/create" function(req::HTTP.Request)
+@post "/echo" function(req::HTTP.Request)
     # deserialize JSON into an Animal struct
     animal = json(req, Animal)
     # serialize struct back into JSON automatically (because we used StructTypes)

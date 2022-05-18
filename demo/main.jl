@@ -84,17 +84,17 @@ module Main
         "Access-Control-Allow-Methods" => "GET, POST"
     ]
 
-    function CorsHandler(req, defaulthandler)
+    function CorsHandler(req, defaultHandler)
         # return headers on OPTIONS request
         if HTTP.method(req) == "OPTIONS"
             return HTTP.Response(200, headers)
         else 
-            return defaulthandler(req)
+            return defaultHandler(req)
         end
     end
 
     # start the web server
-    serve((req, router, defaulthandler) -> CorsHandler(req, defaulthandler))
+    serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
 
 
 

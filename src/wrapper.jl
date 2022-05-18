@@ -191,7 +191,7 @@ module Wrapper
                 # if endpoint has path parameters, make sure the attached function accepts them
                 if $hasPathParams & $hasPositions
                     path_values = splice!(HTTP.URIs.splitpath(req.target), $lower_bound:$upper_bound)
-                    pathParams = [type == Any ? value : parse(type, value)  for (type, value) in zip($pathtypes, path_values)]   
+                    pathParams = [type == Any ? value : parse(type, value) for (type, value) in zip($pathtypes, path_values)]   
                     action(req, pathParams...)
                 else 
                     action(req)

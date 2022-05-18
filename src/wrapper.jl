@@ -16,7 +16,12 @@ module Wrapper
 
     function serve(host=Sockets.localhost, port=8081; kwargs...)
         println("Starting server: http://$host:$port")
-        HTTP.serve(defaultHandler, host, port, kwargs...)
+        HTTP.serve(DefaultHandler, host, port, kwargs...)
+    end
+
+    function serve(handler::Function, host=Sockets.localhost, port=8081; kwargs...)
+        println("Starting server: http://$host:$port")
+        HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port, kwargs...)
     end
 
     function serve(sucessHandler::Function, errorHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
@@ -58,7 +63,7 @@ module Wrapper
         return eof(body) ? nothing : JSON3.read(body, classtype)    
     end
 
-    function defaultHandler(req::HTTP.Request)
+    function DefaultHandler(req::HTTP.Request)
         try
             response_body = HTTP.handle(ROUTER, req)
             # if a raw HTTP.Response object is returned, then don't do any extra processing on it

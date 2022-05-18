@@ -73,10 +73,30 @@ module Main
             </html>
         """
     end
-    
+
     @staticfiles "demo"
 
+
+    # CORS headers that show what kinds of complex requests are allowed to API
+    headers = [
+        "Access-Control-Allow-Origin" => "*",
+        "Access-Control-Allow-Headers" => "*",
+        "Access-Control-Allow-Methods" => "POST"
+    ]
+
+    function CorsHandler(req, defaulthandler)
+        # return headers on OPTIONS request
+        if HTTP.hasheader(req, "OPTIONS")
+            return HTTP.Response(200, headers, body="$headers")
+        else 
+            return defaulthandler(req)
+        end
+    end
+
     # start the web server
-    serve()
+    serve((req, router, defaulthandler) -> CorsHandler(req, defaulthandler))
+
+
 
 end
+

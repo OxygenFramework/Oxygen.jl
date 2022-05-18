@@ -6,7 +6,10 @@ module Wrapper
     include("util.jl")
     using .Util
 
-    export @get, @post, @put, @patch, @delete, @register, @route, serve, queryparams, binary, text, json 
+    include("fileutil.jl")
+    using .FileUtil
+
+    export @get, @post, @put, @patch, @delete, @register, @route, @mount, @staticfiles, serve, queryparams, binary, text, json 
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
@@ -113,6 +116,33 @@ module Wrapper
                 eval(:(@register $method $path $func))
             end
         end  
+    end
+
+    macro staticfiles(folder::String, mount::String="static")
+    
+        # collect all files inside the given 
+        target_files::Array{String} = []
+        for (root, _, files) in walkdir(folder)
+            for file in files
+                push!(target_files, joinpath(root, file))
+            end
+        end
+        
+        # mount all files inside the /static folder (or user defined mount point)
+        quote 
+            local directory = $mount
+            for filepath in $target_files
+                mountpath = "/$directory/$filepath"
+                eval(
+                    quote 
+                        @get $mountpath function (req)
+                            return FileUtil.file($filepath)
+                        end
+                    end
+                )
+            end
+        end
+        
     end
      
     macro register(method, path, func)

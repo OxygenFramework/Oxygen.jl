@@ -15,6 +15,10 @@ module Main
     # Add a supporting struct type definition to the Animal struct
     StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
 
+    @get "/" function (req) 
+        return "home"
+    end
+
     # Return the body of the request as a string
     @post "/echo-text" function (req::HTTP.Request)
         return text(req)
@@ -56,9 +60,11 @@ module Main
     end
 
     @get "/files" function (req)
-        return file("demo", "main.jl")
+        return file("demo/main.jl")
     end
- 
+
+    @staticfiles "demo"
+
     # start the web server
     serve()
 

@@ -105,7 +105,5 @@ module Main
     # start the web server
     serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
 
-
-
 end
 

@@ -81,13 +81,13 @@ module Main
     headers = [
         "Access-Control-Allow-Origin" => "*",
         "Access-Control-Allow-Headers" => "*",
-        "Access-Control-Allow-Methods" => "POST"
+        "Access-Control-Allow-Methods" => "GET, POST"
     ]
 
     function CorsHandler(req, defaulthandler)
         # return headers on OPTIONS request
         if HTTP.hasheader(req, "OPTIONS")
-            return HTTP.Response(200, headers, body="$headers")
+            return HTTP.Response(200, headers)
         else 
             return defaulthandler(req)
         end

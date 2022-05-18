@@ -188,15 +188,16 @@ module Wrapper
         local method = first(methods(func))
         # extract the fieldtypes 
         local fields = [x for x in fieldtypes(method.sig)]
-        local numargs = length(fields)
+        local numfields = fieldcount(method.sig)
+
         # extract the type of each argument 
-        local pathtypes = splice!(Array(fields), 3:length(fields))
+        local pathtypes = splice!(Array(fields), 3:numfields)
 
         local handlerequest = quote 
             local action = $(esc(func))
             function (req)
                 # don't pass any args if the function takes none
-                if $numargs == 1 
+                if $numfields == 1 
                     action()
                 # if endpoint has path parameters, make sure the attached function accepts them
                 elseif $hasPathParams & $hasPositions

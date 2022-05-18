@@ -166,9 +166,9 @@ module Wrapper
         local hasPathParams = contains(path, variableRegex)
         local cleanpath = hasPathParams ? replace(path, variableRegex => "*") : path 
       
+        # track which index the params are located in
         local positions = []
         for (index, value) in enumerate(HTTP.URIs.splitpath(path)) 
-            # track which index the params are located in
             if contains(value, hasBraces)
                 push!(positions, index)
             end
@@ -180,15 +180,20 @@ module Wrapper
 
         # println(lower_bound, ":", upper_bound)
         local handlerequest = quote 
+
             local action = $(esc(func))
-            method = first(methods(action))
-            fields = [x for x in fieldtypes(method.sig)]
-            pathargs = splice!(Array(fields), 3:length(fields))     
+            # get the functions high-level signature
+            local method = first(methods(action))
+            # extract the fieldtypes 
+            local fields = [x for x in fieldtypes(method.sig)]
+            # extract the type of each argument 
+            local pathtypes = splice!(Array(fields), 3:length(fields))
+
             function (req)
                 # if endpoint has path parameters, make sure the attached function accepts them
-                if $hasPathParams
+                if $hasPathParams & $hasPositions
                     path_values = splice!(HTTP.URIs.splitpath(req.target), $lower_bound:$upper_bound)
-                    pathParams = [type == Any ? value : parse(type, value)  for (type, value) in zip(pathargs, path_values)]   
+                    pathParams = [type == Any ? value : parse(type, value)  for (type, value) in zip(pathtypes, path_values)]   
                     action(req, pathParams...)
                 else 
                     action(req)

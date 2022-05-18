@@ -1,12 +1,8 @@
 module FileUtil 
 
-    export absfile, file
+    export file
 
     current_directory = pwd()
-
-    function absfile(filepath::String)
-        return read(open(filepath), String)
-    end
 
     function file(filename::String)
         path = joinpath(current_directory, filename)

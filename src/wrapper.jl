@@ -157,7 +157,7 @@ module Wrapper
         
     end
      
-    macro register(method, path, func)
+    macro register(httpmethod, path, func)
 
         local variableRegex = r"{[a-zA-Z0-9_]+}"
         local hasBraces = r"({)|(})"
@@ -178,22 +178,21 @@ module Wrapper
         local lower_bound = hasPositions ? first(positions) : 0
         local upper_bound = hasPositions ? last(positions) : 0
 
+        # get the functions high-level signature
+        local method = first(methods(func))
+        # extract the fieldtypes 
+        local fields = [x for x in fieldtypes(method.sig)]
+        # extract the type of each argument 
+        local pathtypes = splice!(Array(fields), 3:length(fields))
+
         # println(lower_bound, ":", upper_bound)
         local handlerequest = quote 
-
             local action = $(esc(func))
-            # get the functions high-level signature
-            local method = first(methods(action))
-            # extract the fieldtypes 
-            local fields = [x for x in fieldtypes(method.sig)]
-            # extract the type of each argument 
-            local pathtypes = splice!(Array(fields), 3:length(fields))
-
             function (req)
                 # if endpoint has path parameters, make sure the attached function accepts them
                 if $hasPathParams & $hasPositions
                     path_values = splice!(HTTP.URIs.splitpath(req.target), $lower_bound:$upper_bound)
-                    pathParams = [type == Any ? value : parse(type, value)  for (type, value) in zip(pathtypes, path_values)]   
+                    pathParams = [type == Any ? value : parse(type, value)  for (type, value) in zip($pathtypes, path_values)]   
                     action(req, pathParams...)
                 else 
                     action(req)
@@ -202,7 +201,7 @@ module Wrapper
         end
 
         quote 
-            HTTP.@register(ROUTER, $method, $cleanpath, $handlerequest)
+            HTTP.@register(ROUTER, $httpmethod, $cleanpath, $handlerequest)
         end
     end
 

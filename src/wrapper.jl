@@ -37,6 +37,27 @@ module Wrapper
         end
         HTTP.serve(req -> handle(req), Sockets.localhost, port, kwargs...)
     end
+
+    function DefaultHandler(req::HTTP.Request)
+        try
+            response_body = HTTP.handle(ROUTER, req)
+            # if a raw HTTP.Response object is returned, then don't do any extra processing on it
+            if isa(response_body, HTTP.Messages.Response)
+                return response_body 
+            elseif isa(response_body, String)
+                content_type = FileUtil.getcontenttype(String(lstrip(response_body)))
+                headers = ["Content-Type" => "$content_type; charset=utf-8"]
+                return HTTP.Response(200, headers , body=response_body)
+            else 
+                body = JSON3.write(response_body)
+                headers = ["Content-Type" => "application/json; charset=utf-8"]
+                return HTTP.Response(200, headers , body=body)
+            end 
+        catch error
+            @error "ERROR: " exception=(error, catch_backtrace())
+            return HTTP.Response(500, "The Server encountered a problem")
+        end
+    end
     
     function queryparams(req::HTTP.Request)
         local uri = HTTP.URI(req.target)
@@ -61,27 +82,6 @@ module Wrapper
     function json(req::HTTP.Request, classtype)
         body = IOBuffer(HTTP.payload(req))
         return eof(body) ? nothing : JSON3.read(body, classtype)    
-    end
-
-    function DefaultHandler(req::HTTP.Request)
-        try
-            response_body = HTTP.handle(ROUTER, req)
-            # if a raw HTTP.Response object is returned, then don't do any extra processing on it
-            if isa(response_body, HTTP.Messages.Response)
-                return response_body 
-            elseif isa(response_body, String)
-                content_type = FileUtil.getcontenttype(String(lstrip(response_body)))
-                headers = ["Content-Type" => "$content_type; charset=utf-8"]
-                return HTTP.Response(200, headers , body=response_body)
-            else 
-                body = JSON3.write(response_body)
-                headers = ["Content-Type" => "application/json; charset=utf-8"]
-                return HTTP.Response(200, headers , body=body)
-            end 
-        catch error
-            @error "ERROR: " exception=(error, catch_backtrace())
-            return HTTP.Response(500, "The Server encountered a problem")
-        end
     end
 
     macro get(path, func)

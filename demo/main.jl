@@ -15,7 +15,7 @@ module Main
     # Add a supporting struct type definition to the Animal struct
     StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
 
-    @get "/" function (req) 
+    @get "/" function()
         return "home"
     end
 

@@ -182,14 +182,17 @@ module Wrapper
         local method = first(methods(func))
         # extract the fieldtypes 
         local fields = [x for x in fieldtypes(method.sig)]
+        local numargs = length(fields)
         # extract the type of each argument 
         local pathtypes = splice!(Array(fields), 3:length(fields))
 
         local handlerequest = quote 
             local action = $(esc(func))
             function (req)
+                if $numargs == 1 
+                    action()
                 # if endpoint has path parameters, make sure the attached function accepts them
-                if $hasPathParams & $hasPositions
+                elseif $hasPathParams & $hasPositions
                     path_values = splice!(HTTP.URIs.splitpath(req.target), $lower_bound:$upper_bound)
                     pathParams = [type == Any ? value : parse(type, value) for (type, value) in zip($pathtypes, path_values)]   
                     action(req, pathParams...)

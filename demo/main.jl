@@ -3,7 +3,7 @@ module Main
     import JSON3
     import StructTypes
 
-    include("../src/FastApi.jl")
+    include("../src/fastapi.jl")
     using .FastApi
 
     struct Animal
@@ -53,6 +53,10 @@ module Main
 
     @route ["GET", "POST"] "/demo" function(req)
         return Animal(1, "cat", "whiskers")
+    end
+
+    @get "/files" function (req)
+        return file("demo", "main.jl")
     end
  
     # start the web server

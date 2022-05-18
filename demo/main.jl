@@ -3,8 +3,8 @@ module Main
     import JSON3
     import StructTypes
 
-    include("../src/fastapi.jl")
-    using .FastApi
+    include("../src/Oxygen.jl")
+    using .Oxygen
 
     struct Animal
         id::Int

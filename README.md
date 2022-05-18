@@ -18,7 +18,55 @@ end
 
 # start the web server
 serve()
+```
 
+## Return JSON
+
+All objects are automatically deserialized into JSON using the JSON3 library
+
+```julia
+using Oxygen
+using HTTP
+
+@get "/data" function(req::HTTP.Request)
+    return Dict("message" => "request completed", "value" => 99.3)
+end
+
+# start the web server
+serve()
+```
+
+## Deserialize & Serialize custom structs
+Oxygen provides some out-of-the-box serialization & deserialization but requires the use of StructTypes when converting structs
+
+```julia
+using Oxygen
+using HTTP
+using StructTypes
+
+struct Animal
+    id::Int
+    type::String
+    name::String
+end
+
+# Add a supporting struct type definition to the Animal struct
+StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
+
+@post "/create" function(req::HTTP.Request)
+    # deserialize JSON into an Animal struct
+    animal = json(req, Animal)
+    # serialize struct back into JSON automatically (because we used StructTypes)
+    return animal
+end
+
+@get "/get" function(req::HTTP.Request)
+    # serialize struct back into JSON automatically (because we used StructTypes)
+    return Animal(1, "cat", "whiskers")
+end
+
+# start the web server
+serve()
 ```
 
 ## API Reference (macros)

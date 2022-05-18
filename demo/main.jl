@@ -1,5 +1,6 @@
 module Main 
-    using Oxygen
+    include("../src/Oxygen.jl")
+    using .Oxygen
     using HTTP
     using JSON3
     using StructTypes

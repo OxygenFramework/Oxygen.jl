@@ -189,6 +189,7 @@ module Wrapper
         local handlerequest = quote 
             local action = $(esc(func))
             function (req)
+                # don't pass any args if the function takes none
                 if $numargs == 1 
                     action()
                 # if endpoint has path parameters, make sure the attached function accepts them

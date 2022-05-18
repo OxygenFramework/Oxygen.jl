@@ -110,7 +110,6 @@ module FastApi
             local func = $(esc(func))
             local path = $path
             for method in eval($methods)
-                println(method)
                 eval(:(@register $method $path $func))
             end
         end  

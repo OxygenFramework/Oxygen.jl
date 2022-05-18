@@ -19,6 +19,11 @@ module Main
         return "home"
     end
 
+    # add a default handler for unmatched requests
+    @get "*" function (req) 
+        return "default"
+    end
+
     # Return the body of the request as a string
     @post "/echo-text" function (req::HTTP.Request)
         return text(req)
@@ -55,14 +60,17 @@ module Main
         return Dict("message" => "hello world", "animal" => Animal(1, "cat", "whiskers"))
     end
 
+    # show how to use the lower level macro to add a route for any type of request
     @route ["GET", "POST"] "/demo" function(req)
         return Animal(1, "cat", "whiskers")
     end
 
+    # show how to return a file from an endpoint
     @get "/files" function (req)
         return file("demo/main.jl")
     end
 
+    # Strings that are HTML (contins <!DOCTYPE html>) will automatically be returned with "text/html" content types
     @get "/string-as-html" function (req)
         return """
             <!DOCTYPE html>
@@ -74,8 +82,8 @@ module Main
         """
     end
 
+    # recursively mount all files inside the demo folder ex.) demo/main.jl => /static/demo/main.jl 
     @staticfiles "demo"
-
 
     # CORS headers that show what kinds of complex requests are allowed to API
     headers = [

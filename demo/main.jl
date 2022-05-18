@@ -61,7 +61,7 @@ module Main
     end
 
     # show how to use the lower level macro to add a route for any type of request
-    @route ["GET", "POST"] "/demo" function(req)
+    @route "/demo" ["GET", "POST"] function(req)
         return Animal(1, "cat", "whiskers")
     end
 

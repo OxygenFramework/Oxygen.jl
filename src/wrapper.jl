@@ -89,35 +89,35 @@ module Wrapper
 
     macro get(path, func)
         quote 
-            @route ["GET"] $path $(esc(func))
+            @route $path ["GET"] $(esc(func))
         end
     end
 
     macro post(path, func)
         quote 
-            @route ["POST"] $path $(esc(func))
+            @route $path ["POST"] $(esc(func))
         end
     end
 
     macro put(path, func)
         quote 
-            @route ["PUT"] $path $(esc(func))
+            @route $path ["PUT"] $(esc(func))
         end
     end
 
     macro patch(path, func)
         quote 
-            @route ["PATCH"] $path $(esc(func))
+            @route $path ["PATCH"] $(esc(func))
         end
     end
 
     macro delete(path, func)
         quote 
-            @route ["DELETE"] $path $(esc(func))
+            @route $path ["DELETE"] $(esc(func))
         end
     end
     
-    macro route(methods, path, func)
+    macro route(path, methods, func)
         quote 
             local func = $(esc(func))
             local path = $path

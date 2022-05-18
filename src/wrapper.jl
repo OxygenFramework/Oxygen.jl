@@ -58,23 +58,27 @@ module Wrapper
         end
     end
     
+    ### Request helper functions ###
+
     function queryparams(req::HTTP.Request)
         local uri = HTTP.URI(req.target)
         return HTTP.queryparams(uri.query)
-    end
-
-    function binary(req::HTTP.Request)
-        body = IOBuffer(HTTP.payload(req))
-        return eof(body) ? nothing : readavailable(body)
     end
 
     function html(content::String; status = 200, headers = ["Content-Type" => "text/html; charset=utf-8"])
         return HTTP.Response(status, headers, body = content)
     end
 
+    ### Body helper functions ###
+
     function text(req::HTTP.Request)
         body = IOBuffer(HTTP.payload(req))
         return eof(body) ? nothing : read(seekstart(body), String)
+    end
+
+    function binary(req::HTTP.Request)
+        body = IOBuffer(HTTP.payload(req))
+        return eof(body) ? nothing : readavailable(body)
     end
 
     function json(req::HTTP.Request)
@@ -86,6 +90,8 @@ module Wrapper
         body = IOBuffer(HTTP.payload(req))
         return eof(body) ? nothing : JSON3.read(body, classtype)    
     end
+
+    ### Core Macros ###
 
     macro get(path, func)
         quote 
@@ -127,7 +133,7 @@ module Wrapper
         end  
     end
 
-    macro staticfiles(folder::String, mount::String="static")
+    macro staticfiles(folder::String, mountdir::String="static")
     
         # collect all files inside the given 
         target_files::Array{String} = []
@@ -139,7 +145,7 @@ module Wrapper
         
         # mount all files inside the /static folder (or user defined mount point)
         quote 
-            local directory = $mount
+            local directory = $mountdir
             for filepath in $target_files
                 mountpath = "/$directory/$filepath"
                 eval(

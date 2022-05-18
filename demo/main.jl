@@ -1,10 +1,8 @@
 module Main 
-    import HTTP
-    import JSON3
-    import StructTypes
-
-    include("../src/Oxygen.jl")
-    using .Oxygen
+    using Oxygen
+    using HTTP
+    using JSON3
+    using StructTypes
 
     struct Animal
         id::Int

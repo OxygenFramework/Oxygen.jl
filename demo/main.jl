@@ -70,7 +70,7 @@ module Main
         return file("demo/main.jl")
     end
 
-    # Strings that are HTML (contins <!DOCTYPE html>) will automatically be returned with "text/html" content types
+    # Strings that are HTML (contins <!DOCTYPE html>) will automatically be returned with an "text/html" content type
     @get "/string-as-html" function (req)
         return """
             <!DOCTYPE html>

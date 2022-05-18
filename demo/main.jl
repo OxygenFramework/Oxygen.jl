@@ -86,7 +86,7 @@ module Main
 
     function CorsHandler(req, defaulthandler)
         # return headers on OPTIONS request
-        if HTTP.hasheader(req, "OPTIONS")
+        if HTTP.method(req) == "OPTIONS"
             return HTTP.Response(200, headers)
         else 
             return defaulthandler(req)

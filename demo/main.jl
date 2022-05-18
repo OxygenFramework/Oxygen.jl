@@ -70,16 +70,17 @@ module Main
         return file("demo/main.jl")
     end
 
-    # Strings that are HTML (contins <!DOCTYPE html>) will automatically be returned with an "text/html" content type
+    # show how to return a string that needs to be interpreted as html
     @get "/string-as-html" function (req)
-        return """
+        message = "Hello World!"
+        return html("""
             <!DOCTYPE html>
                 <html>
                 <body> 
-                    <h1>Hello world</h1>
+                    <h1>$message</h1>
                 </body>
             </html>
-        """
+        """)
     end
 
     # recursively mount all files inside the demo folder ex.) demo/main.jl => /static/demo/main.jl 

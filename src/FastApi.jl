@@ -10,7 +10,6 @@ module FastApi
     using .FileUtil
 
     export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles,
-            serve, queryparams, binary, text, json, countargs,
-            getvarname, getvartype, absfile, file
+            serve, queryparams, binary, text, json, html, file
     
 end 

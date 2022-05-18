@@ -9,7 +9,7 @@ module Wrapper
     include("fileutil.jl")
     using .FileUtil
 
-    export @get, @post, @put, @patch, @delete, @register, @route, @mount, @staticfiles, serve, queryparams, binary, text, json 
+    export @get, @post, @put, @patch, @delete, @register, @route, @mount, @staticfiles, serve, queryparams, binary, text, json, html
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
@@ -45,8 +45,7 @@ module Wrapper
             if isa(response_body, HTTP.Messages.Response)
                 return response_body 
             elseif isa(response_body, String)
-                content_type = FileUtil.getcontenttype(String(lstrip(response_body)))
-                headers = ["Content-Type" => "$content_type; charset=utf-8"]
+                headers = ["Content-Type" => "text/plain; charset=utf-8"]
                 return HTTP.Response(200, headers , body=response_body)
             else 
                 body = JSON3.write(response_body)
@@ -67,6 +66,10 @@ module Wrapper
     function binary(req::HTTP.Request)
         body = IOBuffer(HTTP.payload(req))
         return eof(body) ? nothing : readavailable(body)
+    end
+
+    function html(content::String; status = 200, headers = ["Content-Type" => "text/html; charset=utf-8"])
+        return HTTP.Response(status, headers, body = content)
     end
 
     function text(req::HTTP.Request)

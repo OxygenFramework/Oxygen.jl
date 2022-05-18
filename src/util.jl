@@ -1,5 +1,7 @@
 module Util 
 
+    export countargs, getvarname, getvartype
+
     # Count the number of args in a functions signature
     function countargs(func::Function)
         local method = first(methods(func))
@@ -26,3 +28,4 @@ module Util
     end
 
 end
+

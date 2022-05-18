@@ -3,7 +3,7 @@ module Main
     import JSON3
     import StructTypes
 
-    include("../src/FastApi.jl")
+    include("../src/fastapi.jl")
     using .FastApi
 
     struct Animal
@@ -14,6 +14,15 @@ module Main
 
     # Add a supporting struct type definition to the Animal struct
     StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
+
+    @get "/" function (req) 
+        return "home"
+    end
+
+    # add a default handler for unmatched requests
+    @get "*" function (req) 
+        return "default"
+    end
 
     # Return the body of the request as a string
     @post "/echo-text" function (req::HTTP.Request)
@@ -51,11 +60,51 @@ module Main
         return Dict("message" => "hello world", "animal" => Animal(1, "cat", "whiskers"))
     end
 
+    # show how to use the lower level macro to add a route for any type of request
     @route ["GET", "POST"] "/demo" function(req)
         return Animal(1, "cat", "whiskers")
     end
- 
+
+    # show how to return a file from an endpoint
+    @get "/files" function (req)
+        return file("demo/main.jl")
+    end
+
+    # Strings that are HTML (contins <!DOCTYPE html>) will automatically be returned with an "text/html" content type
+    @get "/string-as-html" function (req)
+        return """
+            <!DOCTYPE html>
+                <html>
+                <body> 
+                    <h1>Hello world</h1>
+                </body>
+            </html>
+        """
+    end
+
+    # recursively mount all files inside the demo folder ex.) demo/main.jl => /static/demo/main.jl 
+    @staticfiles "demo"
+
+    # CORS headers that show what kinds of complex requests are allowed to API
+    headers = [
+        "Access-Control-Allow-Origin" => "*",
+        "Access-Control-Allow-Headers" => "*",
+        "Access-Control-Allow-Methods" => "GET, POST"
+    ]
+
+    function CorsHandler(req, defaultHandler)
+        # return headers on OPTIONS request
+        if HTTP.method(req) == "OPTIONS"
+            return HTTP.Response(200, headers)
+        else 
+            return defaultHandler(req)
+        end
+    end
+
     # start the web server
-    serve()
+    serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
+
+
 
 end
+

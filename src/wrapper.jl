@@ -185,7 +185,6 @@ module Wrapper
         # extract the type of each argument 
         local pathtypes = splice!(Array(fields), 3:length(fields))
 
-        # println(lower_bound, ":", upper_bound)
         local handlerequest = quote 
             local action = $(esc(func))
             function (req)

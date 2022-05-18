@@ -63,6 +63,17 @@ module Main
         return file("demo/main.jl")
     end
 
+    @get "/string-as-html" function (req)
+        return """
+            <!DOCTYPE html>
+                <html>
+                <body> 
+                    <h1>Hello world</h1>
+                </body>
+            </html>
+        """
+    end
+    
     @staticfiles "demo"
 
     # start the web server

@@ -65,7 +65,8 @@ module Wrapper
             if isa(response_body, HTTP.Messages.Response)
                 return response_body 
             elseif isa(response_body, String)
-                headers = ["Content-Type" => "text/plain; charset=utf-8"]
+                content_type = FileUtil.getcontenttype(String(lstrip(response_body)))
+                headers = ["Content-Type" => "$content_type; charset=utf-8"]
                 return HTTP.Response(200, headers , body=response_body)
             else 
                 body = JSON3.write(response_body)
@@ -136,7 +137,10 @@ module Wrapper
                 eval(
                     quote 
                         @get $mountpath function (req)
-                            return FileUtil.file($filepath)
+                            content_type = FileUtil.getfilecontenttype($filepath)
+                            headers = ["Content-Type" => "$content_type; charset=utf-8"]
+                            body = FileUtil.file($filepath)
+                            return HTTP.Response(200, headers , body=body) 
                         end
                     end
                 )

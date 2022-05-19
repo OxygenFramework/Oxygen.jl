@@ -29,22 +29,6 @@ module Wrapper
         HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port, kwargs...)
     end
 
-    function serve(sucessHandler::Function, errorHandler::Function, host=Sockets.localhost, port=8081, suppressErrors::Bool=false; kwargs...)
-        println("Starting server: http://$host:$port")
-        function handle(req)
-            try
-                response_body = HTTP.handle(ROUTER, req)
-                return sucessHandler(response_body) 
-            catch error
-                if !suppressErrors
-                    @error "ERROR: " exception=(error, catch_backtrace())
-                end
-                return errorHandler(error)
-            end
-        end
-        HTTP.serve(req -> handle(req), Sockets.localhost, port, kwargs...)
-    end
-
     function DefaultHandler(req::HTTP.Request, suppressErrors::Bool=false)
         try
             response_body = HTTP.handle(ROUTER, req, suppressErrors)

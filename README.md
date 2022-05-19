@@ -1,24 +1,9 @@
 # Oxygen.jl
 
-
-
-<!-- <style>
-  img {
-    width: 100%;
-    max-width: 400px;
-  }
-</style>
-<div align="center"><img src="oxygen_logo.png"></div>
+<div align="center"><img src="oxygen_logo.png" width="40%" max-width="400px"></div>
 <div align="center">
   <strong>A breath of fresh air for programming web apps in Julia.</strong>
-</div> -->
-
-<p align="center"><img src="oxygen_logo.png" width="40%" max-width="400px"></p>
-<p align="center">
-<strong>A breath of fresh air for programming web apps in Julia.</strong>
-<br><br>
-</p>
-
+</div>
 
 ## About
 Oxygen is a micro-framework built on top of the HTTP.jl library. 

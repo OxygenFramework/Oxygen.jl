@@ -1,8 +1,15 @@
-
 # Oxygen.jl
+
+<p align="center"><img src="oxygen_formula.png" width="22%" ></p>
+<p align="center">
+<strong>A breath of fresh air for programming web apps in Julia.</strong>
+
+</br>
 
 Oxygen is a micro-framework built on top of HTTP.jl library. 
 Breath easily knowing you can quickly spin up a web server with abstractions you're already familiar with.
+
+</br>
 
 
 ## Minimalistic Example

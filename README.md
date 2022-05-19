@@ -1,6 +1,6 @@
 # Oxygen.jl
 
-<p align="center"><img src="oxygen_logo.png"></p>
+<p align="center"><img src="oxygen_logo.png" style="width: 100%; max-width: 400px"></p>
 <p align="center">
 <strong>A breath of fresh air for programming web apps in Julia.</strong>
 

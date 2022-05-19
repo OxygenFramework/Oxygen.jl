@@ -9,10 +9,21 @@ module Wrapper
     include("fileutil.jl")
     using .FileUtil
 
-    export @get, @post, @put, @patch, @delete, @register, @route, @mount, @staticfiles, serve, queryparams, binary, text, json, html
+    export @get, @post, @put, @patch, @delete, @register, @route, @mount, @staticfiles, serve, suppresserrors, internalrequest, queryparams, binary, text, json, html
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
+    global suppressErrors = false
+
+    "prevent backtraces from getting displayed in the console (testing only)"
+    function suppresserrors()
+        global suppressErrors = true
+    end
+    
+    "Directly call one of our other endpoints registerd with the router"
+    function internalrequest(req::HTTP.Request)
+        return DefaultHandler(req)
+    end
 
     function serve(host=Sockets.localhost, port=8081; kwargs...)
         println("Starting server: http://$host:$port")
@@ -31,7 +42,9 @@ module Wrapper
                 response_body = HTTP.handle(ROUTER, req)
                 return sucessHandler(response_body) 
             catch error
-                @error "ERROR: " exception=(error, catch_backtrace())
+                if !suppressErrors
+                    @error "ERROR: " exception=(error, catch_backtrace())
+                end
                 return errorHandler(error)
             end
         end
@@ -53,11 +66,13 @@ module Wrapper
                 return HTTP.Response(200, headers , body=body)
             end 
         catch error
-            @error "ERROR: " exception=(error, catch_backtrace())
+            if !suppressErrors
+                @error "ERROR: " exception=(error, catch_backtrace())
+            end
             return HTTP.Response(500, "The Server encountered a problem")
         end
     end
-    
+
     ### Request helper functions ###
 
     function queryparams(req::HTTP.Request)
@@ -196,16 +211,23 @@ module Wrapper
         local handlerequest = quote 
             local action = $(esc(func))
             function (req)
-                # don't pass any args if the function takes none
-                if $numfields == 1 
-                    action()
-                # if endpoint has path parameters, make sure the attached function accepts them
-                elseif $hasPathParams & $hasPositions
-                    path_values = splice!(HTTP.URIs.splitpath(req.target), $lower_bound:$upper_bound)
-                    pathParams = [type == Any ? value : parse(type, value) for (type, value) in zip($pathtypes, path_values)]   
-                    action(req, pathParams...)
-                else 
-                    action(req)
+                try 
+                    # don't pass any args if the function takes none
+                    if $numfields == 1 
+                        action()
+                    # if endpoint has path parameters, make sure the attached function accepts them
+                    elseif $hasPathParams & $hasPositions
+                        path_values = splice!(HTTP.URIs.splitpath(req.target), $lower_bound:$upper_bound)
+                        pathParams = [type == Any ? value : parse(type, value) for (type, value) in zip($pathtypes, path_values)]   
+                        action(req, pathParams...)
+                    else 
+                        action(req)
+                    end
+                catch error
+                    if !suppressErrors
+                        @error "ERROR: " exception=(error, catch_backtrace())
+                    end
+                    return HTTP.Response(500, "The Server encountered a problem")
                 end
             end
         end

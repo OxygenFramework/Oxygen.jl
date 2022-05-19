@@ -62,7 +62,7 @@ module Wrapper
         return HTTP.Response(status, headers, body = content)
     end
 
-    ### Body helper functions ###
+    ### Helper functions used to parse the body of each Request
 
     function text(req::HTTP.Request)
         body = IOBuffer(HTTP.payload(req))
@@ -82,6 +82,21 @@ module Wrapper
     function json(req::HTTP.Request, classtype)
         body = IOBuffer(HTTP.payload(req))
         return eof(body) ? nothing : JSON3.read(body, classtype)    
+    end
+
+
+    ### Helper functions used to parse the body of each Response
+
+    function text(response::HTTP.Response)
+        return String(response.body)
+    end
+
+    function json(response::HTTP.Response)
+        return JSON3.read(String(response.body))
+    end
+
+    function json(response::HTTP.Response, classtype)
+        return JSON3.read(String(response.body), classtype)
     end
 
     ### Core Macros ###

@@ -9,25 +9,19 @@ module Wrapper
     include("fileutil.jl")
     using .FileUtil
 
-    export @get, @post, @put, @patch, @delete, @register, @route, @mount, @staticfiles, serve, suppresserrors, internalrequest, queryparams, binary, text, json, html
+    export @get, @post, @put, @patch, @delete, @register, @route, @mount, @staticfiles, serve, internalrequest, queryparams, binary, text, json, html
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
-    global suppressErrors = false
 
-    "prevent backtraces from getting displayed in the console (testing only)"
-    function suppresserrors()
-        global suppressErrors = true
-    end
-    
     "Directly call one of our other endpoints registerd with the router"
-    function internalrequest(req::HTTP.Request)
-        return DefaultHandler(req)
+    function internalrequest(req::HTTP.Request, suppressErrors::Bool=false)
+        return DefaultHandler(req, suppressErrors)
     end
 
-    function serve(host=Sockets.localhost, port=8081; kwargs...)
+    function serve(host=Sockets.localhost, port=8081, suppressErrors::Bool=false; kwargs...)
         println("Starting server: http://$host:$port")
-        HTTP.serve(DefaultHandler, host, port, kwargs...)
+        HTTP.serve(req -> DefaultHandler(req, suppressErrors), host, port, kwargs...)
     end
 
     function serve(handler::Function, host=Sockets.localhost, port=8081; kwargs...)
@@ -35,7 +29,7 @@ module Wrapper
         HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port, kwargs...)
     end
 
-    function serve(sucessHandler::Function, errorHandler::Function, host=Sockets.localhost, port=8081; kwargs...)
+    function serve(sucessHandler::Function, errorHandler::Function, host=Sockets.localhost, port=8081, suppressErrors::Bool=false; kwargs...)
         println("Starting server: http://$host:$port")
         function handle(req)
             try
@@ -51,9 +45,9 @@ module Wrapper
         HTTP.serve(req -> handle(req), Sockets.localhost, port, kwargs...)
     end
 
-    function DefaultHandler(req::HTTP.Request)
+    function DefaultHandler(req::HTTP.Request, suppressErrors::Bool=false)
         try
-            response_body = HTTP.handle(ROUTER, req)
+            response_body = HTTP.handle(ROUTER, req, suppressErrors)
             # if a raw HTTP.Response object is returned, then don't do any extra processing on it
             if isa(response_body, HTTP.Messages.Response)
                 return response_body 
@@ -210,7 +204,7 @@ module Wrapper
 
         local handlerequest = quote 
             local action = $(esc(func))
-            function (req)
+            function (req, suppressErrors)
                 try 
                     # don't pass any args if the function takes none
                     if $numfields == 1 

@@ -27,10 +27,8 @@ module RunTests
     end
 
     @get "/json" function(req)
-        return Person("nate", 26)
-    end
-
-    suppresserrors()
+        return Person("joe", 20)
+    end 
     
     r = internalrequest(HTTP.Request("GET", "/test"))
     @test r.status == 200
@@ -40,9 +38,10 @@ module RunTests
     @test r.status == 200
     @test String(r.body) == "40.0"
 
-    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
+    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"), true)
     @test r.status == 500
 
     r = internalrequest(HTTP.Request("GET", "/json"))
-    println(JSON3.read(String(r.body)))
+    @test r.status == 200
+    @test JSON3.read(String(r.body), Person) == Person("joe", 20)
 end 

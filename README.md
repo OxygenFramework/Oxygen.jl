@@ -1,7 +1,6 @@
 # Oxygen.jl
 
-<p align="center"><img src="oxygen_formula.png" width="30%" style="filter: saturate(500%) contrast(800%) brightness(500%) 
-      invert(80%) sepia(50%) hue-rotate(120deg)"></p>
+<p align="center"><img src="oxygen_formula.png" width="30%"></p>
 <p align="center">
 <strong>A breath of fresh air for programming web apps in Julia.</strong>
 

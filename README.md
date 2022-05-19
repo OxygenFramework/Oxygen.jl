@@ -13,20 +13,10 @@
   <strong>A breath of fresh air for programming web apps in Julia.</strong>
 </div> -->
 
-<p align="center"><img src="oxygen_logo.png" width="25%" ></p>
+<p align="center"><img src="oxygen_logo.png" width="40%" max-width="400px"></p>
 <p align="center">
 <strong>A breath of fresh air for programming web apps in Julia.</strong>
 <br><br>
-<a href="https://travis-ci.org/github/neomatrixcode/Merly.jl"><img src="https://travis-ci.org/neomatrixcode/Merly.jl.svg?branch=master"></a>
-<a href="https://codecov.io/gh/neomatrixcode/Merly.jl">
-  <img src="https://codecov.io/gh/neomatrixcode/Merly.jl/branch/master/graph/badge.svg" />
-</a>
-<a href="https://neomatrixcode.gitbook.io/merly/"><img src="https://img.shields.io/badge/docs-stable-blue.svg"></a>
-<a href="https://juliahub.com/ui/Packages/Merly/a9bHk?t=2"><img src="https://juliahub.com/docs/Merly/deps.svg"></a>
-<a href="https://juliahub.com/ui/Packages/Merly/a9bHk"><img src="https://juliahub.com/docs/Merly/version.svg"></a>
-<a href="https://juliahub.com/ui/Packages/Merly/a9bHk"><img src="https://juliahub.com/docs/Merly/pkgeval.svg"></a>
-<a><img src="https://shields.io/endpoint?url=https://pkgs.genieframework.com/api/v1/badge/Merly"></a>
-<a href="https://raw.githubusercontent.com/neomatrixcode/Merly.jl/master/LICENSE.md"><img src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
 </p>
 
 

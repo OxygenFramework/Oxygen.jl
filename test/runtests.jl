@@ -205,4 +205,8 @@ module RunTests
     @test r.status == 200
     @test text(r) == file("content", "sample.html")
 
+    # hit endpoint that doesn't exist
+    r = internalrequest(HTTP.Request("GET", "/asdfasdf"), true)
+    @test r.status == 500
+
 end 

@@ -6,7 +6,7 @@ module Wrapper
     include("fileutil.jl")
     using .FileUtil
 
-    export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, serve, internalrequest, queryparams, binary, text, json, html
+    export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles, serve, internalrequest, queryparams, binary, text, json, html
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
@@ -141,34 +141,66 @@ module Wrapper
         end  
     end
 
+    # walk through all files in a directory and apply a function to each file
+    macro iteratefiles(folder::String, func)
+        local target_files::Array{String} = getfiles(folder)
+        quote 
+            local action = $(esc(func))
+            for filepath in $target_files
+                 action(filepath)
+            end  
+         end
+     end
+
+    # mount all files inside the /static folder (or user defined mount point)
     macro staticfiles(folder::String, mountdir::String="static")
-    
-        # collect all files inside the given 
-        target_files::Array{String} = []
-        for (root, _, files) in walkdir(folder)
-            for file in files
-                push!(target_files, joinpath(root, file))
-            end
-        end
-        
-        # mount all files inside the /static folder (or user defined mount point)
         quote 
             local directory = $mountdir
-            for filepath in $target_files
-                mountpath = "/$directory/$filepath"
+            @iteratefiles $folder function(filepath::String)
+
+                # generate the path to mount the file to
+                local mountpath = "/$directory/$filepath"
+
+                # load file into memory on sever startup
+                local body = file(filepath)
+
+                # precalculate content type 
+                local content_type = HTTP.sniff(body)
+                local headers = ["Content-Type" => content_type]
+
                 eval(
                     quote 
                         @get $mountpath function (req)
-                            content_type = HTTP.sniff(file($filepath))
-                            headers = ["Content-Type" => content_type]
-                            body = FileUtil.file($filepath)
-                            return HTTP.Response(200, headers , body=body) 
+                            return HTTP.Response(200, $headers , body=$body) 
                         end
                     end
                 )
             end
         end
         
+    end
+
+    macro dynamicfiles(folder::String, mountdir::String="static")
+        quote 
+            local directory = $mountdir
+            @iteratefiles $folder function(filepath::String)
+
+                # generate the path to mount the file 
+                local mountpath = "/$directory/$filepath"
+
+                # precalculate content type 
+                local content_type = HTTP.sniff(file(filepath))
+                local headers = ["Content-Type" => content_type]
+
+                eval(
+                    quote 
+                        @get $mountpath function (req)   
+                            return HTTP.Response(200, $headers , body=file($filepath)) 
+                        end
+                    end
+                )
+            end
+        end        
     end
      
     macro register(httpmethod, path, func)

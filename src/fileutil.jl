@@ -1,6 +1,6 @@
 module FileUtil 
 
-    export file
+    export file, getfiles
 
     current_directory = pwd()
 
@@ -13,5 +13,16 @@ module FileUtil
         path = joinpath(current_directory, folder, filename)
         return read(open(path), String)
     end
+
+    function getfiles(folder::String)
+        target_files::Array{String} = []
+        for (root, _, files) in walkdir(folder)
+            for file in files
+                push!(target_files, joinpath(root, file))
+            end
+        end
+        return target_files
+    end
+
 
 end

@@ -84,6 +84,8 @@ module Main
 
     # recursively mount all files inside the demo folder ex.) demo/main.jl => /static/demo/main.jl 
     @staticfiles "content"
+    @dynamicfiles "content" "dynamic"
+
 
     # CORS headers that show what kinds of complex requests are allowed to API
     headers = [

@@ -1,7 +1,7 @@
 module Wrapper
-    import HTTP
-    import JSON3
-    import Sockets
+    using HTTP
+    using JSON3
+    using Sockets
     
     include("fileutil.jl")
     using .FileUtil
@@ -11,20 +11,18 @@ module Wrapper
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
 
-    const LOCAL_HOST = "127.0.0.1"
-
     "Directly call one of our other endpoints registerd with the router"
     function internalrequest(req::HTTP.Request, suppressErrors::Bool=false)
         return DefaultHandler(req, suppressErrors)
     end
 
     "start the webserver"
-    function serve(host=LOCAL_HOST, port=8081, suppressErrors::Bool=false; kwargs...)
+    function serve(host=Sockets.localhost, port=8081, suppressErrors::Bool=false; kwargs...)
         println("Starting server: http://$host:$port")
         HTTP.serve(req -> DefaultHandler(req, suppressErrors), host, port, kwargs...)
     end
 
-    function serve(handler::Function, host=LOCAL_HOST, port=8081; kwargs...)
+    function serve(handler::Function, host=Sockets.localhost, port=8081; kwargs...)
         println("Starting server: http://$host:$port")
         HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port, kwargs...)
     end
@@ -180,6 +178,8 @@ module Wrapper
         
     end
 
+    # Mount all files inside the /static folder (or user defined mount point), 
+    # but files are re-read on each request
     macro dynamicfiles(folder::String, mountdir::String="static")
         quote 
             local directory = $mountdir
@@ -202,7 +202,8 @@ module Wrapper
             end
         end        
     end
-     
+    
+    # Register a request handler function with a path to the ROUTER
     macro register(httpmethod, path, func)
 
         local variableRegex = r"{[a-zA-Z0-9_]+}"

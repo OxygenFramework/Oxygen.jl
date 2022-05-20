@@ -25,12 +25,32 @@ module RunTests
         return "hello world!"
     end
 
+    @get "/file" function(req)
+        return file("content", "sample.html")
+    end
+
     @get "/multiply/{a}/{b}" function(req, a::Float64, b::Float64)
         return a * b 
     end
 
-    @get "/json" function(req)
+    @get "/person" function(req)
         return Person("joe", 20)
+    end 
+
+    @get "/text" function(req)
+        return text(req)
+    end 
+
+    @get "/binary" function(req)
+        return binary(req)
+    end 
+
+    @get "/json" function(req)
+        return json(req)
+    end 
+
+    @get "/person-json" function(req)
+        return json(req, Person)
     end 
 
     @get "/html" function(req)
@@ -68,6 +88,10 @@ module RunTests
         return "delete"
     end 
     
+    r = internalrequest(HTTP.Request("GET", "/anonymous"))
+    @test r.status == 200
+    @test text(r) == "no args"
+
     r = internalrequest(HTTP.Request("GET", "/test"))
     @test r.status == 200
     @test text(r) == "hello world!"
@@ -79,7 +103,11 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/multiply/a/8"), true)
     @test r.status == 500
 
-    r = internalrequest(HTTP.Request("GET", "/json"))
+    # don't suppress error reporting for this test
+    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"), false)
+    @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", "/person"))
     @test r.status == 200
     @test json(r, Person) == Person("joe", 20)
 
@@ -133,11 +161,30 @@ module RunTests
     @test r.status == 200
     @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
     @test text(r) == file("content/sample.html")
-    # @test text(r) == file("content", "sample.html")
 
 
-    # @test getfilecontenttype("test.js") == "text/plain"
-    # @test getfilecontenttype("test.json") == "application/json"
-    # @test getfilecontenttype("test.html") == "text/html"
+    # Body transformation tests
+
+    r = internalrequest(HTTP.Request("GET", "/text", [], "hello there!"))
+    @test r.status == 200
+    @test text(r) == "hello there!"
+
+    r = internalrequest(HTTP.Request("GET", "/binary", [], "hello there!"))
+    @test r.status == 200
+    @test String(r.body) == "[104,101,108,108,111,32,116,104,101,114,101,33]"
+
+    r = internalrequest(HTTP.Request("GET", "/json", [], "{\"message\": \"hi\"}"))
+    @test r.status == 200
+    @test json(r)["message"] == "hi"
+
+    r = internalrequest(HTTP.Request("GET", "/json", [], "{\"name\": \"mark\", \"age\": 20}"))
+    person = json(r, Person)
+    @test r.status == 200
+    @test person.name == "mark"
+    @test person.age == 20
+
+    r = internalrequest(HTTP.Request("GET", "/file"))
+    @test r.status == 200
+    @test text(r) == file("content", "sample.html")
 
 end 

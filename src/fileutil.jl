@@ -1,6 +1,6 @@
 module FileUtil 
 
-    export file, getcontenttype, getfilecontenttype
+    export file, getfilecontenttype
 
     current_directory = pwd()
 
@@ -17,14 +17,8 @@ module FileUtil
     function getfilecontenttype(filename::String)
         if endswith(filename, ".html")
             return "text/html"
-        else
-            return "text/plain"
-        end
-    end
-
-    function getcontenttype(content::String)
-        if startswith(content, "<!DOCTYPE html>")
-            return "text/html"
+        elseif endswith(filename, ".json")
+            return "application/json"
         else
             return "text/plain"
         end

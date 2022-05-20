@@ -3,13 +3,10 @@ module Wrapper
     import JSON3
     import Sockets
 
-    include("util.jl")
-    using .Util
-
     include("fileutil.jl")
     using .FileUtil
 
-    export @get, @post, @put, @patch, @delete, @register, @route, @mount, @staticfiles, serve, internalrequest, queryparams, binary, text, json, html
+    export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, serve, internalrequest, queryparams, binary, text, json, html
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()

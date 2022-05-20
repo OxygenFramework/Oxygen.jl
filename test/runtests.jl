@@ -133,5 +133,13 @@ module RunTests
     @test r.status == 200
     @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
     @test text(r) == file("content/sample.html")
+    # @test text(r) == file("content", "sample.html")
+
+
+
+
+    @test getfilecontenttype("test.js") == "text/plain"
+    @test getfilecontenttype("test.json") == "application/json"
+    @test getfilecontenttype("test.html") == "text/html"
 
 end 

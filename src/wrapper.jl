@@ -19,6 +19,7 @@ module Wrapper
         return DefaultHandler(req, suppressErrors)
     end
 
+    "start the webserver"
     function serve(host=Sockets.localhost, port=8081, suppressErrors::Bool=false; kwargs...)
         println("Starting server: http://$host:$port")
         HTTP.serve(req -> DefaultHandler(req, suppressErrors), host, port, kwargs...)

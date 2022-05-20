@@ -136,10 +136,8 @@ module RunTests
     # @test text(r) == file("content", "sample.html")
 
 
-
-
-    @test getfilecontenttype("test.js") == "text/plain"
-    @test getfilecontenttype("test.json") == "application/json"
-    @test getfilecontenttype("test.html") == "text/html"
+    # @test getfilecontenttype("test.js") == "text/plain"
+    # @test getfilecontenttype("test.json") == "application/json"
+    # @test getfilecontenttype("test.html") == "text/html"
 
 end 

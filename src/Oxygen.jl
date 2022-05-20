@@ -7,7 +7,6 @@ module Oxygen
     using .FileUtil
 
     export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles,
-            serve, internalrequest, queryparams, binary, text, json, html, file,
-            getfilecontenttype
+            serve, internalrequest, queryparams, binary, text, json, html, file
     
 end 

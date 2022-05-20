@@ -2,7 +2,7 @@ module Wrapper
     import HTTP
     import JSON3
     import Sockets
-
+    
     include("fileutil.jl")
     using .FileUtil
 
@@ -11,18 +11,20 @@ module Wrapper
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
 
+    const LOCAL_HOST = "127.0.0.1"
+
     "Directly call one of our other endpoints registerd with the router"
     function internalrequest(req::HTTP.Request, suppressErrors::Bool=false)
         return DefaultHandler(req, suppressErrors)
     end
 
     "start the webserver"
-    function serve(host=Sockets.localhost, port=8081, suppressErrors::Bool=false; kwargs...)
+    function serve(host=LOCAL_HOST, port=8081, suppressErrors::Bool=false; kwargs...)
         println("Starting server: http://$host:$port")
         HTTP.serve(req -> DefaultHandler(req, suppressErrors), host, port, kwargs...)
     end
 
-    function serve(handler::Function, host=Sockets.localhost, port=8081; kwargs...)
+    function serve(handler::Function, host=LOCAL_HOST, port=8081; kwargs...)
         println("Starting server: http://$host:$port")
         HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port, kwargs...)
     end
@@ -34,7 +36,7 @@ module Wrapper
             if isa(response_body, HTTP.Messages.Response)
                 return response_body 
             elseif isa(response_body, String)
-                headers = ["Content-Type" => "text/plain; charset=utf-8"]
+                headers = ["Content-Type" => HTTP.sniff(response_body)]
                 return HTTP.Response(200, headers , body=response_body)
             else 
                 body = JSON3.write(response_body)
@@ -157,8 +159,8 @@ module Wrapper
                 eval(
                     quote 
                         @get $mountpath function (req)
-                            content_type = FileUtil.getfilecontenttype($filepath)
-                            headers = ["Content-Type" => "$content_type; charset=utf-8"]
+                            content_type = HTTP.sniff(file($filepath))
+                            headers = ["Content-Type" => content_type]
                             body = FileUtil.file($filepath)
                             return HTTP.Response(200, headers , body=body) 
                         end

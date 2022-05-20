@@ -14,8 +14,11 @@ module RunTests
 
     StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 
-    # mount all files inside the content folder
+    # mount all files inside the content folder under /static
     @staticfiles "content"
+
+    # mount files under /dynamic
+    @dynamicfiles "content" "dynamic"
 
     @get "/anonymous" function()
         return "no args"
@@ -177,13 +180,28 @@ module RunTests
     @test r.status == 200
     @test json(r)["message"] == "hi"
 
-    r = internalrequest(HTTP.Request("GET", "/json", [], "{\"name\": \"mark\", \"age\": 20}"))
+    r = internalrequest(HTTP.Request("GET", "/person"))
     person = json(r, Person)
     @test r.status == 200
-    @test person.name == "mark"
+    @test person.name == "joe"
     @test person.age == 20
 
+    r = internalrequest(HTTP.Request("GET", "/person-json", [], "{\"name\":\"jim\",\"age\":25}"))
+    person = json(r, Person)
+    @test r.status == 200
+    @test person.name == "jim"
+    @test person.age == 25
+
     r = internalrequest(HTTP.Request("GET", "/file"))
+    @test r.status == 200
+    @test text(r) == file("content", "sample.html")
+
+
+    r = internalrequest(HTTP.Request("GET", "/dynamic/content/sample.html"))
+    @test r.status == 200
+    @test text(r) == file("content", "sample.html")
+
+    r = internalrequest(HTTP.Request("GET", "/static/content/sample.html"))
     @test r.status == 200
     @test text(r) == file("content", "sample.html")
 

@@ -5,9 +5,12 @@
   <strong>A breath of fresh air for programming web apps in Julia.</strong>
 </p>
 <p align="center">
+  <a href='https://coveralls.io/github/ndortega/Oxygen.jl?branch=master'><img src='https://coveralls.io/repos/github/ndortega/Oxygen.jl/badge.svg?branch=master' alt='Coverage Status' /></a>
   <a href='https://app.travis-ci.com/ndortega/Oxygen.jl.svg?branch=master'><img src='https://app.travis-ci.com/ndortega/Oxygen.jl.svg?branch=master' alt='Build Passing' /></a>
   <a href='https://coveralls.io/github/ndortega/Oxygen.jl?branch=master'><img src='https://coveralls.io/repos/github/ndortega/Oxygen.jl/badge.svg?branch=master' alt='Coverage Status' /></a>
 </p>
+
+[![Coverage Status](https://coveralls.io/repos/github/ndortega/Oxygen.jl/badge.svg?branch=master)](https://coveralls.io/github/ndortega/Oxygen.jl?branch=master)
 
 ## About
 Oxygen is a micro-framework built on top of the HTTP.jl library. 

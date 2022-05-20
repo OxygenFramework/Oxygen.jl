@@ -33,7 +33,7 @@ using Oxygen
 using HTTP
 
 @get "/data" function(req::HTTP.Request)
-    return Dict("message" => "request completed", "value" => 99.3)
+    return Dict("message" => "hello!", "value" => 99.3)
 end
 
 # start the web server

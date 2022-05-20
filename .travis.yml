@@ -1,6 +1,12 @@
 language: julia
+os:
+  - linux
 julia:
   - nightly
-  - 1.0.6
-  - 1.5.2
-  - 1.6.0
+  - 1.5.0
+branches:
+  only:
+    - master
+coveralls: true
+notifications:
+  email: false

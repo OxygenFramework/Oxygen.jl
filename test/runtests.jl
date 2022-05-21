@@ -23,7 +23,7 @@ module RunTests
     @dynamicfiles "content" "dynamic"
 
     @get "/killserver" function ()
-        stop()
+        terminate()
     end
 
     @get "/anonymous" function()
@@ -213,37 +213,19 @@ module RunTests
     
     # hit endpoint that doesn't exist
     r = internalrequest(HTTP.Request("GET", "asdfasdf"), true)
-    @test r.status == 500
+    @test r.status == 404
 
     r = internalrequest(HTTP.Request("GET", "asdfasdf"), false)
-    @test r.status == 500
+    @test r.status == 404
 
     @async serve()
     sleep(1)
+    
     r = internalrequest(HTTP.Request("GET", "/killserver"))
     @test r.status == 200
 
-    headers = [
-        "Access-Control-Allow-Origin" => "*",
-        "Access-Control-Allow-Headers" => "*",
-        "Access-Control-Allow-Methods" => "GET, POST"
-    ]
-
-    # test adding a custom handler
-    function CorsHandler(req, defaultHandler)
-        # return headers on OPTIONS request
-        if HTTP.method(req) == "OPTIONS"
-            return HTTP.Response(200, headers)
-        else 
-            return defaultHandler(req)
-        end
-    end
-
-    @async serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
+    @async serve((req, router, defaultHandler) -> defaultHandler(req))
     sleep(1)
-
-    r = internalrequest(HTTP.Request("OPTIONS", "/"), true)
-    @test r.status == 500
 
     r = internalrequest(HTTP.Request("GET", "/killserver"))
     @test r.status == 200

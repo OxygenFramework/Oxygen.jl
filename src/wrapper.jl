@@ -2,11 +2,14 @@ module Wrapper
     using HTTP
     using JSON3
     using Sockets
+
+    include("util.jl")
+    using .Util
     
     include("fileutil.jl")
     using .FileUtil
 
-    export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles, serve, stop, internalrequest, queryparams, binary, text, json, html
+    export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles, serve, terminate, internalrequest, queryparams, binary, text, json, html
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
@@ -32,13 +35,23 @@ module Wrapper
     end
 
     "stops the webserver immediately"
-    function stop()
+    function terminate()
         close(server)
     end
 
     function DefaultHandler(req::HTTP.Request, suppressErrors::Bool=false)
         try
-            response_body = HTTP.handle(ROUTER, req, suppressErrors)
+            response_body = nothing
+            try
+                response_body = HTTP.handle(ROUTER, req, suppressErrors)
+            catch e 
+                # if we get a method error it's because we have no matching request handler
+                if e isa MethodError 
+                    response_body = HTTP.Response(404)
+                else 
+                    rethrow(e)
+                end
+            end
             # if a raw HTTP.Response object is returned, then don't do any extra processing on it
             if isa(response_body, HTTP.Messages.Response)
                 return response_body 
@@ -226,22 +239,36 @@ module Wrapper
         local positions = []
         for (index, value) in enumerate(HTTP.URIs.splitpath(path)) 
             if contains(value, hasBraces)
-                push!(positions, index)
+                push!(positions, (index, replace(value, hasBraces => "")))
             end
         end
-        
-        local hasPositions = !isempty(positions)
-        local lower_bound = hasPositions ? first(positions) : 0
-        local upper_bound = hasPositions ? last(positions) : 0
 
-        # get the functions high-level signature
         local method = first(methods(func))
-        # extract the fieldtypes 
-        local fields = [x for x in fieldtypes(method.sig)]
-        local numfields = fieldcount(method.sig)
+        local numfields = method.nargs
 
-        # extract the type of each argument 
-        local pathtypes = splice!(Array(fields), 3:numfields)
+        # extract the function handler's field names & types 
+        local fields = [x for x in fieldtypes(method.sig)]
+        local func_param_names = [String(param) for param in method_argnames(method)[3:end]]
+        local func_param_types = splice!(Array(fields), 3:numfields)
+
+        # each tuple tracks where the param is refereced (variable, function index, path index)
+        param_positions::Array{Tuple{String, Int, Int}} = []
+
+        # ensure the path parms are present inside the function params 
+        for (func_index, func_param) in enumerate(func_param_names)
+            matched = nothing
+            for (path_index, path_param) in positions
+                if func_param == path_param 
+                    matched = (func_param, func_index, path_index)
+                    break
+                end
+            end
+            if matched === nothing
+                throw("Your path is missing a parameter: '$func_param' in this route: $path")
+            else 
+                push!(param_positions, matched)
+            end
+        end
 
         local handlerequest = quote 
             local action = $(esc(func))
@@ -251,9 +278,12 @@ module Wrapper
                     if $numfields == 1 
                         action()
                     # if endpoint has path parameters, make sure the attached function accepts them
-                    elseif $hasPathParams & $hasPositions
-                        path_values = splice!(HTTP.URIs.splitpath(req.target), $lower_bound:$upper_bound)
-                        pathParams = [type == Any ? value : parse(type, value) for (type, value) in zip($pathtypes, path_values)]   
+                    elseif $hasPathParams
+                        split_path = HTTP.URIs.splitpath(req.target)
+                        # extract path values in the order they should be passed to our function
+                        path_values = [split_path[index] for (_, _, index) in $param_positions] 
+                        # convert params to their designated type (if applicable)
+                        pathParams = [type == Any ? value : parse(type, value) for (type, value) in zip($func_param_types, path_values)]   
                         action(req, pathParams...)
                     else 
                         action(req)

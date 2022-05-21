@@ -45,10 +45,9 @@ end
     return a * b
 end
 
-# The names of the parameters doesn't matter, just the order.
-# in this case "a" is passed to "c" and "b" is passed to "d"
-@get "/subtract/{a}/{b}" function(req, c::Int64, d::Int64)
-    return c - d
+# The order of the parameters doesn't matter (just the name matters)
+@get "/subtract/{a}/{b}" function(req, b::Int64, a::Int64)
+    return a - b
 end
 
 # start the web server

@@ -19,12 +19,12 @@ module Main
     end
 
     @get "/killserver" function ()
-        stop()
+        terminate()
     end
 
     # add a default handler for unmatched requests
-    @get "*" function (req) 
-        return "default"
+    @get "*" function () 
+        return "looks like you hit an endpoint that doesn't exist"
     end
 
     # Return the body of the request as a string
@@ -49,13 +49,13 @@ module Main
     end
 
     # demonstate how to use path params (without type definitions)
-    @get "/add/{a}/{b}" function (req::HTTP.Request, a, b)
+    @get "/add/first/{a}/last/{b}" function (req::HTTP.Request, b, a)
         return parse(Float64, a) + parse(Float64, b)
     end
 
     # demonstate how to use path params with type definitions
-    @get "/multi/{c}/{d}" function (req::HTTP.Request, c::Float64, d::Float64)
-        return c * d
+    @get "/multi/{c}/{asdf}" function (req::HTTP.Request, c::Float64, asdf::Float64)
+        return c * asdf
     end
 
     # # Any object retuned from a function will automatically be converted into JSON (by default)

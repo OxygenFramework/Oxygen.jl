@@ -3,9 +3,11 @@ module RunTests
     using HTTP
     using JSON3
     using StructTypes
+    using Sockets
 
     include("../src/Oxygen.jl")
     using .Oxygen
+
 
     struct Person
         name::String
@@ -19,6 +21,10 @@ module RunTests
 
     # mount files under /dynamic
     @dynamicfiles "content" "dynamic"
+
+    @get "/killserver" function ()
+        stop()
+    end
 
     @get "/anonymous" function()
         return "no args"
@@ -102,13 +108,6 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/multiply/5/8"))
     @test r.status == 200
     @test text(r) == "40.0"
-
-    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"), true)
-    @test r.status == 500
-
-    # don't suppress error reporting for this test
-    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"), false)
-    @test r.status == 500
 
     r = internalrequest(HTTP.Request("GET", "/person"))
     @test r.status == 200
@@ -205,10 +204,47 @@ module RunTests
     @test r.status == 200
     @test text(r) == file("content", "sample.html")
 
+    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"), true)
+    @test r.status == 500
+
+    # don't suppress error reporting for this test
+    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"), false)
+    @test r.status == 500
+    
     # hit endpoint that doesn't exist
     r = internalrequest(HTTP.Request("GET", "asdfasdf"), true)
     @test r.status == 500
 
     r = internalrequest(HTTP.Request("GET", "asdfasdf"), false)
     @test r.status == 500
+
+    @async serve()
+    sleep(1)
+    r = internalrequest(HTTP.Request("GET", "/killserver"))
+    @test r.status == 200
+
+    headers = [
+        "Access-Control-Allow-Origin" => "*",
+        "Access-Control-Allow-Headers" => "*",
+        "Access-Control-Allow-Methods" => "GET, POST"
+    ]
+
+    # test adding a custom handler
+    function CorsHandler(req, defaultHandler)
+        # return headers on OPTIONS request
+        if HTTP.method(req) == "OPTIONS"
+            return HTTP.Response(200, headers)
+        else 
+            return defaultHandler(req)
+        end
+    end
+
+    @async serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
+    sleep(1)
+
+    r = internalrequest(HTTP.Request("OPTIONS", "/"), true)
+    @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", "/killserver"))
+    @test r.status == 200
 end 

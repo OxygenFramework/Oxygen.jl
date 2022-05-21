@@ -53,8 +53,8 @@ uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 
 [[deps.Oxygen]]
-deps = ["HTTP", "JSON3"]
-git-tree-sha1 = "fda4b3d59e9af84d9f88e15382eee8906a9ac710"
+deps = ["HTTP", "JSON3", "Sockets"]
+git-tree-sha1 = "a644c30a9e0f6a8e69f1f1af66f247edbdb9110c"
 repo-rev = "master"
 repo-url = "https://github.com/ndortega/Oxygen.jl.git"
 uuid = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"

@@ -6,25 +6,34 @@ module Wrapper
     include("fileutil.jl")
     using .FileUtil
 
-    export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles, serve, internalrequest, queryparams, binary, text, json, html
+    export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles, serve, stop, internalrequest, queryparams, binary, text, json, html
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
+    global server = nothing 
 
     "Directly call one of our other endpoints registerd with the router"
     function internalrequest(req::HTTP.Request, suppressErrors::Bool=false)
         return DefaultHandler(req, suppressErrors)
     end
 
-    "start the webserver"
-    function serve(host=Sockets.localhost, port=8081, suppressErrors::Bool=false; kwargs...)
+    "start the webserver with the default request handler"
+    function serve(host="127.0.0.1", port=8081, suppressErrors::Bool=false; kwargs...)
         println("Starting server: http://$host:$port")
-        HTTP.serve(req -> DefaultHandler(req, suppressErrors), host, port, kwargs...)
+        global server = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+        HTTP.serve(req -> DefaultHandler(req, suppressErrors), host, port; server=server, kwargs...)
     end
 
-    function serve(handler::Function, host=Sockets.localhost, port=8081; kwargs...)
+    "start the webserver with your own custom request handler"
+    function serve(handler::Function, host="127.0.0.1", port=8081; kwargs...)
         println("Starting server: http://$host:$port")
-        HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port, kwargs...)
+        global server = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+        HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port; server=server, kwargs...)
+    end
+
+    "stops the webserver immediately"
+    function stop()
+        close(server)
     end
 
     function DefaultHandler(req::HTTP.Request, suppressErrors::Bool=false)

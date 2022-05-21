@@ -18,6 +18,10 @@ module Main
         return "home"
     end
 
+    @get "/killserver" function ()
+        stop()
+    end
+
     # add a default handler for unmatched requests
     @get "*" function (req) 
         return "default"
@@ -105,6 +109,5 @@ module Main
 
     # start the web server
     serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
-
 end
 

@@ -8,10 +8,14 @@ module RunTests
     include("../src/Oxygen.jl")
     using .Oxygen
 
-
     struct Person
         name::String
         age::Int
+    end
+
+    struct Book
+        name::String
+        author::String
     end
 
     StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
@@ -32,6 +36,25 @@ module RunTests
 
     @get "/test" function(req)
         return "hello world!"
+    end
+
+    @get "/customerror" function ()
+        function processtring(input::String)
+            "<$input>"
+        end
+        processtring(3)
+    end
+
+    @get "/unsupported-struct" function ()
+        return Book("mobdy dick", "blah")
+    end
+
+    try 
+        @get "/mismatched-params/{a}/{b}" function (a,c)
+            return "$a, $c"
+        end
+    catch e
+        @test e isa LoadError 
     end
 
     @get "/file" function(req)
@@ -217,6 +240,15 @@ module RunTests
 
     r = internalrequest(HTTP.Request("GET", "asdfasdf"), false)
     @test r.status == 404
+
+    r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"), true)
+    @test r.status == 404
+
+    r = internalrequest(HTTP.Request("GET", "/customerror"))
+    @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
+    @test r.status == 500
 
     @async serve()
     sleep(1)

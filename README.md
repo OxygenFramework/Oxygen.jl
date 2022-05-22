@@ -28,6 +28,32 @@ end
 serve()
 ```
 
+## Path parameters
+
+Path parameters are declared with braces and are passed directly to your request handler. 
+```julia
+using Oxygen
+using HTTP
+
+# use path params without type definitions (defaults to Strings)
+@get "/add/{a}/{b}" function(req, a, b)
+    return parse(Float64, a) + parse(Float64, b)
+end
+
+# use path params with type definitions (they are automatically converted)
+@get "/multiply/{a}/{b}" function(req, a::Float64, b::Float64)
+    return a * b
+end
+
+# The order of the parameters doesn't matter (just the name matters)
+@get "/subtract/{a}/{b}" function(req, b::Int64, a::Int64)
+    return a - b
+end
+
+# start the web server
+serve()
+```
+
 ## Return JSON
 
 All objects are automatically deserialized into JSON using the JSON3 library
@@ -58,19 +84,19 @@ struct Animal
     name::String
 end
 
-# Add a supporting struct type definition to the Animal struct
+# Add a supporting struct type definition so JSON3 can serialize & deserialize automatically
 StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
 
+@get "/get" function(req::HTTP.Request)
+    # serialize struct into JSON automatically (because we used StructTypes)
+    return Animal(1, "cat", "whiskers")
+end
+
 @post "/echo" function(req::HTTP.Request)
-    # deserialize JSON into an Animal struct
+    # deserialize JSON from the request body into an Animal struct
     animal = json(req, Animal)
     # serialize struct back into JSON automatically (because we used StructTypes)
     return animal
-end
-
-@get "/get" function(req::HTTP.Request)
-    # serialize struct back into JSON automatically (because we used StructTypes)
-    return Animal(1, "cat", "whiskers")
 end
 
 # start the web server

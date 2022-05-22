@@ -8,10 +8,14 @@ module RunTests
     include("../src/Oxygen.jl")
     using .Oxygen
 
-
     struct Person
         name::String
         age::Int
+    end
+
+    struct Book
+        name::String
+        author::String
     end
 
     StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
@@ -23,7 +27,7 @@ module RunTests
     @dynamicfiles "content" "dynamic"
 
     @get "/killserver" function ()
-        stop()
+        terminate()
     end
 
     @get "/anonymous" function()
@@ -32,6 +36,25 @@ module RunTests
 
     @get "/test" function(req)
         return "hello world!"
+    end
+
+    @get "/customerror" function ()
+        function processtring(input::String)
+            "<$input>"
+        end
+        processtring(3)
+    end
+
+    @get "/unsupported-struct" function ()
+        return Book("mobdy dick", "blah")
+    end
+
+    try 
+        @get "/mismatched-params/{a}/{b}" function (a,c)
+            return "$a, $c"
+        end
+    catch e
+        @test e isa LoadError 
     end
 
     @get "/file" function(req)
@@ -213,37 +236,28 @@ module RunTests
     
     # hit endpoint that doesn't exist
     r = internalrequest(HTTP.Request("GET", "asdfasdf"), true)
-    @test r.status == 500
+    @test r.status == 404
 
     r = internalrequest(HTTP.Request("GET", "asdfasdf"), false)
+    @test r.status == 404
+
+    r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"), true)
+    @test r.status == 404
+
+    r = internalrequest(HTTP.Request("GET", "/customerror"))
+    @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
     @test r.status == 500
 
     @async serve()
     sleep(1)
+    
     r = internalrequest(HTTP.Request("GET", "/killserver"))
     @test r.status == 200
 
-    headers = [
-        "Access-Control-Allow-Origin" => "*",
-        "Access-Control-Allow-Headers" => "*",
-        "Access-Control-Allow-Methods" => "GET, POST"
-    ]
-
-    # test adding a custom handler
-    function CorsHandler(req, defaultHandler)
-        # return headers on OPTIONS request
-        if HTTP.method(req) == "OPTIONS"
-            return HTTP.Response(200, headers)
-        else 
-            return defaultHandler(req)
-        end
-    end
-
-    @async serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
+    @async serve((req, router, defaultHandler) -> defaultHandler(req))
     sleep(1)
-
-    r = internalrequest(HTTP.Request("OPTIONS", "/"), true)
-    @test r.status == 500
 
     r = internalrequest(HTTP.Request("GET", "/killserver"))
     @test r.status == 200

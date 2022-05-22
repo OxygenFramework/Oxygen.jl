@@ -54,6 +54,24 @@ end
 serve()
 ```
 
+## Query parameters
+
+Use the `queryparams()` function to extract and parse parameters from the url
+
+```julia
+using Oxygen
+using HTTP
+
+# use path params without type definitions (defaults to Strings)
+@get "/query" function(req::HTTP.Request)
+    # extract the query params from the request object
+    return queryparams(req)
+end
+
+# start the web server
+serve()
+```
+
 ## Return JSON
 
 All objects are automatically deserialized into JSON using the JSON3 library
@@ -98,6 +116,36 @@ end
     # serialize struct back into JSON automatically (because we used StructTypes)
     return animal
 end
+
+# start the web server
+serve()
+```
+
+## Mounting Static Files
+
+You can mount static files using this handy macro which recursively searches a folder for files and mounts everything. All files are 
+loaded into memory on startup.
+
+```julia
+using Oxygen
+
+# mount all files inside the "content" folder under the "/static" path
+@staticfiles "content" "static"
+
+# start the web server
+serve()
+```
+
+## Mounting Static Files... dynamically? 
+
+Similar to @staticfiles, this macro mounts each path and re-reads the file for each request. This means that any changes to the files after 
+the server has started will be displayed.
+
+```julia
+using Oxygen
+
+# mount all files inside the "content" folder under the "/dynamic" path
+@dynamicfiles "content" "dynamic"
 
 # start the web server
 serve()

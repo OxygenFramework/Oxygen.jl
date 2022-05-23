@@ -252,7 +252,7 @@ module Wrapper
         local func_param_types = splice!(Array(fields), 3:numfields)
 
         # each tuple tracks where the param is refereced (variable, function index, path index)
-        param_positions::Array{Tuple{String, Int, Int}} = []
+        local param_positions::Array{Tuple{String, Int, Int}} = []
 
         # ensure the path parms are present inside the function params 
         for (func_index, func_param) in enumerate(func_param_names)

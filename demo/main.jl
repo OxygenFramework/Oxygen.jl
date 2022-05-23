@@ -49,13 +49,13 @@ module Main
     end
 
     # demonstate how to use path params (without type definitions)
-    @get "/add/first/{a}/last/{b}" function (req::HTTP.Request, b, a)
+    @get "/add/{a}/{b}" function (req::HTTP.Request, b, a)
         return parse(Float64, a) + parse(Float64, b)
     end
 
     # demonstate how to use path params with type definitions
-    @get "/multi/{c}/{asdf}" function (req::HTTP.Request, c::Float64, asdf::Float64)
-        return c * asdf
+    @get "/multi/{c}/{d}" function (req::HTTP.Request, c::Float64, d::Float64)
+        return c * d
     end
 
     # # Any object retuned from a function will automatically be converted into JSON (by default)

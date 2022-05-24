@@ -96,7 +96,7 @@ module RunTests
         """)
     end 
 
-    @route "/get" ["GET"] function(req)
+    @route ["GET"] "/get" function(req)
         return "get"
     end 
 
@@ -252,12 +252,18 @@ module RunTests
 
     @async serve()
     sleep(1)
+
+    r = internalrequest(HTTP.Request("GET", "/get"))
+    @test r.status == 200
     
     r = internalrequest(HTTP.Request("GET", "/killserver"))
     @test r.status == 200
 
     @async serve((req, router, defaultHandler) -> defaultHandler(req))
     sleep(1)
+
+    r = internalrequest(HTTP.Request("GET", "/get"))
+    @test r.status == 200
 
     r = internalrequest(HTTP.Request("GET", "/killserver"))
     @test r.status == 200

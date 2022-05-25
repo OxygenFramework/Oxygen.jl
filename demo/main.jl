@@ -49,13 +49,13 @@ module Main
     end
 
     # demonstate how to use path params (without type definitions)
-    @get "/add/{a}/{b}" function (req::HTTP.Request, b, a)
+    @get "/add/first/{a}/last/{b}" function (req::HTTP.Request, b, a)
         return parse(Float64, a) + parse(Float64, b)
     end
 
     # demonstate how to use path params with type definitions
-    @get "/multi/{c}/{d}" function (req::HTTP.Request, c::Float64, d::Float64)
-        return c * d
+    @get "/multi/{c}/{asdf}" function (req::HTTP.Request, c::Float64, asdf::Float64)
+        return c * asdf
     end
 
     # # Any object retuned from a function will automatically be converted into JSON (by default)
@@ -64,10 +64,10 @@ module Main
     end
 
     # show how to use the lower level macro to add a route for any type of request
-    @route "/demo" ["GET", "POST"] function(req)
+    @route ["GET", "POST"] "/demo" function(req)
         return Animal(1, "cat", "whiskers")
     end
-
+    
     # show how to return a file from an endpoint
     @get "/files" function (req)
         return file("demo/main.jl")

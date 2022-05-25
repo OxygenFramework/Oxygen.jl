@@ -17,14 +17,14 @@ module Oxygen
     const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
 
     """
-        serve(host="127.0.0.1", port=8080; suppresserrors::Bool=false, kwargs...)
+        serve(host="127.0.0.1", port=8080; kwargs...)
 
     Start the webserver with the default request handler
     """
-    function serve(host="127.0.0.1", port=8080; suppresserrors::Bool=false, kwargs...)
+    function serve(host="127.0.0.1", port=8080; kwargs...)
         println("Starting server: http://$host:$port")
         server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-        HTTP.serve(req -> DefaultHandler(req, suppresserrors), host, port; server=server[], kwargs...)
+        HTTP.serve(req -> DefaultHandler(req, false), host, port; server=server[], kwargs...)
     end
 
 

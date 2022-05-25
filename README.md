@@ -136,10 +136,9 @@ using Oxygen
 serve()
 ```
 
-## Mounting Static Files... dynamically? 
+## Mounting Dynamic Files 
 
-Similar to @staticfiles, this macro mounts each path and re-reads the file for each request. This means that any changes to the files after 
-the server has started will be displayed.
+Similar to @staticfiles, this macro mounts each path and re-reads the file for each request. This means that any changes to the files after the server has started will be displayed.
 
 ```julia
 using Oxygen

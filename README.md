@@ -166,12 +166,12 @@ Used to register a function to a specific endpoint to handle that corresponding 
 
 #### @route
 ```julia
-  @route(path, methods, func)
+  @route(methods, path, func)
 ```
 | Parameter | Type     | Description                |
 | :-------- | :------- | :------------------------- |
-| `path` | `string` | **Required**. The route to register |
 | `methods` | `array` | **Required**. The types of HTTP requests to register to this route|
+| `path` | `string` | **Required**. The route to register |
 | `func` | `function` | **Required**. The request handler for this route |
 
 Low-level macro that allows a route to be handle mulitiple request types

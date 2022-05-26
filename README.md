@@ -54,6 +54,25 @@ end
 serve()
 ```
 
+## Interpolating variables into routes
+
+You can interpolate variables directly into the paths, which makes dynamically registering routes a breeze 
+
+(Thanks to @anandijain for the idea)
+```julia
+using Oxygen
+
+operations = Dict("add" => +, "multiply" => *)
+for (k, v) in operations
+    @get "/$k/{a}/{b}" function (req, a, b)
+        return v(parse(Float64, a), parse(Float64, b))
+    end
+end
+
+# start the web server
+serve()
+```
+
 ## Query parameters
 
 Use the `queryparams()` function to extract and parse parameters from the url

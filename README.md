@@ -64,8 +64,8 @@ using Oxygen
 
 operations = Dict("add" => +, "multiply" => *)
 for (pathname, operator) in operations
-    @get "/$pathname/{a}/{b}" function (req, a, b)
-        return operator(parse(Float64, a), parse(Float64, b))
+    @get "/$pathname/{a}/{b}" function (req, a::Float64, b::Float64)
+        return operator(a, b)
     end
 end
 

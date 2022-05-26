@@ -11,7 +11,7 @@
 
 ## About
 Oxygen is a micro-framework built on top of the HTTP.jl library. 
-Breath easy knowing you can quickly spin up a web server with abstractions you're already familiar with.
+Breathe easy knowing you can quickly spin up a web server with abstractions you're already familiar with.
 
 ## Minimalistic Example
 

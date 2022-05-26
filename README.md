@@ -54,6 +54,24 @@ end
 serve()
 ```
 
+## Query parameters
+
+Use the `queryparams()` function to extract and parse parameters from the url
+
+```julia
+using Oxygen
+using HTTP
+
+# use path params without type definitions (defaults to Strings)
+@get "/query" function(req::HTTP.Request)
+    # extract the query params from the request object
+    return queryparams(req)
+end
+
+# start the web server
+serve()
+```
+
 ## Interpolating variables into endpoints
 
 You can interpolate variables directly into the paths, which makes dynamically registering routes a breeze 
@@ -67,24 +85,6 @@ for (pathname, operator) in operations
     @get "/$pathname/{a}/{b}" function (req, a::Float64, b::Float64)
         return operator(a, b)
     end
-end
-
-# start the web server
-serve()
-```
-
-## Query parameters
-
-Use the `queryparams()` function to extract and parse parameters from the url
-
-```julia
-using Oxygen
-using HTTP
-
-# use path params without type definitions (defaults to Strings)
-@get "/query" function(req::HTTP.Request)
-    # extract the query params from the request object
-    return queryparams(req)
 end
 
 # start the web server

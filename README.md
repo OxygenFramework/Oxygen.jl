@@ -54,7 +54,7 @@ end
 serve()
 ```
 
-## Interpolating variables into routes
+## Interpolating variables into endpoints
 
 You can interpolate variables directly into the paths, which makes dynamically registering routes a breeze 
 

@@ -201,7 +201,7 @@ and mounts all files under the mount directory using their relative paths.
 | `status` | `integer` | The HTTP response code (default is 200)|
 | `headers` | `dict` | The headers for the HTTP response (default has contentype header set to "text/html; charset=utf-8") |
 
-helper function to designate when content should be returned as HTML
+Helper function to designate when content should be returned as HTML
 
 
 #### queryparams()

@@ -197,7 +197,7 @@ module Oxygen
     """
     macro get(path, func)
         quote 
-            @route ["GET"] $path $(esc(func))
+            @route ["GET"] $(esc(path)) $(esc(func))
         end
     end
 
@@ -208,7 +208,7 @@ module Oxygen
     """
     macro post(path, func)
         quote 
-            @route ["POST"] $path $(esc(func))
+            @route ["POST"] $(esc(path)) $(esc(func))
         end
     end
 
@@ -219,7 +219,7 @@ module Oxygen
     """
     macro put(path, func)
         quote 
-            @route ["PUT"] $path $(esc(func))
+            @route ["PUT"] $(esc(path)) $(esc(func))
         end
     end
 
@@ -230,7 +230,7 @@ module Oxygen
     """
     macro patch(path, func)
         quote 
-            @route ["PATCH"] $path $(esc(func))
+            @route ["PATCH"] $(esc(path)) $(esc(func))
         end
     end
 
@@ -242,7 +242,7 @@ module Oxygen
     """
     macro delete(path, func)
         quote 
-            @route ["DELETE"] $path $(esc(func))
+            @route ["DELETE"] $(esc(path)) $(esc(func))
         end
     end
 
@@ -254,7 +254,7 @@ module Oxygen
     macro route(methods, path, func)
         quote 
             local func = $(esc(func))
-            local path = $path
+            local path = $(esc(path))
             for method in eval($methods)
                 eval(:(@register $method $path $func))
             end

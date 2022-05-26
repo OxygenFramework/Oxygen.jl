@@ -63,9 +63,9 @@ You can interpolate variables directly into the paths, which makes dynamically r
 using Oxygen
 
 operations = Dict("add" => +, "multiply" => *)
-for (k, v) in operations
-    @get "/$k/{a}/{b}" function (req, a, b)
-        return v(parse(Float64, a), parse(Float64, b))
+for (pathname, operator) in operations
+    @get "/$pathname/{a}/{b}" function (req, a, b)
+        return operator(parse(Float64, a), parse(Float64, b))
     end
 end
 

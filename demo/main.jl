@@ -28,10 +28,10 @@ module Main
     end
 
     # You can also interpolate variables into the routes
-    opd = Dict("add" => +, "multiply" => *)
-    for (k, v) in opd
-        @get "/$k/{a}/{b}" function (req, a, b)
-            return v(parse(Float64, a), parse(Float64, b))
+    operations = Dict("add" => +, "multiply" => *)
+    for (pathname, operator) in operations
+        @get "/$pathname/{a}/{b}" function (req, a, b)
+            return operator(parse(Float64, a), parse(Float64, b))
         end
     end
 

@@ -27,6 +27,24 @@ module Main
         return "looks like you hit an endpoint that doesn't exist"
     end
 
+    # You can also interpolate variables into the endpoint
+    operations = Dict("add" => +, "multiply" => *)
+    for (pathname, operator) in operations
+        @get "/$pathname/{a}/{b}" function (req, a::Float64, b::Float64)
+            return operator(a, b)
+        end
+    end
+
+    # demonstate how to use path params (without type definitions)
+    @get "/power/{a}/{b}" function (req::HTTP.Request, b, a)
+        return parse(Float64, a) ^ parse(Float64, b)
+    end
+
+    # demonstate how to use path params with type definitions
+    @get "/divide/{c}/{d}" function (req::HTTP.Request, c::Float64, d::Float64)
+        return c / d
+    end
+
     # Return the body of the request as a string
     @post "/echo-text" function (req::HTTP.Request)
         return text(req)
@@ -46,16 +64,6 @@ module Main
     @get "/custom-response" function (req::HTTP.Request)
         test_value = 77.8
         return HTTP.Response(200, ["Content-Type" => "text/plain"], body = "$test_value")
-    end
-
-    # demonstate how to use path params (without type definitions)
-    @get "/add/first/{a}/last/{b}" function (req::HTTP.Request, b, a)
-        return parse(Float64, a) + parse(Float64, b)
-    end
-
-    # demonstate how to use path params with type definitions
-    @get "/multi/{c}/{asdf}" function (req::HTTP.Request, c::Float64, asdf::Float64)
-        return c * asdf
     end
 
     # # Any object retuned from a function will automatically be converted into JSON (by default)

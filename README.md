@@ -33,7 +33,6 @@ serve()
 Path parameters are declared with braces and are passed directly to your request handler. 
 ```julia
 using Oxygen
-using HTTP
 
 # use path params without type definitions (defaults to Strings)
 @get "/add/{a}/{b}" function(req, a, b)
@@ -108,7 +107,7 @@ serve()
 ```
 
 ## Deserialize & Serialize custom structs
-Oxygen provides some out-of-the-box serialization & deserialization but requires the use of StructTypes when converting structs
+Oxygen provides some out-of-the-box serialization & deserialization for most objects but requires the use of StructTypes when converting structs
 
 ```julia
 using Oxygen
@@ -135,6 +134,51 @@ end
     # serialize struct back into JSON automatically (because we used StructTypes)
     return animal
 end
+
+# start the web server
+serve()
+```
+
+## Integrate with Swagger
+
+You can integrate swagger into your api using some of the other great tools from the julia ecosystem.
+
+```julia
+using Oxygen
+using SwagUI
+using SwaggerMarkdown
+
+@swagger """
+/divide/{a}/{b}:
+    get:
+        description: Return the value of a / b           
+        parameters:
+            - name: a
+              in: path
+              type: number
+              required: true
+            - name: b
+              in: path
+              type: number
+              required: true
+        responses:
+            '200':
+                description: Successfully returned a number
+"""
+@get "/divide/{a}/{b}" function (req, a::Float64, b::Float64)
+    return a / b
+end
+
+# title and version are required
+info = Dict("title" => "My Demo Api", "version" => "1.0.0")
+openApi = OpenAPI("2.0", info)
+swagger_document = build(openApi)
+swagger_html = render_swagger(swagger_document)
+
+# setup endpoint to serve swagger documentation
+@get "/swagger" function()
+    return html(swagger_html)
+end  
 
 # start the web server
 serve()
@@ -192,7 +236,7 @@ Used to register a function to a specific endpoint to handle that corresponding 
 | `path` | `string` | **Required**. The route to register |
 | `func` | `function` | **Required**. The request handler for this route |
 
-Low-level macro that allows a route to be handle mulitiple request types
+Low-level macro that allows a route to be handle multiple request types
 
 
 #### @staticfiles
@@ -218,7 +262,7 @@ and mounts all files under the mount directory using their relative paths.
 | :-------- | :------- | :------------------------- |
 | `content` | `string` | **Required**. The string to be returned as HTML |
 | `status` | `integer` | The HTTP response code (default is 200)|
-| `headers` | `dict` | The headers for the HTTP response (default has contentype header set to "text/html; charset=utf-8") |
+| `headers` | `dict` | The headers for the HTTP response (default has content-type header set to "text/html; charset=utf-8") |
 
 Helper function to designate when content should be returned as HTML
 

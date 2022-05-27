@@ -1,2 +1,4 @@
 [deps]
 Oxygen = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
+SwagUI = "bf05d729-34b2-4f1f-a2f1-2452bece7ebc"
+SwaggerMarkdown = "1b6eb727-ad4b-44eb-9669-b9596a6e760f"

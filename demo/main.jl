@@ -4,6 +4,8 @@ module Main
     using HTTP
     using JSON3
     using StructTypes
+    using SwaggerMarkdown
+    using SwagUI
 
     struct Animal
         id::Int
@@ -40,9 +42,26 @@ module Main
         return parse(Float64, a) ^ parse(Float64, b)
     end
 
-    # demonstate how to use path params with type definitions
-    @get "/divide/{c}/{d}" function (req::HTTP.Request, c::Float64, d::Float64)
-        return c / d
+    @swagger """
+    /divide/{a}/{b}:
+        get:
+            description: Return the value of a / b           
+            parameters:
+                - name: a
+                  in: path
+                  type: number
+                  required: true
+                - name: b
+                  in: path
+                  type: number
+                  required: true
+            responses:
+                '200':
+                    description: Successfully returned an artist
+    """
+    # demonstrate how to use path params with type definitions
+    @get "/divide/{a}/{b}" function (req::HTTP.Request, a::Float64, b::Float64)
+        return a / b
     end
 
     # Return the body of the request as a string
@@ -66,14 +85,9 @@ module Main
         return HTTP.Response(200, ["Content-Type" => "text/plain"], body = "$test_value")
     end
 
-    # # Any object retuned from a function will automatically be converted into JSON (by default)
+    # Any object retuned from a function will automatically be converted into JSON (by default)
     @get "/json" function(req::HTTP.Request)
         return Dict("message" => "hello world", "animal" => Animal(1, "cat", "whiskers"))
-    end
-
-    # show how to use the lower level macro to add a route for any type of request
-    @route ["GET", "POST"] "/demo" function(req)
-        return Animal(1, "cat", "whiskers")
     end
     
     # show how to return a file from an endpoint
@@ -92,6 +106,23 @@ module Main
                 </body>
             </html>
         """)
+    end
+
+    @swagger """
+    /demo:
+        get:
+            description: show how to use the lower level macro to add a route for any type of request
+            responses:
+                '200':
+                    description: Returns an animal.     
+        post:
+            description: show how to use the lower level macro to add a route for any type of request
+            responses:
+                '200':
+                    description: Returns an animal.        
+    """
+    @route ["GET", "POST"] "/demo" function(req)
+        return Animal(1, "cat", "whiskers")
     end
 
     # recursively mount all files inside the demo folder ex.) demo/main.jl => /static/demo/main.jl 
@@ -115,6 +146,17 @@ module Main
         end
     end
 
+    # the info of the API, title and version of the info are required
+    info = Dict("title" => "Oxygen.jl demo api", "version" => "1.0.0")
+    openApi = OpenAPI("2.0", info)
+    swagger_document = build(openApi)
+    swagger_html = render_swagger(swagger_document)
+
+    # setup endpoint to serve swagger documentation
+    @get "/swagger" function()
+        return html(swagger_html)
+    end
+        
     # start the web server
     serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
 end

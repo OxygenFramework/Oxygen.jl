@@ -51,9 +51,7 @@ end
 end
 
 @get "/saludar" () -> "¡Hola Mundo!"
-
 @get "/salutare" f() = "ciao mondo!"
-
 @get "/emoji" 😎() = "please don't name functions like this"
 
 # start the web server

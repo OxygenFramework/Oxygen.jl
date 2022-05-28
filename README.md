@@ -36,7 +36,7 @@ serve()
 
 ## Request handlers
 
-Request handlers are just julia functions, which means there are many valid ways to express them
+Request handlers are just functions, which means there are many valid ways to express them
 
 
 ```julia

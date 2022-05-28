@@ -13,6 +13,12 @@
 Oxygen is a micro-framework built on top of the HTTP.jl library. 
 Breathe easy knowing you can quickly spin up a web server with abstractions you're already familiar with.
 
+## Installation
+
+```julia
+pkg> add Oxygen
+```
+
 ## Minimalistic Example
 
 Create a web-server with very few lines of code
@@ -23,6 +29,32 @@ using HTTP
 @get "/greet" function(req::HTTP.Request)
     return "hello world!"
 end
+
+# start the web server
+serve()
+```
+
+## Request handlers
+
+Request handlers are just julia functions, which means there are many valid ways to express them
+
+
+```julia
+using Oxygen
+
+@get "/greet" function()
+    "hello world!"
+end
+
+@get "/saluer" () -> begin
+    "Bonjour le monde!"
+end
+
+@get "/saludar" () -> "¡Hola Mundo!"
+
+@get "/salutare" f() = "ciao mondo!"
+
+@get "/emoji" 😎() = "please don't name functions like this"
 
 # start the web server
 serve()
@@ -61,9 +93,8 @@ Use the `queryparams()` function to extract and parse parameters from the url
 using Oxygen
 using HTTP
 
-# use path params without type definitions (defaults to Strings)
 @get "/query" function(req::HTTP.Request)
-    # extract the query params from the request object
+    # extract & return the query params from the request object
     return queryparams(req)
 end
 

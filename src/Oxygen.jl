@@ -9,8 +9,11 @@ module Oxygen
     include("fileutil.jl")
     using .FileUtil
 
+    include("channelsasync.jl")
+    using .ChannelsAsync
+
     export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles,
-            serve, terminate, internalrequest, queryparams, binary, text, json, html, file
+            serve, serveasync, terminate, internalrequest, queryparams, binary, text, json, html, file
 
     # define REST endpoints to dispatch to "service" functions
     const ROUTER = HTTP.Router()
@@ -37,6 +40,18 @@ module Oxygen
         println("Starting server: http://$host:$port")
         server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
         HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port; server=server[], kwargs...)
+    end
+
+    function serveasync(host="127.0.0.1", port=8080, size=512; kwargs...)
+        println("Starting server: http://$host:$port")
+        server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+        ChannelsAsync.start(server[], req -> DefaultHandler(req, false); size=size, kwargs...)
+    end
+
+    function serveasync(handler::Function, host="127.0.0.1", port=8081, size=512; kwargs...)
+        println("Starting server: http://$host:$port")
+        server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+        ChannelsAsync.start(server[], req -> handler(req, ROUTER, DefaultHandler); size=size, kwargs...)
     end
 
     """

@@ -91,7 +91,7 @@ module Oxygen
     end
 
 
-    function DefaultHandler(req::HTTP.Request) Vector{UInt8}
+    function DefaultHandler(req::HTTP.Request)
         try
             response_body = nothing
             try
@@ -101,8 +101,7 @@ module Oxygen
                 if e isa MethodError 
                     response_body = HTTP.Response(404; body="this route does not exist")
                 else 
-                    println("_____ HERE ______")
-                    # rethrow(e)
+                    rethrow(e)
                 end
             end
             # if a raw HTTP.Response object is returned, then don't do any extra processing on it

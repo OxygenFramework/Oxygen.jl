@@ -45,7 +45,6 @@ module ChannelsAsync
                 notify(request.done)
             end
         end
-        @info "Stopped $(Threads.threadid())"
     end
 
 
@@ -54,8 +53,7 @@ module ChannelsAsync
         local nthreads = Threads.nthreads() - 1
 
         if nthreads == 0
-            throw("This process needs more than one thread to run tasks on. For example, launch julia like this: julia --threads 4")
-            return 
+            throw("This process needs more than one thread to run tasks on. For example, launch julia like this: julia --threads 4") 
         end
 
         for i in 1:nthreads

@@ -45,6 +45,10 @@ module RunTests
         processtring(3)
     end
 
+    @get "/undefinederror" function ()
+        asdf
+    end
+
     @get "/unsupported-struct" function ()
         return Book("mobdy dick", "blah")
     end
@@ -123,6 +127,9 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/anonymous"))
     @test r.status == 200
     @test text(r) == "no args"
+
+    r = internalrequest(HTTP.Request("GET", "/fake-endpoint"))
+    @test r.status == 404
 
     r = internalrequest(HTTP.Request("GET", "/test"))
     @test r.status == 200
@@ -246,6 +253,9 @@ module RunTests
 
     r = internalrequest(HTTP.Request("GET", "/customerror"))
     @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", "/undefinederror"))
+    @test r.status == 500    
 
     r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
     @test r.status == 500

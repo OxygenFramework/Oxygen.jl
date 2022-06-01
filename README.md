@@ -177,9 +177,8 @@ julia --threads 4
 ```
 
 ``serveparallel(queuesize=1024)`` Starts the webserver in streaming mode and spawns n - 1 worker 
-threads to handle individual requests and executes asynchronously within each thread. 
-The ``queuesize`` parameter sets how many requests can be scheduled within the channel 
-before they start getting dropped
+threads. The ``queuesize`` parameter sets how many requests can be scheduled within the queue (a julia Channel)
+before they start getting dropped. Each worker thread pops requests off the queue and handles them asynchronously within each thread. 
 
 ```julia
 using Oxygen

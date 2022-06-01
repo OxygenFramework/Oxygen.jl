@@ -15,7 +15,7 @@ module ChannelsAsync
         queue::Channel{WebRequest}
         count::Threads.Atomic{Int}
         shutdown::Threads.Atomic{Bool}
-        Handler( size = 512 ) = begin
+        Handler( size = 1024 ) = begin
             new(Channel{WebRequest}(size), Threads.Atomic{Int}(0), Threads.Atomic{Bool}(false))
         end
     end
@@ -48,7 +48,8 @@ module ChannelsAsync
         @info "Stopped $(Threads.threadid())"
     end
 
-    function start(server::Sockets.TCPServer, handleReq::Function; size = 512, kwargs...)
+
+    function start(server::Sockets.TCPServer, handleReq::Function; size = 1024, kwargs...)
         local handler = Handler()
         local nthreads = Threads.nthreads() - 1
 
@@ -62,17 +63,23 @@ module ChannelsAsync
         end
 
         try
-            HTTP.serve(;server = server, stream = true, kwargs...) do stream::HTTP.Stream
-                if handler.count[] < size
-                    Threads.atomic_add!(handler.count, 1)
-                    local request = WebRequest(stream, Threads.Event())
-                    put!(handler.queue, request)
-                    wait(request.done)
-                else
-                    @warn "Dropping connection..."
+            HTTP.serve(;server = server, stream = true, kwargs...) do stream::HTTP.Stream  
+                try
+                    if handler.count[] < size
+                        Threads.atomic_add!(handler.count, 1)
+                        local request = WebRequest(stream, Threads.Event())
+                        put!(handler.queue, request)
+                        wait(request.done)
+                    else
+                        @warn "Dropping connection..."
+                        HTTP.setstatus(stream, 500)
+                        write(stream, "Server overloaded.")
+                    end 
+                catch e
+                    @error "ERROR: " exception=(e, catch_backtrace())
                     HTTP.setstatus(stream, 500)
-                    write(stream, "Server overloaded.")
-                end 
+                    write(stream, "The Server encountered a problem")
+                end
             end
         finally
             close(server)

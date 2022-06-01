@@ -213,6 +213,44 @@ end
 serve()
 ```
 
+
+
+## Multithreading & Parallelism
+
+For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a 
+multithreaded mode. In order to utilize this mode, julia must have more than 1 thread to work with. You can start a julia session with 4 threads using the command below
+```shell 
+julia --threads 4
+```
+
+``serveparallel(size=1024)`` Starts the webserver in streaming mode and spawns n - 1 worker 
+threads to handle individual requests and executes asynchronously within each thread. 
+The ``size`` parameter sets how many requests can be scheduled within the channel 
+before they start getting dropped
+
+```julia
+using Oxygen
+using StructTypes
+using Base.Threads
+
+# Make the Atomic struct serializable
+StructTypes.StructType(::Type{Atomic{Int64}}) = StructTypes.Struct()
+
+x = Atomic{Int64}(0);
+
+@get "/show" function()
+    return x
+end
+
+@get "/increment" function()
+    atomic_add!(x, 1)
+    return x
+end
+
+# start the web server in parallel mode
+serveparallel()
+```
+
 ## Mounting Static Files
 
 You can mount static files using this handy macro which recursively searches a folder for files and mounts everything. All files are 

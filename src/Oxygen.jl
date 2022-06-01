@@ -27,7 +27,7 @@ module Oxygen
     function serve(host="127.0.0.1", port=8080; kwargs...)
         println("Starting server: http://$host:$port")
         server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-        HTTP.serve(req -> DefaultHandler(req, false), host, port; server=server[], kwargs...)
+        HTTP.serve(req -> DefaultHandler(req), host, port; server=server[], kwargs...)
     end
 
 
@@ -42,25 +42,42 @@ module Oxygen
         HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port; server=server[], kwargs...)
     end
 
-    function serveparallel(host="127.0.0.1", port=8080, size=512; kwargs...)
+
+    """
+        serveparallel(host="127.0.0.1", port=8080, size=1024; kwargs...)
+    
+    Starts the webserver in streaming mode and spawns n - 1 worker threads to process individual requests.
+    A Channel is used to schedule individual requests in FIFO order. Requests in the channel are
+    then removed & handled by each the worker threads asynchronously. 
+    """
+    function serveparallel(host="127.0.0.1", port=8080, size=1024; kwargs...)
         println("Starting server: http://$host:$port")
         server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-        ChannelsAsync.start(server[], req -> DefaultHandler(req, false); size=size, kwargs...)
+        ChannelsAsync.start(server[], req -> DefaultHandler(req); size=size, kwargs...)
     end
 
-    function serveparallel(handler::Function, host="127.0.0.1", port=8081, size=512; kwargs...)
+
+    """
+        serveparallel(handler::Function, host="127.0.0.1", port=8080, size=1024; kwargs...)
+    
+    Starts the webserver in streaming mode and spawns n - 1 worker threads to process individual requests.
+    A Channel is used to schedule individual requests in FIFO order. Requests in the channel are
+    then removed & handled by each the worker threads asynchronously. 
+    """
+    function serveparallel(handler::Function, host="127.0.0.1", port=8080, size=1024; kwargs...)
         println("Starting server: http://$host:$port")
         server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
         ChannelsAsync.start(server[], req -> handler(req, ROUTER, DefaultHandler); size=size, kwargs...)
     end
 
+
     """
-        internalrequest(request::HTTP.Request, suppresserrors::Bool=false)
+        internalrequest(request::HTTP.Request)
 
     Directly call one of our other endpoints registered with the router
     """
-    function internalrequest(req::HTTP.Request, suppresserrors::Bool=false) :: HTTP.Response
-        return DefaultHandler(req, suppresserrors)
+    function internalrequest(req::HTTP.Request) :: HTTP.Response
+        return DefaultHandler(req)
     end
 
 
@@ -73,17 +90,19 @@ module Oxygen
         close(server[])
     end
 
-    function DefaultHandler(req::HTTP.Request, suppresserrors::Bool=false) Vector{UInt8}
+
+    function DefaultHandler(req::HTTP.Request) Vector{UInt8}
         try
             response_body = nothing
             try
-                response_body = HTTP.handle(ROUTER, req, suppresserrors)
+                response_body = HTTP.handle(ROUTER, req)
             catch e 
                 # if we get a method error it's because we have no matching request handler
                 if e isa MethodError 
-                    response_body = HTTP.Response(404)
+                    response_body = HTTP.Response(404; body="this route does not exist")
                 else 
-                    rethrow(e)
+                    println("_____ HERE ______")
+                    # rethrow(e)
                 end
             end
             # if a raw HTTP.Response object is returned, then don't do any extra processing on it
@@ -98,15 +117,12 @@ module Oxygen
                 return HTTP.Response(200, headers , body=body)
             end 
         catch error
-            if !suppresserrors
-                @error "ERROR: " exception=(error, catch_backtrace())
-            end
+            @error "ERROR: " exception=(error, catch_backtrace())
             return HTTP.Response(500, "The Server encountered a problem")
         end
     end
 
     ### Request helper functions ###
-
 
     """
         queryparams(request::HTTP.Request)
@@ -392,7 +408,7 @@ module Oxygen
 
         local handlerequest = quote 
             local action = $(esc(func))
-            function (req, suppresserrors)
+            function (req)
                 try 
                     # don't pass any args if the function takes none
                     if $numfields == 1 
@@ -409,9 +425,7 @@ module Oxygen
                         action(req)
                     end
                 catch error
-                    if !suppresserrors
-                        @error "ERROR: " exception=(error, catch_backtrace())
-                    end
+                    @error "ERROR: " exception=(error, catch_backtrace())
                     return HTTP.Response(500, "The Server encountered a problem")
                 end
             end

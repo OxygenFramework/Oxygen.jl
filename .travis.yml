@@ -8,6 +8,10 @@ julia:
 branches:
   only:
     - master
+env:
+  jobs:
+    - JULIA_NUM_THREADS=1
+    - JULIA_NUM_THREADS=2
 coveralls: true
 notifications:
   email: false

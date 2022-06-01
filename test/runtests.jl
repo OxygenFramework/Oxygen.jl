@@ -227,21 +227,21 @@ module RunTests
     @test r.status == 200
     @test text(r) == file("content", "sample.html")
 
-    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"), true)
+    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
     @test r.status == 500
 
     # don't suppress error reporting for this test
-    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"), false)
+    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
     @test r.status == 500
     
     # hit endpoint that doesn't exist
-    r = internalrequest(HTTP.Request("GET", "asdfasdf"), true)
+    r = internalrequest(HTTP.Request("GET", "asdfasdf"))
     @test r.status == 404
 
-    r = internalrequest(HTTP.Request("GET", "asdfasdf"), false)
+    r = internalrequest(HTTP.Request("GET", "asdfasdf"))
     @test r.status == 404
 
-    r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"), true)
+    r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"))
     @test r.status == 404
 
     r = internalrequest(HTTP.Request("GET", "/customerror"))
@@ -256,8 +256,7 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/get"))
     @test r.status == 200
     
-    r = internalrequest(HTTP.Request("GET", "/killserver"))
-    @test r.status == 200
+    internalrequest(HTTP.Request("GET", "/killserver"))
 
     @async serve((req, router, defaultHandler) -> defaultHandler(req))
     sleep(1)
@@ -265,6 +264,55 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/get"))
     @test r.status == 200
 
-    r = internalrequest(HTTP.Request("GET", "/killserver"))
-    @test r.status == 200
+    internalrequest(HTTP.Request("GET", "/killserver"))
+
+    localhost = "http://127.0.0.1:8080"
+
+    # only run these tests if we have more than one thread to work with
+    if Threads.nthreads() > 1
+
+        @async serveparallel()
+        sleep(1)
+    
+        r = HTTP.get("http://127.0.0.1:8080/get")
+        @test r.status == 200
+
+        try
+            r = HTTP.get("$localhost/customerror")
+        catch e 
+            @test e isa HTTP.ExceptionRequest.StatusError
+        end
+        
+        HTTP.get("$localhost/killserver")
+   
+        @async serveparallel((req, router, defaultHandler) -> defaultHandler(req))
+        sleep(1)
+
+        r = HTTP.get("$localhost/get")
+        @test r.status == 200
+
+        internalrequest(HTTP.Request("GET", "/killserver"))
+
+        try 
+            @async serveparallel(size=0)
+            r = HTTP.get("http://127.0.0.1:8080/get")
+        catch e
+            @test e isa HTTP.ExceptionRequest.StatusError
+        finally
+            terminate()
+        end
+
+    else 
+
+        # service should not have started and get requests should throw some error
+        @async serveparallel()
+        sleep(1)
+        try 
+            r = HTTP.get("$localhost/get"; readtimeout=1)
+        catch e
+            @test true
+        end
+
+    end
+
 end 

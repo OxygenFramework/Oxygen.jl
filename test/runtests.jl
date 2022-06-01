@@ -256,7 +256,7 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/get"))
     @test r.status == 200
     
-    internalrequest(HTTP.Request("GET", "/killserver"))
+    terminate()
 
     @async serve((req, router, defaultHandler) -> defaultHandler(req))
     sleep(1)
@@ -264,7 +264,7 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/get"))
     @test r.status == 200
 
-    internalrequest(HTTP.Request("GET", "/killserver"))
+    terminate()
 
     localhost = "http://127.0.0.1:8080"
 
@@ -274,7 +274,7 @@ module RunTests
         @async serveparallel()
         sleep(1)
     
-        r = HTTP.get("http://127.0.0.1:8080/get")
+        r = HTTP.get("$localhost/get")
         @test r.status == 200
 
         try
@@ -291,11 +291,11 @@ module RunTests
         r = HTTP.get("$localhost/get")
         @test r.status == 200
 
-        internalrequest(HTTP.Request("GET", "/killserver"))
+        HTTP.get("$localhost/killserver")
 
         try 
             @async serveparallel(size=0)
-            r = HTTP.get("http://127.0.0.1:8080/get")
+            r = HTTP.get("$localhost/get")
         catch e
             @test e isa HTTP.ExceptionRequest.StatusError
         finally
@@ -312,6 +312,7 @@ module RunTests
         catch e
             @test true
         end
+        terminate()
 
     end
 

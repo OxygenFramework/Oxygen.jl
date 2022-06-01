@@ -53,7 +53,7 @@ module ChannelsAsync
         local handler = Handler()
         local nthreads = Threads.nthreads() - 1
 
-        if nthreads <= 1
+        if nthreads == 0
             throw("This process needs more than one thread to run tasks on. For example, launch julia like this: julia --threads 4")
             return 
         end

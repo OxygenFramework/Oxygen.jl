@@ -156,8 +156,10 @@ module Main
     @get "/swagger" function()
         return html(swagger_html)
     end
-        
+
     # start the web server
-    serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
+    # serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
+    serveasync((req, router, defaultHandler) -> defaultHandler(req), verbose=true)
+
 end
 

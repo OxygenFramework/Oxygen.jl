@@ -159,7 +159,7 @@ module Main
 
     # start the web server
     # serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
-    serveasync((req, router, defaultHandler) -> defaultHandler(req), verbose=true, size=600)
+    serveasync((req, router, defaultHandler) -> defaultHandler(req), verbose=true)
 
 end
 

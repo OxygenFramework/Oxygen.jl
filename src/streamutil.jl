@@ -1,6 +1,6 @@
 # This module was adapted from this dicussion
 # https://discourse.julialang.org/t/http-jl-doesnt-seem-to-be-good-at-handling-over-1k-concurrent-requests-in-comparison-to-an-alternative-in-python/38281/16
-module ChannelsAsync
+module StreamUtil
     using Sockets
     using HTTP
 
@@ -15,13 +15,16 @@ module ChannelsAsync
         queue::Channel{WebRequest}
         count::Threads.Atomic{Int}
         shutdown::Threads.Atomic{Bool}
-        Handler( size = 1024 ) = begin
-            new(Channel{WebRequest}(size), Threads.Atomic{Int}(0), Threads.Atomic{Bool}(false))
+        Handler( queuesize = 1024 ) = begin
+            new(Channel{WebRequest}(queuesize), Threads.Atomic{Int}(0), Threads.Atomic{Bool}(false))
         end
     end
 
+    """
+    This function is run in each spawned worker thread, which removes queued requests & handles them asynchronously
+    """
     function respond(h::Handler, handleReq::Function)
-        @info "Started thread: $(Threads.threadid())"
+        @info "Started Worker Thread ~ id: $(Threads.threadid())"
         while h.shutdown[] == false
             request = take!(h.queue)
             Threads.atomic_sub!(h.count, 1)
@@ -43,11 +46,12 @@ module ChannelsAsync
                         message.headers,
                         body;
                         version=message.version,
+                        parent=message.parent
                     )
             
                     # process request
                     response::HTTP.Response = handleReq(req)
-                    
+
                     # write response back to stream
                     HTTP.setstatus(request.http, response.status)
                     HTTP.setheader(request.http, response.headers...)
@@ -64,12 +68,14 @@ module ChannelsAsync
         end
     end
 
-
-    function start(server::Sockets.TCPServer, handleReq::Function; size = 1024, kwargs...)
+    """
+    Starts the webserver in streaming mode and spaws n - 1 worker threads to start processing incoming requests
+    """
+    function start(server::Sockets.TCPServer, handleReq::Function; queuesize = 1024, kwargs...)
         local handler = Handler()
         local nthreads = Threads.nthreads() - 1
 
-        if nthreads == 0
+        if nthreads <= 0
             throw("This process needs more than one thread to run tasks on. For example, launch julia like this: julia --threads 4") 
         end
 
@@ -80,7 +86,7 @@ module ChannelsAsync
         try
             HTTP.serve(;server = server, stream = true, kwargs...) do stream::HTTP.Stream  
                 try
-                    if handler.count[] < size
+                    if handler.count[] < queuesize
                         Threads.atomic_add!(handler.count, 1)
                         local request = WebRequest(stream, Threads.Event())
                         put!(handler.queue, request)

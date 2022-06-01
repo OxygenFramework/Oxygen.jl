@@ -9,8 +9,8 @@ module Oxygen
     include("fileutil.jl")
     using .FileUtil
 
-    include("channelsasync.jl")
-    using .ChannelsAsync
+    include("streamutil.jl")
+    using .StreamUtil
 
     export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles,
             serve, serveparallel, terminate, internalrequest, queryparams, binary, text, json, html, file
@@ -44,30 +44,30 @@ module Oxygen
 
 
     """
-        serveparallel(host="127.0.0.1", port=8080, size=1024; kwargs...)
+        serveparallel(host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
     
     Starts the webserver in streaming mode and spawns n - 1 worker threads to process individual requests.
     A Channel is used to schedule individual requests in FIFO order. Requests in the channel are
     then removed & handled by each the worker threads asynchronously. 
     """
-    function serveparallel(host="127.0.0.1", port=8080, size=1024; kwargs...)
+    function serveparallel(host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
         println("Starting server: http://$host:$port")
         server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-        ChannelsAsync.start(server[], req -> DefaultHandler(req); size=size, kwargs...)
+        StreamUtil.start(server[], req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
     end
 
 
     """
-        serveparallel(handler::Function, host="127.0.0.1", port=8080, size=1024; kwargs...)
+        serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
     
     Starts the webserver in streaming mode and spawns n - 1 worker threads to process individual requests.
     A Channel is used to schedule individual requests in FIFO order. Requests in the channel are
     then removed & handled by each the worker threads asynchronously. 
     """
-    function serveparallel(handler::Function, host="127.0.0.1", port=8080, size=1024; kwargs...)
+    function serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
         println("Starting server: http://$host:$port")
         server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-        ChannelsAsync.start(server[], req -> handler(req, ROUTER, DefaultHandler); size=size, kwargs...)
+        StreamUtil.start(server[], req -> handler(req, ROUTER, DefaultHandler); queuesize=queuesize, kwargs...)
     end
 
 
@@ -87,7 +87,7 @@ module Oxygen
     stops the webserver immediately
     """
     function terminate()
-        if server[] !== nothing 
+        if !isnothing(server[]) && isopen(server[])
             close(server[])
         end
     end

@@ -15,7 +15,7 @@ module ParallelDemo
 
     x = Atomic{Int64}(0);
     
-    @get "/atomic/show" function()
+    @get "/atomic/show" function(req)
         return x
     end
 

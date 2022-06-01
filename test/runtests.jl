@@ -276,6 +276,9 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/get"))
     @test r.status == 200
 
+    # redundant terminate() calls should have no affect
+    terminate()
+    terminate()
     terminate()
 
 
@@ -308,7 +311,7 @@ module RunTests
         HTTP.get("$localhost/killserver")
 
         try 
-            @async serveparallel(size=0)
+            @async serveparallel(queuesize=0)
             r = HTTP.get("$localhost/get")
         catch e
             @test e isa HTTP.ExceptionRequest.StatusError

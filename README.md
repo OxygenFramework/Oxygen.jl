@@ -215,7 +215,7 @@ serve()
 
 
 
-## Multithreading & Parallelism
+## Multithreading
 
 For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a 
 multithreaded mode. In order to utilize this mode, julia must have more than 1 thread to work with. You can start a julia session with 4 threads using the command below

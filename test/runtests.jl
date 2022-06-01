@@ -18,6 +18,8 @@ module RunTests
         author::String
     end
 
+    localhost = "http://127.0.0.1:8080"
+
     StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 
     # mount all files inside the content folder under /static
@@ -109,7 +111,7 @@ module RunTests
     end 
 
     @post "/post" function(req)
-        return "post"
+        return text(req)
     end 
 
     @put "/put" function(req)
@@ -154,9 +156,9 @@ module RunTests
     @test r.status == 200
     @test text(r) == "get"
 
-    r = internalrequest(HTTP.Request("POST", "/post"))
+    r = internalrequest(HTTP.Request("POST", "/post", [], "this is some data"))
     @test r.status == 200
-    @test text(r) == "post"
+    @test text(r) == "this is some data"
 
     r = internalrequest(HTTP.Request("PUT", "/put"))
     @test r.status == 200
@@ -276,7 +278,6 @@ module RunTests
 
     terminate()
 
-    localhost = "http://127.0.0.1:8080"
 
     # only run these tests if we have more than one thread to work with
     if Threads.nthreads() > 1
@@ -287,10 +288,13 @@ module RunTests
         r = HTTP.get("$localhost/get")
         @test r.status == 200
 
+        r = HTTP.post("$localhost/post", body="some demo content")
+        @test text(r) == "some demo content"
+
         try
             r = HTTP.get("$localhost/customerror")
         catch e 
-            @test e isa HTTP.ExceptionRequest.StatusError
+            @test e isa MethodError || e isa HTTP.ExceptionRequest.StatusError
         end
         
         HTTP.get("$localhost/killserver")

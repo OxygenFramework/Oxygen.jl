@@ -26,23 +26,40 @@ module ChannelsAsync
             request = take!(h.queue)
             Threads.atomic_sub!(h.count, 1)
             @async begin
+                try 
+                    # read all buffered data from stream
+                    body::Vector{UInt8} = []
+                    while !eof(request.http)
+                        push!(body, readavailable(request.http)...)
+                    end
 
-                # read all buffered data from stream
-                while !eof(request.http)
-                    readavailable(request.http)
+                    # get request from stream 
+                    message::HTTP.Request = request.http.message
+
+                    # rebuild request object with body
+                    req = HTTP.Request(
+                        message.method, 
+                        message.target,
+                        message.headers,
+                        body;
+                        version=message.version,
+                    )
+            
+                    # process request
+                    response::HTTP.Response = handleReq(req)
+                    
+                    # write response back to stream
+                    HTTP.setstatus(request.http, response.status)
+                    HTTP.setheader(request.http, response.headers...)
+                    write(request.http, isempty(response.body) ? " " : response.body)
+                catch 
+                    @error "ERROR: " exception=(error, catch_backtrace())
+                    HTTP.setstatus(request.http, 500)
+                    write(request.http, "The Server encountered a problem")
+                finally
+                    notify(request.done)
                 end
 
-                # process request
-                response::HTTP.Response = handleReq(request.http.message)
-
-                # set all the headers from the response to the stream
-                for (k,v) in response.headers
-                    HTTP.setheader(request.http, k => v)
-                end
-
-                HTTP.setstatus(request.http, response.status)
-                write(request.http, response.body)
-                notify(request.done)
             end
         end
     end

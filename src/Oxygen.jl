@@ -87,23 +87,15 @@ module Oxygen
     stops the webserver immediately
     """
     function terminate()
-        close(server[])
+        if server[] !== nothing 
+            close(server[])
+        end
     end
 
 
     function DefaultHandler(req::HTTP.Request)
         try
-            response_body = nothing
-            try
-                response_body = HTTP.handle(ROUTER, req)
-            catch e 
-                # if we get a method error it's because we have no matching request handler
-                if e isa MethodError 
-                    response_body = HTTP.Response(404; body="this route does not exist")
-                else 
-                    rethrow(e)
-                end
-            end
+            response_body = HTTP.handle(ROUTER, req)
             # if a raw HTTP.Response object is returned, then don't do any extra processing on it
             if isa(response_body, HTTP.Messages.Response)
                 return response_body 

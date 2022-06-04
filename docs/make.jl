@@ -2,14 +2,22 @@ using Documenter
 using Oxygen
 
 makedocs(
-    sitename = "Oxygen",
+    sitename = "Oxygen.jl",
     format = Documenter.HTML(),
-    modules = [Oxygen]
+    modules = [Oxygen],
+    pages = [
+        "Overview" => "index.md",
+        "api.md"
+    ]
 )
 
 # Documenter can also automatically deploy documentation to gh-pages.
 # See "Hosting Documentation" and deploydocs() in the Documenter manual
 # for more information.
-#=deploydocs(
-    repo = "<repository url>"
-)=#
+deploydocs(
+    repo = "github.com/ndortega/Oxygen.jl.git",
+    devbranch = "develop",
+    push_preview = false
+)
+
+

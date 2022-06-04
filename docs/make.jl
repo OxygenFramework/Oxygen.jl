@@ -15,8 +15,7 @@ makedocs(
 # See "Hosting Documentation" and deploydocs() in the Documenter manual
 # for more information.
 deploydocs(
-    repo = "github.com/ndortega/Oxygen.jl.git",
-    versions = "v#.#.#"
+    repo = "github.com/ndortega/Oxygen.jl.git"
 )
 
 

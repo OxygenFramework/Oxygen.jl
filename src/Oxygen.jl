@@ -60,9 +60,9 @@ module Oxygen
     """
         serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
     
-    Starts the webserver in streaming mode and spawns n - 1 worker threads to process individual requests.
-    A Channel is used to schedule individual requests in FIFO order. Requests in the channel are
-    then removed & handled by each the worker threads asynchronously. 
+    Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
+    threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
+    Requests in the channel are then removed & handled by each the worker threads asynchronously. 
     """
     function serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
         println("Starting server: http://$host:$port")

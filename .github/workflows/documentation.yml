@@ -4,15 +4,8 @@ on:
   push:
     branches:
       - master
-      - develop # update to match your development branch (master, main, dev, trunk, ...)
     tags: '*'
   pull_request:
-    branches:
-      - master
-    tags: '*'
-
-env:
-  GITHUB_REF: master
 
 jobs:
   build:
@@ -20,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@v1
+      - uses: julia-actions/setup-julia@latest
         with:
           version: '1.6'
       - name: Install dependencies

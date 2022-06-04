@@ -9,9 +9,6 @@ on:
   pull_request:
       types: [opened, synchronize, reopened]
 
-env:
-  GITHUB_REF: master
-
 jobs:
   build:
     permissions: write-all

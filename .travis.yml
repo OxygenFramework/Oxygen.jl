@@ -8,20 +8,10 @@ julia:
 branches:
   only:
     - master
-coveralls: true
-notifications:
-  email: false
 env:
   jobs:
     - JULIA_NUM_THREADS=1
     - JULIA_NUM_THREADS=2
-jobs:
-  include:
-    - stage: "Documentation"
-      julia: 1.6
-      os: linux
-      script:
-        - julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd()));
-                                               Pkg.instantiate()'
-        - julia --project=docs/ docs/make.jl
-      after_success: skip
+coveralls: true
+notifications:
+  email: false

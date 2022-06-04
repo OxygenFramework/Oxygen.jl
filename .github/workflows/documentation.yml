@@ -7,10 +7,9 @@ on:
       - develop # update to match your development branch (master, main, dev, trunk, ...)
     tags: '*'
   pull_request:
-      branches:
+    branches:
       - master
     tags: '*'
-
 jobs:
   build:
     permissions: write-all

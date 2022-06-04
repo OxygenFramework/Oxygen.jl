@@ -9,15 +9,12 @@ on:
   pull_request:
       types: [opened, synchronize, reopened]
 
-env:
-  GITHUB_REF: master
-
 jobs:
   build:
     permissions: write-all
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@latest
+      - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1.6'

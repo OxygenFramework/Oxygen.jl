@@ -16,6 +16,7 @@ makedocs(
 # for more information.
 deploydocs(
     repo = "github.com/ndortega/Oxygen.jl.git",
+    devbranch = "develop",
     push_preview = false
 )
 

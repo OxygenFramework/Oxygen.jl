@@ -3,9 +3,9 @@ module FileUtil
 export file, getfiles, @iteratefiles
 
 """
-    file(folder::String, filename::String)
+    file(filepath::String)
 
-Read in a file as a String (from the projects current working directory)
+Reads a file as a String
 """
 function file(filepath::String)
     return read(open(filepath), String)

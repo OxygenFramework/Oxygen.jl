@@ -64,7 +64,7 @@ module RunTests
     end
 
     @get "/file" function(req)
-        return file("content", "sample.html")
+        return file("content/sample.html")
     end
 
     @get "/multiply/{a}/{b}" function(req, a::Float64, b::Float64)
@@ -225,16 +225,16 @@ module RunTests
 
     r = internalrequest(HTTP.Request("GET", "/file"))
     @test r.status == 200
-    @test text(r) == file("content", "sample.html")
+    @test text(r) == file("content/sample.html")
 
 
     r = internalrequest(HTTP.Request("GET", "/dynamic/content/sample.html"))
     @test r.status == 200
-    @test text(r) == file("content", "sample.html")
+    @test text(r) == file("content/sample.html")
 
     r = internalrequest(HTTP.Request("GET", "/static/content/sample.html"))
     @test r.status == 200
-    @test text(r) == file("content", "sample.html")
+    @test text(r) == file("content/sample.html")
 
     r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
     @test r.status == 500

@@ -1,7 +1,7 @@
 name = "Oxygen"
 uuid = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
 authors = ["Nathan Ortega <nate.ortega95@gmail.com>"]
-version = "1.0.1"
+version = "1.0.2"
 
 [compat]
 julia = "^1.6.6"

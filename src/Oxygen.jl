@@ -13,38 +13,6 @@ export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dyn
         serve, serveparallel, terminate, internalrequest, queryparams, binary, text, json, 
         html, file
 
-
-### Request helper functions ###
-
-"""
-    internalrequest(request::HTTP.Request)
-
-Directly call one of our other endpoints registered with the router
-"""
-function internalrequest(req::HTTP.Request) :: HTTP.Response
-    return DefaultHandler(req)
-end
-
-"""
-    queryparams(request::HTTP.Request)
-
-Parse's the query parameters from the Requests URL and return them as a Dict
-"""
-function queryparams(req::HTTP.Request) :: Dict
-    local uri = HTTP.URI(req.target)
-    return HTTP.queryparams(uri.query)
-end
-
-"""
-    html(content::String; status::Int, headers::Pair)
-
-A convenience funtion to return a String that should be interpreted as HTML
-"""
-function html(content::String; status = 200, headers = ["Content-Type" => "text/html; charset=utf-8"]) :: HTTP.Response
-    return HTTP.Response(status, headers, body = content)
-end
-
-
 ### Core Macros ###
 
 """
@@ -137,7 +105,7 @@ macro staticfiles(folder::String, mountdir::String="static")
                 end
             )
         end
-        @hostfiles($folder, $mountdir, addroute)
+        @mountfolder($folder, $mountdir, addroute)
     end
     
 end
@@ -160,7 +128,7 @@ macro dynamicfiles(folder::String, mountdir::String="static")
                 end
             )
         end
-        @hostfiles($folder, $mountdir, addroute)
+        @mountfolder($folder, $mountdir, addroute)
     end        
 end
 

@@ -2,7 +2,7 @@ module FileUtil
 
 using HTTP
 
-export file, @hostfiles
+export file, @mountfolder
 
 """
     file(filepath::String)
@@ -50,7 +50,7 @@ end
 This macro is used to discover files & register them to the router while  
 leaving the `addroute` function to determine how to register the files
 """
-macro hostfiles(folder::String, mountdir::String, addroute)
+macro mountfolder(folder::String, mountdir::String, addroute)
     quote 
         local folder = $folder
         local directory = $mountdir

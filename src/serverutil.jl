@@ -4,7 +4,7 @@ using HTTP
 using Sockets 
 using JSON3
 
-export ROUTER, server, serve, serveparallel, terminate, DefaultHandler
+export ROUTER, server, serve, serveparallel, terminate, internalrequest, DefaultHandler
 
 # define REST endpoints to dispatch to "service" functions
 const ROUTER = HTTP.Router()
@@ -71,6 +71,16 @@ function terminate()
     if !isnothing(server[]) && isopen(server[])
         close(server[])
     end
+end
+
+
+"""
+    internalrequest(request::HTTP.Request)
+
+Directly call one of our other endpoints registered with the router
+"""
+function internalrequest(req::HTTP.Request) :: HTTP.Response
+    return DefaultHandler(req)
 end
 
 

@@ -367,7 +367,7 @@ Returns the body of a request as a string
 | :-------- | :------- | :------------------------- |
 | `req` | `HTTP.Request` | **Required**. The HTTP request object |
 
-Returns the body of a request as a binary file (returns a vector of Int8's)
+Returns the body of a request as a binary file (returns a vector of `UInt8`s)
 
 #### json()
 ```julia

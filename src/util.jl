@@ -1,7 +1,7 @@
 module Util 
 using HTTP 
 
-export method_argnames, queryparams, html
+export method_argnames, queryparams, html, redirect
 
 # https://discourse.julialang.org/t/get-the-argument-names-of-an-function/32902/4
 function method_argnames(m::Method)
@@ -30,5 +30,17 @@ A convenience funtion to return a String that should be interpreted as HTML
 function html(content::String; status = 200, headers = ["Content-Type" => "text/html; charset=utf-8"]) :: HTTP.Response
     return HTTP.Response(status, headers, body = content)
 end
+
+
+
+"""
+    redirect(path::String; code = 308)
+
+return a redirect response 
+"""
+function redirect(path::String; code = 308)
+    return HTTP.Response(code, ["Location" => path])
+end
+
 
 end

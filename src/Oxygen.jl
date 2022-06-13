@@ -10,8 +10,8 @@ include("bodyparsers.jl");  using .BodyParsers
 include("serverutil.jl");   using .ServerUtil
 
 export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles,
-        serve, serveparallel, terminate, internalrequest, queryparams, binary, text, json, 
-        html, file
+        serve, serveparallel, terminate, internalrequest, redirect, queryparams, 
+        binary, text, json, html, file
 
 ### Core Macros ###
 
@@ -94,13 +94,15 @@ Mount all files inside the /static folder (or user defined mount point)
 """
 macro staticfiles(folder::String, mountdir::String="static")
     quote 
-        function addroute(path, headers, filepath)
+        function addroute(path, headers, filepath, registeredpaths; code=200)
             # only serve the original unchanged file contents using this variable
             local body = file(filepath)
             eval(
                 quote 
-                    @get $path function (req)
-                        return HTTP.Response(200, $headers , body=$body) 
+                    @get $path function(req)
+                        # return 404 for paths that don't match our files
+                        validpath::Bool = get($registeredpaths, req.target, false)
+                        return validpath ? HTTP.Response($code, $headers , body=$body) : HTTP.Response(404)
                     end
                 end
             )
@@ -119,11 +121,13 @@ but files are re-read on each request
 """
 macro dynamicfiles(folder::String, mountdir::String="static")
     quote 
-        function addroute(path, headers, filepath)
+        function addroute(path, headers, filepath, registeredpaths; code = 200)
             eval(
                 quote 
-                    @get $path function (req)   
-                        return HTTP.Response(200, $headers , body=file($filepath)) 
+                    @get $path function(req)   
+                        # return 404 for paths that don't match our files
+                        validpath::Bool = get($registeredpaths, req.target, false)
+                        return validpath ?  HTTP.Response($code, $headers , body=file($filepath)) : HTTP.Response(404) 
                     end
                 end
             )

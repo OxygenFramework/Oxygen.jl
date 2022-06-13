@@ -45,7 +45,16 @@ macro iteratefiles(folder::String, func)
 end
 
 """
-    hostfiles(folder::String, mountdir::String, addroute::Function)
+Helper function that returns everything before a designated substring
+"""
+function getbefore(input::String, target) :: String
+    result = findfirst(target, input)
+    index = first(result) - 1
+    return input[begin:index]
+end
+
+"""
+    mountfolder(folder::String, mountdir::String, addroute::Function)
 
 This macro is used to discover files & register them to the router while  
 leaving the `addroute` function to determine how to register the files
@@ -55,6 +64,9 @@ macro mountfolder(folder::String, mountdir::String, addroute)
         local folder = $folder
         local directory = $mountdir
         local separator = Base.Filesystem.path_separator
+
+        # track all registered paths 
+        local paths = Dict{String, Bool}()
 
         @iteratefiles $folder function(filepath::String)
 
@@ -71,15 +83,22 @@ macro mountfolder(folder::String, mountdir::String, addroute)
             local content_type = HTTP.sniff(body)
             local headers = ["Content-Type" => content_type]
 
+            paths[mountpath] = true 
             # register the file route
-            addroute(mountpath, headers, filepath)
+            addroute(mountpath, headers, filepath, paths)
 
             # also register file to the root of each subpath if this file is an index.html
             if endswith(mountpath, "/index.html")
-                result = findfirst("/index.html", mountpath)
-                index = first(result) - 1
-                trimmedpath = mountpath[begin:index]
-                addroute(trimmedpath, headers, filepath)
+
+                # add the route with the trailing "/" character
+                trimmedpath = getbefore(mountpath, "index.html")
+                paths[trimmedpath] = true 
+                addroute(trimmedpath, headers, filepath, paths)
+
+                # add the route without the trailing "/" character
+                bare_path = getbefore(mountpath, "/index.html")
+                paths[bare_path] = true 
+                addroute(bare_path, headers, filepath, paths)
             end
 
         end

@@ -38,7 +38,7 @@ end
 
 return a redirect response 
 """
-function redirect(path::String; code = 308)
+function redirect(path::String; code = 307)
     return HTTP.Response(code, ["Location" => path])
 end
 

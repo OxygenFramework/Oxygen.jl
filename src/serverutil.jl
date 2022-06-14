@@ -7,8 +7,8 @@ using JSON3
 export ROUTER, server, serve, serveparallel, terminate, internalrequest, DefaultHandler
 
 # define REST endpoints to dispatch to "service" functions
-const ROUTER = HTTP.Router()
-const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
+global ROUTER = HTTP.Router()
+global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
 
 """
     serve(host="127.0.0.1", port=8080; kwargs...)

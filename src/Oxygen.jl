@@ -143,7 +143,11 @@ end
 Register a request handler function with a path to the ROUTER
 """
 macro register(httpmethod, path, func)
+    println("registering: $path")
 
+    println(ROUTER)
+
+    local router = ServerUtil.ROUTER
     local variableRegex = r"{[a-zA-Z0-9_]+}"
     local hasBraces = r"({)|(})"
 
@@ -212,8 +216,9 @@ macro register(httpmethod, path, func)
     end
 
     quote 
-        HTTP.@register($ROUTER, $httpmethod, $cleanpath, $handlerequest)
+        HTTP.@register($router, $httpmethod, $cleanpath, $handlerequest)
     end
 end
+
 
 end

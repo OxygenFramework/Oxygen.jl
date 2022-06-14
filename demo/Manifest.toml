@@ -112,9 +112,9 @@ uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 
 [[deps.Oxygen]]
 deps = ["HTTP", "JSON3", "Sockets"]
-git-tree-sha1 = "30fc270c270d9ba19b62ace4f8720c3eefb01e73"
+git-tree-sha1 = "48df1534ab73ab1562273f0402b899681d4377ee"
 repo-rev = "feature/hosting-files-enhancements"
-repo-url = "/Users/nortega/Documents/Programming/OxygenJL"
+repo-url = ".."
 uuid = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
 version = "1.0.2"
 

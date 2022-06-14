@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Overview · Oxygen.jl</title><script data-outdated-warner src="assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.044/juliamono.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="assets/documenter.js"></script><script src="siteinfo.js"></script><script src="../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href>Oxygen.jl</a></span></div><form class="docs-search" action="search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li class="is-active"><a class="tocitem" href>Overview</a><ul class="internal"><li><a class="tocitem" href="#About"><span>About</span></a></li><li><a class="tocitem" href="#Installation"><span>Installation</span></a></li><li><a class="tocitem" href="#Minimalistic-Example"><span>Minimalistic Example</span></a></li><li><a class="tocitem" href="#Request-handlers"><span>Request handlers</span></a></li><li><a class="tocitem" href="#Path-parameters"><span>Path parameters</span></a></li><li><a class="tocitem" href="#Query-parameters"><span>Query parameters</span></a></li><li><a class="tocitem" href="#Interpolating-variables-into-endpoints"><span>Interpolating variables into endpoints</span></a></li><li><a class="tocitem" href="#Return-JSON"><span>Return JSON</span></a></li><li><a class="tocitem" href="#Deserialize-and-Serialize-custom-structs"><span>Deserialize &amp; Serialize custom structs</span></a></li><li><a class="tocitem" href="#Multithreading-and-Parallelism"><span>Multithreading &amp; Parallelism</span></a></li><li><a class="tocitem" href="#Integrate-with-Swagger"><span>Integrate with Swagger</span></a></li><li><a class="tocitem" href="#Mounting-Static-Files"><span>Mounting Static Files</span></a></li><li><a class="tocitem" href="#Mounting-Dynamic-Files"><span>Mounting Dynamic Files</span></a></li><li><a class="tocitem" href="#API-Reference-(macros)"><span>API Reference (macros)</span></a></li></ul></li><li><a class="tocitem" href="api/">Api</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Overview</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Overview</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/ndortega/Oxygen.jl/blob/master/docs/src/index.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Oxygen.jl"><a class="docs-heading-anchor" href="#Oxygen.jl">Oxygen.jl</a><a id="Oxygen.jl-1"></a><a class="docs-heading-anchor-permalink" href="#Oxygen.jl" title="Permalink"></a></h1><div>
+  </br>
+  <p align="center"><img src="oxygen.png" width="20%"></p>
+  <p align="center">
+    <strong>A breath of fresh air for programming web apps in Julia.</strong>
+  </p>
+  <p align="center">
+    <a href='https://app.travis-ci.com/ndortega/Oxygen.jl.svg?branch=master'><img src='https://app.travis-ci.com/ndortega/Oxygen.jl.svg?branch=master' alt='Build Passing' /></a>
+    <a href='https://coveralls.io/github/ndortega/Oxygen.jl?branch=master'><img src='https://coveralls.io/repos/github/ndortega/Oxygen.jl/badge.svg?branch=master&version=1.1' alt='Coverage Status' /></a>
+  </p>
+</div><h2 id="About"><a class="docs-heading-anchor" href="#About">About</a><a id="About-1"></a><a class="docs-heading-anchor-permalink" href="#About" title="Permalink"></a></h2><p>Oxygen is a micro-framework built on top of the HTTP.jl library.  Breathe easy knowing you can quickly spin up a web server with abstractions you&#39;re already familiar with.</p><h2 id="Installation"><a class="docs-heading-anchor" href="#Installation">Installation</a><a id="Installation-1"></a><a class="docs-heading-anchor-permalink" href="#Installation" title="Permalink"></a></h2><pre><code class="language-julia hljs">pkg&gt; add Oxygen</code></pre><h2 id="Minimalistic-Example"><a class="docs-heading-anchor" href="#Minimalistic-Example">Minimalistic Example</a><a id="Minimalistic-Example-1"></a><a class="docs-heading-anchor-permalink" href="#Minimalistic-Example" title="Permalink"></a></h2><p>Create a web-server with very few lines of code</p><pre><code class="language-julia hljs">using Oxygen
+using HTTP
+
+@get &quot;/greet&quot; function(req::HTTP.Request)
+    return &quot;hello world!&quot;
+end
+
+# start the web server
+serve()</code></pre><h2 id="Request-handlers"><a class="docs-heading-anchor" href="#Request-handlers">Request handlers</a><a id="Request-handlers-1"></a><a class="docs-heading-anchor-permalink" href="#Request-handlers" title="Permalink"></a></h2><p>Request handlers are just functions, which means there are many valid ways to express them</p><ul><li><p>Request handlers don&#39;t have to be defined where the routes are. They can be imported from other modules and spread across multiple files</p></li><li><p>Just like the request handlers, routes can be declared across multiple modules and files</p></li></ul><pre><code class="language-julia hljs">using Oxygen
+
+@get &quot;/greet&quot; function()
+    &quot;hello world!&quot;
+end
+
+@get &quot;/saluer&quot; () -&gt; begin
+    &quot;Bonjour le monde!&quot;
+end
+
+@get &quot;/saludar&quot; () -&gt; &quot;¡Hola Mundo!&quot;
+@get &quot;/salutare&quot; f() = &quot;ciao mondo!&quot;
+
+# This function can be declared in another module
+function subtract(req, a::Float64, b::Float64)
+  return a - b
+end
+
+# register foreign request handlers like this
+@get &quot;/subtract&quot; subtract
+
+# start the web server
+serve()</code></pre><h2 id="Path-parameters"><a class="docs-heading-anchor" href="#Path-parameters">Path parameters</a><a id="Path-parameters-1"></a><a class="docs-heading-anchor-permalink" href="#Path-parameters" title="Permalink"></a></h2><p>Path parameters are declared with braces and are passed directly to your request handler. </p><pre><code class="language-julia hljs">using Oxygen
+
+# use path params without type definitions (defaults to Strings)
+@get &quot;/add/{a}/{b}&quot; function(req, a, b)
+    return parse(Float64, a) + parse(Float64, b)
+end
+
+# use path params with type definitions (they are automatically converted)
+@get &quot;/multiply/{a}/{b}&quot; function(req, a::Float64, b::Float64)
+    return a * b
+end
+
+# The order of the parameters doesn&#39;t matter (just the name matters)
+@get &quot;/subtract/{a}/{b}&quot; function(req, b::Int64, a::Int64)
+    return a - b
+end
+
+# start the web server
+serve()</code></pre><h2 id="Query-parameters"><a class="docs-heading-anchor" href="#Query-parameters">Query parameters</a><a id="Query-parameters-1"></a><a class="docs-heading-anchor-permalink" href="#Query-parameters" title="Permalink"></a></h2><p>Use the <code>queryparams()</code> function to extract and parse parameters from the url</p><pre><code class="language-julia hljs">using Oxygen
+using HTTP
+
+@get &quot;/query&quot; function(req::HTTP.Request)
+    # extract &amp; return the query params from the request object
+    return queryparams(req)
+end
+
+# start the web server
+serve()</code></pre><h2 id="Interpolating-variables-into-endpoints"><a class="docs-heading-anchor" href="#Interpolating-variables-into-endpoints">Interpolating variables into endpoints</a><a id="Interpolating-variables-into-endpoints-1"></a><a class="docs-heading-anchor-permalink" href="#Interpolating-variables-into-endpoints" title="Permalink"></a></h2><p>You can interpolate variables directly into the paths, which makes dynamically registering routes a breeze </p><p>(Thanks to @anandijain for the idea)</p><pre><code class="language-julia hljs">using Oxygen
+
+operations = Dict(&quot;add&quot; =&gt; +, &quot;multiply&quot; =&gt; *)
+for (pathname, operator) in operations
+    @get &quot;/$pathname/{a}/{b}&quot; function (req, a::Float64, b::Float64)
+        return operator(a, b)
+    end
+end
+
+# start the web server
+serve()</code></pre><h2 id="Return-JSON"><a class="docs-heading-anchor" href="#Return-JSON">Return JSON</a><a id="Return-JSON-1"></a><a class="docs-heading-anchor-permalink" href="#Return-JSON" title="Permalink"></a></h2><p>All objects are automatically deserialized into JSON using the JSON3 library</p><pre><code class="language-julia hljs">using Oxygen
+using HTTP
+
+@get &quot;/data&quot; function(req::HTTP.Request)
+    return Dict(&quot;message&quot; =&gt; &quot;hello!&quot;, &quot;value&quot; =&gt; 99.3)
+end
+
+# start the web server
+serve()</code></pre><h2 id="Deserialize-and-Serialize-custom-structs"><a class="docs-heading-anchor" href="#Deserialize-and-Serialize-custom-structs">Deserialize &amp; Serialize custom structs</a><a id="Deserialize-and-Serialize-custom-structs-1"></a><a class="docs-heading-anchor-permalink" href="#Deserialize-and-Serialize-custom-structs" title="Permalink"></a></h2><p>Oxygen provides some out-of-the-box serialization &amp; deserialization for most objects but requires the use of StructTypes when converting structs</p><pre><code class="language-julia hljs">using Oxygen
+using HTTP
+using StructTypes
+
+struct Animal
+    id::Int
+    type::String
+    name::String
+end
+
+# Add a supporting struct type definition so JSON3 can serialize &amp; deserialize automatically
+StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
+
+@get &quot;/get&quot; function(req::HTTP.Request)
+    # serialize struct into JSON automatically (because we used StructTypes)
+    return Animal(1, &quot;cat&quot;, &quot;whiskers&quot;)
+end
+
+@post &quot;/echo&quot; function(req::HTTP.Request)
+    # deserialize JSON from the request body into an Animal struct
+    animal = json(req, Animal)
+    # serialize struct back into JSON automatically (because we used StructTypes)
+    return animal
+end
+
+# start the web server
+serve()</code></pre><h2 id="Multithreading-and-Parallelism"><a class="docs-heading-anchor" href="#Multithreading-and-Parallelism">Multithreading &amp; Parallelism</a><a id="Multithreading-and-Parallelism-1"></a><a class="docs-heading-anchor-permalink" href="#Multithreading-and-Parallelism" title="Permalink"></a></h2><p>For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a  multithreaded mode. In order to utilize this mode, julia must have more than 1 thread to work with. You can start a julia session with 4 threads using the command below</p><pre><code class="language-shell hljs">julia --threads 4</code></pre><p><span>$serveparallel(queuesize=1024)$</span> Starts the webserver in streaming mode and spawns n - 1 worker  threads. The <span>$queuesize$</span> parameter sets how many requests can be scheduled within the queue (a julia Channel) before they start getting dropped. Each worker thread pops requests off the queue and handles them asynchronously within each thread. </p><pre><code class="language-julia hljs">using Oxygen
+using StructTypes
+using Base.Threads
+
+# Make the Atomic struct serializable
+StructTypes.StructType(::Type{Atomic{Int64}}) = StructTypes.Struct()
+
+x = Atomic{Int64}(0);
+
+@get &quot;/show&quot; function()
+    return x
+end
+
+@get &quot;/increment&quot; function()
+    atomic_add!(x, 1)
+    return x
+end
+
+# start the web server in parallel mode
+serveparallel()</code></pre><h2 id="Integrate-with-Swagger"><a class="docs-heading-anchor" href="#Integrate-with-Swagger">Integrate with Swagger</a><a id="Integrate-with-Swagger-1"></a><a class="docs-heading-anchor-permalink" href="#Integrate-with-Swagger" title="Permalink"></a></h2><p>You can integrate swagger into your api using some of the other great tools from the julia ecosystem.</p><pre><code class="language-julia hljs">using Oxygen
+using SwagUI
+using SwaggerMarkdown
+
+@swagger &quot;&quot;&quot;
+/divide/{a}/{b}:
+    get:
+        description: Return the value of a / b           
+        parameters:
+            - name: a
+              in: path
+              type: number
+              required: true
+            - name: b
+              in: path
+              type: number
+              required: true
+        responses:
+            &#39;200&#39;:
+                description: Successfully returned a number
+&quot;&quot;&quot;
+@get &quot;/divide/{a}/{b}&quot; function (req, a::Float64, b::Float64)
+    return a / b
+end
+
+# title and version are required
+info = Dict(&quot;title&quot; =&gt; &quot;My Demo Api&quot;, &quot;version&quot; =&gt; &quot;1.0.0&quot;)
+openApi = OpenAPI(&quot;2.0&quot;, info)
+swagger_document = build(openApi)
+swagger_html = render_swagger(swagger_document)
+
+# setup endpoint to serve swagger documentation
+@get &quot;/swagger&quot; function()
+    return html(swagger_html)
+end  
+
+# start the web server
+serve()</code></pre><h2 id="Mounting-Static-Files"><a class="docs-heading-anchor" href="#Mounting-Static-Files">Mounting Static Files</a><a id="Mounting-Static-Files-1"></a><a class="docs-heading-anchor-permalink" href="#Mounting-Static-Files" title="Permalink"></a></h2><p>You can mount static files using this handy macro which recursively searches a folder for files and mounts everything. All files are  loaded into memory on startup.</p><pre><code class="language-julia hljs">using Oxygen
+
+# mount all files inside the &quot;content&quot; folder under the &quot;/static&quot; path
+@staticfiles &quot;content&quot; &quot;static&quot;
+
+# start the web server
+serve()</code></pre><h2 id="Mounting-Dynamic-Files"><a class="docs-heading-anchor" href="#Mounting-Dynamic-Files">Mounting Dynamic Files</a><a id="Mounting-Dynamic-Files-1"></a><a class="docs-heading-anchor-permalink" href="#Mounting-Dynamic-Files" title="Permalink"></a></h2><p>Similar to @staticfiles, this macro mounts each path and re-reads the file for each request. This means that any changes to the files after the server has started will be displayed.</p><pre><code class="language-julia hljs">using Oxygen
+
+# mount all files inside the &quot;content&quot; folder under the &quot;/dynamic&quot; path
+@dynamicfiles &quot;content&quot; &quot;dynamic&quot;
+
+# start the web server
+serve()</code></pre><h2 id="API-Reference-(macros)"><a class="docs-heading-anchor" href="#API-Reference-(macros)">API Reference (macros)</a><a id="API-Reference-(macros)-1"></a><a class="docs-heading-anchor-permalink" href="#API-Reference-(macros)" title="Permalink"></a></h2><h4 id="@get,-@post,-@put,-@patch,-@delete"><a class="docs-heading-anchor" href="#@get,-@post,-@put,-@patch,-@delete">@get, @post, @put, @patch, @delete</a><a id="@get,-@post,-@put,-@patch,-@delete-1"></a><a class="docs-heading-anchor-permalink" href="#@get,-@post,-@put,-@patch,-@delete" title="Permalink"></a></h4><pre><code class="language-julia hljs">  @get(path, func)</code></pre><table><tr><th style="text-align: left">Parameter</th><th style="text-align: left">Type</th><th style="text-align: left">Description</th></tr><tr><td style="text-align: left"><code>path</code></td><td style="text-align: left"><code>string</code></td><td style="text-align: left"><strong>Required</strong>. The route to register</td></tr><tr><td style="text-align: left"><code>func</code></td><td style="text-align: left"><code>function</code></td><td style="text-align: left"><strong>Required</strong>. The request handler for this route</td></tr></table><p>Used to register a function to a specific endpoint to handle that corresponding type of request</p><h4 id="@route"><a class="docs-heading-anchor" href="#@route">@route</a><a id="@route-1"></a><a class="docs-heading-anchor-permalink" href="#@route" title="Permalink"></a></h4><pre><code class="language-julia hljs">  @route(methods, path, func)</code></pre><table><tr><th style="text-align: left">Parameter</th><th style="text-align: left">Type</th><th style="text-align: left">Description</th></tr><tr><td style="text-align: left"><code>methods</code></td><td style="text-align: left"><code>array</code></td><td style="text-align: left"><strong>Required</strong>. The types of HTTP requests to register to this route</td></tr><tr><td style="text-align: left"><code>path</code></td><td style="text-align: left"><code>string</code></td><td style="text-align: left"><strong>Required</strong>. The route to register</td></tr><tr><td style="text-align: left"><code>func</code></td><td style="text-align: left"><code>function</code></td><td style="text-align: left"><strong>Required</strong>. The request handler for this route</td></tr></table><p>Low-level macro that allows a route to be handle multiple request types</p><h4 id="@staticfiles"><a class="docs-heading-anchor" href="#@staticfiles">@staticfiles</a><a id="@staticfiles-1"></a><a class="docs-heading-anchor-permalink" href="#@staticfiles" title="Permalink"></a></h4><pre><code class="language-julia hljs">  @staticfiles(folder, mount)</code></pre><table><tr><th style="text-align: left">Parameter</th><th style="text-align: left">Type</th><th style="text-align: left">Description</th></tr><tr><td style="text-align: left"><code>folder</code></td><td style="text-align: left"><code>string</code></td><td style="text-align: left"><strong>Required</strong>. The folder to serve files from</td></tr><tr><td style="text-align: left"><code>mountdir</code></td><td style="text-align: left"><code>string</code></td><td style="text-align: left">The root endpoint to mount files under (default is &quot;static&quot;)</td></tr></table><p>Serve all static files within a folder. This function recursively searches a directory and mounts all files under the mount directory using their relative paths.</p><h3 id="Request-helper-functions"><a class="docs-heading-anchor" href="#Request-helper-functions">Request helper functions</a><a id="Request-helper-functions-1"></a><a class="docs-heading-anchor-permalink" href="#Request-helper-functions" title="Permalink"></a></h3><h4 id="html()"><a class="docs-heading-anchor" href="#html()">html()</a><a id="html()-1"></a><a class="docs-heading-anchor-permalink" href="#html()" title="Permalink"></a></h4><pre><code class="language-julia hljs">  html(content, status, headers)</code></pre><table><tr><th style="text-align: left">Parameter</th><th style="text-align: left">Type</th><th style="text-align: left">Description</th></tr><tr><td style="text-align: left"><code>content</code></td><td style="text-align: left"><code>string</code></td><td style="text-align: left"><strong>Required</strong>. The string to be returned as HTML</td></tr><tr><td style="text-align: left"><code>status</code></td><td style="text-align: left"><code>integer</code></td><td style="text-align: left">The HTTP response code (default is 200)</td></tr><tr><td style="text-align: left"><code>headers</code></td><td style="text-align: left"><code>dict</code></td><td style="text-align: left">The headers for the HTTP response (default has content-type header set to &quot;text/html; charset=utf-8&quot;)</td></tr></table><p>Helper function to designate when content should be returned as HTML</p><h4 id="queryparams()"><a class="docs-heading-anchor" href="#queryparams()">queryparams()</a><a id="queryparams()-1"></a><a class="docs-heading-anchor-permalink" href="#queryparams()" title="Permalink"></a></h4><pre><code class="language-julia hljs">  queryparams(request)</code></pre><table><tr><th style="text-align: left">Parameter</th><th style="text-align: left">Type</th><th style="text-align: left">Description</th></tr><tr><td style="text-align: left"><code>req</code></td><td style="text-align: left"><code>HTTP.Request</code></td><td style="text-align: left"><strong>Required</strong>. The HTTP request object</td></tr></table><p>Returns the query parameters from a request as a Dict()</p><h3 id="Body-Functions"><a class="docs-heading-anchor" href="#Body-Functions">Body Functions</a><a id="Body-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Body-Functions" title="Permalink"></a></h3><h4 id="text()"><a class="docs-heading-anchor" href="#text()">text()</a><a id="text()-1"></a><a class="docs-heading-anchor-permalink" href="#text()" title="Permalink"></a></h4><pre><code class="language-julia hljs">  text(request)</code></pre><table><tr><th style="text-align: left">Parameter</th><th style="text-align: left">Type</th><th style="text-align: left">Description</th></tr><tr><td style="text-align: left"><code>req</code></td><td style="text-align: left"><code>HTTP.Request</code></td><td style="text-align: left"><strong>Required</strong>. The HTTP request object</td></tr></table><p>Returns the body of a request as a string</p><h4 id="binary()"><a class="docs-heading-anchor" href="#binary()">binary()</a><a id="binary()-1"></a><a class="docs-heading-anchor-permalink" href="#binary()" title="Permalink"></a></h4><pre><code class="language-julia hljs">  binary(request)</code></pre><table><tr><th style="text-align: left">Parameter</th><th style="text-align: left">Type</th><th style="text-align: left">Description</th></tr><tr><td style="text-align: left"><code>req</code></td><td style="text-align: left"><code>HTTP.Request</code></td><td style="text-align: left"><strong>Required</strong>. The HTTP request object</td></tr></table><p>Returns the body of a request as a binary file (returns a vector of <code>UInt8</code>s)</p><h4 id="json()"><a class="docs-heading-anchor" href="#json()">json()</a><a id="json()-1"></a><a class="docs-heading-anchor-permalink" href="#json()" title="Permalink"></a></h4><pre><code class="language-julia hljs">  json(request, classtype)</code></pre><table><tr><th style="text-align: left">Parameter</th><th style="text-align: left">Type</th><th style="text-align: left">Description</th></tr><tr><td style="text-align: left"><code>req</code></td><td style="text-align: left"><code>HTTP.Request</code></td><td style="text-align: left"><strong>Required</strong>. The HTTP request object</td></tr><tr><td style="text-align: left"><code>classtype</code></td><td style="text-align: left"><code>struct</code></td><td style="text-align: left">A struct to deserialize a JSON object into</td></tr></table><p>Deserialize the body of a request into a julia struct </p></article><nav class="docs-footer"><a class="docs-footer-nextpage" href="api/">Api »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.18 on <span class="colophon-date" title="Tuesday 14 June 2022 17:00">Tuesday 14 June 2022</span>. Using Julia version 1.6.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

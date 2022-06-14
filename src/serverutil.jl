@@ -7,10 +7,9 @@ using JSON3
 include("streamutil.jl")
 using .StreamUtil
 
-export ROUTER, server, serve, serveparallel, terminate, internalrequest, DefaultHandler
+export getrouter, server, serve, serveparallel, terminate, internalrequest, DefaultHandler
 
-# define REST endpoints to dispatch to "service" functions
-global ROUTER = HTTP.Router()
+global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
 
 """
@@ -33,7 +32,7 @@ Start the webserver with your own custom request handler
 function serve(handler::Function, host="127.0.0.1", port=8080; kwargs...)
     println("Starting server: http://$host:$port")
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    HTTP.serve(req -> handler(req, ROUTER, DefaultHandler), host, port; server=server[], kwargs...)
+    HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server[], kwargs...)
 end
 
 
@@ -61,7 +60,7 @@ Requests in the channel are then removed & handled by each the worker threads as
 function serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
     println("Starting server: http://$host:$port")
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    StreamUtil.start(server[], req -> handler(req, ROUTER, DefaultHandler); queuesize=queuesize, kwargs...)
+    StreamUtil.start(server[], req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
 end
 
 
@@ -87,9 +86,18 @@ function internalrequest(req::HTTP.Request) :: HTTP.Response
 end
 
 
+"""
+    getrouter()
+
+returns the interal http router for this application
+"""
+function getrouter() :: HTTP.Handlers.Router
+    return ROUTER[]
+end 
+
 function DefaultHandler(req::HTTP.Request)
     try
-        response_body = HTTP.handle(ROUTER, req)
+        response_body = HTTP.handle(getrouter(), req)
         # if a raw HTTP.Response object is returned, then don't do any extra processing on it
         if isa(response_body, HTTP.Messages.Response)
             return response_body 

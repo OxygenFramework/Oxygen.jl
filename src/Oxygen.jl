@@ -143,7 +143,7 @@ Register a request handler function with a path to the ROUTER
 """
 macro register(httpmethod, path, func)
     
-    local router = ServerUtil.ROUTER
+    local router = getrouter()
     local variableRegex = r"{[a-zA-Z0-9_]+}"
     local hasBraces = r"({)|(})"
 

@@ -40,6 +40,10 @@ module RunTests
         return "hello world!"
     end
 
+    @get "/testredirect" function(req)
+        return redirect("/test")
+    end
+
     @get "/customerror" function ()
         function processtring(input::String)
             "<$input>"
@@ -137,6 +141,10 @@ module RunTests
     @test r.status == 200
     @test text(r) == "hello world!"
 
+    r = internalrequest(HTTP.Request("GET", "/testredirect"))
+    @test r.status == 307
+    @test Dict(r.headers)["Location"] == "/test"
+
     r = internalrequest(HTTP.Request("GET", "/multiply/5/8"))
     @test r.status == 200
     @test text(r) == "40.0"
@@ -196,6 +204,20 @@ module RunTests
     @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
     @test text(r) == file("content/sample.html")
 
+    r = internalrequest(HTTP.Request("GET", "/static/index.html"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
+    @test text(r) == file("content/index.html")
+
+    r = internalrequest(HTTP.Request("GET", "/static/"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
+    @test text(r) == file("content/index.html")
+
+    r = internalrequest(HTTP.Request("GET", "/static"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
+    @test text(r) == file("content/index.html")
 
     # Body transformation tests
 

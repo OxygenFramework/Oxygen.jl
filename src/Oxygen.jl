@@ -5,7 +5,6 @@ using Sockets
 
 include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
-include("streamutil.jl");   using .StreamUtil
 include("bodyparsers.jl");  using .BodyParsers
 include("serverutil.jl");   using .ServerUtil
 

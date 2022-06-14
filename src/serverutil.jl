@@ -4,6 +4,9 @@ using HTTP
 using Sockets 
 using JSON3
 
+include("streamutil.jl")
+using .StreamUtil
+
 export ROUTER, server, serve, serveparallel, terminate, internalrequest, DefaultHandler
 
 # define REST endpoints to dispatch to "service" functions

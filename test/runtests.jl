@@ -184,14 +184,14 @@ module RunTests
 
     # Get mounted static files
 
-    r = internalrequest(HTTP.Request("GET", "/static/content/test.txt"))
+    r = internalrequest(HTTP.Request("GET", "/static/test.txt"))
     body = text(r)
     @test r.status == 200
     @test Dict(r.headers)["Content-Type"] == "text/plain; charset=utf-8"
     @test body == file("content/test.txt")
     @test body == "this is a sample text file"
 
-    r = internalrequest(HTTP.Request("GET", "/static/content/sample.html"))
+    r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
     @test r.status == 200
     @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
     @test text(r) == file("content/sample.html")
@@ -227,12 +227,11 @@ module RunTests
     @test r.status == 200
     @test text(r) == file("content/sample.html")
 
-
-    r = internalrequest(HTTP.Request("GET", "/dynamic/content/sample.html"))
+    r = internalrequest(HTTP.Request("GET", "/dynamic/sample.html"))
     @test r.status == 200
     @test text(r) == file("content/sample.html")
 
-    r = internalrequest(HTTP.Request("GET", "/static/content/sample.html"))
+    r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
     @test r.status == 200
     @test text(r) == file("content/sample.html")
 

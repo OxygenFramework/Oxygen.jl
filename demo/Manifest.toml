@@ -112,11 +112,11 @@ uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 
 [[deps.Oxygen]]
 deps = ["HTTP", "JSON3", "Sockets"]
-git-tree-sha1 = "e0619c80cb4e86cbbcce6091433cc435a9a97b6a"
-repo-rev = "master"
-repo-url = "https://github.com/ndortega/Oxygen.jl.git"
+git-tree-sha1 = "48df1534ab73ab1562273f0402b899681d4377ee"
+repo-rev = "feature/hosting-files-enhancements"
+repo-url = ".."
 uuid = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
-version = "1.0.0"
+version = "1.0.2"
 
 [[deps.Parsers]]
 deps = ["Dates"]

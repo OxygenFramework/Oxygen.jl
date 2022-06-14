@@ -45,7 +45,7 @@ Request handlers are just functions, which means there are many valid ways to ex
 
 - Request handlers don't have to be defined where the routes are. They can be imported from other modules and spread across multiple files
 
-- Just like the request handlers, routes can be declared across multiple files
+- Just like the request handlers, routes can be declared across multiple modules and files
 
 ```julia
 using Oxygen

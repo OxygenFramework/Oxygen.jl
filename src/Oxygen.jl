@@ -212,7 +212,7 @@ macro register(httpmethod, path, func)
     end
 
     quote 
-        HTTP.@register(ROUTER, $httpmethod, $cleanpath, $handlerequest)
+        HTTP.@register($ROUTER, $httpmethod, $cleanpath, $handlerequest)
     end
 end
 

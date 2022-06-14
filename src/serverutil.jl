@@ -83,9 +83,13 @@ function internalrequest(req::HTTP.Request) :: HTTP.Response
     return DefaultHandler(req)
 end
 
+function getrouter()
+    return ROUTER
+end
 
 function DefaultHandler(req::HTTP.Request)
     try
+        println("target: $(req.target)")
         response_body = HTTP.handle(ROUTER, req)
         # if a raw HTTP.Response object is returned, then don't do any extra processing on it
         if isa(response_body, HTTP.Messages.Response)

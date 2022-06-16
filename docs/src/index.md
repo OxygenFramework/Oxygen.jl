@@ -8,6 +8,7 @@
     <strong>A breath of fresh air for programming web apps in Julia.</strong>
   </p>
   <p align="center">
+    <a href='https://ndortega.github.io/Oxygen.jl/stable/'><img src='https://img.shields.io/badge/docs-stable-blue.svg' alt='documentation stable' /></a>
     <a href='https://app.travis-ci.com/ndortega/Oxygen.jl.svg?branch=master'><img src='https://app.travis-ci.com/ndortega/Oxygen.jl.svg?branch=master' alt='Build Passing' /></a>
     <a href='https://coveralls.io/github/ndortega/Oxygen.jl?branch=master'><img src='https://coveralls.io/repos/github/ndortega/Oxygen.jl/badge.svg?branch=master&version=1.1' alt='Coverage Status' /></a>
   </p>

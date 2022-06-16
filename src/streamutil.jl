@@ -54,9 +54,14 @@ function respond(h::Handler, handleReq::Function)
 
                 # write response back to stream
                 HTTP.setstatus(request.http, response.status)
-                HTTP.setheader(request.http, response.headers...)
+
+                # add all headers from response 
+                for (k,v) in response.headers
+                    HTTP.setheader(request.http, k => v)
+                end
+
                 write(request.http, isempty(response.body) ? " " : response.body)
-            catch 
+            catch error 
                 @error "ERROR: " exception=(error, catch_backtrace())
                 HTTP.setstatus(request.http, 500)
                 write(request.http, "The Server encountered a problem")

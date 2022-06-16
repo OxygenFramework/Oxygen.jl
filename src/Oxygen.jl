@@ -186,24 +186,45 @@ macro register(httpmethod, path, func)
         end
     end
 
-    local handlerequest = quote 
-        local action = $(esc(func))
+    local action = esc(func)
+
+     # case 1.) The request handler is an anonymous function (don't parse out path params)
+    if numfields <= 1
+        local handle = quote 
+            function (req) 
+                $action()
+            end
+        end
+    # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
+    elseif hasPathParams 
+        local handle = quote 
+            # only parse path parameters if they are not of type Any or String
+            function parsetype(type, value)
+                return type == Any || type == String ? value : parse(type, value)
+            end
+            function (req) 
+                split_path = HTTP.URIs.splitpath(req.target)
+                # extract path values in the order they should be passed to our function
+                path_values = [split_path[index] for (_, _, index) in $param_positions] 
+                # convert params to their designated type (if applicable)
+                pathParams = [parsetype(type, value) for (type, value) in zip($func_param_types, path_values)]   
+                $action(req, pathParams...)
+            end
+        end
+    # case 3.) This function should only get passed the request object
+    else 
+        local handle = quote 
+            function (req) 
+                $action(req)
+            end
+        end
+    end
+
+    # setup the request handler
+    local requesthandler = quote 
         function (req)
             try 
-                # don't pass any args if the function takes none
-                if $numfields == 1 
-                    action()
-                # if endpoint has path parameters, make sure the attached function accepts them
-                elseif $hasPathParams
-                    split_path = HTTP.URIs.splitpath(req.target)
-                    # extract path values in the order they should be passed to our function
-                    path_values = [split_path[index] for (_, _, index) in $param_positions] 
-                    # convert params to their designated type (if applicable)
-                    pathParams = [type == Any ? value : parse(type, value) for (type, value) in zip($func_param_types, path_values)]   
-                    action(req, pathParams...)
-                else 
-                    action(req)
-                end
+                $handle(req)
             catch error
                 @error "ERROR: " exception=(error, catch_backtrace())
                 return HTTP.Response(500, "The Server encountered a problem")
@@ -211,8 +232,9 @@ macro register(httpmethod, path, func)
         end
     end
 
+    # register the new route 
     quote 
-        HTTP.@register($router, $httpmethod, $cleanpath, $handlerequest)
+        HTTP.@register($router, $httpmethod, $cleanpath, $requesthandler)
     end
 end
 

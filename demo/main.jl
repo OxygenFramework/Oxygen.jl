@@ -39,7 +39,7 @@ module Main
     end
 
     # demonstate how to use path params (without type definitions)
-    @get "/power/{a}/{b}" function (req::HTTP.Request, b, a)
+    @get "/power/{a}/{b}" function (req::HTTP.Request, a::String, b::String)
         return parse(Float64, a) ^ parse(Float64, b)
     end
 

@@ -170,7 +170,21 @@ macro register(httpmethod, path, func)
     # each tuple tracks where the param is refereced (variable, function index, path index)
     local param_positions::Array{Tuple{String, Int, Int}} = []
 
-    # ensure the path parms are present inside the function params 
+    # ensure the function params are present inside the path params 
+    for (_, path_param) in positions
+        hasparam = false
+        for (_, func_param) in enumerate(func_param_names)
+            if func_param == path_param 
+                hasparam = true
+                break
+            end
+        end
+        if !hasparam
+            throw("Your request handler is missing a parameter: '$path_param' defined in this route: $path")
+        end
+    end
+
+    # ensure the path params are present inside the function params 
     for (func_index, func_param) in enumerate(func_param_names)
         matched = nothing
         for (path_index, path_param) in positions
@@ -180,30 +194,51 @@ macro register(httpmethod, path, func)
             end
         end
         if matched === nothing
-            throw("Your path is missing a parameter: '$func_param' in this route: $path")
+            throw("Your path is missing a parameter: '$func_param' which needs to be added to this route: $path")
         else 
             push!(param_positions, matched)
         end
     end
+    
+    local action = esc(func)
 
-    local handlerequest = quote 
-        local action = $(esc(func))
+     # case 1.) The request handler is an anonymous function (don't parse out path params)
+    if numfields <= 1
+        local handle = quote 
+            function (req)
+                $action()
+            end
+        end
+    # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
+    elseif hasPathParams && numfields > 2
+        local handle = quote 
+            # only parse path parameters if they are not of type Any or String
+            function parsetype(type, value)
+                return type == Any || type == String ? value : parse(type, value)
+            end
+            function (req) 
+                split_path = HTTP.URIs.splitpath(req.target)
+                # extract path values in the order they should be passed to our function
+                path_values = [split_path[index] for (_, _, index) in $param_positions] 
+                # convert params to their designated type (if applicable)
+                pathParams = [parsetype(type, value) for (type, value) in zip($func_param_types, path_values)]   
+                $action(req, pathParams...)
+            end
+        end
+    # case 3.) This function should only get passed the request object
+    else 
+        local handle = quote 
+            function (req) 
+                $action(req)
+            end
+        end
+    end
+
+    local requesthandler = quote 
+        local handle = $handle
         function (req)
             try 
-                # don't pass any args if the function takes none
-                if $numfields == 1 
-                    action()
-                # if endpoint has path parameters, make sure the attached function accepts them
-                elseif $hasPathParams
-                    split_path = HTTP.URIs.splitpath(req.target)
-                    # extract path values in the order they should be passed to our function
-                    path_values = [split_path[index] for (_, _, index) in $param_positions] 
-                    # convert params to their designated type (if applicable)
-                    pathParams = [type == Any ? value : parse(type, value) for (type, value) in zip($func_param_types, path_values)]   
-                    action(req, pathParams...)
-                else 
-                    action(req)
-                end
+                handle(req)
             catch error
                 @error "ERROR: " exception=(error, catch_backtrace())
                 return HTTP.Response(500, "The Server encountered a problem")
@@ -212,7 +247,7 @@ macro register(httpmethod, path, func)
     end
 
     quote 
-        HTTP.@register($router, $httpmethod, $cleanpath, $handlerequest)
+        HTTP.@register($router, $httpmethod, $cleanpath, $requesthandler)
     end
 end
 

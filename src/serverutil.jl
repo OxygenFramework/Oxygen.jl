@@ -17,7 +17,7 @@ global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing)
 
 Start the webserver with the default request handler
 """
-function serve(host="127.0.0.1", port=8080; kwargs...)
+function serve(; host="127.0.0.1", port=8080, kwargs...)
     println("Starting server: http://$host:$port")
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     HTTP.serve(req -> DefaultHandler(req), host, port; server=server[], kwargs...)
@@ -29,7 +29,7 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(handler::Function, host="127.0.0.1", port=8080; kwargs...)
+function serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
     println("Starting server: http://$host:$port")
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server[], kwargs...)
@@ -43,7 +43,7 @@ Starts the webserver in streaming mode and spawns n - 1 worker threads to proces
 A Channel is used to schedule individual requests in FIFO order. Requests in the channel are
 then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
+function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
     println("Starting server: http://$host:$port")
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     StreamUtil.start(server[], req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
@@ -57,7 +57,7 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
+function serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
     println("Starting server: http://$host:$port")
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     StreamUtil.start(server[], req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)

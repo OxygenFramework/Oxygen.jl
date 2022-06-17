@@ -67,6 +67,24 @@ module RunTests
         @test e isa LoadError 
     end
 
+    # path is missing function parameter
+    try 
+        @get "/mismatched-params/{a}/{b}" function (req, a,b,c)
+            return "$a, $b, $c"
+        end
+    catch e
+        @test e isa LoadError 
+    end
+
+    # request handler is missing a parameter
+    try 
+        @get "/mismatched-params/{a}/{b}" function (req, a)
+            return "$a, $b, $c"
+        end
+    catch e
+        @test e isa LoadError 
+    end
+
     @get "/file" function(req)
         return file("content/sample.html")
     end
@@ -301,7 +319,6 @@ module RunTests
     terminate()
     terminate()
     terminate()
-
 
     # only run these tests if we have more than one thread to work with
     if Threads.nthreads() > 1

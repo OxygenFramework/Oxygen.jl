@@ -235,9 +235,10 @@ macro register(httpmethod, path, func)
     end
 
     local requesthandler = quote 
+        local handle = $handle
         function (req)
             try 
-                $handle(req)
+                handle(req)
             catch error
                 @error "ERROR: " exception=(error, catch_backtrace())
                 return HTTP.Response(500, "The Server encountered a problem")

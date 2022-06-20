@@ -2,11 +2,12 @@ module Oxygen
 using HTTP
 using JSON3
 using Sockets
+using FromFile
 
-include("util.jl");         using .Util
-include("fileutil.jl");     using .FileUtil
-include("bodyparsers.jl");  using .BodyParsers
-include("serverutil.jl");   using .ServerUtil
+@from "util.jl"         using Util
+@from "fileutil.jl"     using FileUtil
+@from "bodyparsers.jl"  using BodyParsers
+@from "serverutil.jl"   using ServerUtil
 
 export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles,
         serve, serveparallel, terminate, internalrequest, redirect, queryparams, 

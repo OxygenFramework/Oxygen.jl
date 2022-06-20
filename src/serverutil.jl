@@ -3,9 +3,9 @@ module ServerUtil
 using HTTP 
 using Sockets 
 using JSON3
+using FromFile
 
-include("streamutil.jl")
-using .StreamUtil
+@from "streamutil.jl" using StreamUtil
 
 export getrouter, server, serve, serveparallel, terminate, internalrequest, DefaultHandler
 

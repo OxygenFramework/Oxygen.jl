@@ -1,10 +1,6 @@
 module AutoDoc 
-using FromFile
 
-@from "util.jl"     import Util: html
-@from "Oxygen.jl"   import Oxygen: @get 
-
-export registerchema, swaggerpath, schemapath, getschema, swaggerhtml, setupswagger, configdocs
+export registerchema, swaggerpath, schemapath, getschema, swaggerhtml, configdocs
 
 global swaggerpath = "/swagger"
 global schemapath = "/swagger/schema"
@@ -69,19 +65,6 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
         )
     )
     schema["paths"][path] = route 
-end
-
-# add the swagger and swagger/schema routes 
-function setupswagger()
-    
-    @get "$swaggerpath" function()
-        return html(swaggerhtml())
-    end
-
-    @get "$schemapath" function()
-        return getschema() 
-    end
-    
 end
 
 # return the HTML to show the swagger docs

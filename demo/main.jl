@@ -14,6 +14,8 @@ module Main
         name::String
     end
 
+    configdocs("/blah", "/blah/schema")
+    
     # Add a supporting struct type definition to the Animal struct
     StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
 

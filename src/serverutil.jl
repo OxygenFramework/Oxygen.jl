@@ -5,12 +5,10 @@ using Sockets
 using JSON3
 using FromFile
 
-@from "util.jl"         import Util: html
 @from "streamutil.jl"   import StreamUtil
 @from "autodoc.jl"      using AutoDoc
-@from "Oxygen.jl"       import Oxygen: @get 
 
-export getrouter, server, serve, serveparallel, terminate, internalrequest, DefaultHandler
+export getrouter, server, serve, serveparallel, terminate, internalrequest
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
@@ -50,6 +48,7 @@ then removed & handled by each the worker threads asynchronously.
 """
 function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
     println("Starting server: http://$host:$port")
+    setup()
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     StreamUtil.start(server[], req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
 end
@@ -64,8 +63,17 @@ Requests in the channel are then removed & handled by each the worker threads as
 """
 function serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
     println("Starting server: http://$host:$port")
+    setup()
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     StreamUtil.start(server[], req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
+end
+
+
+"""
+This function called right before serving the server, which is useful for performing any additional setup
+"""
+function setup()
+    setupswagger()
 end
 
 
@@ -120,25 +128,6 @@ function DefaultHandler(req::HTTP.Request)
     end
 end
 
-
-# add the swagger and swagger/schema routes 
-function setupswagger()
-    
-    @get "$swaggerpath" function()
-        return html(swaggerhtml())
-    end
-
-    @get "$schemapath" function()
-        return getschema() 
-    end
-    
-end
-
-# function called right before serving the server, which is useful for setting up 
-# any additional routes
-function setup()
-    setupswagger()
-end
 
 
 end

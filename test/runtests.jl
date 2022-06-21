@@ -318,6 +318,33 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
     @test r.status == 200
     @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
+
+    mergeschema(Dict(
+        "paths" => Dict(
+            "/multiply/{a}/{b}" => Dict(
+                "get" => Dict(
+                    "description" => "returns the result of a * b"
+                )
+            )
+        )
+    ))
+
+    @assert getschema()["paths"]["/multiply/{a}/{b}"]["get"]["description"] == "returns the result of a * b"
+
+    mergeschema("/put", 
+        Dict(
+            "put" => Dict(
+                "description" => "returns a string on PUT"
+            )
+        )
+    )
+
+    @assert getschema()["paths"]["/put"]["put"]["description"] == "returns a string on PUT"
+
+    data = Dict("msg" => "this is not a valid schema dictionary")
+    setschema(data)
+
+    @assert getschema() === data
     
     terminate()
 

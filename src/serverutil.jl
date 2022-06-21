@@ -8,7 +8,7 @@ include("util.jl");         using .Util
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
 
-export @route, start, configdocs, getrouter, server, serve, serveparallel, terminate, internalrequest
+export @route, start, configdocs, serve, serveparallel, terminate, internalrequest
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
@@ -96,6 +96,16 @@ Directly call one of our other endpoints registered with the router
 """
 function internalrequest(req::HTTP.Request) :: HTTP.Response
     return DefaultHandler(req)
+end
+
+
+"""
+    internalrequest(request::HTTP.Request, handler::Function)
+
+Directly call one of our other endpoints registered with the router, using your own Handler function
+"""
+function internalrequest(req::HTTP.Request, handler::Function) :: HTTP.Response
+    return handler(req, getrouter(), DefaultHandler)
 end
 
 
@@ -262,7 +272,6 @@ macro register(httpmethod, path, func)
 end
 
 
-
 # add the swagger and swagger/schema routes 
 function setupswagger()
     
@@ -275,8 +284,6 @@ function setupswagger()
     end
     
 end
-
-
 
 
 end

@@ -20,6 +20,8 @@ module RunTests
 
     localhost = "http://127.0.0.1:8080"
 
+    configdocs("/swagger", "/swagger/schema")
+
     StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 
     # mount all files inside the content folder under /static
@@ -147,7 +149,7 @@ module RunTests
     @delete "/delete" function(req)
         return "delete"
     end 
-    
+
     r = internalrequest(HTTP.Request("GET", "/anonymous"))
     @test r.status == 200
     @test text(r) == "no args"
@@ -306,6 +308,16 @@ module RunTests
 
     r = internalrequest(HTTP.Request("GET", "/get"))
     @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/swagger"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/swagger"), (req, router, defaulthandler) -> defaulthandler(req))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
     
     terminate()
 

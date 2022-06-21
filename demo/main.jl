@@ -149,14 +149,14 @@ end
 
 # the info of the API, title and version of the info are required
 info = Dict("title" => "Oxygen.jl demo api", "version" => "1.0.0")
-openApi = OpenAPI("2.0", info)
+openApi = OpenAPI("3.0", info)
 swagger_document = build(openApi)
-swagger_html = render_swagger(swagger_document)
+# swagger_html = render_swagger(swagger_document)
 
-# setup endpoint to serve swagger documentation
-@get "/swagger" function()
-    return html(swagger_html)
-end
+# # setup endpoint to serve swagger documentation
+# @get "/swagger" function()
+#     return html(swagger_html)
+# end
 
 # start the web server
 serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))

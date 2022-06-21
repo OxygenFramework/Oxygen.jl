@@ -8,7 +8,8 @@ include("util.jl");         using .Util
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
 
-export @route, start, configdocs, serve, serveparallel, terminate, internalrequest
+export @route, start, serve, serveparallel, terminate, internalrequest,
+        configdocs, mergeschema, setschema, getschema
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
@@ -276,7 +277,7 @@ end
 function setupswagger()
     
     @route ["GET"] "$swaggerpath" function()
-        return html(swaggerhtml())
+        return swaggerhtml()
     end
 
     @route ["GET"] "$schemapath" function()

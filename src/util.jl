@@ -1,7 +1,7 @@
 module Util 
 using HTTP 
 
-export method_argnames, queryparams, html, redirect
+export method_argnames, recursive_merge, queryparams, html, redirect
 
 # https://discourse.julialang.org/t/get-the-argument-names-of-an-function/32902/4
 function method_argnames(m::Method)
@@ -9,6 +9,13 @@ function method_argnames(m::Method)
     isempty(argnames) && return argnames
     return argnames[1:m.nargs]
 end
+
+
+# https://discourse.julialang.org/t/multi-layer-dict-merge/27261/7
+recursive_merge(x::AbstractDict...) = merge(recursive_merge, x...)
+recursive_merge(x::AbstractVector...) = cat(x...; dims=1)
+recursive_merge(x...) = x[end]
+
 
 ### Request helper functions ###
 

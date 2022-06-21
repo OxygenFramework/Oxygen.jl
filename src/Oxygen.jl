@@ -9,8 +9,9 @@ include("bodyparsers.jl");  using .BodyParsers
 include("serverutil.jl");   using .ServerUtil
 
 export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
-        serve, serveparallel, terminate, internalrequest, redirect, queryparams, 
-        binary, text, json, html, file, configdocs
+        serve, serveparallel, terminate, internalrequest, 
+        redirect, queryparams, binary, text, json, html, file, 
+        configdocs, mergeschema, setschema, getschema
 
 ### Core Macros ###
 

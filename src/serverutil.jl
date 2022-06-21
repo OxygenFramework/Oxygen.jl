@@ -5,7 +5,10 @@ using Sockets
 using JSON3
 using FromFile
 
-@from "streamutil.jl" using StreamUtil
+@from "util.jl"         import Util: html
+@from "streamutil.jl"   import StreamUtil
+@from "autodoc.jl"      using AutoDoc
+@from "Oxygen.jl"       import Oxygen: @get 
 
 export getrouter, server, serve, serveparallel, terminate, internalrequest, DefaultHandler
 
@@ -19,6 +22,7 @@ Start the webserver with the default request handler
 """
 function serve(; host="127.0.0.1", port=8080, kwargs...)
     println("Starting server: http://$host:$port")
+    setup()
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     HTTP.serve(req -> DefaultHandler(req), host, port; server=server[], kwargs...)
 end
@@ -31,6 +35,7 @@ Start the webserver with your own custom request handler
 """
 function serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
     println("Starting server: http://$host:$port")
+    setup()
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server[], kwargs...)
 end
@@ -113,6 +118,26 @@ function DefaultHandler(req::HTTP.Request)
         @error "ERROR: " exception=(error, catch_backtrace())
         return HTTP.Response(500, "The Server encountered a problem")
     end
+end
+
+
+# add the swagger and swagger/schema routes 
+function setupswagger()
+    
+    @get "$swaggerpath" function()
+        return html(swaggerhtml())
+    end
+
+    @get "$schemapath" function()
+        return getschema() 
+    end
+    
+end
+
+# function called right before serving the server, which is useful for setting up 
+# any additional routes
+function setup()
+    setupswagger()
 end
 
 

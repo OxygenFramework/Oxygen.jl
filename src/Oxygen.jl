@@ -8,10 +8,11 @@ using FromFile
 @from "fileutil.jl"     using FileUtil
 @from "bodyparsers.jl"  using BodyParsers
 @from "serverutil.jl"   using ServerUtil
+@from "autodoc.jl"      using AutoDoc
 
 export @get, @post, @put, @patch, @delete, @register, @route, @staticfiles, @dynamicfiles,
         serve, serveparallel, terminate, internalrequest, redirect, queryparams, 
-        binary, text, json, html, file
+        binary, text, json, html, file, configdocs
 
 ### Core Macros ###
 
@@ -200,7 +201,9 @@ macro register(httpmethod, path, func)
             push!(param_positions, matched)
         end
     end
-    
+
+    registerchema(path, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
+
     local action = esc(func)
 
      # case 1.) The request handler is an anonymous function (don't parse out path params)

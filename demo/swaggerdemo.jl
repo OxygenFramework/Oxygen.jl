@@ -9,6 +9,13 @@ using SwaggerMarkdown
 /divide/{a}/{b}:
   get:
     description: Return the value of a / b
+    parameters:
+      - name: a
+        in: path
+        required: true
+        description: this is your value
+        schema:
+          type : number
     responses:
       '200':
         description: Successfully returned an artist.

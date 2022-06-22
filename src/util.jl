@@ -1,5 +1,6 @@
 module Util 
 using HTTP 
+using JSON3
 
 export method_argnames, recursive_merge, queryparams, html, redirect
 
@@ -12,8 +13,28 @@ end
 
 # https://discourse.julialang.org/t/multi-layer-dict-merge/27261/7
 recursive_merge(x::AbstractDict...) = merge(recursive_merge, x...)
-recursive_merge(x::AbstractVector...) = cat(x...; dims=1)
 recursive_merge(x...) = x[end]
+
+function recursive_merge(x::AbstractVector...)
+    elements = Dict()
+    parameters = []
+    flattened = cat(x...; dims=1)
+    for item in flattened
+        if !haskey(item, "name")
+            continue
+        end
+        if haskey(elements, item["name"])
+            elements[item["name"]] = recursive_merge(elements[item["name"]], item)
+        else 
+            elements[item["name"]] = item
+            if !(item["name"] in parameters)
+                push!(parameters, item["name"])
+            end
+        end
+    end
+    [ elements[name] for name in parameters ]
+end 
+
 
 
 ### Request helper functions ###

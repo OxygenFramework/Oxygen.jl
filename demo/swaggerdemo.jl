@@ -2,7 +2,22 @@ module SwaggerDemo
 
 include("../src/Oxygen.jl")
 using .Oxygen
+using HTTP
 using SwaggerMarkdown
+
+@swagger """
+/divide/{a}/{b}:
+  get:
+    description: Return the value of a / b
+    responses:
+      '200':
+        description: Successfully returned an artist.
+"""
+# demonstrate how to use path params with type definitions
+@get "/divide/{a}/{b}" function (req::HTTP.Request, a::Float64, b::Float64)
+    return a / b
+end
+
 
 @swagger """
 /home:

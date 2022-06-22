@@ -1,12 +1,9 @@
 module Main 
 include("../src/Oxygen.jl")
 using .Oxygen
-
 using HTTP
 using JSON3
 using StructTypes
-using SwaggerMarkdown
-using SwagUI
 
 struct Animal
     id::Int
@@ -43,23 +40,6 @@ end
     return parse(Float64, a) ^ parse(Float64, b)
 end
 
-@swagger """
-/divide/{a}/{b}:
-    get:
-        description: Return the value of a / b           
-        parameters:
-            - name: a
-                in: path
-                type: number
-                required: true
-            - name: b
-                in: path
-                type: number
-                required: true
-        responses:
-            '200':
-                description: Successfully returned an artist
-"""
 # demonstrate how to use path params with type definitions
 @get "/divide/{a}/{b}" function (req::HTTP.Request, a::Float64, b::Float64)
     return a / b
@@ -109,19 +89,6 @@ end
     """)
 end
 
-@swagger """
-/demo:
-    get:
-        description: show how to use the lower level macro to add a route for any type of request
-        responses:
-            '200':
-                description: Returns an animal.     
-    post:
-        description: show how to use the lower level macro to add a route for any type of request
-        responses:
-            '200':
-                description: Returns an animal.        
-"""
 @route ["GET", "POST"] "/demo" function(req)
     return Animal(1, "cat", "whiskers")
 end
@@ -146,17 +113,6 @@ function CorsHandler(req, defaultHandler)
         return defaultHandler(req)
     end
 end
-
-# the info of the API, title and version of the info are required
-info = Dict("title" => "Oxygen.jl demo api", "version" => "1.0.0")
-openApi = OpenAPI("3.0", info)
-swagger_document = build(openApi)
-# swagger_html = render_swagger(swagger_document)
-
-# # setup endpoint to serve swagger documentation
-# @get "/swagger" function()
-#     return html(swagger_html)
-# end
 
 # start the web server
 serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))

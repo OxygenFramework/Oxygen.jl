@@ -19,8 +19,9 @@ function recursive_merge(x::AbstractVector...)
     elements = Dict()
     parameters = []
     flattened = cat(x...; dims=1)
+
     for item in flattened
-        if !haskey(item, "name")
+        if item isa Dict && !haskey(item, "name")
             continue
         end
         if haskey(elements, item["name"])

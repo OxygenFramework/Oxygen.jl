@@ -32,7 +32,12 @@ function recursive_merge(x::AbstractVector...)
             end
         end
     end
-    [ elements[name] for name in parameters ]
+    
+    if !isempty(parameters)
+        return [ elements[name] for name in parameters ]
+    else
+        return flattened
+    end
 end 
 
 

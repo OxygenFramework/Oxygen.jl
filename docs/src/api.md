@@ -23,10 +23,21 @@ serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kw
 ```
 
 ## Mounting Files
-```@docs 
+```@docs
 @staticfiles
 @dynamicfiles
 file
+```
+
+## Swagger Docs
+```@docs
+configdocs 
+enabledocs
+disabledocs
+isdocsenabled
+mergeschema
+setschema
+getschema
 ```
 
 ## Helper functions 

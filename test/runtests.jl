@@ -303,6 +303,31 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
     @test r.status == 500
 
+    ## Swagger related tests 
+
+    # should be set to true by default
+    @test isdocsenabled() == true 
+
+    disabledocs()
+    @test isdocsenabled() == false 
+
+    enabledocs()
+    @test isdocsenabled() == true 
+
+
+    disabledocs()
+    @async serve()
+    sleep(1)
+
+    r = internalrequest(HTTP.Request("GET", "/swagger"))
+    @test r.status == 404
+
+    r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
+    @test r.status == 404
+
+    terminate()
+
+    enabledocs()
     @async serve()
     sleep(1)
 

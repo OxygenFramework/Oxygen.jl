@@ -71,7 +71,7 @@ end
 
 return a redirect response 
 """
-function redirect(path::String; code = 307)
+function redirect(path::String; code = 307) :: HTTP.Response
     return HTTP.Response(code, ["Location" => path])
 end
 

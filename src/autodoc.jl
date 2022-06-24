@@ -3,10 +3,14 @@ using HTTP
 
 include("util.jl"); using .Util 
 
-export registerchema, swaggerpath, schemapath, getschema, swaggerhtml, configdocs, mergeschema, setschema
+export registerchema, swaggerpath, schemapath, getschema, 
+    swaggerhtml, configdocs, mergeschema, setschema,
+    enabledocs, disabledocs, isdocsenabled
 
+global enable_auto_docs = true 
 global swaggerpath = "/swagger"
 global schemapath = "/swagger/schema"
+
 global schema = Dict(
     "openapi" => "3.0.0",
     "info" => Dict(
@@ -17,9 +21,36 @@ global schema = Dict(
 )
 
 """
+    isdocsenabled()
+
+Returns true if we should mount the api doc endpoints, false otherwise
+"""
+function isdocsenabled()
+    return enable_auto_docs
+end
+
+"""
+    enabledocs()
+
+Tells the api to mount the api doc endpoints on startup
+"""
+function enabledocs()
+    global enable_auto_docs = true 
+end
+
+"""
+    disabledocs()
+
+Tells the api to SKIP mounting the api doc endpoints on startup
+"""
+function disabledocs()
+    global enable_auto_docs = false 
+end
+
+"""
     configdocs(swagger_endpoint::String = "/swagger", schema_endpoint::String = "/swagger/schema")
 
-configure the default swagger and schema endpoints
+Configure the default swagger and schema endpoints
 """
 function configdocs(swagger_endpoint::String = swaggerpath, schema_endpoint::String = schemapath)
     global swaggerpath = swagger_endpoint
@@ -29,7 +60,7 @@ end
 """
     getschema()
 
-return the current internal schema for this app
+Return the current internal schema for this app
 """
 function getschema()
     return schema 
@@ -38,7 +69,7 @@ end
 """
     setschema(customschema::Dict)
 
-overwrites the entire internal schema
+Overwrites the entire internal schema
 """
 function setschema(customschema::Dict)
     global schema = customschema

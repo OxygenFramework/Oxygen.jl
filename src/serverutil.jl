@@ -9,7 +9,8 @@ include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
 
 export @route, start, serve, serveparallel, terminate, internalrequest,
-        configdocs, mergeschema, setschema, getschema
+        configdocs, mergeschema, setschema, getschema,
+        enabledocs, disabledocs, isdocsenabled
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
@@ -275,6 +276,10 @@ end
 
 # add the swagger and swagger/schema routes 
 function setupswagger()
+
+    if !isdocsenabled()
+        return
+    end
     
     @route ["GET"] "$swaggerpath" function()
         return swaggerhtml()

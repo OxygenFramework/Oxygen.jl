@@ -18,7 +18,7 @@ using SwaggerMarkdown
           type : number
     responses:
       '200':
-        description: Successfully returned an artist.
+        description: Successfully returned an number.
 """
 # demonstrate how to use path params with type definitions
 @get "/divide/{a}/{b}" function (req::HTTP.Request, a::Float64, b::Float64)

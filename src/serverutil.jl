@@ -15,14 +15,30 @@ export @route, start, serve, serveparallel, terminate, internalrequest,
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
 
+oxygen_title = raw"""
+   ____                            
+  / __ \_  ____  ______ ____  ____ 
+ / / / / |/_/ / / / __ `/ _ \/ __ \
+/ /_/ />  </ /_/ / /_/ /  __/ / / /
+\____/_/|_|\__, /\__, /\___/_/ /_/ 
+          /____//____/   
+
+"""
+
+function serverwelcome(host::String, port::Int64)
+    printstyled(oxygen_title, color = :blue, bold = true)  
+    @info "Starting server: http://$host:$port" 
+end
+
 """
     serve(host="127.0.0.1", port=8080; kwargs...)
 
 Start the webserver with the default request handler
 """
 function serve(; host="127.0.0.1", port=8080, kwargs...)
-    println("Starting server: http://$host:$port")
+    serverwelcome(host, port)
     setup()
+    kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     HTTP.serve(req -> DefaultHandler(req), host, port; server=server[], kwargs...)
 end
@@ -34,8 +50,9 @@ end
 Start the webserver with your own custom request handler
 """
 function serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
-    println("Starting server: http://$host:$port")
+    serverwelcome(host, port)
     setup()
+    kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server[], kwargs...)
 end
@@ -49,8 +66,9 @@ A Channel is used to schedule individual requests in FIFO order. Requests in the
 then removed & handled by each the worker threads asynchronously. 
 """
 function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
-    println("Starting server: http://$host:$port")
+    serverwelcome(host, port)
     setup()
+    kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     StreamUtil.start(server[], req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
 end
@@ -64,10 +82,24 @@ threads to process individual requests. A Channel is used to schedule individual
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
 function serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
-    println("Starting server: http://$host:$port")
+    serverwelcome(host, port)
     setup()
+    kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     StreamUtil.start(server[], req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
+end
+
+
+"""
+Used to overwrite defaults to any incoming keyword arguments
+"""
+function preprocesskwargs(kwargs)
+    kwargs_dict = Dict{Symbol, Any}(kwargs)
+    # user passed no loggin preferences - use defualt logging format 
+    if isempty(kwargs_dict) || !haskey(kwargs_dict, :access_log)
+        kwargs_dict[:access_log] = logfmt"$time_iso8601 - $remote_addr:$remote_port - \"$request\" $status"
+    end  
+    return kwargs_dict
 end
 
 
@@ -120,15 +152,17 @@ function getrouter() :: HTTP.Handlers.Router
     return ROUTER[]
 end 
 
-function DefaultHandler(req::HTTP.Request)
+function DefaultHandler(req::HTTP.Request) :: HTTP.Response
     try
         response_body = HTTP.handle(getrouter(), req)
-        # if a raw HTTP.Response object is returned, then don't do any extra processing on it
+        # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
         if isa(response_body, HTTP.Messages.Response)
             return response_body 
+        # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
         elseif isa(response_body, String)
             headers = ["Content-Type" => HTTP.sniff(response_body)]
             return HTTP.Response(200, headers , body=response_body)
+        # case 3.) An object of some type was returned and should be serialized into JSON 
         else 
             body = JSON3.write(response_body)
             headers = ["Content-Type" => "application/json; charset=utf-8"]
@@ -260,7 +294,7 @@ macro register(httpmethod, path, func)
         local handle = $handle
         function (req)
             try 
-                handle(req)
+                return handle(req)
             catch error
                 @error "ERROR: " exception=(error, catch_backtrace())
                 return HTTP.Response(500, "The Server encountered a problem")

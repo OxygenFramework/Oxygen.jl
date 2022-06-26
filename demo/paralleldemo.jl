@@ -6,7 +6,6 @@ module ParallelDemo
     using JSON3
     using StructTypes
     using SwaggerMarkdown
-    using SwagUI
     using Base.Threads
 
     ############## Atomic variable example ##############

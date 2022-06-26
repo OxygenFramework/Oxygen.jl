@@ -69,6 +69,18 @@ module RunTests
         @test e isa LoadError 
     end
 
+    @get "/bool/{bool}" function (req, bool::Bool)
+        return bool
+    end
+
+    @get "/add/{a}/{b}" function (req, a::Int64, b::Int64)
+        return a + b
+    end
+
+    @get "/divide/{a}/{b}" function (req, a, b)
+        return parse(Float64, a) / parse(Float64, b)
+    end
+
     # path is missing function parameter
     try 
         @get "/mismatched-params/{a}/{b}" function (req, a,b,c)
@@ -344,11 +356,35 @@ module RunTests
     @test r.status == 200
     @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
 
+    # - name: a
+    # in: path
+    # required: true
+    # description: this is the value of the numerator 
+    # schema:
+    #   type : number
     mergeschema(Dict(
         "paths" => Dict(
             "/multiply/{a}/{b}" => Dict(
                 "get" => Dict(
-                    "description" => "returns the result of a * b"
+                    "description" => "returns the result of a * b",
+                    "parameters" => [
+                        Dict(
+                            "name" => "a",
+                            "in" => "path",
+                            "required" => "true",
+                            "schema" => Dict(
+                                "type" => "number"
+                            )
+                        ),
+                        Dict(
+                            "name" => "b",
+                            "in" => "path",
+                            "required" => "true",
+                            "schema" => Dict(
+                                "type" => "number"
+                            )
+                        )
+                    ]
                 )
             )
         )
@@ -359,7 +395,8 @@ module RunTests
     mergeschema("/put", 
         Dict(
             "put" => Dict(
-                "description" => "returns a string on PUT"
+                "description" => "returns a string on PUT",
+                "parameters" => []
             )
         )
     )

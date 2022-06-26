@@ -104,7 +104,7 @@ function gettype(type)
         return "number"
     elseif type in [Int128, Int64, Int32, Int16, Int8]
         return "integer"
-    elseif type isa Bool
+    elseif type == Bool
         return "boolean"
     else 
         return "string"

@@ -54,6 +54,6 @@ swagger_document = build(openApi)
 # merge the SwaggerMarkdown schema with the internal schema
 mergeschema(swagger_document)
 
-serve()
+serve(access_log=nothing)
 
 end

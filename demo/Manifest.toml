@@ -167,12 +167,6 @@ git-tree-sha1 = "d24a825a95a6d98c385001212dc9020d609f2d4f"
 uuid = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 version = "1.8.1"
 
-[[deps.SwagUI]]
-deps = ["HTTP", "JSON", "Test"]
-git-tree-sha1 = "7d66954fa98218892d02093ef656f229d684835c"
-uuid = "bf05d729-34b2-4f1f-a2f1-2452bece7ebc"
-version = "0.9.1"
-
 [[deps.SwaggerMarkdown]]
 deps = ["JSON", "JSONSchema", "Test", "UUIDs", "YAML"]
 git-tree-sha1 = "d21c7cb110f8378c9ff8cc369690fdd4deedbb93"

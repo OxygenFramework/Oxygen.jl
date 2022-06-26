@@ -20,6 +20,8 @@ module RunTests
 
     localhost = "http://127.0.0.1:8080"
 
+    configdocs("/swagger", "/swagger/schema")
+
     StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 
     # mount all files inside the content folder under /static
@@ -65,6 +67,18 @@ module RunTests
         end
     catch e
         @test e isa LoadError 
+    end
+
+    @get "/bool/{bool}" function (req, bool::Bool)
+        return bool
+    end
+
+    @get "/add/{a}/{b}" function (req, a::Int64, b::Int64)
+        return a + b
+    end
+
+    @get "/divide/{a}/{b}" function (req, a, b)
+        return parse(Float64, a) / parse(Float64, b)
     end
 
     # path is missing function parameter
@@ -147,7 +161,7 @@ module RunTests
     @delete "/delete" function(req)
         return "delete"
     end 
-    
+
     r = internalrequest(HTTP.Request("GET", "/anonymous"))
     @test r.status == 200
     @test text(r) == "no args"
@@ -301,11 +315,98 @@ module RunTests
     r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
     @test r.status == 500
 
+    ## Swagger related tests 
+
+    # should be set to true by default
+    @test isdocsenabled() == true 
+
+    disabledocs()
+    @test isdocsenabled() == false 
+
+    enabledocs()
+    @test isdocsenabled() == true 
+
+
+    disabledocs()
+    @async serve()
+    sleep(1)
+
+    r = internalrequest(HTTP.Request("GET", "/swagger"))
+    @test r.status == 404
+
+    r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
+    @test r.status == 404
+
+    terminate()
+
+    enabledocs()
     @async serve()
     sleep(1)
 
     r = internalrequest(HTTP.Request("GET", "/get"))
     @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/swagger"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/swagger"), (req, router, defaulthandler) -> defaulthandler(req))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
+
+    # - name: a
+    # in: path
+    # required: true
+    # description: this is the value of the numerator 
+    # schema:
+    #   type : number
+    mergeschema(Dict(
+        "paths" => Dict(
+            "/multiply/{a}/{b}" => Dict(
+                "get" => Dict(
+                    "description" => "returns the result of a * b",
+                    "parameters" => [
+                        Dict(
+                            "name" => "a",
+                            "in" => "path",
+                            "required" => "true",
+                            "schema" => Dict(
+                                "type" => "number"
+                            )
+                        ),
+                        Dict(
+                            "name" => "b",
+                            "in" => "path",
+                            "required" => "true",
+                            "schema" => Dict(
+                                "type" => "number"
+                            )
+                        )
+                    ]
+                )
+            )
+        )
+    ))
+
+    @assert getschema()["paths"]["/multiply/{a}/{b}"]["get"]["description"] == "returns the result of a * b"
+
+    mergeschema("/put", 
+        Dict(
+            "put" => Dict(
+                "description" => "returns a string on PUT",
+                "parameters" => []
+            )
+        )
+    )
+
+    @assert getschema()["paths"]["/put"]["put"]["description"] == "returns a string on PUT"
+
+    data = Dict("msg" => "this is not a valid schema dictionary")
+    setschema(data)
+
+    @assert getschema() === data
     
     terminate()
 
@@ -319,6 +420,18 @@ module RunTests
     terminate()
     terminate()
     terminate()
+
+    try 
+        # service should not have started and get requests should throw some error
+        @async serveparallel()
+        sleep(1)
+        r = HTTP.get("$localhost/get"; readtimeout=1)
+    catch e
+        @test true
+
+    finally
+        terminate()
+    end
 
     # only run these tests if we have more than one thread to work with
     if Threads.nthreads() > 1
@@ -346,7 +459,7 @@ module RunTests
         r = HTTP.get("$localhost/get")
         @test r.status == 200
 
-        HTTP.get("$localhost/killserver")
+        terminate()
 
         try 
             @async serveparallel(queuesize=0)
@@ -359,15 +472,6 @@ module RunTests
 
     else 
 
-        # service should not have started and get requests should throw some error
-        @async serveparallel()
-        sleep(1)
-        try 
-            r = HTTP.get("$localhost/get"; readtimeout=1)
-        catch e
-            @test true
-        end
-        terminate()
 
     end
 

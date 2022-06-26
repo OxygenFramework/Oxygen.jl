@@ -1,7 +1,8 @@
 module Util 
 using HTTP 
+using JSON3
 
-export method_argnames, queryparams, html, redirect
+export method_argnames, recursive_merge, queryparams, html, redirect
 
 # https://discourse.julialang.org/t/get-the-argument-names-of-an-function/32902/4
 function method_argnames(m::Method)
@@ -9,6 +10,38 @@ function method_argnames(m::Method)
     isempty(argnames) && return argnames
     return argnames[1:m.nargs]
 end
+
+# https://discourse.julialang.org/t/multi-layer-dict-merge/27261/7
+recursive_merge(x::AbstractDict...) = merge(recursive_merge, x...)
+recursive_merge(x...) = x[end]
+
+function recursive_merge(x::AbstractVector...)
+    elements = Dict()
+    parameters = []
+    flattened = cat(x...; dims=1)
+
+    for item in flattened
+        if item isa Dict && !haskey(item, "name")
+            continue
+        end
+        if haskey(elements, item["name"])
+            elements[item["name"]] = recursive_merge(elements[item["name"]], item)
+        else 
+            elements[item["name"]] = item
+            if !(item["name"] in parameters)
+                push!(parameters, item["name"])
+            end
+        end
+    end
+    
+    if !isempty(parameters)
+        return [ elements[name] for name in parameters ]
+    else
+        return flattened
+    end
+end 
+
+
 
 ### Request helper functions ###
 
@@ -38,7 +71,7 @@ end
 
 return a redirect response 
 """
-function redirect(path::String; code = 307)
+function redirect(path::String; code = 307) :: HTTP.Response
     return HTTP.Response(code, ["Location" => path])
 end
 

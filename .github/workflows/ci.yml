@@ -44,6 +44,7 @@ jobs:
       - uses: coverallsapp/github-action@1.1.3
         with:
           file: lcov.info
+          github-token: ${{ secrets.github_token }}
   docs:
     name: Documentation
     runs-on: ubuntu-latest

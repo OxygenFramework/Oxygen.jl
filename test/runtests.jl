@@ -384,6 +384,18 @@ module RunTests
     terminate()
     terminate()
 
+    try 
+        # service should not have started and get requests should throw some error
+        @async serveparallel()
+        sleep(1)
+        r = HTTP.get("$localhost/get"; readtimeout=1)
+    catch e
+        @test true
+
+    finally
+        terminate()
+    end
+
     # only run these tests if we have more than one thread to work with
     if Threads.nthreads() > 1
 
@@ -410,7 +422,7 @@ module RunTests
         r = HTTP.get("$localhost/get")
         @test r.status == 200
 
-        HTTP.get("$localhost/killserver")
+        terminate()
 
         try 
             @async serveparallel(queuesize=0)
@@ -423,15 +435,6 @@ module RunTests
 
     else 
 
-        # service should not have started and get requests should throw some error
-        @async serveparallel()
-        sleep(1)
-        try 
-            r = HTTP.get("$localhost/get"; readtimeout=1)
-        catch e
-            @test true
-        end
-        terminate()
 
     end
 

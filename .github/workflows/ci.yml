@@ -14,6 +14,8 @@ jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
     runs-on: ${{ matrix.os }}
+    env:
+      JULIA_NUM_THREADS: ${{ matrix.threads }}
     strategy:
       fail-fast: false
       matrix:
@@ -25,8 +27,7 @@ jobs:
           - ubuntu-latest
         arch:
           - x64
-        env: 
-          - JULIA_NUM_THREADS: [1, 2]
+        threads: [1, 2]
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@v1

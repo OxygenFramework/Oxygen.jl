@@ -8,7 +8,6 @@ on:
       - master
     tags: '*'
 env:
-  JULIA_NUM_THREADS: 2        
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
 jobs:
@@ -26,6 +25,8 @@ jobs:
           - ubuntu-latest
         arch:
           - x64
+        env: 
+          - JULIA_NUM_THREADS: [1, 2]
     steps:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@v1

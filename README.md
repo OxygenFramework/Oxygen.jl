@@ -342,7 +342,7 @@ You can read more about the logging options [here](https://juliaweb.github.io/HT
 
 
 ```julia 
-# Uses the default logging format by default
+# Uses the default logging format
 serve()
 
 # Customize the logging format 

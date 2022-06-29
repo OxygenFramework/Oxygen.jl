@@ -99,7 +99,7 @@ end
 """
 returns the openapi equivalent of each Julia type
 """
-function gettype(type)
+function gettype(type::Type)
     if type <: Bool
         return "boolean"
     elseif type <: AbstractFloat
@@ -113,10 +113,6 @@ function gettype(type)
     else 
         return "string"
     end
-end
-
-function getformat()
-
 end
 
 

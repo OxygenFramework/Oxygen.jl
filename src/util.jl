@@ -59,6 +59,25 @@ function parseparam(type::Type, rawvalue::String)
     end 
 end
 
+
+"""
+Iterate over the union type and parse the value with the first type that 
+doesn't throw an erorr
+"""
+function parseparam(type::Union, rawvalue::String) 
+    value::String = HTTP.unescapeuri(rawvalue)
+    result = value 
+    for current_type in Base.uniontypes(type)
+        try 
+            result = parseparam(current_type, value)
+            break 
+        catch 
+            continue
+        end
+    end
+    return result
+end
+
 ### Request helper functions ###
 
 """

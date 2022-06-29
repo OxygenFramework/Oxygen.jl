@@ -33,6 +33,10 @@ end
   return tuple
 end
 
+@get "/union/{value}" function(req, value::Union{Bool, String})
+  return value
+end
+
 @get "/boolean/{bool}" function(req, bool::Bool)
   return bool
 end

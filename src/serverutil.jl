@@ -267,17 +267,13 @@ macro register(httpmethod, path, func)
         end
     # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
     elseif hasPathParams && numfields > 2
-        local handle = quote 
-            # only parse path parameters if they are not of type Any or String
-            function parsetype(type, value)
-                return type == Any || type == String ? value : parse(type, value)
-            end
+        local handle = quote
             function (req) 
                 split_path = HTTP.URIs.splitpath(req.target)
                 # extract path values in the order they should be passed to our function
                 path_values = [split_path[index] for (_, _, index) in $param_positions] 
                 # convert params to their designated type (if applicable)
-                pathParams = [parsetype(type, value) for (type, value) in zip($func_param_types, path_values)]   
+                pathParams = [parseparam(type, value) for (type, value) in zip($func_param_types, path_values)]   
                 $action(req, pathParams...)
             end
         end

@@ -4,6 +4,42 @@ include("../src/Oxygen.jl")
 using .Oxygen
 using HTTP
 using SwaggerMarkdown
+using StructTypes
+using JSON3
+
+@enum Fruit apple=1 orange=2 kiwi=3
+
+struct Person 
+  name  :: String 
+  age   :: Int8
+end
+
+# Add a supporting struct type definition to the Person struct
+StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
+
+@get "/fruit/{fruit}" function(req, fruit::Fruit)
+  return fruit
+end
+
+@get "/list/{list}" function(req, list::Vector{Float32})
+    return list
+end
+
+@get "/data/{dict}" function(req, dict::Dict{String, Any})
+  return dict
+end
+
+@get "/tuple/{tuple}" function(req, tuple::Tuple{String, String})
+  return tuple
+end
+
+@get "/boolean/{bool}" function(req, bool::Bool)
+  return bool
+end
+
+@get "/person/{person}" function(req, person::Person)
+  return person
+end
 
 @swagger """
 /divide/{a}/{b}:
@@ -25,6 +61,13 @@ using SwaggerMarkdown
     return a / b
 end
 
+@get "/add/{a}/{b}" function (req::HTTP.Request, a::UInt32, b::Float16)
+  return a + b
+end
+
+@get "/add/{success}" function (req::HTTP.Request, success::Bool)
+  return success
+end
 
 @swagger """
 /home:
@@ -54,6 +97,6 @@ swagger_document = build(openApi)
 # merge the SwaggerMarkdown schema with the internal schema
 mergeschema(swagger_document)
 
-serve(access_log=nothing)
+serve()
 
 end

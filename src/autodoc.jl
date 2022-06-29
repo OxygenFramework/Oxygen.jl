@@ -100,15 +100,23 @@ end
 returns the openapi equivalent of each Julia type
 """
 function gettype(type)
-    if type in [Float64, Float32, Float16]
-        return "number"
-    elseif type in [Int128, Int64, Int32, Int16, Int8]
-        return "integer"
-    elseif type == Bool
+    if type <: Bool
         return "boolean"
+    elseif type <: AbstractFloat
+        return "number"
+    elseif type <: Integer 
+        return "integer"
+    elseif type <: AbstractVector
+        return "array"
+    elseif isstructtype(type)
+        return "object"
     else 
         return "string"
     end
+end
+
+function getformat()
+
 end
 
 

@@ -78,6 +78,7 @@ end
 Mount all files inside the /static folder (or user defined mount point)
 """
 macro staticfiles(folder::String, mountdir::String="static")
+    registermountedfolder(mountdir)
     quote 
         function addroute(path, headers, filepath, registeredpaths; code=200)
             # only serve the original unchanged file contents using this variable
@@ -105,6 +106,7 @@ Mount all files inside the /static folder (or user defined mount point),
 but files are re-read on each request
 """
 macro dynamicfiles(folder::String, mountdir::String="static")
+    registermountedfolder(mountdir)
     quote 
         function addroute(path, headers, filepath, registeredpaths; code = 200)
             eval(

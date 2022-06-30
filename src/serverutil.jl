@@ -10,7 +10,7 @@ include("autodoc.jl");      using .AutoDoc
 
 export @route, start, serve, serveparallel, terminate, internalrequest,
         configdocs, mergeschema, setschema, getschema,
-        enabledocs, disabledocs, isdocsenabled
+        enabledocs, disabledocs, isdocsenabled, registermountedfolder
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 

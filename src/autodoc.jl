@@ -6,11 +6,12 @@ include("util.jl"); using .Util
 
 export registerchema, swaggerpath, schemapath, getschema, 
     swaggerhtml, configdocs, mergeschema, setschema,
-    enabledocs, disabledocs, isdocsenabled
+    enabledocs, disabledocs, isdocsenabled, registermountedfolder
 
 global enable_auto_docs = true 
 global swaggerpath = "/swagger"
 global schemapath = "/swagger/schema"
+global mountedfolders = Set{String}()
 
 global schema = Dict(
     "openapi" => "3.0.0",
@@ -20,6 +21,10 @@ global schema = Dict(
     ),
     "paths" => Dict()
 )
+
+function registermountedfolder(folder::String)
+    push!(mountedfolders, "/$folder")
+end
 
 """
     isdocsenabled()
@@ -172,6 +177,18 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
         push!(params, param)
     end
 
+    is_mounted_path = false
+    for folder in mountedfolders
+        if startswith(path, folder)
+            is_mounted_path = true
+            break 
+        end
+    end
+
+    if is_mounted_path
+        return 
+    end
+
     route = Dict(
         "$(lowercase(httpmethod))" => Dict(
             "parameters" => params,
@@ -181,6 +198,9 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
             )
         )
     )
+
+ 
+  
     schema["paths"][path] = route 
 end
 

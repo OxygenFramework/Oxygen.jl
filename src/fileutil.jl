@@ -2,7 +2,7 @@ module FileUtil
 
 using HTTP
 
-export file, @mountfolder
+export file, mountedfolders, @mountfolder
 
 """
     file(filepath::String)

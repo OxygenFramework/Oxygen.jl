@@ -1,6 +1,7 @@
 module Util 
 using HTTP 
 using JSON3
+using Dates
 
 export method_argnames, recursive_merge, parseparam, queryparams, html, redirect
 
@@ -51,8 +52,8 @@ function parseparam(type::Type, rawvalue::String)
     if type == Any || type == String 
         return value
     elseif type <: Enum
-        return type(parse(Int, value)) 
-    elseif isprimitivetype(type)
+        return type(parse(Int, value))   
+    elseif isprimitivetype(type) || type <: Number || type == Date || type == DateTime
         return parse(type, value)
     else 
         return JSON3.read(value, type)

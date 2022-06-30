@@ -1,5 +1,6 @@
 module AutoDoc 
-using HTTP 
+using HTTP
+using Dates
 
 include("util.jl"); using .Util 
 
@@ -99,7 +100,7 @@ end
 """
 returns the openapi equivalent of each Julia type
 """
-function gettype(type::Type)
+function gettype(type::Type) :: String
     if type <: Bool
         return "boolean"
     elseif type <: AbstractFloat
@@ -108,12 +109,40 @@ function gettype(type::Type)
         return "integer"
     elseif type <: AbstractVector
         return "array"
+    elseif type == Date || type == DateTime
+        return "string"
     elseif isstructtype(type)
         return "object"
     else 
         return "string"
     end
 end
+
+"""
+returns the specific format type for a given parameter
+ex.) DateTime(2022,1,1) => "date-time"
+"""
+function getformat(type::Type) :: Union{String,Nothing}
+    if type <: AbstractFloat
+        if type == Float32
+            return "float"
+        elseif type == Float64
+            return "double"
+        end
+    elseif type <: Integer 
+        if type == Int32
+            return "int32"
+        elseif type == Int64
+            return "int64"
+        end
+    elseif type == Date 
+        return "date"
+    elseif type == DateTime
+        return "date-time"
+    end
+    return nothing
+end
+
 
 
 """
@@ -128,6 +157,7 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
 
     params = []
     for (name, type) in parameters
+        format = getformat(type)
         param = Dict( 
             "in" => "path",
             "name" => "$name", 
@@ -136,6 +166,9 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
                 "type" => gettype(type)
             )
         )
+        if !isnothing(format)
+            param["schema"]["format"] = format
+        end
         push!(params, param)
     end
 

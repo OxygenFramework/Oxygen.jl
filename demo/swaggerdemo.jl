@@ -6,6 +6,7 @@ using HTTP
 using SwaggerMarkdown
 using StructTypes
 using JSON3
+using Dates
 
 @enum Fruit apple=1 orange=2 kiwi=3
 
@@ -16,9 +17,22 @@ end
 
 # Add a supporting struct type definition to the Person struct
 StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
+StructTypes.StructType(::Type{Complex{Float64}}) = StructTypes.Struct()
 
 @get "/fruit/{fruit}" function(req, fruit::Fruit)
   return fruit
+end
+
+@get "/date/{date}" function(req, date::Date)
+  return date
+end
+
+@get "/datetime/{datetime}" function(req, datetime::DateTime)
+  return datetime
+end
+
+@get "/complex/{complex}" function(req, complex::Complex{Float64})
+  return complex
 end
 
 @get "/list/{list}" function(req, list::Vector{Float32})
@@ -45,6 +59,10 @@ end
   return person
 end
 
+@get "/float/{float}" function (req::HTTP.Request, float::Float32)
+  return float
+end
+
 @swagger """
 /divide/{a}/{b}:
   get:
@@ -55,7 +73,8 @@ end
         required: true
         description: this is your value
         schema:
-          type : number
+          type: number
+          format: double
     responses:
       '200':
         description: Successfully returned an number.

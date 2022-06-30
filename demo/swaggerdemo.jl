@@ -47,7 +47,7 @@ end
   return tuple
 end
 
-@get "/union/{value}" function(req, value::Union{Bool, String, Float64 })
+@get "/union/{value}" function(req, value::Union{Bool, String, Float64})
   return value
 end
 

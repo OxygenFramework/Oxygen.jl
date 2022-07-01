@@ -311,7 +311,7 @@ function setupswagger()
         return
     end
     
-    @route ["GET"] "$swaggerpath" function()
+    @route ["GET"] "$docpath" function()
         return swaggerhtml()
     end
 

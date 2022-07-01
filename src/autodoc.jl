@@ -4,12 +4,12 @@ using Dates
 
 include("util.jl"); using .Util 
 
-export registerchema, docpath, schemapath, getschema, 
+export registerchema, docspath, schemapath, getschema, 
     swaggerhtml, configdocs, mergeschema, setschema,
     enabledocs, disabledocs, isdocsenabled, registermountedfolder
 
 global enable_auto_docs = true 
-global docpath = "/docs"
+global docspath = "/docs"
 global schemapath = "/docs/schema"
 global mountedfolders = Set{String}()
 
@@ -58,8 +58,8 @@ end
 
 Configure the default swagger and schema endpoints
 """
-function configdocs(swagger_endpoint::String = docpath, schema_endpoint::String = schemapath)
-    global docpath = swagger_endpoint
+function configdocs(swagger_endpoint::String = docspath, schema_endpoint::String = schemapath)
+    global docspath = swagger_endpoint
     global schemapath = schema_endpoint
 end
 
@@ -156,7 +156,7 @@ used to generate & register schema related for a specific endpoint
 function registerchema(path::String, httpmethod::String, parameters, returntype::Array)
 
     # skip any routes that have to do with swagger
-    if path in [docpath, schemapath]
+    if path in [docspath, schemapath]
         return 
     end
 

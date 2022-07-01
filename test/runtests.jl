@@ -9,9 +9,6 @@ using Dates
 include("../src/Oxygen.jl")
 using .Oxygen
 
-# include("pathtypes.jl")
-# using .PathTypesTests
-
 struct Person
     name::String
     age::Int
@@ -73,7 +70,7 @@ catch e
     @test e isa LoadError 
 end
 
-@get "/add/{a}/{b}" function (req, a::Int64, b::Int64)
+@get "/add/{a}/{b}" function (req, a::Int32, b::Int64)
     return a + b
 end
 

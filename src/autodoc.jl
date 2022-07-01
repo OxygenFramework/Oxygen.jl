@@ -1,15 +1,17 @@
 module AutoDoc 
-using HTTP 
+using HTTP
+using Dates
 
 include("util.jl"); using .Util 
 
-export registerchema, swaggerpath, schemapath, getschema, 
+export registerchema, docspath, schemapath, getschema, 
     swaggerhtml, configdocs, mergeschema, setschema,
-    enabledocs, disabledocs, isdocsenabled
+    enabledocs, disabledocs, isdocsenabled, registermountedfolder
 
 global enable_auto_docs = true 
-global swaggerpath = "/swagger"
-global schemapath = "/swagger/schema"
+global docspath = "/docs"
+global schemapath = "/docs/schema"
+global mountedfolders = Set{String}()
 
 global schema = Dict(
     "openapi" => "3.0.0",
@@ -19,6 +21,10 @@ global schema = Dict(
     ),
     "paths" => Dict()
 )
+
+function registermountedfolder(folder::String)
+    push!(mountedfolders, "/$folder")
+end
 
 """
     isdocsenabled()
@@ -48,13 +54,13 @@ function disabledocs()
 end
 
 """
-    configdocs(swagger_endpoint::String = "/swagger", schema_endpoint::String = "/swagger/schema")
+    configdocs(docs_url::String = "/docs", schema_url::String = "/docs/schema")
 
-Configure the default swagger and schema endpoints
+Configure the default docs and schema endpoints
 """
-function configdocs(swagger_endpoint::String = swaggerpath, schema_endpoint::String = schemapath)
-    global swaggerpath = swagger_endpoint
-    global schemapath = schema_endpoint
+function configdocs(docs_url::String = docspath, schema_url::String = schemapath)
+    global docspath = docs_url
+    global schemapath = schema_url
 end
 
 """
@@ -99,17 +105,49 @@ end
 """
 returns the openapi equivalent of each Julia type
 """
-function gettype(type)
-    if type in [Float64, Float32, Float16]
-        return "number"
-    elseif type in [Int128, Int64, Int32, Int16, Int8]
-        return "integer"
-    elseif type == Bool
+function gettype(type::Type) :: String
+    if type <: Bool
         return "boolean"
+    elseif type <: AbstractFloat
+        return "number"
+    elseif type <: Integer 
+        return "integer"
+    elseif type <: AbstractVector
+        return "array"
+    elseif type == Date || type == DateTime
+        return "string"
+    elseif isstructtype(type)
+        return "object"
     else 
         return "string"
     end
 end
+
+"""
+returns the specific format type for a given parameter
+ex.) DateTime(2022,1,1) => "date-time"
+"""
+function getformat(type::Type) :: Union{String,Nothing}
+    if type <: AbstractFloat
+        if type == Float32
+            return "float"
+        elseif type == Float64
+            return "double"
+        end
+    elseif type <: Integer 
+        if type == Int32
+            return "int32"
+        elseif type == Int64
+            return "int64"
+        end
+    elseif type == Date 
+        return "date"
+    elseif type == DateTime
+        return "date-time"
+    end
+    return nothing
+end
+
 
 
 """
@@ -117,13 +155,14 @@ used to generate & register schema related for a specific endpoint
 """
 function registerchema(path::String, httpmethod::String, parameters, returntype::Array)
 
-    # skip any routes that have to do with swagger
-    if path in [swaggerpath, schemapath]
+    # skip docs & schema paths 
+    if path in [docspath, schemapath]
         return 
     end
 
     params = []
     for (name, type) in parameters
+        format = getformat(type)
         param = Dict( 
             "in" => "path",
             "name" => "$name", 
@@ -132,7 +171,22 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
                 "type" => gettype(type)
             )
         )
+        if !isnothing(format)
+            param["schema"]["format"] = format
+        end
         push!(params, param)
+    end
+
+    is_mounted_path = false
+    for folder in mountedfolders
+        if startswith(path, folder)
+            is_mounted_path = true
+            break 
+        end
+    end
+
+    if is_mounted_path
+        return 
     end
 
     route = Dict(
@@ -144,6 +198,9 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
             )
         )
     )
+
+ 
+  
     schema["paths"][path] = route 
 end
 

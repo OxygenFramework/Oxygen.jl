@@ -1,8 +1,9 @@
 module Util 
 using HTTP 
 using JSON3
+using Dates
 
-export method_argnames, recursive_merge, queryparams, html, redirect
+export method_argnames, recursive_merge, parseparam, queryparams, html, redirect
 
 # https://discourse.julialang.org/t/get-the-argument-names-of-an-function/32902/4
 function method_argnames(m::Method)
@@ -42,6 +43,41 @@ function recursive_merge(x::AbstractVector...)
 end 
 
 
+"""
+Parse incoming path parameters into their corresponding type
+ex.) parseparam(Float64, "4.6") => 4.6
+"""
+function parseparam(type::Type, rawvalue::String) 
+    value::String = HTTP.unescapeuri(rawvalue)
+    if type == Any || type == String 
+        return value
+    elseif type <: Enum
+        return type(parse(Int, value))   
+    elseif isprimitivetype(type) || type <: Number || type == Date || type == DateTime
+        return parse(type, value)
+    else 
+        return JSON3.read(value, type)
+    end 
+end
+
+
+"""
+Iterate over the union type and parse the value with the first type that 
+doesn't throw an erorr
+"""
+function parseparam(type::Union, rawvalue::String) 
+    value::String = HTTP.unescapeuri(rawvalue)
+    result = value 
+    for current_type in Base.uniontypes(type)
+        try 
+            result = parseparam(current_type, value)
+            break 
+        catch 
+            continue
+        end
+    end
+    return result
+end
 
 ### Request helper functions ###
 

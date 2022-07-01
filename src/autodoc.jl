@@ -54,13 +54,13 @@ function disabledocs()
 end
 
 """
-    configdocs(swagger_endpoint::String = "/swagger", schema_endpoint::String = "/swagger/schema")
+    configdocs(docs_url::String = "/docs", schema_url::String = "/docs/schema")
 
-Configure the default swagger and schema endpoints
+Configure the default docs and schema endpoints
 """
-function configdocs(swagger_endpoint::String = docspath, schema_endpoint::String = schemapath)
-    global docspath = swagger_endpoint
-    global schemapath = schema_endpoint
+function configdocs(docs_url::String = docspath, schema_url::String = schemapath)
+    global docspath = docs_url
+    global schemapath = schema_url
 end
 
 """
@@ -155,7 +155,7 @@ used to generate & register schema related for a specific endpoint
 """
 function registerchema(path::String, httpmethod::String, parameters, returntype::Array)
 
-    # skip any routes that have to do with swagger
+    # skip docs & schema paths 
     if path in [docspath, schemapath]
         return 
     end

@@ -511,12 +511,21 @@ r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
 @test r.status == 200
 @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
 
-# - name: a
-# in: path
-# required: true
-# description: this is the value of the numerator 
-# schema:
-#   type : number
+# test emtpy dict (which should be skipped)
+mergeschema(Dict(
+    "paths" => Dict(
+        "/multiply/{a}/{b}" => Dict(
+            "get" => Dict(
+                "description" => "returns the result of a * b",
+                "parameters" => [
+                    Dict()
+                ]
+            )
+        )
+    )
+))
+
+
 mergeschema(Dict(
     "paths" => Dict(
         "/multiply/{a}/{b}" => Dict(

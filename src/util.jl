@@ -22,7 +22,7 @@ function recursive_merge(x::AbstractVector...)
     flattened = cat(x...; dims=1)
 
     for item in flattened
-        if item isa Dict && !haskey(item, "name")
+        if !(item isa Dict) || !haskey(item, "name")
             continue
         end
         if haskey(elements, item["name"])

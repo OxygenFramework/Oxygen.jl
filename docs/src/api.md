@@ -4,10 +4,8 @@ Documentation for Oxygen.jl
 
 ## Starting the webserver
 ```@docs 
-serve(host="127.0.0.1", port=8080; suppresserrors::Bool=false, kwargs...)
-serve(handler::Function, host="127.0.0.1", port=8080; kwargs...)
-serveparallel(host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
-serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
+serve
+serveparallel
 ```
 
 ## Routing 
@@ -19,7 +17,6 @@ serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kw
 @patch(path, func)
 @delete(path, func)
 @route(methods, path, func)
-@register
 ```
 
 ## Mounting Files
@@ -31,7 +28,7 @@ file
 
 ## Swagger Docs
 ```@docs
-configdocs 
+configdocs
 enabledocs
 disabledocs
 isdocsenabled

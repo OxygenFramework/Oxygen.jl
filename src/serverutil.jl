@@ -31,7 +31,7 @@ function serverwelcome(host::String, port::Int64)
 end
 
 """
-    serve(host="127.0.0.1", port=8080; kwargs...)
+    serve(; host="127.0.0.1", port=8080, kwargs...)
 
 Start the webserver with the default request handler
 """
@@ -45,7 +45,7 @@ end
 
 
 """
-    serve(handler::Function, host="127.0.0.1", port=8080; kwargs...)
+    serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -59,7 +59,7 @@ end
 
 
 """
-    serveparallel(host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
+    serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
 
 Starts the webserver in streaming mode and spawns n - 1 worker threads to process individual requests.
 A Channel is used to schedule individual requests in FIFO order. Requests in the channel are
@@ -75,7 +75,7 @@ end
 
 
 """
-    serveparallel(handler::Function, host="127.0.0.1", port=8080, queuesize=1024; kwargs...)
+    serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 

@@ -5,13 +5,19 @@ using Dates
 include("util.jl"); using .Util 
 
 export registerchema, docspath, schemapath, getschema, 
-    swaggerhtml, configdocs, mergeschema, setschema,
+    swaggerhtml, configdocs, mergeschema, setschema, router,
     enabledocs, disabledocs, isdocsenabled, registermountedfolder
+
+struct TaggedRoute 
+    httpmethods::Vector{String} 
+    tags::Vector{String}
+end
 
 global enable_auto_docs = true 
 global docspath = "/docs"
 global schemapath = "/docs/schema"
 global mountedfolders = Set{String}()
+global taggedroutes = Dict{String, TaggedRoute}()
 
 global schema = Dict(
     "openapi" => "3.0.0",
@@ -106,6 +112,34 @@ end
 
 
 """
+    router(route::String; tags::Vector{String} = [])
+
+helper function to create paths within a router. Lets you define a top level routes
+"""
+function router(route::String; tags = Vector{String}())
+    function genroute(path::String)
+        if startswith(path, "/")
+            return "$route$path"
+        else 
+            return "$route/$path"
+        end
+    end
+    return function(path::String; pathtags = Vector{String}())
+        combinedtags = [tags..., pathtags...]
+        return function(httpmethod::String)
+            path = genroute(path)
+            if !haskey(taggedroutes, path)
+                taggedroutes[path] = TaggedRoute([httpmethod], combinedtags)
+            else 
+                taggedroutes[path] = TaggedRoute([httpmethod, taggedroutes[path]...], combinedtags)
+            end
+            return path 
+        end
+    end
+end
+
+
+"""
 Returns the openapi equivalent of each Julia type
 """
 function gettype(type::Type) :: String
@@ -192,8 +226,16 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
         return 
     end
 
+    # lookup if this route has any registered tags
+    if haskey(taggedroutes, path) && httpmethod in taggedroutes[path].httpmethods
+        tags = taggedroutes[path].tags 
+    else 
+        tags = []
+    end
+
     route = Dict(
         "$(lowercase(httpmethod))" => Dict(
+            "tags" => tags,
             "parameters" => params,
             "responses" => Dict(
                 "200" => Dict("description" => "200 response"),

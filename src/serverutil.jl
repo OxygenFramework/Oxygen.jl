@@ -9,8 +9,9 @@ include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
 
 export @route, start, serve, serveparallel, terminate, internalrequest,
-        configdocs, mergeschema, setschema, getschema,
+        configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder
+
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
@@ -196,7 +197,12 @@ end
 Register a request handler function with a path to the ROUTER
 """
 macro register(httpmethod, path, func)
-    
+
+    # check if path is a callable function (assume it's a router higher-order-function)
+    if !isempty(methods(path))
+        path = path(httpmethod)
+    end
+
     local router = getrouter()
     local variableRegex = r"{[a-zA-Z0-9_]+}"
     local hasBraces = r"({)|(})"

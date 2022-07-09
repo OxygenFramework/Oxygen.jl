@@ -7,7 +7,7 @@ using StructTypes
 using JSON3
 
 base = "/hello"
-helloroute = router(base, tags=["greeting"])
+hellorouter = router(base, tags=["greeting"])
 
 function getthing()
     return "wow"
@@ -17,11 +17,11 @@ end
     return "nice"
 end
 
-@get helloroute("/asdf", pathtags=["cool"]) function(req)
+@get hellorouter("/asdf", pathtags=["cool"]) function(req)
     return "nice"
 end
 
-@get helloroute("/other") function(req)
+@get hellorouter("/other") function(req)
     return "other"
 end
 

@@ -116,7 +116,7 @@ function mergeschema(customschema::Dict)
 end
 
 """
-    router(prefix::String; tags::Vector{String} = [])
+    router(prefix::String; tags::Vector{String} = [], interval::Union{Real, Nothing} = nothing)
 
 This functions assists registering routes with a specific prefix.
 You can optionally assign tags either at the prefix and/or route level which
@@ -136,12 +136,15 @@ function createrouter(prefix::String, routertags::Vector{String}, routerinterval
         return ""
     end
 
-    return function(path::String; tags = Vector{String}(), interval::Union{Real, Nothing} = routerinterval)
+    # This function takes input from the user next to the request handler
+    return function(path = nothing; tags = Vector{String}(), interval::Union{Real, Nothing} = routerinterval)
         combinedtags = [tags..., routertags...]
+
+        # this is called inside the @register macro (only it knows the exact httpmethod associated with each path)
         return function(httpmethod::String)
 
             # combine the current routers prefix with this specfic path 
-            path = "$(fixpath(prefix))$(fixpath(path))"
+            path = !isnothing(path) ? "$(fixpath(prefix))$(fixpath(path))" : fixpath(prefix)
 
             # register interval for this route 
             if !isnothing(interval) && interval >= 0.0

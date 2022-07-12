@@ -6,16 +6,19 @@ using HTTP
 using StructTypes
 using JSON3
 
-base = "/hello"
-hellorouter = router(base, tags=["greeting"])
-repeat = router("/repeat", interval = 10, tags=["repeat"])
+repeat = router("/repeat", interval = 1, tags=["repeat"])
+hellorouter = router("/hello", tags=["greeting"])
 emptyrouter = router()
 
-@get "/nice" function(req)
-    return "nice"
+function blah()
+    return "/test/"
 end
 
-@get hellorouter("/nice", tags=["cool"]) function(req)
+@get router("/spam", tags=["spam"], interval=0.25) function()
+    println("spam")
+end
+
+@get hellorouter("/nice", tags=["good"]) function(req)
     return "nice"
 end
 
@@ -28,19 +31,9 @@ end
     return "empty"
 end
 
-@get emptyrouter("/basic", interval = 0.5) function(req)
-    println("basic")
-    return "basic"
-end
-
 @get repeat("/one") function(req)
     println("one")
     return "one"
-end
-
-
-@get "$base/cool" function(req)
-    return "cool"
 end
 
 serve()

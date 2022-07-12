@@ -3,7 +3,16 @@ using HTTP
 using JSON3
 using Dates
 
-export method_argnames, recursive_merge, parseparam, queryparams, html, redirect
+export method_argnames, countargs, recursive_merge, parseparam, queryparams, html, redirect
+
+# return the number of args inside a function
+function countargs(f::Function)
+    m = methods(f)
+    if !isempty(m)
+        return first(m).nargs
+    end
+    return nothing
+end
 
 # https://discourse.julialang.org/t/get-the-argument-names-of-an-function/32902/4
 function method_argnames(m::Method)

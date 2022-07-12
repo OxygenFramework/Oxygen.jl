@@ -223,9 +223,22 @@ Register a request handler function with a path to the ROUTER
 """
 macro register(httpmethod, path, func)
 
-    # check if path is a callable function (assume it's a router higher-order-function)
+    # check if path is a callable function (that means it's a router higher-order-function)
     if !isempty(methods(path))
-        path = path(httpmethod)
+
+        # This is true when the user passes the router() directly to the path.
+        # We call the generated function without args so it uses the default args 
+        # from the parent function.
+        if countargs(path) == 1
+            path = path()
+        end
+
+        # If it's still a function, then that means this is from the 3rd inner function 
+        # defined in the createrouter() function.
+        if countargs(path) == 2
+            path = path(httpmethod)
+        end
+        
     end
 
     local router = getrouter()

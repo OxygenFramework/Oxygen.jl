@@ -12,9 +12,9 @@ export @route, start, serve, serveparallel, terminate, internalrequest,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder
 
-
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
+global const timers = Ref{Vector{Timer}}([])
 
 oxygen_title = raw"""
    ____                            
@@ -31,6 +31,28 @@ function serverwelcome(host::String, port::Int64)
     @info "Starting server: http://$host:$port" 
 end
 
+
+"""
+Start all background tasks
+"""
+function starttasks()
+    for task in getrepeatasks()
+        path, httpmethod, interval = task
+        action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))
+        timer = Timer(action, 0, interval=interval)
+        push!(timers[], timer)   
+    end
+end 
+
+"""
+Stop all background tasks
+"""
+function cleanuptasks()
+    for timer in timers[]
+        close(timer)
+    end
+end
+
 """
     serve(; host="127.0.0.1", port=8080, kwargs...)
 
@@ -41,7 +63,9 @@ function serve(; host="127.0.0.1", port=8080, kwargs...)
     setup()
     kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+    starttasks()
     HTTP.serve(req -> DefaultHandler(req), host, port; server=server[], kwargs...)
+    cleanuptasks()
 end
 
 
@@ -102,6 +126,7 @@ function preprocesskwargs(kwargs)
     end  
     return kwargs_dict
 end
+
 
 
 """

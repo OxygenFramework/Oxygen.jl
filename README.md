@@ -77,7 +77,7 @@ function subtract(req, a::Float64, b::Float64)
 end
 
 # register foreign request handlers like this
-@get "/subtract" subtract
+@get "/subtract/{a}/{b}" subtract
 
 # start the web server
 serve()

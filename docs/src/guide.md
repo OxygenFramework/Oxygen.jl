@@ -6,7 +6,14 @@ Pages = [
     "tutorial/first_steps.md"
 ]
 ```
-<!-- 
+
+## Request Types
+```@contents
+Pages = [
+    "tutorial/request_types.md"
+]
+```
+
 ## Path Parameters
 ```@contents
 Pages = [
@@ -18,5 +25,5 @@ Pages = [
 ```@contents
 Pages = [
     "tutorial/query_parameters.md"
-] -->
+]
 ```

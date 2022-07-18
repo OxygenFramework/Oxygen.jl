@@ -176,7 +176,7 @@ function gettype(type::Type) :: String
         return "integer"
     elseif type <: AbstractVector
         return "array"
-    elseif type == Date || type == DateTime
+    elseif type <: String || type == Date || type == DateTime
         return "string"
     elseif isstructtype(type)
         return "object"

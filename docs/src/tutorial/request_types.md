@@ -48,7 +48,7 @@ Since data will only get returned and not created/updated/deleted, that means we
 using Oxygen
 using HTTP
 
-@get "/weather/alerts/{state}" function(req::HTTP.Request, state)
+@get "/weather/alerts/{state}" function(req::HTTP.Request, state::String)
     return HTTP.get("https://api.weather.gov/alerts/active?area=$state")
 end
 

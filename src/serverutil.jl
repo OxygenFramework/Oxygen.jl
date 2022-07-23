@@ -1,4 +1,4 @@
-# disable precompilation b/c this module needs defines several macros
+# disable precompilation b/c this module defines several macros
 __precompile__(false)
 
 module ServerUtil

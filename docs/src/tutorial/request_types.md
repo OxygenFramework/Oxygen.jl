@@ -42,7 +42,7 @@ Now back to our web example. Lets answer those questions:
 1. This endpoint will return alerts from the US National Weather service api
 2. The only input we will need is the state abbreviation
 
-Since data will only get returned and not created/updated/deleted, that means we will want to setup a `GET` route for our api to handle this action.
+Since we will only be fetching data and not creating/updating/deleting anything, that means we will want to setup a `GET` route for our api to handle this type of action.
 
 ```julia
 using Oxygen

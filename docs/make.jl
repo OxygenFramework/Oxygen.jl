@@ -7,7 +7,10 @@ makedocs(
     modules = [Oxygen],
     pages = [
         "Overview" => "index.md",
-        "api.md"
+        "api.md",
+        "Manual" => [
+            "guide.md"
+        ]
     ]
 )
 

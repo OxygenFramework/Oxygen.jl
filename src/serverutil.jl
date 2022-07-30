@@ -14,11 +14,13 @@ include("autodoc.jl");      using .AutoDoc
 
 export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest,
-        configdocs, mergeschema, setschema, getschema,
-        enabledocs, disabledocs, isdocsenabled, registermountedfolder
+        configdocs, mergeschema, setschema, getschema, router,
+        enabledocs, disabledocs, isdocsenabled, registermountedfolder,
+        starttasks, stoptasks
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
+global const timers = Ref{Vector{Timer}}([])
 
 oxygen_title = raw"""
    ____                            
@@ -35,17 +37,41 @@ function serverwelcome(host::String, port::Int64)
     @info "Starting server: http://$host:$port" 
 end
 
+
+"""
+    starttasks()
+
+Start all background repeat tasks
+"""
+function starttasks()
+    for task in getrepeatasks()
+        path, httpmethod, interval = task
+        action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))
+        timer = Timer(action, 0, interval=interval)
+        push!(timers[], timer)   
+    end
+end 
+
+"""
+    stoptasks()
+
+Stop all background repeat tasks
+"""
+function stoptasks()
+    for timer in timers[]
+        close(timer)
+    end
+end
+
 """
     serve(; host="127.0.0.1", port=8080, kwargs...)
 
 Start the webserver with the default request handler
 """
 function serve(; host="127.0.0.1", port=8080, kwargs...)
-    serverwelcome(host, port)
-    setup()
-    kwargs = preprocesskwargs(kwargs) 
-    server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    HTTP.serve(req -> DefaultHandler(req), host, port; server=server[], kwargs...)
+    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
+        HTTP.serve(req -> DefaultHandler(req), host, port; server=server, kwargs...)
+    )
 end
 
 
@@ -55,11 +81,9 @@ end
 Start the webserver with your own custom request handler
 """
 function serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
-    serverwelcome(host, port)
-    setup()
-    kwargs = preprocesskwargs(kwargs) 
-    server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server[], kwargs...)
+    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
+        HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server, kwargs...)
+    )
 end
 
 
@@ -71,11 +95,9 @@ A Channel is used to schedule individual requests in FIFO order. Requests in the
 then removed & handled by each the worker threads asynchronously. 
 """
 function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
-    serverwelcome(host, port)
-    setup()
-    kwargs = preprocesskwargs(kwargs) 
-    server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    StreamUtil.start(server[], req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
+    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
+        StreamUtil.start(server, req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
+    )
 end
 
 
@@ -87,13 +109,23 @@ threads to process individual requests. A Channel is used to schedule individual
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
 function serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
+    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
+        StreamUtil.start(server, req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
+    )
+end
+
+"""
+Internal helper function to launch the server in a consistent way
+"""
+function startserver(host, port, kwargs, start)
     serverwelcome(host, port)
     setup()
     kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    StreamUtil.start(server[], req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
+    starttasks()
+    start(host, port, server[], kwargs)
+    stoptasks()
 end
-
 
 """
 Used to overwrite defaults to any incoming keyword arguments
@@ -106,6 +138,7 @@ function preprocesskwargs(kwargs)
     end  
     return kwargs_dict
 end
+
 
 
 """
@@ -310,7 +343,25 @@ end
 Register a request handler function with a path to the ROUTER
 """
 macro register(httpmethod, path, func)
-    
+
+    # check if path is a callable function (that means it's a router higher-order-function)
+    if !isempty(methods(path))
+
+        # This is true when the user passes the router() directly to the path.
+        # We call the generated function without args so it uses the default args 
+        # from the parent function.
+        if countargs(path) == 1
+            path = path()
+        end
+
+        # If it's still a function, then that means this is from the 3rd inner function 
+        # defined in the createrouter() function.
+        if countargs(path) == 2
+            path = path(httpmethod)
+        end
+        
+    end
+
     local router = getrouter()
     local variableRegex = r"{[a-zA-Z0-9_]+}"
     local hasBraces = r"({)|(})"

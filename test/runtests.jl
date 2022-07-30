@@ -214,6 +214,37 @@ end
   return float
 end
 
+routerdict = Dict("value" => 0)
+repeat = router("/repeat", interval = 0.5, tags=["repeat"])
+
+@get "/getroutervalue" function(req)
+    return routerdict["value"]
+end
+
+@get repeat("/increment", tags=["increment"]) function(req)
+    routerdict["value"] += 1
+    return routerdict["value"]
+end
+
+@get router("/router-passed-direct") function(req)
+    return "router passed directly"
+end
+
+emptyrouter = router()
+@get router("emptyrouter") function(req)
+    return "emptyrouter"
+end
+
+emptysubpath = router("/emptysubpath", tags=["empty"])
+@get emptysubpath("") function(req)
+    return "emptysubpath"
+end
+
+# added another request hanlder for post requests on the same route
+@post emptysubpath("") function(req)
+    return "emptysubpath - post"
+end
+
 r = internalrequest(HTTP.Request("GET", "/anonymous"))
 @test r.status == 200
 @test text(r) == "no args"
@@ -471,6 +502,7 @@ r = internalrequest(HTTP.Request("GET", "/undefinederror"))
 r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
 @test r.status == 500
 
+
 ## Swagger related tests 
 
 # should be set to true by default
@@ -496,7 +528,34 @@ terminate()
 
 enabledocs()
 @async serve()
-sleep(1)
+sleep(3)
+
+## Router related tests
+
+r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
+@test r.status == 200
+@test parse(Int64, text(r)) > 0
+
+r = internalrequest(HTTP.Request("GET", "/router-passed-direct"))
+@test r.status == 200
+@test text(r) == "router passed directly"
+
+r = internalrequest(HTTP.Request("GET", "/emptyrouter"))
+@test r.status == 200
+@test text(r) == "emptyrouter"
+
+r = internalrequest(HTTP.Request("GET", "/emptysubpath"))
+@test r.status == 200
+@test text(r) == "emptysubpath"
+
+r = internalrequest(HTTP.Request("POST", "/emptysubpath"))
+@test r.status == 200
+@test text(r) == "emptysubpath - post"
+
+# kill any background tasks still running
+stoptasks()
+
+## 
 
 r = internalrequest(HTTP.Request("GET", "/get"))
 @test r.status == 200

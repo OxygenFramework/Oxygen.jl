@@ -54,7 +54,7 @@ end
 
 """
     stoptasks()
-    
+
 Stop all background repeat tasks
 """
 function stoptasks()
@@ -69,13 +69,9 @@ end
 Start the webserver with the default request handler
 """
 function serve(; host="127.0.0.1", port=8080, kwargs...)
-    serverwelcome(host, port)
-    setup()
-    kwargs = preprocesskwargs(kwargs) 
-    server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    starttasks()
-    HTTP.serve(req -> DefaultHandler(req), host, port; server=server[], kwargs...)
-    stoptasks()
+    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
+        HTTP.serve(req -> DefaultHandler(req), host, port; server=server[], kwargs...)
+    )
 end
 
 
@@ -85,13 +81,9 @@ end
 Start the webserver with your own custom request handler
 """
 function serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
-    serverwelcome(host, port)
-    setup()
-    kwargs = preprocesskwargs(kwargs) 
-    server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    starttasks()
-    HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server[], kwargs...)
-    stoptasks()
+    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
+        HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server, kwargs...)
+    )
 end
 
 
@@ -103,13 +95,9 @@ A Channel is used to schedule individual requests in FIFO order. Requests in the
 then removed & handled by each the worker threads asynchronously. 
 """
 function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
-    serverwelcome(host, port)
-    setup()
-    kwargs = preprocesskwargs(kwargs) 
-    server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    starttasks()
-    StreamUtil.start(server[], req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
-    stoptasks()
+    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
+        StreamUtil.start(server, req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
+    )
 end
 
 
@@ -121,15 +109,23 @@ threads to process individual requests. A Channel is used to schedule individual
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
 function serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
+    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
+        StreamUtil.start(server, req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
+    )
+end
+
+"""
+Internal helper function to launch the server in a consistent way
+"""
+function startserver(host, port, kwargs, start)
     serverwelcome(host, port)
     setup()
     kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     starttasks()
-    StreamUtil.start(server[], req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
+    start(host, port, server[], kwargs)
     stoptasks()
 end
-
 
 """
 Used to overwrite defaults to any incoming keyword arguments

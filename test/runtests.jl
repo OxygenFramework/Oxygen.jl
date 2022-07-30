@@ -221,9 +221,23 @@ repeat = router("/repeat", interval = 0.5, tags=["repeat"])
     return routerdict["value"]
 end
 
-@get repeat("/increment") function(req)
+@get repeat("/increment", tags=["increment"]) function(req)
     routerdict["value"] += 1
     return routerdict["value"]
+end
+
+@get router("/router-passed-direct") function(req)
+    return "router passed directly"
+end
+
+emptyrouter = router()
+@get router("emptyrouter") function(req)
+    return "emptyrouter"
+end
+
+emptysubpath = router("/emptysubpath")
+@get emptysubpath("") function(req)
+    return "emptysubpath"
 end
 
 r = internalrequest(HTTP.Request("GET", "/anonymous"))
@@ -516,6 +530,21 @@ sleep(3)
 r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
 @test r.status == 200
 @test parse(Int64, text(r)) > 0
+
+r = internalrequest(HTTP.Request("GET", "/router-passed-direct"))
+@test r.status == 200
+@test text(r) == "router passed directly"
+
+r = internalrequest(HTTP.Request("GET", "/emptyrouter"))
+@test r.status == 200
+@test text(r) == "emptyrouter"
+
+r = internalrequest(HTTP.Request("GET", "/emptysubpath"))
+@test r.status == 200
+@test text(r) == "emptysubpath"
+
+# kill any background tasks still running
+stoptasks()
 
 ## 
 

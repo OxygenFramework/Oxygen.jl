@@ -15,7 +15,8 @@ include("autodoc.jl");      using .AutoDoc
 export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest,
         configdocs, mergeschema, setschema, getschema, router,
-        enabledocs, disabledocs, isdocsenabled, registermountedfolder
+        enabledocs, disabledocs, isdocsenabled, registermountedfolder,
+        starttasks, stoptasks
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
@@ -38,7 +39,9 @@ end
 
 
 """
-Start all background tasks
+    starttasks()
+
+Start all background repeat tasks
 """
 function starttasks()
     for task in getrepeatasks()
@@ -50,9 +53,11 @@ function starttasks()
 end 
 
 """
-Stop all background tasks
+    stoptasks()
+    
+Stop all background repeat tasks
 """
-function cleanuptasks()
+function stoptasks()
     for timer in timers[]
         close(timer)
     end
@@ -70,7 +75,7 @@ function serve(; host="127.0.0.1", port=8080, kwargs...)
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
     starttasks()
     HTTP.serve(req -> DefaultHandler(req), host, port; server=server[], kwargs...)
-    cleanuptasks()
+    stoptasks()
 end
 
 
@@ -84,7 +89,9 @@ function serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
     setup()
     kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+    starttasks()
     HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server[], kwargs...)
+    stoptasks()
 end
 
 
@@ -100,7 +107,9 @@ function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
     setup()
     kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+    starttasks()
     StreamUtil.start(server[], req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
+    stoptasks()
 end
 
 
@@ -116,7 +125,9 @@ function serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize
     setup()
     kwargs = preprocesskwargs(kwargs) 
     server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+    starttasks()
     StreamUtil.start(server[], req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
+    stoptasks()
 end
 
 

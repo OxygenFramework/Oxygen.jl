@@ -130,7 +130,7 @@ function createrouter(prefix::String, routertags::Vector{String}, routerinterval
 
     # appends a "/" character to the given string if doesn't have one. 
     function fixpath(path::String)
-        if !isempty(path) && !isnothing(path)
+        if !isnothing(path) && !isempty(path)
             return startswith(path, "/") ? path : "/$path"
         end
         return ""

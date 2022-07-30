@@ -214,6 +214,18 @@ end
   return float
 end
 
+routerdict = Dict("value" => 0)
+repeat = router("/repeat", interval = 0.5, tags=["repeat"])
+
+@get "/getroutervalue" function(req)
+    return routerdict["value"]
+end
+
+@get repeat("/increment") function(req)
+    routerdict["value"] += 1
+    return routerdict["value"]
+end
+
 r = internalrequest(HTTP.Request("GET", "/anonymous"))
 @test r.status == 200
 @test text(r) == "no args"
@@ -471,6 +483,7 @@ r = internalrequest(HTTP.Request("GET", "/undefinederror"))
 r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
 @test r.status == 500
 
+
 ## Swagger related tests 
 
 # should be set to true by default
@@ -496,7 +509,15 @@ terminate()
 
 enabledocs()
 @async serve()
-sleep(1)
+sleep(3)
+
+## Router related tests
+
+r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
+@test r.status == 200
+@test parse(Int64, text(r)) > 0
+
+## 
 
 r = internalrequest(HTTP.Request("GET", "/get"))
 @test r.status == 200

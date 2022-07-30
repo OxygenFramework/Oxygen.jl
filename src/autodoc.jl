@@ -155,7 +155,8 @@ function createrouter(prefix::String, routertags::Vector{String}, routerinterval
             if !haskey(taggedroutes, path)
                 taggedroutes[path] = TaggedRoute([httpmethod], combinedtags)
             else 
-                taggedroutes[path] = TaggedRoute([httpmethod, taggedroutes[path]...], combinedtags)
+                combinedmethods = vcat(httpmethod, taggedroutes[path].httpmethods)
+                taggedroutes[path] = TaggedRoute(combinedmethods, combinedtags)
             end
 
             return path 

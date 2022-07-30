@@ -235,9 +235,14 @@ emptyrouter = router()
     return "emptyrouter"
 end
 
-emptysubpath = router("/emptysubpath")
+emptysubpath = router("/emptysubpath", tags=["empty"])
 @get emptysubpath("") function(req)
     return "emptysubpath"
+end
+
+# added another request hanlder for post requests on the same route
+@post emptysubpath("") function(req)
+    return "emptysubpath - post"
 end
 
 r = internalrequest(HTTP.Request("GET", "/anonymous"))
@@ -542,6 +547,10 @@ r = internalrequest(HTTP.Request("GET", "/emptyrouter"))
 r = internalrequest(HTTP.Request("GET", "/emptysubpath"))
 @test r.status == 200
 @test text(r) == "emptysubpath"
+
+r = internalrequest(HTTP.Request("POST", "/emptysubpath"))
+@test r.status == 200
+@test text(r) == "emptysubpath - post"
 
 # kill any background tasks still running
 stoptasks()

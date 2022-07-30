@@ -52,6 +52,8 @@ By using the hello router in both endpoints, it passes along all the properties 
 Both endpoints in this case will be tagged to the `greet` tag and the `/hi` endpoint will have an additional tag appended just to this endpoint called `welcome`. These tags are used by Oxygen when auto-generating the documentation to organize it by separating the endpoints into sections based off their tags. 
 
 
+## Repeat Actions
+
 The `router()` function also has an `interval` parameter which is used to call
 an request handler on a set interval (in seconds). **It's important to note that request handlers that use this property can't define additional function parameters outside of the default `HTTP.Request` parameter.**
 

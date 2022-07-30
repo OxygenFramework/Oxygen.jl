@@ -41,3 +41,10 @@ Pages = [
     "tutorial/bigger_applications.md"
 ]
 ```
+
+## OAuth2 Integration
+```@contents
+Pages = [
+    "tutorial/oauth2.md"
+]
+```

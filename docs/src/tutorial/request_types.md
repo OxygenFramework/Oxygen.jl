@@ -10,10 +10,10 @@ http://localhost:8080/weather/alerts/{state}
 ```
 
 This url can be broken down into several parts 
-- `host` &rarr; `http://localhost`
-- `port` &rarr; `8080`
-- `route` or `path` &rarr; `/weather/alerts/{state}`
-- `path parameter` &rarr; `{state}`
+- `host` → `http://localhost`
+- `port` → `8080`
+- `route` or `path` → `/weather/alerts/{state}`
+- `path parameter` → `{state}`
 
 Before we start writing code for we need to answer some questions: 
 1. What kind of data manipulation is this route going to perform?
@@ -25,11 +25,11 @@ This is when knowing the different type of http methods comes in handy.
 
 Common HTTP methods:
 
-- POST &rarr; when you want to **create** some data
-- GET &rarr; when you want to **get** data
-- PUT &rarr; **update** some data if it already exists or **create** it
-- PATCH &rarr; when you want to **update** some data
-- DELETE &rarr; when you want to **delete** some data
+- POST → when you want to **create** some data
+- GET → when you want to **get** data
+- PUT → **update** some data if it already exists or **create** it
+- PATCH → when you want to **update** some data
+- DELETE → when you want to **delete** some data
 
 (there are more methods that aren't in this list)
 

@@ -195,6 +195,56 @@ end
 serve()
 ```
 
+
+
+## Mounting Static Files
+
+You can mount static files using this handy macro which recursively searches a folder for files and mounts everything. All files are 
+loaded into memory on startup.
+
+```julia
+using Oxygen
+
+# mount all files inside the "content" folder under the "/static" path
+@staticfiles "content" "static"
+
+# start the web server
+serve()
+```
+
+## Mounting Dynamic Files 
+
+Similar to @staticfiles, this macro mounts each path and re-reads the file for each request. This means that any changes to the files after the server has started will be displayed.
+
+```julia
+using Oxygen
+
+# mount all files inside the "content" folder under the "/dynamic" path
+@dynamicfiles "content" "dynamic"
+
+# start the web server
+serve()
+```
+
+## Logging
+
+Oxygen provides a default logging format but allows you to customize the format using the `access_log` parameter. This functionality is available in both 
+the `serve()` and `serveparallel()` functions.
+
+You can read more about the logging options [here](https://juliaweb.github.io/HTTP.jl/stable/reference/#HTTP.@logfmt_str)
+
+
+```julia 
+# Uses the default logging format
+serve()
+
+# Customize the logging format 
+serve(access_log=logfmt"[$time_iso8601] \"$request\" $status")
+
+# Disable internal request logging 
+serve(access_log=nothing)
+```
+
 ## Multithreading & Parallelism
 
 For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a 
@@ -310,56 +360,6 @@ mergeschema(
   )
 )
 ```
-
-
-## Mounting Static Files
-
-You can mount static files using this handy macro which recursively searches a folder for files and mounts everything. All files are 
-loaded into memory on startup.
-
-```julia
-using Oxygen
-
-# mount all files inside the "content" folder under the "/static" path
-@staticfiles "content" "static"
-
-# start the web server
-serve()
-```
-
-## Mounting Dynamic Files 
-
-Similar to @staticfiles, this macro mounts each path and re-reads the file for each request. This means that any changes to the files after the server has started will be displayed.
-
-```julia
-using Oxygen
-
-# mount all files inside the "content" folder under the "/dynamic" path
-@dynamicfiles "content" "dynamic"
-
-# start the web server
-serve()
-```
-
-## Logging
-
-Oxygen provides a default logging format but allows you to customize the format using the `access_log` parameter. This functionality is available in both 
-the `serve()` and `serveparallel()` functions.
-
-You can read more about the logging options [here](https://juliaweb.github.io/HTTP.jl/stable/reference/#HTTP.@logfmt_str)
-
-
-```julia 
-# Uses the default logging format
-serve()
-
-# Customize the logging format 
-serve(access_log=logfmt"[$time_iso8601] \"$request\" $status")
-
-# Disable internal request logging 
-serve(access_log=nothing)
-```
-
 ## API Reference (macros)
 
 #### @get, @post, @put, @patch, @delete

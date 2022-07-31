@@ -18,7 +18,7 @@ app
 └── Manifest.toml
 ```
 
-### `router()`
+# How to use the `router()` function
 
 Let's say the file dedicated to handling just users is the submodule at /src/routers/users.jl.
 
@@ -43,6 +43,7 @@ end
 
 serve()
 ```
+## Tagging your routes
 
 By using the hello router in both endpoints, it passes along all the properties as default values. For example If we look at the routes registered in the application they will look like:
 

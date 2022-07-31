@@ -35,7 +35,7 @@ Pages = [
 ]
 ```
 
-## Bigger Applications - Multiple files
+## Scaling your Applications
 ```@contents
 Pages = [
     "tutorial/bigger_applications.md"

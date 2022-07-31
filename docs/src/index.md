@@ -109,79 +109,7 @@ end
 # start the web server
 serve()
 ```
-### Additional Parameter Type Support
 
-Oxygen supports a lot of different path parameter types outside of 
-Julia's base primitives. More complex types & structs are automatically parsed 
-and passed to your request handlers.
-
-In most cases, Oxygen uses the built-in `parse()` function to parse incoming parameters. 
-But when the parameter types start getting more complex (eg. `Vector{Int64}` or a custom struct),
-then Oxygen assumes the parameter is a JSON string and uses the JSON3 library 
-to serialize the parameter into the corresponding type
-
-```julia
-using Dates
-using Oxygen
-using StructTypes
-
-@enum Fruit apple=1 orange=2 kiwi=3
-
-struct Person 
-  name  :: String 
-  age   :: Int8
-end
-
-# Add a supporting struct types
-StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
-StructTypes.StructType(::Type{Complex{Float64}}) = StructTypes.Struct()
-
-@get "/fruit/{fruit}" function(req, fruit::Fruit)
-  return fruit
-end
-
-@get "/date/{date}" function(req, date::Date)
-  return date
-end
-
-@get "/datetime/{datetime}" function(req, datetime::DateTime)
-  return datetime
-end
-
-@get "/complex/{complex}" function(req, complex::Complex{Float64})
-  return complex
-end
-
-@get "/list/{list}" function(req, list::Vector{Float32})
-    return list
-end
-
-@get "/data/{dict}" function(req, dict::Dict{String, Any})
-  return dict
-end
-
-@get "/tuple/{tuple}" function(req, tuple::Tuple{String, String})
-  return tuple
-end
-
-@get "/union/{value}" function(req, value::Union{Bool, String, Float64})
-  return value
-end
-
-@get "/boolean/{bool}" function(req, bool::Bool)
-  return bool
-end
-
-@get "/struct/{person}" function(req, person::Person)
-  return person
-end
-
-@get "/float/{float}" function (req, float::Float32)
-  return float
-end
-
-serve()
-```
 ## Query parameters
 
 Use the `queryparams()` function to extract and parse parameters from the url
@@ -265,6 +193,56 @@ end
 
 # start the web server
 serve()
+```
+
+
+
+## Mounting Static Files
+
+You can mount static files using this handy macro which recursively searches a folder for files and mounts everything. All files are 
+loaded into memory on startup.
+
+```julia
+using Oxygen
+
+# mount all files inside the "content" folder under the "/static" path
+@staticfiles "content" "static"
+
+# start the web server
+serve()
+```
+
+## Mounting Dynamic Files 
+
+Similar to @staticfiles, this macro mounts each path and re-reads the file for each request. This means that any changes to the files after the server has started will be displayed.
+
+```julia
+using Oxygen
+
+# mount all files inside the "content" folder under the "/dynamic" path
+@dynamicfiles "content" "dynamic"
+
+# start the web server
+serve()
+```
+
+## Logging
+
+Oxygen provides a default logging format but allows you to customize the format using the `access_log` parameter. This functionality is available in both 
+the `serve()` and `serveparallel()` functions.
+
+You can read more about the logging options [here](https://juliaweb.github.io/HTTP.jl/stable/reference/#HTTP.@logfmt_str)
+
+
+```julia 
+# Uses the default logging format
+serve()
+
+# Customize the logging format 
+serve(access_log=logfmt"[$time_iso8601] \"$request\" $status")
+
+# Disable internal request logging 
+serve(access_log=nothing)
 ```
 
 ## Multithreading & Parallelism
@@ -382,56 +360,6 @@ mergeschema(
   )
 )
 ```
-
-
-## Mounting Static Files
-
-You can mount static files using this handy macro which recursively searches a folder for files and mounts everything. All files are 
-loaded into memory on startup.
-
-```julia
-using Oxygen
-
-# mount all files inside the "content" folder under the "/static" path
-@staticfiles "content" "static"
-
-# start the web server
-serve()
-```
-
-## Mounting Dynamic Files 
-
-Similar to @staticfiles, this macro mounts each path and re-reads the file for each request. This means that any changes to the files after the server has started will be displayed.
-
-```julia
-using Oxygen
-
-# mount all files inside the "content" folder under the "/dynamic" path
-@dynamicfiles "content" "dynamic"
-
-# start the web server
-serve()
-```
-
-## Logging
-
-Oxygen provides a default logging format but allows you to customize the format using the `access_log` parameter. This functionality is available in both 
-the `serve()` and `serveparallel()` functions.
-
-You can read more about the logging options [here](https://juliaweb.github.io/HTTP.jl/stable/reference/#HTTP.@logfmt_str)
-
-
-```julia 
-# Uses the default logging format
-serve()
-
-# Customize the logging format 
-serve(access_log=logfmt"[$time_iso8601] \"$request\" $status")
-
-# Disable internal request logging 
-serve(access_log=nothing)
-```
-
 ## API Reference (macros)
 
 #### @get, @post, @put, @patch, @delete

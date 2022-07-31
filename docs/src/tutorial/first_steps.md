@@ -106,10 +106,10 @@ For example, you can start your server on port `8000` instead of `8080` which is
 serve(port=8000)
 ```
 
-# Try your endpoints
+# Try out your endpoints
 
 You should see the server starting up inside the console. 
-You should be able to hit http://127.0.0.1:8080/greet inside your browser
+You should be able to hit `http://127.0.0.1:8080/greet` inside your browser and see the following:
 ```
 "hello world!"
 ```

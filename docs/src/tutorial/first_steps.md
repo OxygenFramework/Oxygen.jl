@@ -3,7 +3,7 @@
 In this tutorial, you'll learn about all the core features of Oxygen ia a simple step-by-step approach.
 This guide will be aimed at beginner/intermediate users and will gradually build upon each other. 
 
-## Setup your first project
+# Setup your first project
 
 Navigate to your projects folder (If you're using and editor like vscode, just open up your project folder
 
@@ -50,7 +50,7 @@ project
 
 For the duration of this guide, we will be working out of the `src/main.jl` file 
 
-## Creating your first web server
+# Creating your first web server
 
 Here's an example of what a simple Oxygen server could look like
 
@@ -73,7 +73,7 @@ Start the webserver with:
 include("src/main.jl")
 ```
 
-### Line by line
+# Line by line
 
 ```julia
 using Oxygen
@@ -106,7 +106,7 @@ For example, you can start your server on port `8000` instead of `8080` which is
 serve(port=8000)
 ```
 
-## Try your endpoints
+# Try your endpoints
 
 You should see the server starting up inside the console. 
 You should be able to hit http://127.0.0.1:8080/greet inside your browser
@@ -115,14 +115,10 @@ You should be able to hit http://127.0.0.1:8080/greet inside your browser
 ```
 
 
-## Interactive API documenation
+# Interactive API documenation
 
 Open your browser to http://127.0.0.1:8080/docs
 Here you'll see the auto-generated documentation for your api. 
 This is done internally by generating a JSON object that conforms to the openapi format. 
 Once generated, you can feed this same schema to libraries like swagger which translate this 
-into an interactive api for you to explore. 
-
-<!-- 
-![startup message](oxygen-startup.png)
-![alt test](src/assets/soxygen-startup.png) -->
+into an interactive api for you to explore.

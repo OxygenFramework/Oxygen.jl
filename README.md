@@ -196,7 +196,7 @@ serve()
 
 ## Routers
 
-The `router()` function is an HOF (higher order function) that allows you to reuse the same path prefixes & properties across multiple endpoints. This is helpful when your api starts to grow and you want to keep your path operations organized
+The `router()` function is an HOF (higher order function) that allows you to reuse the same path prefix & properties across multiple endpoints. This is helpful when your api starts to grow and you want to keep your path operations organized
 
 ```julia
 using Oxygen

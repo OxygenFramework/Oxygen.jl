@@ -70,7 +70,8 @@ Start the webserver with the default request handler
 """
 function serve(; host="127.0.0.1", port=8080, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        HTTP.serve(req -> DefaultHandler(req), host, port; server=server, kwargs...)
+        HTTP.serve(getrouter() |> DefaultHandler, host, port; server=server, kwargs...)
+        # HTTP.serve(req -> DefaultHandler(req), host, port; server=server, kwargs...)
     )
 end
 

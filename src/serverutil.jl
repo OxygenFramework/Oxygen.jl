@@ -371,13 +371,14 @@ macro register(httpmethod, path, func)
 
     # determine if we have parameters defined in our path
     local hasPathParams = contains(path, variableRegex)
-    local cleanpath = hasPathParams ? replace(path, variableRegex => "*") : path 
     
     # track which index the params are located in
     local positions = []
     for (index, value) in enumerate(HTTP.URIs.splitpath(path)) 
         if contains(value, hasBraces)
-            push!(positions, (index, replace(value, hasBraces => "")))
+            # extract the variable name
+            variable = replace(value, hasBraces => "") |> x -> split(x, ":") |> first        
+            push!(positions, (index, variable))
         end
     end
 
@@ -388,6 +389,9 @@ macro register(httpmethod, path, func)
     local fields = [x for x in fieldtypes(method.sig)]
     local func_param_names = [String(param) for param in method_argnames(method)[3:end]]
     local func_param_types = splice!(Array(fields), 3:numfields)
+    
+    # create a map of paramter name to type definition
+    local func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
 
     # each tuple tracks where the param is refereced (variable, function index, path index)
     local param_positions::Array{Tuple{String, Int, Int}} = []
@@ -437,11 +441,11 @@ macro register(httpmethod, path, func)
     elseif hasPathParams && numfields > 2
         local handle = quote
             function (req) 
-                split_path = HTTP.URIs.splitpath(req.target)
-                # extract path values in the order they should be passed to our function
-                path_values = [split_path[index] for (_, _, index) in $param_positions] 
+                # get all path parameters
+                params = HTTP.getparams(req)
                 # convert params to their designated type (if applicable)
-                pathParams = [parseparam(type, value) for (type, value) in zip($func_param_types, path_values)]   
+                pathParams = [parseparam($func_map[name], params[name]) for name in $func_param_names]   
+                # pass all parameters to handler in the correct order 
                 $action(req, pathParams...)
             end
         end
@@ -467,7 +471,7 @@ macro register(httpmethod, path, func)
     end
 
     quote 
-        HTTP.register!($router, $httpmethod, $cleanpath, $requesthandler)
+        HTTP.register!($router, $httpmethod, $path, $requesthandler)
     end
 end
 

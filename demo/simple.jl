@@ -13,6 +13,8 @@ using JSON3
     return a / b
 end
 
+internalrequest(HTTP.Request("GET", "/divide/10/3"))
+
 # # @get "/hello" function()
 # #     return Dict("msg" => 23423)
 # # end
@@ -29,6 +31,6 @@ end
 #     end
 # end
 
-serve()
+# serve()
 
 end

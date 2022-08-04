@@ -563,7 +563,7 @@ r = internalrequest(HTTP.Request("GET", "/get"))
 r = internalrequest(HTTP.Request("GET", "/swagger"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/swagger"), (req, router, defaulthandler) -> defaulthandler(req))
+r = internalrequest(HTTP.Request("GET", "/swagger"), (handle) -> (req) -> handle(req))
 @test r.status == 200
 
 r = internalrequest(HTTP.Request("GET", "/swagger/schema"))

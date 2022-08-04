@@ -168,7 +168,7 @@ end
 Directly call one of our other endpoints registered with the router
 """
 function internalrequest(req::HTTP.Request) :: HTTP.Response
-    return DefaultHandler(req)
+    return getrouter() |> DefaultHandler |> handle -> handle(req)
 end
 
 
@@ -178,7 +178,7 @@ end
 Directly call one of our other endpoints registered with the router, using your own Handler function
 """
 function internalrequest(req::HTTP.Request, handler::Function) :: HTTP.Response
-    return handler(req, getrouter(), DefaultHandler)
+    return getrouter() |> handler |> process -> process(req)
 end
 
 

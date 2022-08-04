@@ -82,7 +82,7 @@ Start the webserver with your own custom request handler
 """
 function serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        HTTP.serve(getrouter() |> handler, host, port; server=server, kwargs...)
+        HTTP.serve(getrouter() |> handler |> DefaultHandler, host, port; server=server, kwargs...)
     )
 end
 
@@ -95,8 +95,9 @@ A Channel is used to schedule individual requests in FIFO order. Requests in the
 then removed & handled by each the worker threads asynchronously. 
 """
 function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
+
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        StreamUtil.start(server, req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
+        StreamUtil.start(server, getrouter() |> DefaultHandler; queuesize=queuesize, kwargs...)
     )
 end
 
@@ -110,7 +111,7 @@ Requests in the channel are then removed & handled by each the worker threads as
 """
 function serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        StreamUtil.start(server, req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
+        StreamUtil.start(server, getrouter() |> handler |> DefaultHandler; queuesize=queuesize, kwargs...)
     )
 end
 

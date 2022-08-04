@@ -10,10 +10,8 @@ using JSON3
     return Dict("msg" => 23423)
 end
 
-
 function handler(handler)
     return function(req)
-        println("here")
         res = handler(req)
 
         if res isa HTTP.Response
@@ -24,7 +22,6 @@ function handler(handler)
     end
 end
 
-serve(handler)
-
+serveparallel(handler)
 
 end

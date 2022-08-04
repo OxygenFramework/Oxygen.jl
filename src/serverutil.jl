@@ -187,30 +187,32 @@ end
 
 returns the interal http router for this application
 """
-function getrouter() :: HTTP.Handlers.Router
+function getrouter() 
     return ROUTER[]
 end 
 
-function DefaultHandler(req::HTTP.Request) :: HTTP.Response
-    try
-        response_body = HTTP.handle(getrouter(), req)
-        # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
-        if isa(response_body, HTTP.Messages.Response)
-            return response_body 
-        # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
-        elseif isa(response_body, String)
-            headers = ["Content-Type" => HTTP.sniff(response_body)]
-            return HTTP.Response(200, headers , body=response_body)
-        # case 3.) An object of some type was returned and should be serialized into JSON 
-        else 
-            body = JSON3.write(response_body)
-            headers = ["Content-Type" => "application/json; charset=utf-8"]
-            return HTTP.Response(200, headers , body=body)
-        end 
-    catch error
-        @error "ERROR: " exception=(error, catch_backtrace())
-        return HTTP.Response(500, "The Server encountered a problem")
-    end
+function DefaultHandler(handle)
+    return function(req::HTTP.Request)
+        try
+            response_body = handle(req)
+            # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
+            if isa(response_body, HTTP.Messages.Response)
+                return response_body 
+            # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
+            elseif isa(response_body, String)
+                headers = ["Content-Type" => HTTP.sniff(response_body)]
+                return HTTP.Response(200, headers , body=response_body)
+            # case 3.) An object of some type was returned and should be serialized into JSON 
+            else 
+                body = JSON3.write(response_body)
+                headers = ["Content-Type" => "application/json; charset=utf-8"]
+                return HTTP.Response(200, headers , body=body)
+            end 
+        catch error
+            @error "ERROR: " exception=(error, catch_backtrace())
+            return HTTP.Response(500, "The Server encountered a problem")
+        end   
+     end
 end
 
 ### Core Macros ###

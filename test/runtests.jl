@@ -563,7 +563,36 @@ r = internalrequest(HTTP.Request("GET", "/get"))
 r = internalrequest(HTTP.Request("GET", "/swagger"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/swagger"), (handle) -> (req) -> handle(req))
+
+invocation = []
+
+function handler1(handler)
+    return function(req::HTTP.Request)
+        push!(invocation, 1)
+        handler(req)
+    end
+end
+
+function handler2(handler)
+    return function(req::HTTP.Request)
+        push!(invocation, 2)
+        handler(req)
+    end
+end
+
+function handler3(handler)
+    return function(req::HTTP.Request)
+        push!(invocation, 3)
+        handler(req)
+    end
+end
+
+r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), handler1, handler2, handler3)
+@test r.status == 200
+@test invocation == [1,2,3] # enusre the handlers are called in the correct order
+@test text(r) == "18.0" 
+
+r = internalrequest(HTTP.Request("GET", "/swagger"), handler1)
 @test r.status == 200
 
 r = internalrequest(HTTP.Request("GET", "/swagger/schema"))

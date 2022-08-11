@@ -1,4 +1,4 @@
-module Simple 
+module MiddlewareDemo 
 
 include("../src/Oxygen.jl")
 using .Oxygen

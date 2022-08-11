@@ -202,11 +202,6 @@ end
 function DefaultHandler(handle)
     return function(req::HTTP.Request)
         try
-            # if default handler is passed a HTTP.Response, then immediately return
-            if isa(handle, HTTP.Messages.Response)
-                return handle
-            end
-
             response_body = handle(req)            
             # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
             if isa(response_body, HTTP.Messages.Response)

@@ -48,7 +48,7 @@ function respond(h::Handler, handleReq::Function)
                     version=message.version,
                     parent=message.parent
                 )
-                        
+
                 # process request
                 response::HTTP.Response = handleReq(req)
 

@@ -439,7 +439,9 @@ macro register(httpmethod, path, func)
         end
     end
 
-    registerchema(path, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
+    # strip off any regex patterns attached to our path parameters
+    docs_path = replace(path, r"(?=:)(.*?)(?=}/)" => "")
+    registerchema(docs_path, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
 
     local action = esc(func)
 

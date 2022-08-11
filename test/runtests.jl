@@ -662,7 +662,7 @@ setschema(data)
 
 terminate()
 
-@async serve((req, router, defaultHandler) -> defaultHandler(req))
+@async serve(handler1, handler2, handler3)
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/get"))
@@ -705,7 +705,7 @@ if Threads.nthreads() > 1
     
     HTTP.get("$localhost/killserver")
 
-    @async serveparallel((req, router, defaultHandler) -> defaultHandler(req))
+    @async serveparallel(handler1, handler2, handler3)
     sleep(1)
 
     r = HTTP.get("$localhost/get")

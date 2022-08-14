@@ -31,6 +31,6 @@ function handler3(handler)
     end
 end
 
-serve(handler1, handler2, handler3)
+serve([handler1, handler2, handler3])
 
 end

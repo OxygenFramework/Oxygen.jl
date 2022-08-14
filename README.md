@@ -291,6 +291,52 @@ serve(access_log=logfmt"[$time_iso8601] \"$request\" $status")
 serve(access_log=nothing)
 ```
 
+## Middleware
+
+Middleware functions make it easy to create custom workflows to intercept all incoming requests and outgoing responses.
+They are executed in the same order they are passed in (from left to right)
+
+```julia
+using Oxygen
+using HTTP
+
+@get "/divide/{a}/{b}" function(req::HTTP.Request, a::Float64, b::Float64)
+    return a / b
+end
+
+const CORS_HEADERS = [
+    "Access-Control-Allow-Origin" => "*",
+    "Access-Control-Allow-Headers" => "*",
+    "Access-Control-Allow-Methods" => "POST, GET, OPTIONS"
+]
+
+# https://juliaweb.github.io/HTTP.jl/stable/examples/#Cors-Server
+function CorsMiddleware(handler)
+    return function(req::HTTP.Request)
+        # determine if this is a pre-flight request from the browser
+        if HTTP.hasheader(req, "OPTIONS")  
+            return HTTP.Response(200, CORS_HEADERS)  
+        else 
+            return handler(req) # passes the request to the AuthMiddleware
+        end
+    end
+end
+
+function AuthMiddleware(handler)
+    return function(req::HTTP.Request)
+        # ** NOT an actual security check ** #
+        if !HTTP.headercontains(req, "Authorization", "true")
+            return HTTP.Response(403)
+        else 
+            return handler(req) # passes the request to your application
+        end
+    end
+end
+
+# There is no hard limit on the number of middleware functions you can add
+serve([CorsMiddleware, AuthMiddleware])
+```
+
 ## Multithreading & Parallelism
 
 For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a 

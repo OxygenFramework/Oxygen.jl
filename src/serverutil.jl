@@ -114,6 +114,35 @@ function serveparallel(middleware::Vector{Function}; host="127.0.0.1", port=8080
     )
 end
 
+
+function custom(middleware)
+    return function(handler)
+        return function(req::HTTP.Request)
+            innerhandler, route, params = HTTP.Handlers.gethandler(getrouter(), req)
+            # Check if the current request matches one of our predefined routes 
+            if innerhandler !== nothing
+                
+                layers::Vector{Function} = [ handler ] # always initialize with the next handler function
+                routermiddlware::Dict{String, Vector{Function}} = getmiddleware()
+
+                if haskey(routermiddlware, route)
+                    # overwrite global middleware with router specific middleware
+                    push!(layers, reverse(routermiddlware[route])...)
+                else 
+                    # add the global middleware
+                    push!(layers, reverse(middleware)...)
+                end
+
+                combined_middleware = reduce(|>, layers)
+
+                # use the middleware 
+                return combined_middleware(req)
+            end
+            return handler(req)
+        end
+    end
+end
+
 """
 Compose the user & internally defined middleware functions together. Practically, this allows
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
@@ -121,9 +150,9 @@ application and have them execute in the order they were passed (left to right) 
 """
 function setupmiddleware(;middleware::Vector{Function}=[], serialize::Bool=true) :: Function
     if serialize 
-        return reduce(|>, [getrouter(), DefaultHandler, reverse(middleware)...])
+        return reduce(|>, [getrouter(), DefaultHandler, custom(middleware)])
     else 
-        return reduce(|>, [getrouter(), reverse(middleware)...])
+        return reduce(|>, [getrouter(), custom(middleware)])
     end
 end
 
@@ -443,6 +472,7 @@ macro register(httpmethod, path, func)
     registerchema(docs_path, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
 
     local action = esc(func)
+
 
      # case 1.) The request handler is an anonymous function (don't parse out path params)
     if numfields <= 1

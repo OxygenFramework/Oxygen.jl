@@ -70,19 +70,19 @@ Start the webserver with the default request handler
 """
 function serve(; host="127.0.0.1", port=8080, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        HTTP.serve(middleware(), host, port; server=server, kwargs...)
+        HTTP.serve(setupmiddleware(), host, port; server=server, kwargs...)
     )
 end
 
 
 """
-    serve(handlers...; host="127.0.0.1", port=8080, kwargs...)
+    serve(middleware::Vector{Function}; host="127.0.0.1", port=8080, kwargs...)
 
 Start the webserver with your own custom request handler
 """
-function serve(handlers::Vector{Function}; host="127.0.0.1", port=8080, serialize=true, kwargs...)
+function serve(middleware::Vector{Function}; host="127.0.0.1", port=8080, serialize=true, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        HTTP.serve(middleware(handlers=handlers, serialize=serialize), host, port; server=server, kwargs...)
+        HTTP.serve(setupmiddleware(middleware=middleware, serialize=serialize), host, port; server=server, kwargs...)
     )
 end
 
@@ -96,21 +96,21 @@ then removed & handled by each the worker threads asynchronously.
 """
 function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        StreamUtil.start(server, middleware(); queuesize=queuesize, kwargs...)
+        StreamUtil.start(server, setupmiddleware(); queuesize=queuesize, kwargs...)
     )
 end
 
 
 """
-    serveparallel(handlers...; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
+    serveparallel(middleware::Vector{Function}; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(handlers::Vector{Function}; host="127.0.0.1", port=8080, queuesize=1024, serialize=true, kwargs...)
+function serveparallel(middleware::Vector{Function}; host="127.0.0.1", port=8080, queuesize=1024, serialize=true, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        StreamUtil.start(server, middleware(handlers=handlers, serialize=serialize); queuesize=queuesize, kwargs...)
+        StreamUtil.start(server, setupmiddleware(middleware=middleware, serialize=serialize); queuesize=queuesize, kwargs...)
     )
 end
 
@@ -119,11 +119,11 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function middleware(;handlers::Vector{Function}=[], serialize::Bool=true) :: Function
+function setupmiddleware(;middleware::Vector{Function}=[], serialize::Bool=true) :: Function
     if serialize 
-        return reduce(|>, [getrouter(), DefaultHandler, reverse(handlers)...])
+        return reduce(|>, [getrouter(), DefaultHandler, reverse(middleware)...])
     else 
-        return reduce(|>, [getrouter(), reverse(handlers)...])
+        return reduce(|>, [getrouter(), reverse(middleware)...])
     end
 end
 
@@ -180,7 +180,7 @@ end
 Directly call one of our other endpoints registered with the router
 """
 function internalrequest(req::HTTP.Request) :: HTTP.Response
-    return req |> middleware() 
+    return req |> setupmiddleware() 
 end
 
 
@@ -189,8 +189,8 @@ end
 
 Directly call one of our other endpoints registered with the router, using your own Handler function
 """
-function internalrequest(req::HTTP.Request, handlers::Vector{Function}, serialize::Bool=true) :: HTTP.Response
-    return req |> middleware(handlers=handlers, serialize=serialize) 
+function internalrequest(req::HTTP.Request, middleware::Vector{Function}, serialize::Bool=true) :: HTTP.Response
+    return req |> setupmiddleware(middleware=middleware, serialize=serialize) 
 end
 
 

@@ -114,8 +114,13 @@ function serveparallel(middleware::Vector{Function}; host="127.0.0.1", port=8080
     )
 end
 
+"""
 
-function custom(middleware)
+This function dynamically determines which middleware functions to apply to a request at runtime. 
+If router or route specific middleware is defined, then it's used instead of the globally defined
+middleware. 
+"""
+function compose(middleware)
     return function(handler)
         return function(req::HTTP.Request)
             innerhandler, route, params = HTTP.Handlers.gethandler(getrouter(), req)
@@ -123,7 +128,7 @@ function custom(middleware)
             if innerhandler !== nothing
                 
                 layers::Vector{Function} = [ handler ] # always initialize with the next handler function
-                routermiddlware::Dict{String, Vector{Function}} = getmiddleware()
+                routermiddlware::Dict{String, Vector{Function}} = getroutermiddlware()
 
                 if haskey(routermiddlware, route)
                     # overwrite global middleware with router specific middleware
@@ -149,11 +154,12 @@ users to 'chain' middleware functions like `serve(handler1, handler2, handler3)`
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
 function setupmiddleware(;middleware::Vector{Function}=[], serialize::Bool=true) :: Function
-    if serialize 
-        return reduce(|>, [getrouter(), DefaultHandler, custom(middleware)])
-    else 
-        return reduce(|>, [getrouter(), custom(middleware)])
-    end
+    # determine if we have any special router or route-specific middleware
+    custom_middleware = !isempty(getroutermiddlware()) ? [compose(middleware)] : reverse(middleware)
+    # check if we should use our default serialization middleware function
+    serialized = serialize ? [DefaultHandler] : []
+    # combine all our middleware functions
+    return reduce(|>, [getrouter(), serialized..., custom_middleware...])    
 end
 
 """
@@ -468,11 +474,9 @@ macro register(httpmethod, path, func)
     end
 
     # strip off any regex patterns attached to our path parameters
-    docs_path = replace(path, r"(?=:)(.*?)(?=}/)" => "")
-    registerchema(docs_path, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
+    registerchema(path, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
 
     local action = esc(func)
-
 
      # case 1.) The request handler is an anonymous function (don't parse out path params)
     if numfields <= 1

@@ -35,20 +35,23 @@ function handler4(handler)
     end
 end
 
-math = router("math", middleware=[handler3])
+math = router("math", middleware=[handler3], tags=["math"])
 
 # demonstrate how to use path params with regex patterns in HTTP v1.0+
-@get math("/divide/{a:[0-9]+}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
+@get math("/divide/{a:[0-9]+}/{b}") function(req::HTTP.Request, a::Float64, b::Float64)
     return a / b
 end
 
-@get math("/subtract/{a}/{b}", middleware=[handler4]) function (req::HTTP.Request, a::Float64, b::Float64)
-    return a / b
+@get math("/subtract/{a}/{b}", middleware=[handler4]) function(req::HTTP.Request, a::Float64, b::Float64)
+    return a - b
 end
 
-
-@get router("/power/{a}/{b}", middleware=[handler3]) function (req::HTTP.Request, a::Float64, b::Float64)
+@get router("/power/{a}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
     return a ^ b
+end
+
+@get router("/multiply/{a}/{b}", middleware=[]) function (req::HTTP.Request, a::Float64, b::Float64)
+    return a * b
 end
 
 @get "/add/{a}/{b}" function (req::HTTP.Request, a::Float64, b::Float64)
@@ -56,7 +59,5 @@ end
 end
 
 serve([handler1, handler2])
-
-# println(match(r"/divide/.*/.*", "/divide/34/nice"))
 
 end

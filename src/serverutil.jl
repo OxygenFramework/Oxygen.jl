@@ -139,13 +139,20 @@ end
 Internal helper function to launch the server in a consistent way
 """
 function startserver(host, port, kwargs, start)
-    serverwelcome(host, port)
-    setup()
-    kwargs = preprocesskwargs(kwargs) 
-    server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    starttasks()
-    start(host, port, server[], kwargs)
-    stoptasks()
+    try
+        serverwelcome(host, port)
+        setup()
+        kwargs = preprocesskwargs(kwargs)
+        server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+        starttasks()
+        start(host, port, server[], kwargs)
+    finally
+        terminate()
+        stoptasks()
+        server[] = nothing
+        ROUTER[] = HTTP.Router()
+        timers[] = []
+    end
 end
 
 """
@@ -495,22 +502,22 @@ function setupswagger()
         return
     end
 
-    # see if these handlers are already defined
-    docshandler, _, _ = HTTP.Handlers.gethandler(getrouter(), HTTP.Request("GET", docspath))
-    schemahandler, _, _ = HTTP.Handlers.gethandler(getrouter(), HTTP.Request("GET", schemapath))
+    # # see if these handlers are already defined
+    # docshandler, _, _ = HTTP.Handlers.gethandler(getrouter(), HTTP.Request("GET", docspath))
+    # schemahandler, _, _ = HTTP.Handlers.gethandler(getrouter(), HTTP.Request("GET", schemapath))
 
-    # register endpoints only if they aren't already registered
-    if isnothing(docshandler) && isnothing(schemahandler)
+    # # register endpoints only if they aren't already registered
+    # if isnothing(docshandler) && isnothing(schemahandler)
 
-        @get docspath function()
-            return swaggerhtml()
-        end
-
-        @get schemapath function()
-            return getschema() 
-        end
-
+    @get docspath function()
+        return swaggerhtml()
     end
+
+    @get schemapath function()
+        return getschema() 
+    end
+
+    # end
 end
 
 

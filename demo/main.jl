@@ -117,7 +117,7 @@ function CorsHandler(handle)
 end
 
 # start the web server
-serve(CorsHandler)
+serve(middleware=[CorsHandler])
 
 end
 

@@ -587,12 +587,12 @@ function handler3(handler)
     end
 end
 
-r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), [handler1, handler2, handler3])
+r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), middleware=[handler1, handler2, handler3])
 @test r.status == 200
 @test invocation == [1,2,3] # enusre the handlers are called in the correct order
 @test text(r) == "18.0" 
 
-r = internalrequest(HTTP.Request("GET", "/swagger"), [handler1])
+r = internalrequest(HTTP.Request("GET", "/swagger"), middleware=[handler1])
 @test r.status == 200
 
 r = internalrequest(HTTP.Request("GET", "/swagger/schema"))

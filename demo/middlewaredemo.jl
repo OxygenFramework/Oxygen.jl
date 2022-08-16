@@ -5,8 +5,6 @@ using .Oxygen
 using HTTP
 using JSON3
 
-
-
 function handler1(handler)
     return function(req::HTTP.Request)
         println("1")
@@ -50,6 +48,11 @@ end
     return a ^ b
 end
 
+@get router("/repeat", interval=1) function (req::HTTP.Request)
+    println("repeat")
+    return "repeat"
+end
+
 @get router("/multiply/{a}/{b}", middleware=[]) function (req::HTTP.Request, a::Float64, b::Float64)
     return a * b
 end
@@ -58,9 +61,6 @@ end
     return a + b
 end
 
-
-println(internalrequest(HTTP.Request("GET", "/add/5/5")))
-
-# serve([handler1, handler2])
+serve(middleware=[handler1, handler2])
 
 end

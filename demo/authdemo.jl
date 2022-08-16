@@ -4,7 +4,6 @@ include("../src/Oxygen.jl")
 using .Oxygen
 using HTTP
 
-
 @get "/divide/{a}/{b}" function(req::HTTP.Request, a::Float64, b::Float64)
     return a / b
 end
@@ -38,6 +37,6 @@ function AuthMiddleware(handler)
 end
 
 # There is no hard limit on the number of middleware functions you can add
-serve([CorsMiddleware, AuthMiddleware])
+serve(middleware=[CorsMiddleware, AuthMiddleware])
 
 end 

@@ -494,15 +494,23 @@ function setupswagger()
     if !isdocsenabled()
         return
     end
-    
-    @route ["GET"] "$docspath" function()
-        return swaggerhtml()
-    end
 
-    @route ["GET"] "$schemapath" function()
-        return getschema() 
+    # see if these handlers are already defined
+    docshandler, _, _ = HTTP.Handlers.gethandler(getrouter(), HTTP.Request("GET", docspath))
+    schemahandler, _, _ = HTTP.Handlers.gethandler(getrouter(), HTTP.Request("GET", schemapath))
+
+    # register endpoints only if they aren't already registered
+    if isnothing(docshandler) && isnothing(schemahandler)
+
+        @get docspath function()
+            return swaggerhtml()
+        end
+
+        @get schemapath function()
+            return getschema() 
+        end
+
     end
-    
 end
 
 

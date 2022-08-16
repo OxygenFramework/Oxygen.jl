@@ -48,11 +48,6 @@ end
     return a ^ b
 end
 
-@get router("/repeat", interval=1) function (req::HTTP.Request)
-    println("repeat")
-    return "repeat"
-end
-
 @get router("/multiply/{a}/{b}", middleware=[]) function (req::HTTP.Request, a::Float64, b::Float64)
     return a * b
 end

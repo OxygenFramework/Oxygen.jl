@@ -587,12 +587,12 @@ function handler3(handler)
     end
 end
 
-r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), handler1, handler2, handler3)
+r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), [handler1, handler2, handler3])
 @test r.status == 200
 @test invocation == [1,2,3] # enusre the handlers are called in the correct order
 @test text(r) == "18.0" 
 
-r = internalrequest(HTTP.Request("GET", "/swagger"), handler1)
+r = internalrequest(HTTP.Request("GET", "/swagger"), [handler1])
 @test r.status == 200
 
 r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
@@ -662,7 +662,7 @@ setschema(data)
 
 terminate()
 
-@async serve(handler1, handler2, handler3)
+@async serve(middleware=[handler1, handler2, handler3])
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/get"))
@@ -705,7 +705,7 @@ if Threads.nthreads() > 1
     
     HTTP.get("$localhost/killserver")
 
-    @async serveparallel(handler1, handler2, handler3)
+    @async serveparallel(middleware=[handler1, handler2, handler3])
     sleep(1)
 
     r = HTTP.get("$localhost/get")

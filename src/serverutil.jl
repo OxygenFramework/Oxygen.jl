@@ -64,51 +64,24 @@ function stoptasks()
 end
 
 """
-    serve(; host="127.0.0.1", port=8080, kwargs...)
-
-Start the webserver with the default request handler
-"""
-function serve(; host="127.0.0.1", port=8080, kwargs...)
-    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        HTTP.serve(setupmiddleware(), host, port; server=server, kwargs...)
-    )
-end
-
-
-"""
-    serve(middleware::Vector{Function}; host="127.0.0.1", port=8080, kwargs...)
+    serve(; middleware::Vector{Function}; host="127.0.0.1", port=8080, kwargs...)
 
 Start the webserver with your own custom request handler
 """
-function serve(middleware::Vector{Function}; host="127.0.0.1", port=8080, serialize=true, kwargs...)
+function serve(; middleware::Vector{Function}=[], host="127.0.0.1", port=8080, serialize=true, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
         HTTP.serve(setupmiddleware(middleware=middleware, serialize=serialize), host, port; server=server, kwargs...)
     )
 end
 
-
 """
-    serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
-
-Starts the webserver in streaming mode and spawns n - 1 worker threads to process individual requests.
-A Channel is used to schedule individual requests in FIFO order. Requests in the channel are
-then removed & handled by each the worker threads asynchronously. 
-"""
-function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
-    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        StreamUtil.start(server, setupmiddleware(); queuesize=queuesize, kwargs...)
-    )
-end
-
-
-"""
-    serveparallel(middleware::Vector{Function}; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
+    serveparallel(; middleware::Vector{Function}; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(middleware::Vector{Function}; host="127.0.0.1", port=8080, queuesize=1024, serialize=true, kwargs...)
+function serveparallel(; middleware::Vector{Function}=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
         StreamUtil.start(server, setupmiddleware(middleware=middleware, serialize=serialize); queuesize=queuesize, kwargs...)
     )
@@ -153,7 +126,7 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(;middleware::Vector{Function}=[], serialize::Bool=true) :: Function
+function setupmiddleware(;middleware::Vector = [], serialize::Bool=true) :: Function
     # determine if we have any special router or route-specific middleware
     custom_middleware = !isempty(getroutermiddlware()) ? [compose(middleware)] : reverse(middleware)
     # check if we should use our default serialization middleware function
@@ -224,7 +197,7 @@ end
 
 Directly call one of our other endpoints registered with the router, using your own Handler function
 """
-function internalrequest(req::HTTP.Request, middleware::Vector{Function}, serialize::Bool=true) :: HTTP.Response
+function internalrequest(req::HTTP.Request, middleware::Vector, serialize::Bool=true) :: HTTP.Response
     return req |> setupmiddleware(middleware=middleware, serialize=serialize) 
 end
 

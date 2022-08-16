@@ -58,6 +58,9 @@ end
     return a + b
 end
 
-serve([handler1, handler2])
+
+println(internalrequest(HTTP.Request("GET", "/add/5/5")))
+
+# serve([handler1, handler2])
 
 end

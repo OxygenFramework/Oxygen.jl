@@ -147,10 +147,12 @@ function startserver(host, port, kwargs, start)
         starttasks()
         start(host, port, server[], kwargs)
     finally
+        # Ensure the server and any backround tasks are stopped on exit
         terminate()
         stoptasks()
-        server[] = nothing
+        # Reset the values on exit
         ROUTER[] = HTTP.Router()
+        server[] = nothing
         timers[] = []
     end
 end

@@ -127,11 +127,11 @@ uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 
 [[deps.Oxygen]]
 deps = ["Dates", "HTTP", "JSON3", "Sockets"]
-git-tree-sha1 = "a502405fd23ca698fc4c7065a5c065b26221917d"
+git-tree-sha1 = "8be24b468f0abaf22c97c7b3449f4d0f8415093f"
 repo-rev = "feature/http-v1-upgrade"
 repo-url = ".."
 uuid = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
-version = "1.0.10"
+version = "1.0.11"
 
 [[deps.Parsers]]
 deps = ["Dates"]

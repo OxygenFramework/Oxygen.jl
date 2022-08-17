@@ -1,6 +1,3 @@
-# disable precompilation b/c this module defines several macros
-__precompile__(false)
-
 module ServerUtil
 
 using HTTP 
@@ -303,22 +300,16 @@ Mount all files inside the /static folder (or user defined mount point)
 macro staticfiles(folder::String, mountdir::String="static")
     registermountedfolder(mountdir)
     quote 
-        function addroute(path, headers, filepath, registeredpaths; code=200)
-            # only serve the original unchanged file contents using this variable
+        function addroute(currentroute, headers, filepath, registeredpaths; code=200)
             local body = file(filepath)
-            eval(
-                quote 
-                    @get $path function(req)
-                        # return 404 for paths that don't match our files
-                        validpath::Bool = get($registeredpaths, req.target, false)
-                        return validpath ? HTTP.Response($code, $headers , body=$body) : HTTP.Response(404)
-                    end
-                end
-            )
+            @get currentroute function(req)
+                # return 404 for paths that don't match our files
+                validpath::Bool = get(registeredpaths, req.target, false)
+                return validpath ? HTTP.Response(code, headers , body=body) : HTTP.Response(404)
+            end
         end
         @mountfolder($folder, $mountdir, addroute)
     end
-    
 end
 
 
@@ -331,16 +322,12 @@ but files are re-read on each request
 macro dynamicfiles(folder::String, mountdir::String="static")
     registermountedfolder(mountdir)
     quote 
-        function addroute(path, headers, filepath, registeredpaths; code = 200)
-            eval(
-                quote 
-                    @get $path function(req)   
-                        # return 404 for paths that don't match our files
-                        validpath::Bool = get($registeredpaths, req.target, false)
-                        return validpath ?  HTTP.Response($code, $headers , body=file($filepath)) : HTTP.Response(404) 
-                    end
-                end
-            )
+        function addroute(currentroute, headers, filepath, registeredpaths; code = 200)
+            @get currentroute function(req)   
+                # return 404 for paths that don't match our files
+                validpath::Bool = get(registeredpaths, req.target, false)
+                return validpath ?  HTTP.Response(code, headers , body=file(filepath)) : HTTP.Response(404) 
+            end
         end
         @mountfolder($folder, $mountdir, addroute)
     end        
@@ -355,8 +342,8 @@ macro route(methods, path, func)
     quote 
         local func = $(esc(func))
         local path = $(esc(path))
-        for method in eval($methods)
-            eval(:(@register $method $path $func))
+        for method in $methods
+            @register(method, path, func)
         end
     end  
 end
@@ -369,121 +356,117 @@ Register a request handler function with a path to the ROUTER
 """
 macro register(httpmethod, path, func)
 
-    # check if path is a callable function (that means it's a router higher-order-function)
-    if !isempty(methods(path))
+    return quote 
+  
+        local method_type = $(esc(httpmethod))
+        local route = $(esc(path))
+        local action = $(esc(func))
+  
+        # check if path is a callable function (that means it's a router higher-order-function)
+        if !isempty(methods(route))
 
-        # This is true when the user passes the router() directly to the path.
-        # We call the generated function without args so it uses the default args 
-        # from the parent function.
-        if countargs(path) == 1
-            path = path()
+            # This is true when the user passes the router() directly to the path.
+            # We call the generated function without args so it uses the default args 
+            # from the parent function.
+            if countargs(route) == 1
+                route = route()
+            end
+
+            # If it's still a function, then that means this is from the 3rd inner function 
+            # defined in the createrouter() function.
+            if countargs(route) == 2
+                route = route(method_type)
+            end
+            
         end
 
-        # If it's still a function, then that means this is from the 3rd inner function 
-        # defined in the createrouter() function.
-        if countargs(path) == 2
-            path = path(httpmethod)
-        end
+        local router = getrouter()
+        local variableRegex = r"{[a-zA-Z0-9_]+}"
+        local hasBraces = r"({)|(})"
+
+        # determine if we have parameters defined in our path
+        local hasPathParams = contains(route, variableRegex)
         
-    end
-
-    local router = getrouter()
-    local variableRegex = r"{[a-zA-Z0-9_]+}"
-    local hasBraces = r"({)|(})"
-
-    # determine if we have parameters defined in our path
-    local hasPathParams = contains(path, variableRegex)
-    
-    # track which index the params are located in
-    local positions = []
-    for (index, value) in enumerate(HTTP.URIs.splitpath(path)) 
-        if contains(value, hasBraces)
-            # extract the variable name
-            variable = replace(value, hasBraces => "") |> x -> split(x, ":") |> first        
-            push!(positions, (index, variable))
-        end
-    end
-
-    local method = first(methods(func))
-    local numfields = method.nargs
-
-    # extract the function handler's field names & types 
-    local fields = [x for x in fieldtypes(method.sig)]
-    local func_param_names = [String(param) for param in method_argnames(method)[3:end]]
-    local func_param_types = splice!(Array(fields), 3:numfields)
-    
-    # create a map of paramter name to type definition
-    local func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
-
-    # each tuple tracks where the param is refereced (variable, function index, path index)
-    local param_positions::Array{Tuple{String, Int, Int}} = []
-
-    # ensure the function params are present inside the path params 
-    for (_, path_param) in positions
-        hasparam = false
-        for (_, func_param) in enumerate(func_param_names)
-            if func_param == path_param 
-                hasparam = true
-                break
+        # track which index the params are located in
+        local positions = []
+        for (index, value) in enumerate(HTTP.URIs.splitpath(route)) 
+            if contains(value, hasBraces)
+                # extract the variable name
+                variable = replace(value, hasBraces => "") |> x -> split(x, ":") |> first        
+                push!(positions, (index, variable))
             end
         end
-        if !hasparam
-            throw("Your request handler is missing a parameter: '$path_param' defined in this route: $path")
-        end
-    end
 
-    # ensure the path params are present inside the function params 
-    for (func_index, func_param) in enumerate(func_param_names)
-        matched = nothing
-        for (path_index, path_param) in positions
-            if func_param == path_param 
-                matched = (func_param, func_index, path_index)
-                break
+        local method = first(methods(action))
+        local numfields = method.nargs
+
+        # extract the function handler's field names & types 
+        local fields = [x for x in fieldtypes(method.sig)]
+        local func_param_names = [String(param) for param in method_argnames(method)[3:end]]
+        local func_param_types = splice!(Array(fields), 3:numfields)
+        
+        # create a map of paramter name to type definition
+        local func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
+
+        # each tuple tracks where the param is refereced (variable, function index, path index)
+        local param_positions::Array{Tuple{String, Int, Int}} = []
+
+        # ensure the function params are present inside the path params 
+        for (_, path_param) in positions
+            hasparam = false
+            for (_, func_param) in enumerate(func_param_names)
+                if func_param == path_param 
+                    hasparam = true
+                    break
+                end
+            end
+            if !hasparam
+                throw("Your request handler is missing a parameter: '$path_param' defined in this route: $route")
             end
         end
-        if matched === nothing
-            throw("Your path is missing a parameter: '$func_param' which needs to be added to this route: $path")
-        else 
-            push!(param_positions, matched)
-        end
-    end
 
-    # strip off any regex patterns attached to our path parameters
-    registerchema(path, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
-
-    local action = esc(func)
-
-     # case 1.) The request handler is an anonymous function (don't parse out path params)
-    if numfields <= 1
-        local handle = quote 
-            function (req)
-                $action()
+        # ensure the path params are present inside the function params 
+        for (func_index, func_param) in enumerate(func_param_names)
+            matched = nothing
+            for (path_index, path_param) in positions
+                if func_param == path_param 
+                    matched = (func_param, func_index, path_index)
+                    break
+                end
+            end
+            if matched === nothing
+                throw("Your path is missing a parameter: '$func_param' which needs to be added to this route: $route")
+            else 
+                push!(param_positions, matched)
             end
         end
-    # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
-    elseif hasPathParams && numfields > 2
-        local handle = quote
-            function (req) 
+
+        # strip off any regex patterns attached to our path parameters
+        registerchema(route, method_type, zip(func_param_names, func_param_types), Base.return_types(action))
+
+        # case 1.) The request handler is an anonymous function (don't parse out path params)
+        if numfields <= 1
+            local handle = function (req)
+                action()
+            end   
+        # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
+        elseif hasPathParams && numfields > 2
+            local handle = function (req) 
                 # get all path parameters
                 params = HTTP.getparams(req)
                 # convert params to their designated type (if applicable)
-                pathParams = [parseparam($func_map[name], params[name]) for name in $func_param_names]   
+                pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
                 # pass all parameters to handler in the correct order 
-                $action(req, pathParams...)
+                action(req, pathParams...)
+            end
+        # case 3.) This function should only get passed the request object
+        else 
+            local handle = function (req) 
+                action(req)
             end
         end
-    # case 3.) This function should only get passed the request object
-    else 
-        local handle = quote 
-            function (req) 
-                $action(req)
-            end
-        end
-    end
 
-    local requesthandler = quote 
-        local handle = $handle
-        function (req)
+        local requesthandler = function (req)
             try 
                 return handle(req)
             catch error
@@ -491,11 +474,9 @@ macro register(httpmethod, path, func)
                 return HTTP.Response(500, "The Server encountered a problem")
             end
         end
-    end
 
-    quote 
-        HTTP.register!($router, $httpmethod, $path, $requesthandler)
-    end
+        HTTP.register!(router, method_type, route, requesthandler)
+    end 
 end
 
 

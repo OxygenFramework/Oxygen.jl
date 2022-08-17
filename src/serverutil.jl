@@ -147,15 +147,17 @@ function startserver(host, port, kwargs, start)
         starttasks()
         start(host, port, server[], kwargs)
     finally
-        # Ensure the server and any backround tasks are stopped on exit
-        terminate()
         stoptasks()
-        # Reset the values on exit
-        ROUTER[] = HTTP.Router()
-        server[] = nothing
-        timers[] = []
+        # Reset the values between runs in interactive mode
+        if isinteractive()
+            terminate()
+            ROUTER[] = HTTP.Router()
+            server[] = nothing
+            timers[] = []
+        end
     end
 end
+
 
 """
 Used to overwrite defaults to any incoming keyword arguments
@@ -504,13 +506,6 @@ function setupswagger()
         return
     end
 
-    # # see if these handlers are already defined
-    # docshandler, _, _ = HTTP.Handlers.gethandler(getrouter(), HTTP.Request("GET", docspath))
-    # schemahandler, _, _ = HTTP.Handlers.gethandler(getrouter(), HTTP.Request("GET", schemapath))
-
-    # # register endpoints only if they aren't already registered
-    # if isnothing(docshandler) && isnothing(schemahandler)
-
     @get docspath function()
         return swaggerhtml()
     end
@@ -519,7 +514,6 @@ function setupswagger()
         return getschema() 
     end
 
-    # end
 end
 
 

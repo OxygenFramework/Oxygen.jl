@@ -144,13 +144,14 @@ function startserver(host, port, kwargs, start)
         starttasks()
         start(host, port, server[], kwargs)
     finally
+        # stop and clear background tasks between runs
         stoptasks()
-        # Reset the values between runs in interactive mode
+        timers[] = []
+        # Reset the router & server between runs in interactive mode
         if isinteractive()
             terminate()
             ROUTER[] = HTTP.Router()
             server[] = nothing
-            timers[] = []
         end
     end
 end

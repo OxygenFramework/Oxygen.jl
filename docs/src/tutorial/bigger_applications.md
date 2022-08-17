@@ -16,7 +16,7 @@ app
 └── Manifest.toml
 ```
 
-# How to use the `router()` function
+## How to use the `router()` function
 
 Let's say you have a file dedicated to handling mathematical operations in the submodule at `/src/MathOperations.jl.`
 

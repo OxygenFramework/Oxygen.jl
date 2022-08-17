@@ -9,7 +9,13 @@ makedocs(
         "Overview" => "index.md",
         "api.md",
         "Manual" => [
-            "guide.md"
+            "tutorial/first_steps.md",
+            "tutorial/request_types.md",
+            "tutorial/path_parameters.md",
+            "tutorial/query_parameters.md",
+            "tutorial/request_body.md",
+            "tutorial/bigger_applications.md",
+            "tutorial/oauth2.md"
         ]
     ]
 )

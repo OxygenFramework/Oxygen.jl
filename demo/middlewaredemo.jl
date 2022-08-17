@@ -56,6 +56,12 @@ end
     return a + b
 end
 
+function repeat(req::HTTP.Request)
+    println("repeat")
+end
+
+@get router("/repeat", interval=1) repeat
+
 serve(middleware=[handler1, handler2])
 
 end

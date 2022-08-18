@@ -746,10 +746,8 @@ if Threads.nthreads() > 1
     finally
         terminate()
     end
-
-else 
-
-
 end
+
+resetstate()
 
 end 

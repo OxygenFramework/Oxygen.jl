@@ -13,7 +13,7 @@ export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
-        starttasks, stoptasks
+        starttasks, stoptasks, resetstate
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
@@ -148,15 +148,23 @@ function startserver(host, port, kwargs, start)
     finally
         # stop background tasks between runs
         stoptasks()
-        timers[] = []
         # Reset the router & server between runs in interactive mode
-        if isinteractive()
-            terminate()
-            ROUTER[] = HTTP.Router()
-            server[] = nothing
-            resetstatevariables()
-        end
+        isinteractive = isinteractive()
+        isinteractive && terminate()
+        isinteractive && resetstate()
     end
+end
+
+"""
+Reset all the internal state variables
+"""
+function resetstate()
+    # reset this modules state variables 
+    timers[] = []         
+    ROUTER[] = HTTP.Router()
+    server[] = nothing
+    # reset autodocs state variables
+    resetstatevariables()
 end
 
 

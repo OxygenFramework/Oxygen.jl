@@ -227,7 +227,23 @@ end
     return routerdict["value"]
 end
 
-@get router("/router-passed-direct") function(req)
+function middleware1(handler)
+    return function(req::HTTP.Request)
+        handler(req)
+    end
+end
+
+specific = router("/middleware", middleware=[middleware1])
+
+@get specific("/route-specific", middleware=[middleware1]) function(req)
+    return "route-specific"
+end
+
+@get router("/no-middleware", middleware=[]) function(req)
+    return "no-middleware"
+end
+
+@get router("/router-passed-direct", middleware=[middleware1]) function(req)
     return "router passed directly"
 end
 
@@ -532,6 +548,14 @@ enabledocs()
 sleep(3)
 
 ## Router related tests
+
+r = internalrequest(HTTP.Request("GET", "/middleware/route-specific"))
+@test r.status == 200
+@test text(r) == "route-specific"
+
+r = internalrequest(HTTP.Request("GET", "/no-middleware"))
+@test r.status == 200
+@test text(r) == "no-middleware"
 
 r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
 @test r.status == 200

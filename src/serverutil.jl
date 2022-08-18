@@ -149,9 +149,10 @@ function startserver(host, port, kwargs, start)
         # stop background tasks between runs
         stoptasks()
         # Reset the router & server between runs in interactive mode
-        isinteractive = isinteractive()
-        isinteractive && terminate()
-        isinteractive && resetstate()
+        if isinteractive()
+            terminate()
+            resetstate()
+        end
     end
 end
 

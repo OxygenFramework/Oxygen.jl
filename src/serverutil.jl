@@ -43,6 +43,7 @@ Start all background repeat tasks
 function starttasks()
     stoptasks()
     timers[] = []
+    println("num tasks: $(size(getrepeatasks()))")
     for task in getrepeatasks()
         path, httpmethod, interval = task
         action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))

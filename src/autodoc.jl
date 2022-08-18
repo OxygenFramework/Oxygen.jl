@@ -7,7 +7,7 @@ include("util.jl"); using .Util
 export registerchema, docspath, schemapath, getschema, 
     swaggerhtml, configdocs, mergeschema, setschema, router,
     enabledocs, disabledocs, isdocsenabled, registermountedfolder, 
-    getrepeatasks, getroutermiddlware
+    getrepeatasks, getroutermiddlware, clearrepeattasks
 
 struct TaggedRoute 
     httpmethods::Vector{String} 
@@ -33,6 +33,10 @@ global schema = Dict(
 
 function getrepeatasks()
     return repeattasks
+end
+
+function clearrepeattasks()
+    global repeattasks = []
 end
 
 """

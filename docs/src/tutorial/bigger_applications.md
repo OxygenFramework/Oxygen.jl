@@ -44,9 +44,10 @@ serve()
 ## Tagging your routes
 
 By using the hello router in both endpoints, it passes along all the properties as default values. For example If we look at the routes registered in the application they will look like:
-
-`/math/multiply/{a}/{b}`
-`/math/divide/{a}/{b}`
+```
+/math/multiply/{a}/{b}
+/math/divide/{a}/{b}
+```
 
 Both endpoints in this case will be tagged to the `math` tag and the `/multiply` endpoint will have an additional tag appended just to this endpoint called `multiplication`. These tags are used by Oxygen when auto-generating the documentation to organize it by separating the endpoints into sections based off their tags. 
 

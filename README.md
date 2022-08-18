@@ -310,7 +310,9 @@ serve(access_log=nothing)
 ## Middleware
 
 Middleware functions make it easy to create custom workflows to intercept all incoming requests and outgoing responses.
-They are executed in the same order they are passed in (from left to right)
+They are executed in the same order they are passed in (from left to right).
+
+They can also be set at the router & route level using the `router()` function with the `middleware` keyword argument. 
 
 ```julia
 using Oxygen

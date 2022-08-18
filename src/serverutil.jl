@@ -86,39 +86,7 @@ function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, que
     )
 end
 
-"""
 
-This function dynamically determines which middleware functions to apply to a request at runtime. 
-If router or route specific middleware is defined, then it's used instead of the globally defined
-middleware. 
-"""
-function compose(middleware)
-    return function(handler)
-        return function(req::HTTP.Request)
-            innerhandler, route, params = HTTP.Handlers.gethandler(getrouter(), req)
-            # Check if the current request matches one of our predefined routes 
-            if innerhandler !== nothing
-                
-                layers::Vector{Function} = [ handler ] # always initialize with the next handler function
-                routermiddlware::Dict{String, Vector{Function}} = getroutermiddlware()
-
-                if haskey(routermiddlware, route)
-                    # overwrite global middleware with router specific middleware
-                    push!(layers, reverse(routermiddlware[route])...)
-                else 
-                    # add the global middleware
-                    push!(layers, reverse(middleware)...)
-                end
-
-                combined_middleware = reduce(|>, layers)
-
-                # use the middleware 
-                return combined_middleware(req)
-            end
-            return handler(req)
-        end
-    end
-end
 
 """
 Compose the user & internally defined middleware functions together. Practically, this allows
@@ -127,7 +95,7 @@ application and have them execute in the order they were passed (left to right) 
 """
 function setupmiddleware(;middleware::Vector = [], serialize::Bool=true) :: Function
     # determine if we have any special router or route-specific middleware
-    custom_middleware = !isempty(getroutermiddlware()) ? [compose(middleware)] : reverse(middleware)
+    custom_middleware = hasmiddleware() ? [compose(getrouter(), middleware)] : reverse(middleware)
     # check if we should use our default serialization middleware function
     serialized = serialize ? [DefaultHandler] : []
     # combine all our middleware functions
@@ -353,10 +321,8 @@ Used to register a function to a specific endpoint to handle mulitiple request t
 """
 macro route(methods, path, func)
     quote 
-        local func = $(esc(func))
-        local path = $(esc(path))
         for method in $methods
-            @register(method, path, func)
+            @register(method, $(esc(path)), $(esc(func)))
         end
     end  
 end
@@ -368,7 +334,6 @@ end
 Register a request handler function with a path to the ROUTER
 """
 macro register(httpmethod, path, func)
-
     return quote 
   
         local method_type = $(esc(httpmethod))

@@ -253,7 +253,7 @@ emptyrouter = router()
 end
 
 emptysubpath = router("/emptysubpath", tags=["empty"])
-@get emptysubpath("") function(req)
+@get emptysubpath("", middleware=[middleware1]) function(req)
     return "emptysubpath"
 end
 

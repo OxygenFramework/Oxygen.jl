@@ -33,35 +33,39 @@ function handler4(handler)
     end
 end
 
-math = router("math", middleware=[handler3], tags=["math"])
-
-# demonstrate how to use path params with regex patterns in HTTP v1.0+
-@get math("/divide/{a:[0-9]+}/{b}") function(req::HTTP.Request, a::Float64, b::Float64)
-    return a / b
-end
-
-@get math("/subtract/{a}/{b}", middleware=[handler4]) function(req::HTTP.Request, a::Float64, b::Float64)
-    return a - b
-end
-
+# case 1: no middleware is defined at any level -> use global middleware
 @get router("/power/{a}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
     return a ^ b
 end
 
+math = router("/math", middleware=[handler3])
+
+# case 2: router & route level is defined -> ignore global middleware + combine router & route middleware 
+@get math("/divide/{a}/{b}", middleware=[handler4]) function(req::HTTP.Request, a::Float64, b::Float64)
+    return a / b
+end
+
+# case 3: only router level is defined -> ignore global middleware + only register router level 
+@get math("/subtract/{a}/{b}") function(req::HTTP.Request, a::Float64, b::Float64)
+    return a - b
+end
+
+# case 4: only route level is defined -> combine global + route level middleware
+empty = router()
+@get empty("/cube/{a}", middleware=[handler3]) function(req, a::Float64)
+    return a * a * a
+end
+
+# demonstrate how to bypass all global middleware
 @get router("/multiply/{a}/{b}", middleware=[]) function (req::HTTP.Request, a::Float64, b::Float64)
     return a * b
 end
 
+# uses the global middleware by default
 @get "/add/{a}/{b}" function (req::HTTP.Request, a::Float64, b::Float64)
     return a + b
 end
 
-function repeat(req::HTTP.Request)
-    println("repeat")
-end
-
-@get router("/repeat", interval=1) repeat
-
-serve(middleware=[handler1, handler2])
+serveparallel(middleware=[handler1, handler2])
 
 end

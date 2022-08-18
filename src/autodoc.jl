@@ -7,7 +7,7 @@ include("util.jl"); using .Util
 export registerchema, docspath, schemapath, getschema, 
     swaggerhtml, configdocs, mergeschema, setschema, router,
     enabledocs, disabledocs, isdocsenabled, registermountedfolder, 
-    getrepeatasks, getroutermiddlware, resetstatevariables
+    getrepeatasks, hasmiddleware, compose, resetstatevariables
 
 struct TaggedRoute 
     httpmethods::Vector{String} 
@@ -30,7 +30,7 @@ global mountedfolders = Set{String}()
 global taggedroutes = Dict{String, TaggedRoute}()
 global repeattasks = []
 global schema = defaultSchema
-global const routermiddlware = Ref{Dict{String,Vector{Function}}}(Dict())
+global const custommiddlware = Ref{Dict{String, Tuple}}(Dict())
 
 function getrepeatasks()
     return repeattasks
@@ -44,7 +44,7 @@ function resetstatevariables()
     global taggedroutes = Dict{String, TaggedRoute}()
     global repeattasks = []
     global schema = defaultSchema
-    routermiddlware[] = Dict()
+    custommiddlware[] = Dict()
 end
 
 """
@@ -129,8 +129,59 @@ function mergeschema(customschema::Dict)
     global schema = recursive_merge(getschema(), customschema)
 end
 
+"""
+returns true if we have any special middleware (router or route specific)
+"""
+function hasmiddleware()::Bool 
+    return !isempty(getroutermiddlware())
+end
+
 function getroutermiddlware()
-    return routermiddlware[]
+    return custommiddlware[]
+end
+
+"""
+This function dynamically determines which middleware functions to apply to a request at runtime. 
+If router or route specific middleware is defined, then it's used instead of the globally defined
+middleware. 
+"""
+function compose(router, globalmiddleware)
+    return function(handler)
+        return function(req::HTTP.Request)
+            innerhandler, path, params = HTTP.Handlers.gethandler(router, req)
+            # Check if the current request matches one of our predefined routes 
+            if innerhandler !== nothing
+                
+                # always initialize with the next handler function
+                layers::Vector{Function} = [ handler ] 
+
+                # lookup the middleware for this path
+                routermiddleware, routemiddleware = get(getroutermiddlware(), "$(req.method)|$path", (nothing, nothing))
+
+                # calculate the checks ahead of time
+                hasrouter = !isnothing(routermiddleware) 
+                hasroute = !isnothing(routemiddleware) 
+                 
+                # case 1: no middleware is defined at any level -> use global middleware
+                if !hasrouter && !hasroute
+                    append!(layers, reverse(globalmiddleware))
+                # case 2: router & route level is defined -> ignore global middleware + combine router & route middleware 
+                elseif hasrouter && hasroute
+                    append!(layers, reverse([routermiddleware..., routemiddleware...]))
+                # case 3: only router level is defined -> ignore global middleware + only register router level 
+                elseif hasrouter && !hasroute
+                    append!(layers, reverse(routermiddleware))
+                # case 4: only route level is defined -> combine global + route level middleware
+                elseif !hasrouter && hasroute
+                    append!(layers, reverse([globalmiddleware..., routemiddleware...]))
+                end
+
+                # combine all the middleware functions together 
+                return req |> reduce(|>, layers)
+            end
+            return handler(req)
+        end
+    end
 end
 
 """
@@ -155,7 +206,8 @@ function createrouter(prefix::String,
 
     # appends a "/" character to the given string if doesn't have one. 
     function fixpath(path::String)
-        if !isnothing(path) && !isempty(path)
+        path = String(strip(path))
+        if !isnothing(path) && !isempty(path) && path !== "/"
             return startswith(path, "/") ? path : "/$path"
         end
         return ""
@@ -171,23 +223,14 @@ function createrouter(prefix::String,
         path = !isnothing(path) ? "$(fixpath(prefix))$(fixpath(path))" : fixpath(prefix)
 
         combinedtags = [tags..., routertags...]
-        combinedmiddleware = []
-
-        # only add custom middleware functions if they were assigned a value 
-        if !isnothing(middleware)
-            push!(combinedmiddleware, middleware...)
-        end
-
-        if !isnothing(routermiddleware) 
-            push!(combinedmiddleware, routermiddleware...)
-        end
-
-        if !isnothing(middleware) || !isnothing(routermiddleware)
-            getroutermiddlware()[path] = combinedmiddleware
-        end
 
         # this is called inside the @register macro (only it knows the exact httpmethod associated with each path)
         return function(httpmethod::String)
+
+            if !(isnothing(routermiddleware) && isnothing(middleware))
+                # add both router & route-sepecific middleware
+                getroutermiddlware()["$httpmethod|$path"] = (routermiddleware, middleware)
+            end
             
             # register interval for this route 
             if !isnothing(interval) && interval >= 0.0

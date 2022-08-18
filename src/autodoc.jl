@@ -7,22 +7,14 @@ include("util.jl"); using .Util
 export registerchema, docspath, schemapath, getschema, 
     swaggerhtml, configdocs, mergeschema, setschema, router,
     enabledocs, disabledocs, isdocsenabled, registermountedfolder, 
-    getrepeatasks, getroutermiddlware, clearrepeattasks
+    getrepeatasks, getroutermiddlware, resetstatevariables
 
 struct TaggedRoute 
     httpmethods::Vector{String} 
     tags::Vector{String}
 end
 
-global enable_auto_docs = true 
-global docspath = "/docs"
-global schemapath = "/docs/schema"
-global mountedfolders = Set{String}()
-global taggedroutes = Dict{String, TaggedRoute}()
-global repeattasks = []
-global const routermiddlware = Ref{Dict{String,Vector{Function}}}(Dict())
-
-global schema = Dict(
+const defaultSchema = Dict(
     "openapi" => "3.0.0",
     "info" => Dict(
         "title" => "API Overview",
@@ -31,12 +23,28 @@ global schema = Dict(
     "paths" => Dict()
 )
 
+global enable_auto_docs = true 
+global docspath = "/docs"
+global schemapath = "/docs/schema"
+global mountedfolders = Set{String}()
+global taggedroutes = Dict{String, TaggedRoute}()
+global repeattasks = []
+global schema = defaultSchema
+global const routermiddlware = Ref{Dict{String,Vector{Function}}}(Dict())
+
 function getrepeatasks()
     return repeattasks
 end
 
-function clearrepeattasks()
+function resetstatevariables()
+    global enable_auto_docs = true 
+    global docspath = "/docs"
+    global schemapath = "/docs/schema"
+    global mountedfolders = Set{String}()
+    global taggedroutes = Dict{String, TaggedRoute}()
     global repeattasks = []
+    global schema = defaultSchema
+    routermiddlware[] = Dict()
 end
 
 """

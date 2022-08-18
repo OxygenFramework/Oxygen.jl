@@ -41,9 +41,6 @@ end
 Start all background repeat tasks
 """
 function starttasks()
-    stoptasks()
-    timers[] = []
-    println("num tasks: $(size(getrepeatasks()))")
     for task in getrepeatasks()
         path, httpmethod, interval = task
         action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))
@@ -152,7 +149,7 @@ function startserver(host, port, kwargs, start)
         # stop background tasks between runs
         stoptasks()
         timers[] = []
-        clearrepeattasks()
+        resetstatevariables()
         # Reset the router & server between runs in interactive mode
         if isinteractive()
             terminate()

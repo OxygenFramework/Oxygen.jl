@@ -27,7 +27,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 - Type definition support for path parameters
 - Built-in multithreading support
 - Static file hosting
-- Middleware chaining (at the global, router & route levels)
+- Middleware chaining (at the global, router, and route levels)
 - Route tagging
 - Repeat tasks
 

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Bigger Applications - Multiple Files · Oxygen.jl</title><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.044/juliamono.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">Oxygen.jl</a></span></div><form class="docs-search" action="../../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../../">Overview</a></li><li><a class="tocitem" href="../../api/">Api</a></li><li><span class="tocitem">Manual</span><ul><li><a class="tocitem" href="../first_steps/">First Steps</a></li><li><a class="tocitem" href="../request_types/">Request Types</a></li><li><a class="tocitem" href="../path_parameters/">Path Parameters</a></li><li><a class="tocitem" href="../query_parameters/">Query Parameters</a></li><li><a class="tocitem" href="../request_body/">Request Body</a></li><li class="is-active"><a class="tocitem" href>Bigger Applications - Multiple Files</a><ul class="internal"><li><a class="tocitem" href="#How-to-use-the-router()-function"><span>How to use the <code>router()</code> function</span></a></li><li><a class="tocitem" href="#Tagging-your-routes"><span>Tagging your routes</span></a></li><li><a class="tocitem" href="#Middleware-and-router()"><span>Middleware &amp; <code>router()</code></span></a></li><li><a class="tocitem" href="#Repeat-Actions"><span>Repeat Actions</span></a></li></ul></li><li><a class="tocitem" href="../oauth2/">OAuth2 with Umbrella.jl</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Manual</a></li><li class="is-active"><a href>Bigger Applications - Multiple Files</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Bigger Applications - Multiple Files</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/ndortega/Oxygen.jl/blob/master/docs/src/tutorial/bigger_applications.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Bigger-Applications-Multiple-Files"><a class="docs-heading-anchor" href="#Bigger-Applications-Multiple-Files">Bigger Applications - Multiple Files</a><a id="Bigger-Applications-Multiple-Files-1"></a><a class="docs-heading-anchor-permalink" href="#Bigger-Applications-Multiple-Files" title="Permalink"></a></h1><p>If you are building an application or a web API, it&#39;s rarely the case that you can put everything on a single file.</p><p>As your application grows you&#39;ll need to spread your application&#39;s logic across multiple files. Oxygen provides some tools to help you do this while staying organized.</p><p>Let&#39;s say you have an application that looks something like this:</p><pre><code class="nohighlight hljs">app
+├── src
+│   ├── main.jl
+│   └── MathOperations.jl
+│
+├── Project.toml
+└── Manifest.toml</code></pre><h2 id="How-to-use-the-router()-function"><a class="docs-heading-anchor" href="#How-to-use-the-router()-function">How to use the <code>router()</code> function</a><a id="How-to-use-the-router()-function-1"></a><a class="docs-heading-anchor-permalink" href="#How-to-use-the-router()-function" title="Permalink"></a></h2><p>Let&#39;s say you have a file dedicated to handling mathematical operations in the submodule at <code>/src/MathOperations.jl.</code></p><p>You might want the first part of each path to have the same value and just switch out the subpath to keep things organized in your api. You can use the <code>router</code> function to do just that. </p><p>The <code>router()</code> function is an HOF (higher order function) that allows you to reuse the same properties across multiple endpoints.</p><p>Because the generated router is just a function, they can be exported and shared across multiple files &amp; modules.</p><pre><code class="language-julia hljs">using Oxygen
+
+math = router(&quot;/math&quot;, tags=[&quot;math&quot;])
+
+@get math(&quot;/multiply/{a}/{b}&quot;, tags=[&quot;multiplication&quot;]) function(req, a::Float64, b::Float64)
+    return a * b
+end
+
+@get math(&quot;/divide/{a}/{b}&quot;) function(req, a::Float64, b::Float64)
+    return a / b
+end
+
+serve()</code></pre><h2 id="Tagging-your-routes"><a class="docs-heading-anchor" href="#Tagging-your-routes">Tagging your routes</a><a id="Tagging-your-routes-1"></a><a class="docs-heading-anchor-permalink" href="#Tagging-your-routes" title="Permalink"></a></h2><p>By using the hello router in both endpoints, it passes along all the properties as default values. For example If we look at the routes registered in the application they will look like:</p><pre><code class="nohighlight hljs">/math/multiply/{a}/{b}
+/math/divide/{a}/{b}</code></pre><p>Both endpoints in this case will be tagged to the <code>math</code> tag and the <code>/multiply</code> endpoint will have an additional tag appended just to this endpoint called <code>multiplication</code>. These tags are used by Oxygen when auto-generating the documentation to organize it by separating the endpoints into sections based off their tags. </p><h2 id="Middleware-and-router()"><a class="docs-heading-anchor" href="#Middleware-and-router()">Middleware &amp; <code>router()</code></a><a id="Middleware-and-router()-1"></a><a class="docs-heading-anchor-permalink" href="#Middleware-and-router()" title="Permalink"></a></h2><p>The <code>router()</code> function has a <code>middleware</code> parameter which takes a vector of middleware functions to pass  incoming requests through before hitting your endpoints.</p><p><strong>Assigning middleware functions at the router level will overwrite any globally assigned middleware for any routes that utilize this router</strong></p><p>Currently you can assign middleware at two levels</p><ul><li>router level</li><li>route level</li></ul><h3 id="Router-Level-Middleware"><a class="docs-heading-anchor" href="#Router-Level-Middleware">Router Level Middleware</a><a id="Router-Level-Middleware-1"></a><a class="docs-heading-anchor-permalink" href="#Router-Level-Middleware" title="Permalink"></a></h3><p>At the router level, any middleware defined here will be reused across  all other routes that use this router(). In the example below, both <code>/greet/hello</code>  and <code>/greet/bonjour</code> routes will send requests through the same middleware functions before either endpoint is called</p><pre><code class="language-julia hljs">function middleware1(handle)
+    function(req)
+        println(&quot;this is the 1st middleware function&quot;)
+        handle(req)
+    end
+end
+
+# middleware1 is defined at the router level
+greet = router(&quot;/greet&quot;, middleware=[middleware1])
+
+@get greet(&quot;/hello&quot;) function()
+    println(&quot;hello&quot;)
+end
+
+@get greet(&quot;/bonjour&quot;) function()
+    println(&quot;bonjour&quot;)
+end</code></pre><h3 id="Route-Specific-Middleware"><a class="docs-heading-anchor" href="#Route-Specific-Middleware">Route Specific Middleware</a><a id="Route-Specific-Middleware-1"></a><a class="docs-heading-anchor-permalink" href="#Route-Specific-Middleware" title="Permalink"></a></h3><p>At the route level, you can customize what middleware functions should be applied on a route by route basis. In the example below, the <code>/greet/hello</code> route gets both <code>middleware1</code> &amp; <code>middleware2</code> functions applied to it, while the <code>/greet/bonjour</code>  route only has <code>middleware1</code> function which it inherited from the <code>greet</code> router.</p><pre><code class="language-julia hljs">function middleware1(handle)
+    function(req)
+        println(&quot;this is the 1st middleware function&quot;)
+        handle(req)
+    end
+end
+
+function middleware2(handle)
+    function(req)
+        println(&quot;this is the 2nd middleware function&quot;)
+        handle(req)
+    end
+end
+
+# middleware1 is defined at the router level
+greet = router(&quot;/greet&quot;, middleware=[middleware1])
+
+# middleware1 is defined at the route level
+@get greet(&quot;/hello&quot;, middleware=[middleware2]) function()
+    println(&quot;hello&quot;)
+end
+
+@get greet(&quot;/bonjour&quot;) function()
+    println(&quot;bonjour&quot;)
+end</code></pre><h3 id="Bypass-Global-Middleware"><a class="docs-heading-anchor" href="#Bypass-Global-Middleware">Bypass Global Middleware</a><a id="Bypass-Global-Middleware-1"></a><a class="docs-heading-anchor-permalink" href="#Bypass-Global-Middleware" title="Permalink"></a></h3><p>You can set the router&#39;s <code>middleware</code> param to an empty vector to bypass any globally assigned middleware. In the example below, all requests to endpoints registered to the <code>greet</code> router() will skip any globally defined middleware and get executed directly.</p><pre><code class="language-julia hljs">function middleware1(handle)
+    function(req)
+        println(&quot;this is the 1st middleware function&quot;)
+        handle(req)
+    end
+end
+
+greet = router(&quot;/greet&quot;, middleware=[])
+
+@get greet(&quot;/hello&quot;) function()
+    println(&quot;hello&quot;)
+end
+
+@get greet(&quot;/bonjour&quot;) function()
+    println(&quot;bonjour&quot;)
+end
+
+serve(middleware=[middleware1])</code></pre><h2 id="Repeat-Actions"><a class="docs-heading-anchor" href="#Repeat-Actions">Repeat Actions</a><a id="Repeat-Actions-1"></a><a class="docs-heading-anchor-permalink" href="#Repeat-Actions" title="Permalink"></a></h2><p>The <code>router()</code> function has an <code>interval</code> parameter which is used to call a request handler on a set interval (in seconds). </p><p><strong>It&#39;s important to note that request handlers that use this property can&#39;t define additional function parameters outside of the default <code>HTTP.Request</code> parameter.</strong></p><p>In the example below, the <code>/repeat/hello</code> endpoint is called every 0.5 seconds and <code>&quot;hello&quot;</code> is printed to the console each time.</p><pre><code class="language-julia hljs">using Oxygen
+
+repeat = router(&quot;/repeat&quot;, interval=0.5, tags=[&quot;repeat&quot;])
+
+@get repeat(&quot;/hello&quot;) function()
+    println(&quot;hello&quot;)
+end
+
+# you can override properties by setting route specific values 
+@get repeat(&quot;/bonjour&quot;, interval=1.5) function()
+    println(&quot;bonjour&quot;)
+end
+
+serve()</code></pre><p>If you want to call an endpoint with parameters on a set interval, you&#39;re better off creating an endpoint to perform the action you want and a second endpoint to call the first on a set interval. </p><pre><code class="language-julia hljs">using HTTP
+using Oxygen
+
+repeat = router(&quot;/repeat&quot;, interval=1.5, tags=[&quot;repeat&quot;])
+
+@get &quot;/multiply/{a}/{b}&quot; function(req, a::Float64, b::Float64)
+    return a * b
+end
+
+@get repeat(&quot;/multiply&quot;) function()
+    response = internalrequest(HTTP.Request(&quot;GET&quot;, &quot;/multiply/3/5&quot;))
+    println(response)
+    return response
+end
+
+serve()</code></pre><p>The example above will print the response from the <code>/multiply</code> endpoint in the console below every 1.5 seconds and should look like this:</p><pre><code class="nohighlight hljs">&quot;&quot;&quot;
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+
+15.0&quot;&quot;&quot;</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../request_body/">« Request Body</a><a class="docs-footer-nextpage" href="../oauth2/">OAuth2 with Umbrella.jl »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.18 on <span class="colophon-date" title="Friday 19 August 2022 01:01">Friday 19 August 2022</span>. Using Julia version 1.6.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

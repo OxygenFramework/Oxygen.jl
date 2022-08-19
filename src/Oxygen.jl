@@ -12,5 +12,6 @@ export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
         serve, serveparallel, terminate, internalrequest, 
         redirect, queryparams, binary, text, json, html, file, 
         configdocs, mergeschema, setschema, getschema, router,
-        enabledocs, disabledocs, isdocsenabled, starttasks, stoptasks
+        enabledocs, disabledocs, isdocsenabled, starttasks, stoptasks,
+        resetstate
 end

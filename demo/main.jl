@@ -105,17 +105,19 @@ headers = [
     "Access-Control-Allow-Methods" => "GET, POST"
 ]
 
-function CorsHandler(req, defaultHandler)
-    # return headers on OPTIONS request
-    if HTTP.method(req) == "OPTIONS"
-        return HTTP.Response(200, headers)
-    else 
-        return defaultHandler(req)
+function CorsHandler(handle)
+    return function(req::HTTP.Request)
+        # return headers on OPTIONS request
+        if HTTP.method(req) == "OPTIONS"
+            return HTTP.Response(200, headers)
+        else 
+            return handle(req)
+        end
     end
 end
 
 # start the web server
-serve((req, router, defaultHandler) -> CorsHandler(req, defaultHandler))
+serve(middleware=[CorsHandler])
 
 end
 

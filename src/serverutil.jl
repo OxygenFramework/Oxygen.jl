@@ -1,6 +1,3 @@
-# disable precompilation b/c this module defines several macros
-__precompile__(false)
-
 module ServerUtil
 
 using HTTP 
@@ -16,7 +13,7 @@ export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
-        starttasks, stoptasks
+        starttasks, stoptasks, resetstate
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
@@ -59,73 +56,86 @@ Stop all background repeat tasks
 """
 function stoptasks()
     for timer in timers[]
-        close(timer)
+        if isopen(timer)
+            close(timer)
+        end
     end
 end
 
 """
-    serve(; host="127.0.0.1", port=8080, kwargs...)
-
-Start the webserver with the default request handler
-"""
-function serve(; host="127.0.0.1", port=8080, kwargs...)
-    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        HTTP.serve(req -> DefaultHandler(req), host, port; server=server, kwargs...)
-    )
-end
-
-
-"""
-    serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
+    serve(; middleware::Vector{Function}; host="127.0.0.1", port=8080, kwargs...)
 
 Start the webserver with your own custom request handler
 """
-function serve(handler::Function; host="127.0.0.1", port=8080, kwargs...)
+function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        HTTP.serve(req -> handler(req, getrouter(), DefaultHandler), host, port; server=server, kwargs...)
+        HTTP.serve(setupmiddleware(middleware=middleware, serialize=serialize), host, port; server=server, kwargs...)
     )
 end
 
-
 """
-    serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
-
-Starts the webserver in streaming mode and spawns n - 1 worker threads to process individual requests.
-A Channel is used to schedule individual requests in FIFO order. Requests in the channel are
-then removed & handled by each the worker threads asynchronously. 
-"""
-function serveparallel(; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
-    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        StreamUtil.start(server, req -> DefaultHandler(req); queuesize=queuesize, kwargs...)
-    )
-end
-
-
-"""
-    serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
+    serveparallel(; middleware::Vector{Function}; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(handler::Function; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
+function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, kwargs...)
     startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        StreamUtil.start(server, req -> handler(req, getrouter(), DefaultHandler); queuesize=queuesize, kwargs...)
+        StreamUtil.start(server, setupmiddleware(middleware=middleware, serialize=serialize); queuesize=queuesize, kwargs...)
     )
+end
+
+
+
+"""
+Compose the user & internally defined middleware functions together. Practically, this allows
+users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
+application and have them execute in the order they were passed (left to right) for each incoming request
+"""
+function setupmiddleware(;middleware::Vector = [], serialize::Bool=true) :: Function
+    # determine if we have any special router or route-specific middleware
+    custom_middleware = hasmiddleware() ? [compose(getrouter(), middleware)] : reverse(middleware)
+    # check if we should use our default serialization middleware function
+    serialized = serialize ? [DefaultHandler] : []
+    # combine all our middleware functions
+    return reduce(|>, [getrouter(), serialized..., custom_middleware...])    
 end
 
 """
 Internal helper function to launch the server in a consistent way
 """
 function startserver(host, port, kwargs, start)
-    serverwelcome(host, port)
-    setup()
-    kwargs = preprocesskwargs(kwargs) 
-    server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-    starttasks()
-    start(host, port, server[], kwargs)
-    stoptasks()
+    try
+        serverwelcome(host, port)
+        setup()
+        kwargs = preprocesskwargs(kwargs)
+        server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+        starttasks()
+        start(host, port, server[], kwargs)
+    finally
+        # stop background tasks between runs
+        stoptasks()
+        # Reset the router & server between runs in interactive mode
+        if isinteractive()
+            terminate()
+            resetstate()
+        end
+    end
 end
+
+"""
+Reset all the internal state variables
+"""
+function resetstate()
+    # reset this modules state variables 
+    timers[] = []         
+    ROUTER[] = HTTP.Router()
+    server[] = nothing
+    # reset autodocs state variables
+    resetstatevariables()
+end
+
 
 """
 Used to overwrite defaults to any incoming keyword arguments
@@ -162,22 +172,13 @@ end
 
 
 """
-    internalrequest(request::HTTP.Request)
+    internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true)
 
-Directly call one of our other endpoints registered with the router
+Directly call one of our other endpoints registered with the router, using your own middleware
+and bypassing any globally defined middleware
 """
-function internalrequest(req::HTTP.Request) :: HTTP.Response
-    return DefaultHandler(req)
-end
-
-
-"""
-    internalrequest(request::HTTP.Request, handler::Function)
-
-Directly call one of our other endpoints registered with the router, using your own Handler function
-"""
-function internalrequest(req::HTTP.Request, handler::Function) :: HTTP.Response
-    return handler(req, getrouter(), DefaultHandler)
+function internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true) :: HTTP.Response
+    return req |> setupmiddleware(middleware=middleware, serialize=serialize) 
 end
 
 
@@ -186,29 +187,31 @@ end
 
 returns the interal http router for this application
 """
-function getrouter() :: HTTP.Handlers.Router
+function getrouter() 
     return ROUTER[]
 end 
 
-function DefaultHandler(req::HTTP.Request) :: HTTP.Response
-    try
-        response_body = HTTP.handle(getrouter(), req)
-        # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
-        if isa(response_body, HTTP.Messages.Response)
-            return response_body 
-        # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
-        elseif isa(response_body, String)
-            headers = ["Content-Type" => HTTP.sniff(response_body)]
-            return HTTP.Response(200, headers , body=response_body)
-        # case 3.) An object of some type was returned and should be serialized into JSON 
-        else 
-            body = JSON3.write(response_body)
-            headers = ["Content-Type" => "application/json; charset=utf-8"]
-            return HTTP.Response(200, headers , body=body)
-        end 
-    catch error
-        @error "ERROR: " exception=(error, catch_backtrace())
-        return HTTP.Response(500, "The Server encountered a problem")
+function DefaultHandler(handle)
+    return function(req::HTTP.Request)
+        try
+            response_body = handle(req)            
+            # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
+            if isa(response_body, HTTP.Messages.Response)
+                return response_body 
+            # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
+            elseif isa(response_body, String)
+                headers = ["Content-Type" => HTTP.sniff(response_body)]
+                return HTTP.Response(200, headers , body=response_body)
+            # case 3.) An object of some type was returned and should be serialized into JSON 
+            else 
+                body = JSON3.write(response_body)
+                headers = ["Content-Type" => "application/json; charset=utf-8"]
+                return HTTP.Response(200, headers , body=body)
+            end 
+        catch error
+            @error "ERROR: " exception=(error, catch_backtrace())
+            return HTTP.Response(500, "The Server encountered a problem")
+        end   
     end
 end
 
@@ -278,22 +281,16 @@ Mount all files inside the /static folder (or user defined mount point)
 macro staticfiles(folder::String, mountdir::String="static")
     registermountedfolder(mountdir)
     quote 
-        function addroute(path, headers, filepath, registeredpaths; code=200)
-            # only serve the original unchanged file contents using this variable
+        function addroute(currentroute, headers, filepath, registeredpaths; code=200)
             local body = file(filepath)
-            eval(
-                quote 
-                    @get $path function(req)
-                        # return 404 for paths that don't match our files
-                        validpath::Bool = get($registeredpaths, req.target, false)
-                        return validpath ? HTTP.Response($code, $headers , body=$body) : HTTP.Response(404)
-                    end
-                end
-            )
+            @get currentroute function(req)
+                # return 404 for paths that don't match our files
+                validpath::Bool = get(registeredpaths, req.target, false)
+                return validpath ? HTTP.Response(code, headers , body=body) : HTTP.Response(404)
+            end
         end
         @mountfolder($folder, $mountdir, addroute)
     end
-    
 end
 
 
@@ -306,16 +303,12 @@ but files are re-read on each request
 macro dynamicfiles(folder::String, mountdir::String="static")
     registermountedfolder(mountdir)
     quote 
-        function addroute(path, headers, filepath, registeredpaths; code = 200)
-            eval(
-                quote 
-                    @get $path function(req)   
-                        # return 404 for paths that don't match our files
-                        validpath::Bool = get($registeredpaths, req.target, false)
-                        return validpath ?  HTTP.Response($code, $headers , body=file($filepath)) : HTTP.Response(404) 
-                    end
-                end
-            )
+        function addroute(currentroute, headers, filepath, registeredpaths; code = 200)
+            @get currentroute function(req)   
+                # return 404 for paths that don't match our files
+                validpath::Bool = get(registeredpaths, req.target, false)
+                return validpath ?  HTTP.Response(code, headers , body=file(filepath)) : HTTP.Response(404) 
+            end
         end
         @mountfolder($folder, $mountdir, addroute)
     end        
@@ -328,10 +321,8 @@ Used to register a function to a specific endpoint to handle mulitiple request t
 """
 macro route(methods, path, func)
     quote 
-        local func = $(esc(func))
-        local path = $(esc(path))
-        for method in eval($methods)
-            eval(:(@register $method $path $func))
+        for method in $methods
+            @register(method, $(esc(path)), $(esc(func)))
         end
     end  
 end
@@ -343,117 +334,117 @@ end
 Register a request handler function with a path to the ROUTER
 """
 macro register(httpmethod, path, func)
+    return quote 
+  
+        local method_type = $(esc(httpmethod))
+        local route = $(esc(path))
+        local action = $(esc(func))
+  
+        # check if path is a callable function (that means it's a router higher-order-function)
+        if !isempty(methods(route))
 
-    # check if path is a callable function (that means it's a router higher-order-function)
-    if !isempty(methods(path))
+            # This is true when the user passes the router() directly to the path.
+            # We call the generated function without args so it uses the default args 
+            # from the parent function.
+            if countargs(route) == 1
+                route = route()
+            end
 
-        # This is true when the user passes the router() directly to the path.
-        # We call the generated function without args so it uses the default args 
-        # from the parent function.
-        if countargs(path) == 1
-            path = path()
+            # If it's still a function, then that means this is from the 3rd inner function 
+            # defined in the createrouter() function.
+            if countargs(route) == 2
+                route = route(method_type)
+            end
+            
         end
 
-        # If it's still a function, then that means this is from the 3rd inner function 
-        # defined in the createrouter() function.
-        if countargs(path) == 2
-            path = path(httpmethod)
-        end
+        local router = getrouter()
+        local variableRegex = r"{[a-zA-Z0-9_]+}"
+        local hasBraces = r"({)|(})"
+
+        # determine if we have parameters defined in our path
+        local hasPathParams = contains(route, variableRegex)
         
-    end
-
-    local router = getrouter()
-    local variableRegex = r"{[a-zA-Z0-9_]+}"
-    local hasBraces = r"({)|(})"
-
-    # determine if we have parameters defined in our path
-    local hasPathParams = contains(path, variableRegex)
-    local cleanpath = hasPathParams ? replace(path, variableRegex => "*") : path 
-    
-    # track which index the params are located in
-    local positions = []
-    for (index, value) in enumerate(HTTP.URIs.splitpath(path)) 
-        if contains(value, hasBraces)
-            push!(positions, (index, replace(value, hasBraces => "")))
-        end
-    end
-
-    local method = first(methods(func))
-    local numfields = method.nargs
-
-    # extract the function handler's field names & types 
-    local fields = [x for x in fieldtypes(method.sig)]
-    local func_param_names = [String(param) for param in method_argnames(method)[3:end]]
-    local func_param_types = splice!(Array(fields), 3:numfields)
-
-    # each tuple tracks where the param is refereced (variable, function index, path index)
-    local param_positions::Array{Tuple{String, Int, Int}} = []
-
-    # ensure the function params are present inside the path params 
-    for (_, path_param) in positions
-        hasparam = false
-        for (_, func_param) in enumerate(func_param_names)
-            if func_param == path_param 
-                hasparam = true
-                break
+        # track which index the params are located in
+        local positions = []
+        for (index, value) in enumerate(HTTP.URIs.splitpath(route)) 
+            if contains(value, hasBraces)
+                # extract the variable name
+                variable = replace(value, hasBraces => "") |> x -> split(x, ":") |> first        
+                push!(positions, (index, variable))
             end
         end
-        if !hasparam
-            throw("Your request handler is missing a parameter: '$path_param' defined in this route: $path")
-        end
-    end
 
-    # ensure the path params are present inside the function params 
-    for (func_index, func_param) in enumerate(func_param_names)
-        matched = nothing
-        for (path_index, path_param) in positions
-            if func_param == path_param 
-                matched = (func_param, func_index, path_index)
-                break
+        local method = first(methods(action))
+        local numfields = method.nargs
+
+        # extract the function handler's field names & types 
+        local fields = [x for x in fieldtypes(method.sig)]
+        local func_param_names = [String(param) for param in method_argnames(method)[3:end]]
+        local func_param_types = splice!(Array(fields), 3:numfields)
+        
+        # create a map of paramter name to type definition
+        local func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
+
+        # each tuple tracks where the param is refereced (variable, function index, path index)
+        local param_positions::Array{Tuple{String, Int, Int}} = []
+
+        # ensure the function params are present inside the path params 
+        for (_, path_param) in positions
+            hasparam = false
+            for (_, func_param) in enumerate(func_param_names)
+                if func_param == path_param 
+                    hasparam = true
+                    break
+                end
+            end
+            if !hasparam
+                throw("Your request handler is missing a parameter: '$path_param' defined in this route: $route")
             end
         end
-        if matched === nothing
-            throw("Your path is missing a parameter: '$func_param' which needs to be added to this route: $path")
-        else 
-            push!(param_positions, matched)
-        end
-    end
 
-    registerchema(path, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
-
-    local action = esc(func)
-
-     # case 1.) The request handler is an anonymous function (don't parse out path params)
-    if numfields <= 1
-        local handle = quote 
-            function (req)
-                $action()
+        # ensure the path params are present inside the function params 
+        for (func_index, func_param) in enumerate(func_param_names)
+            matched = nothing
+            for (path_index, path_param) in positions
+                if func_param == path_param 
+                    matched = (func_param, func_index, path_index)
+                    break
+                end
+            end
+            if matched === nothing
+                throw("Your path is missing a parameter: '$func_param' which needs to be added to this route: $route")
+            else 
+                push!(param_positions, matched)
             end
         end
-    # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
-    elseif hasPathParams && numfields > 2
-        local handle = quote
-            function (req) 
-                split_path = HTTP.URIs.splitpath(req.target)
-                # extract path values in the order they should be passed to our function
-                path_values = [split_path[index] for (_, _, index) in $param_positions] 
+
+        # strip off any regex patterns attached to our path parameters
+        registerchema(route, method_type, zip(func_param_names, func_param_types), Base.return_types(action))
+
+        # case 1.) The request handler is an anonymous function (don't parse out path params)
+        if numfields <= 1
+            local handle = function (req)
+                action()
+            end   
+        # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
+        elseif hasPathParams && numfields > 2
+            local handle = function (req) 
+                # get all path parameters
+                params = HTTP.getparams(req)
                 # convert params to their designated type (if applicable)
-                pathParams = [parseparam(type, value) for (type, value) in zip($func_param_types, path_values)]   
-                $action(req, pathParams...)
+                pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
+                # pass all parameters to handler in the correct order 
+                action(req, pathParams...)
+            end
+        # case 3.) This function should only get passed the request object
+        else 
+            local handle = function (req) 
+                action(req)
             end
         end
-    # case 3.) This function should only get passed the request object
-    else 
-        local handle = quote 
-            function (req) 
-                $action(req)
-            end
-        end
-    end
 
-    local requesthandler = quote 
-        local handle = $handle
-        function (req)
+        local requesthandler = function (req)
             try 
                 return handle(req)
             catch error
@@ -461,11 +452,9 @@ macro register(httpmethod, path, func)
                 return HTTP.Response(500, "The Server encountered a problem")
             end
         end
-    end
 
-    quote 
-        HTTP.@register($router, $httpmethod, $cleanpath, $requesthandler)
-    end
+        HTTP.register!(router, method_type, route, requesthandler)
+    end 
 end
 
 
@@ -475,15 +464,15 @@ function setupswagger()
     if !isdocsenabled()
         return
     end
-    
-    @route ["GET"] "$docspath" function()
+
+    @get docspath function()
         return swaggerhtml()
     end
 
-    @route ["GET"] "$schemapath" function()
+    @get schemapath function()
         return getschema() 
     end
-    
+
 end
 
 

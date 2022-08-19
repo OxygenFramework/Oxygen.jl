@@ -9,6 +9,7 @@ using Dates
 include("../src/Oxygen.jl")
 using .Oxygen
 
+
 struct Person
     name::String
     age::Int
@@ -67,7 +68,7 @@ try
         return "$a, $c"
     end
 catch e
-    @test e isa LoadError 
+    @test true 
 end
 
 @get "/add/{a}/{b}" function (req, a::Int32, b::Int64)
@@ -84,7 +85,7 @@ try
         return "$a, $b, $c"
     end
 catch e
-    @test e isa LoadError 
+    @test true
 end
 
 # request handler is missing a parameter
@@ -93,7 +94,7 @@ try
         return "$a, $b, $c"
     end
 catch e
-    @test e isa LoadError 
+    @test true 
 end
 
 @get "/file" function(req)
@@ -226,7 +227,23 @@ end
     return routerdict["value"]
 end
 
-@get router("/router-passed-direct") function(req)
+function middleware1(handler)
+    return function(req::HTTP.Request)
+        handler(req)
+    end
+end
+
+specific = router("/middleware", middleware=[middleware1])
+
+@get specific("/route-specific", middleware=[middleware1]) function(req)
+    return "route-specific"
+end
+
+@get router("/no-middleware", middleware=[]) function(req)
+    return "no-middleware"
+end
+
+@get router("/router-passed-direct", middleware=[middleware1]) function(req)
     return "router passed directly"
 end
 
@@ -236,7 +253,7 @@ emptyrouter = router()
 end
 
 emptysubpath = router("/emptysubpath", tags=["empty"])
-@get emptysubpath("") function(req)
+@get emptysubpath("", middleware=[middleware1]) function(req)
     return "emptysubpath"
 end
 
@@ -532,6 +549,14 @@ sleep(3)
 
 ## Router related tests
 
+r = internalrequest(HTTP.Request("GET", "/middleware/route-specific"))
+@test r.status == 200
+@test text(r) == "route-specific"
+
+r = internalrequest(HTTP.Request("GET", "/no-middleware"))
+@test r.status == 200
+@test text(r) == "no-middleware"
+
 r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
 @test r.status == 200
 @test parse(Int64, text(r)) > 0
@@ -563,7 +588,36 @@ r = internalrequest(HTTP.Request("GET", "/get"))
 r = internalrequest(HTTP.Request("GET", "/swagger"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/swagger"), (req, router, defaulthandler) -> defaulthandler(req))
+
+invocation = []
+
+function handler1(handler)
+    return function(req::HTTP.Request)
+        push!(invocation, 1)
+        handler(req)
+    end
+end
+
+function handler2(handler)
+    return function(req::HTTP.Request)
+        push!(invocation, 2)
+        handler(req)
+    end
+end
+
+function handler3(handler)
+    return function(req::HTTP.Request)
+        push!(invocation, 3)
+        handler(req)
+    end
+end
+
+r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), middleware=[handler1, handler2, handler3])
+@test r.status == 200
+@test invocation == [1,2,3] # enusre the handlers are called in the correct order
+@test text(r) == "18.0" 
+
+r = internalrequest(HTTP.Request("GET", "/swagger"), middleware=[handler1])
 @test r.status == 200
 
 r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
@@ -633,7 +687,7 @@ setschema(data)
 
 terminate()
 
-@async serve((req, router, defaultHandler) -> defaultHandler(req))
+@async serve(middleware=[handler1, handler2, handler3])
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/get"))
@@ -676,7 +730,7 @@ if Threads.nthreads() > 1
     
     HTTP.get("$localhost/killserver")
 
-    @async serveparallel((req, router, defaultHandler) -> defaultHandler(req))
+    @async serveparallel(middleware=[handler1, handler2, handler3])
     sleep(1)
 
     r = HTTP.get("$localhost/get")
@@ -692,10 +746,8 @@ if Threads.nthreads() > 1
     finally
         terminate()
     end
-
-else 
-
-
 end
+
+resetstate()
 
 end 

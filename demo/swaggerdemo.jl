@@ -9,7 +9,6 @@ using JSON3
 using Dates
 
 @enum Fruit apple=1 orange=2 kiwi=3
-
 struct Person 
   name  :: String 
   age   :: Int8

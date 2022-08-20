@@ -161,21 +161,32 @@ function compose(router, globalmiddleware)
                 # calculate the checks ahead of time
                 hasrouter = !isnothing(routermiddleware) 
                 hasroute = !isnothing(routemiddleware) 
-                 
+
                 # case 1: no middleware is defined at any level -> use global middleware
                 if !hasrouter && !hasroute
                     append!(layers, reverse(globalmiddleware))
-                # case 2: router & route level is defined -> ignore global middleware + combine router & route middleware 
+
+                # case 2: if route level is empty -> don't add any middleware
+                elseif hasroute && isempty(routemiddleware)  
+                    return req |> reduce(|>, layers)
+
+                # case 3: if router level is empty -> only register route level middleware
+                elseif hasrouter && isempty(routermiddleware)
+                    hasroute && append!(layers, reverse(routemiddleware))
+
+                # case 4: router & route level is defined -> combine global, router, and route middleware 
                 elseif hasrouter && hasroute
-                    append!(layers, reverse([routermiddleware..., routemiddleware...]))
-                # case 3: only router level is defined -> ignore global middleware + only register router level 
+                    append!(layers, reverse([globalmiddleware..., routermiddleware..., routemiddleware...]))
+
+                # case 5: only router level is defined ->  combine global and router middleware 
                 elseif hasrouter && !hasroute
-                    append!(layers, reverse(routermiddleware))
-                # case 4: only route level is defined -> combine global + route level middleware
+                    append!(layers, reverse([globalmiddleware..., routermiddleware...]))
+
+                # case 6: only route level is defined -> combine global + route level middleware
                 elseif !hasrouter && hasroute
                     append!(layers, reverse([globalmiddleware..., routemiddleware...]))
                 end
-
+                
                 # combine all the middleware functions together 
                 return req |> reduce(|>, layers)
             end

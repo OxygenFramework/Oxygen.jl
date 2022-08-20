@@ -233,18 +233,60 @@ function middleware1(handler)
     end
 end
 
-specific = router("/middleware", middleware=[middleware1])
-
-@get specific("/route-specific", middleware=[middleware1]) function(req)
-    return "route-specific"
+function middleware2(handler)
+    return function(req::HTTP.Request)
+        handler(req)
+    end
 end
 
-@get router("/no-middleware", middleware=[]) function(req)
-    return "no-middleware"
+function middleware3(handler)
+    return function(req::HTTP.Request)
+        handler(req)
+    end
 end
 
-@get router("/router-passed-direct", middleware=[middleware1]) function(req)
-    return "router passed directly"
+function middleware4(handler)
+    return function(req::HTTP.Request)
+        handler(req)
+    end
+end
+
+# case 1: no middleware setup,  uses the global middleware by default
+@get "/math/add/{a}/{b}" function (req::HTTP.Request, a::Float64, b::Float64)
+    return a + b
+end
+
+# case 1: no middleware is defined at any level -> use global middleware
+@get router("/math/power/{a}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
+    return a ^ b
+end
+
+math = router("/math", middleware=[middleware3])
+
+# case 2: middleware is cleared at route level so don't register any middleware
+@get math("/cube/{a}", middleware=[]) function(req, a::Float64)
+    return a * a * a
+end
+
+# case 3: router-level is empty & route-level is defined
+other = router("/math", middleware=[])
+@get other("/multiply/{a}/{b}", middleware=[middleware3]) function (req::HTTP.Request, a::Float64, b::Float64)
+    return a * b
+end
+# case 4 (both defined)
+@get math("/divide/{a}/{b}", middleware=[middleware4]) function(req::HTTP.Request, a::Float64, b::Float64)
+    return a / b
+end
+
+# case 5: only router level is defined
+@get math("/subtract/{a}/{b}") function(req::HTTP.Request, a::Float64, b::Float64)
+    return a - b
+end
+
+# case 6: only route level middleware is defined
+empty = router()
+@get empty("/math/square/{a}", middleware=[middleware3]) function(req, a::Float64)
+    return a * a
 end
 
 emptyrouter = router()
@@ -549,21 +591,45 @@ sleep(3)
 
 ## Router related tests
 
-r = internalrequest(HTTP.Request("GET", "/middleware/route-specific"))
+# case 1
+r = internalrequest(HTTP.Request("GET", "/math/add/6/5"))
 @test r.status == 200
-@test text(r) == "route-specific"
+@test text(r) == "11.0"
 
-r = internalrequest(HTTP.Request("GET", "/no-middleware"))
+# case 1
+r = internalrequest(HTTP.Request("GET", "/math/power/6/5"))
 @test r.status == 200
-@test text(r) == "no-middleware"
+@test text(r) == "7776.0"
+
+# case 2
+r = internalrequest(HTTP.Request("GET", "/math/cube/3"))
+@test r.status == 200
+@test text(r) == "27.0"
+
+# case 3
+r = internalrequest(HTTP.Request("GET", "/math/multiply/3/5"))
+@test r.status == 200
+@test text(r) == "15.0"
+
+# case 4
+r = internalrequest(HTTP.Request("GET", "/math/divide/3/5"))
+@test r.status == 200
+@test text(r) == "0.6"
+
+# case 5
+r = internalrequest(HTTP.Request("GET", "/math/subtract/3/5"))
+@test r.status == 200
+@test text(r) == "-2.0"
+
+# case 6
+r = internalrequest(HTTP.Request("GET", "/math/square/3"))
+@test r.status == 200
+@test text(r) == "9.0"
 
 r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
 @test r.status == 200
 @test parse(Int64, text(r)) > 0
 
-r = internalrequest(HTTP.Request("GET", "/router-passed-direct"))
-@test r.status == 200
-@test text(r) == "router passed directly"
 
 r = internalrequest(HTTP.Request("GET", "/emptyrouter"))
 @test r.status == 200

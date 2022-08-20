@@ -54,15 +54,36 @@ Both endpoints in this case will be tagged to the `math` tag and the `/multiply`
 
 ## Middleware & `router()`
 
-The `router()` function has a `middleware` parameter which takes a vector of middleware functions to pass 
-incoming requests through before hitting your endpoints.
+The `router()` function has a `middleware` parameter which takes a vector of middleware functions
+which are used to intercept all incoming requests & outgoing responses.
 
-**Assigning middleware functions at the router level will
-overwrite any globally assigned middleware for any routes that utilize this router**
+All middleware is additive and any middleware defined in these layers will be combined and executed.
 
-Currently you can assign middleware at two levels
-- router level
-- route level
+You can assign middleware at three levels:
+- `application` 
+- `router` 
+- `route` 
+
+Middleware will always get executed in the following order:
+
+```
+application -> router -> route
+```
+
+the `application` layer can only be set from the `serve()` and `serveparallel()` functions. While the other two layers can be set using the `router()` function.
+
+```julia
+# Set middleware at the application level
+serve(middleware=[])
+
+# Set middleware at the Router level
+myrouter = router("/router", middleware=[])
+
+# Set middleware at the Route level
+@get myrouter("/example", middleware=[]) function()
+    return "example"
+end
+```
 
 
 ### Router Level Middleware
@@ -113,10 +134,10 @@ function middleware2(handle)
     end
 end
 
-# middleware1 is defined at the router level
+# middleware1 is added at the router level
 greet = router("/greet", middleware=[middleware1])
 
-# middleware1 is defined at the route level
+# middleware2 is added at the route level
 @get greet("/hello", middleware=[middleware2]) function()
     println("hello")
 end
@@ -124,12 +145,22 @@ end
 @get greet("/bonjour") function()
     println("bonjour")
 end
+
+serve()
 ```
 
-### Bypass Global Middleware
+### Skipping Middleware layers
 
-You can set the router's `middleware` param to an empty vector to bypass any globally assigned middleware.
-In the example below, all requests to endpoints registered to the `greet` router() will skip any globally defined
+Well, what if we don't want previous layers of middleware to run? 
+By setting `middleware=[]`, it clears all middleware functions at that layer and skips all layers that come before it. These changes are localized and only affect the components where these values are set.
+
+For example, setting `middleware=[]` at the:
+- application layer -> clears the application layer
+- router layer -> no application middleware is applied to this router
+- route layer -> no router middleware is applied to this route
+
+You can set the router's `middleware` parameter to an empty vector to bypass any application level middleware.
+In the example below, all requests to endpoints registered to the `greet` router() will skip any application level 
 middleware and get executed directly.
 
 ```julia

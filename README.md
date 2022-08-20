@@ -27,7 +27,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 - Type definition support for path parameters
 - Built-in multithreading support
 - Static file hosting
-- Middleware chaining (at the global, router, and route levels)
+- Middleware chaining (at the application, router, and route levels)
 - Route tagging
 - Repeat tasks
 
@@ -315,15 +315,18 @@ serve(access_log=nothing)
 Middleware functions make it easy to create custom workflows to intercept all incoming requests and outgoing responses.
 They are executed in the same order they are passed in (from left to right).
 
-They can also be set at the router & route level using the `router()` function with the `middleware` keyword argument. 
+They can be set at the application, router, and route layer with the `middleware` keyword argument. All middleware is additive and any middleware defined in these layers will be combined and executed.
 
+Middleware will always be executed in the following order:
+
+```
+application -> router -> route
+```
+
+Now lets see some middleware in action:
 ```julia
 using Oxygen
 using HTTP
-
-@get "/divide/{a}/{b}" function(req::HTTP.Request, a::Float64, b::Float64)
-    return a / b
-end
 
 const CORS_HEADERS = [
     "Access-Control-Allow-Origin" => "*",
@@ -334,6 +337,7 @@ const CORS_HEADERS = [
 # https://juliaweb.github.io/HTTP.jl/stable/examples/#Cors-Server
 function CorsMiddleware(handler)
     return function(req::HTTP.Request)
+        println("CORS middleware")
         # determine if this is a pre-flight request from the browser
         if HTTP.hasheader(req, "OPTIONS")  
             return HTTP.Response(200, CORS_HEADERS)  
@@ -345,6 +349,7 @@ end
 
 function AuthMiddleware(handler)
     return function(req::HTTP.Request)
+        println("Auth middleware")
         # ** NOT an actual security check ** #
         if !HTTP.headercontains(req, "Authorization", "true")
             return HTTP.Response(403)
@@ -354,7 +359,29 @@ function AuthMiddleware(handler)
     end
 end
 
-# There is no hard limit on the number of middleware functions you can add
+function middleware1(handle)
+    function(req)
+        println("middleware1")
+        handle(req)
+    end
+end
+
+function middleware2(handle)
+    function(req)
+        println("middleware2")
+        handle(req)
+    end
+end
+
+# set middleware at the router level
+math = router("math", middleware=[middleware1])
+
+# set middleware at the route level 
+@get math("/divide/{a}/{b}", middleware=[middleware2]) function(req, a::Float64, b::Float64)
+    return a / b
+end
+
+# set application level middleware
 serve(middleware=[CorsMiddleware, AuthMiddleware])
 ```
 

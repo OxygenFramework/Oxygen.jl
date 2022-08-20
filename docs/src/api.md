@@ -53,7 +53,9 @@ binary
 ```@docs 
 router
 internalrequest
-terminate()
+redirect
+terminate
 starttasks
 stoptasks
+resetstate
 ```

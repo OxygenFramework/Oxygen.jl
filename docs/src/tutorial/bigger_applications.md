@@ -57,24 +57,23 @@ Both endpoints in this case will be tagged to the `math` tag and the `/multiply`
 The `router()` function has a `middleware` parameter which takes a vector of middleware functions
 which are used to intercept all incoming requests & outgoing responses.
 
-All middleware is additive, any middleware defined at the global, router, our route 
-level will get combined and get executed.
+All middleware is additive and any middleware defined in these layers will be combined and executed.
 
 You can assign middleware at three levels:
-- `global` 
+- `application` 
 - `router` 
 - `route` 
 
 Middleware will always get executed in the following order:
 
 ```
-global -> router -> route
+application -> router -> route
 ```
 
-the `global` layer can only be set from the `serve()` and `serveparallel()` functions. While the other two layers can be set using the `router()` function.
+the `application` layer can only be set from the `serve()` and `serveparallel()` functions. While the other two layers can be set using the `router()` function.
 
 ```julia
-# Set middleware at the Global level
+# Set middleware at the application level
 serve(middleware=[])
 
 # Set middleware at the Router level
@@ -156,12 +155,12 @@ Well, what if we don't want previous layers of middleware to run?
 By setting `middleware=[]`, it clears all middleware functions at that layer and skips all layers that come before it. These changes are localized and only affect the components where these values are set.
 
 For example, setting `middleware=[]` at the:
-- global layer -> clears the global layer
-- router layer -> no global middleware is applied to this router
+- application layer -> clears the application layer
+- router layer -> no application middleware is applied to this router
 - route layer -> no router middleware is applied to this route
 
-You can set the router's `middleware` param to an empty vector to bypass any globally assigned middleware.
-In the example below, all requests to endpoints registered to the `greet` router() will skip any globally defined
+You can set the router's `middleware` parameter to an empty vector to bypass any application level middleware.
+In the example below, all requests to endpoints registered to the `greet` router() will skip any application level 
 middleware and get executed directly.
 
 ```julia

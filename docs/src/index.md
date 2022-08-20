@@ -27,7 +27,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 - Type definition support for path parameters
 - Built-in multithreading support
 - Static file hosting
-- Middleware chaining (at the global, router, and route levels)
+- Middleware chaining (at the application, router, and route levels)
 - Route tagging
 - Repeat tasks
 
@@ -315,12 +315,12 @@ serve(access_log=nothing)
 Middleware functions make it easy to create custom workflows to intercept all incoming requests and outgoing responses.
 They are executed in the same order they are passed in (from left to right).
 
-They can be set at the global, router, and route level with the `middleware` keyword argument. All middleware is additive and any middleware defined at the global, router, our route level will be combined and executed.
+They can be set at the application, router, and route layer with the `middleware` keyword argument. All middleware is additive and any middleware defined in these layers will be combined and executed.
 
 Middleware will always be executed in the following order:
 
 ```
-global -> router -> route
+application -> router -> route
 ```
 
 Now lets see some middleware in action:
@@ -381,7 +381,7 @@ math = router("math", middleware=[middleware1])
     return a / b
 end
 
-# set global middleware
+# set application level middleware
 serve(middleware=[CorsMiddleware, AuthMiddleware])
 ```
 

@@ -39,28 +39,29 @@ end
 
 Middleware rules
 
-All middleware is additive, any middleware defined at the global, router, our route level will get combined 
+All middleware is additive, any middleware defined at the application, router, our route level will get combined 
 and get executed.
 
 Regardless if set or not, Middleware will always get executed in the following order:
-global -> router -> route 
+
+    application -> router -> route 
 
 Well, what if we don't want previous layers of middleware to run? 
 You set middleware=[], it clears all middleware at that layer and skips all layers that come before it.
 
 For example, setting middleware=[] at the:
-- global layer: clears the global layer
-- router layer: clears the router layer and skips global layer
-- route layer: clears the route layer and skips the global & router layer
+- application layer: clears the application layer
+- router layer: clears the router layer and skips application layer
+- route layer: clears the route layer and skips the application & router layer
 
 """
 
-# case 1: no middleware setup,  uses the global middleware by default
+# case 1: no middleware setup,  uses the application middleware by default
 @get "/add/{a}/{b}" function (req::HTTP.Request, a::Float64, b::Float64)
     return a + b
 end
 
-# case 1: no middleware is defined at any level -> use global middleware
+# case 1: no middleware is defined at any level -> use application middleware
 @get router("/power/{a}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
     return a ^ b
 end

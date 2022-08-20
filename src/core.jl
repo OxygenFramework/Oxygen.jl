@@ -1,4 +1,4 @@
-module ServerUtil
+module Core
 
 using HTTP 
 using Sockets 

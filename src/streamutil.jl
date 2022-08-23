@@ -26,47 +26,28 @@ This function is run in each spawned worker thread, which removes queued request
 function respond(h::Handler, handleReq::Function)
     @info "Started Worker Thread ~ id: $(Threads.threadid())"
     while h.shutdown[] == false
-        request = take!(h.queue)
+        task = take!(h.queue)
         Threads.atomic_sub!(h.count, 1)
         @async begin
             try 
-                # read all buffered data from stream
-                body::Vector{UInt8} = []
-                while !eof(request.http)
-                    push!(body, readavailable(request.http)...)
-                end
+                # read body from http stream and assign it back to the request
+                request::HTTP.Request = task.http.message
+                request.body = read(task.http)
+                closeread(task.http)
 
-                # get request from stream 
-                message::HTTP.Request = request.http.message
+                # process incoming request 
+                request.response::HTTP.Response = handleReq(request)
+                request.response.request = request
 
-                # rebuild request object with body
-                req = HTTP.Request(
-                    message.method, 
-                    message.target,
-                    message.headers,
-                    body;
-                    version=message.version,
-                    parent=message.parent
-                )
-
-                # process request
-                response::HTTP.Response = handleReq(req)
-
-                # write response back to stream
-                HTTP.setstatus(request.http, response.status)
-
-                # add all headers from response 
-                for (k,v) in response.headers
-                    HTTP.setheader(request.http, k => v)
-                end
-
-                write(request.http, isempty(response.body) ? " " : response.body)
+                # write the response back to the strem
+                startwrite(task.http)
+                write(task.http, request.response.body)
             catch error 
                 @error "ERROR: " exception=(error, catch_backtrace())
-                HTTP.setstatus(request.http, 500)
-                write(request.http, "The Server encountered a problem")
+                HTTP.setstatus(task.http, 500)
+                write(task.http, "The Server encountered a problem")
             finally
-                notify(request.done)
+                notify(task.done)
             end
 
         end

@@ -25,23 +25,13 @@ This function is run in each spawned worker thread, which removes queued request
 """
 function respond(h::Handler, handleReq::Function)
     @info "Started Worker Thread ~ id: $(Threads.threadid())"
+    streamhandler = HTTP.Handlers.streamhandler(handleReq)
     while h.shutdown[] == false
         task = take!(h.queue)
         Threads.atomic_sub!(h.count, 1)
         @async begin
-            try 
-                # read body from http stream and assign it back to the request
-                request::HTTP.Request = task.http.message
-                request.body = read(task.http)
-                closeread(task.http)
-
-                # process incoming request 
-                request.response::HTTP.Response = handleReq(request)
-                request.response.request = request
-
-                # write the response back to the strem
-                startwrite(task.http)
-                write(task.http, request.response.body)
+            try
+                streamhandler(task.http)
             catch error 
                 @error "ERROR: " exception=(error, catch_backtrace())
                 HTTP.setstatus(task.http, 500)
@@ -49,7 +39,6 @@ function respond(h::Handler, handleReq::Function)
             finally
                 notify(task.done)
             end
-
         end
     end
 end

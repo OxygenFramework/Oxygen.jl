@@ -91,10 +91,10 @@ macro mountfolder(folder::String, mountdir::String, addroute)
             if endswith(mountpath, "/index.html")
 
                 # add the route with the trailing "/" character
-                trimmedpath = getbefore(mountpath, "index.html")
-                paths[trimmedpath] = true 
-                addroute(trimmedpath, headers, filepath, paths)
-
+                # trimmedpath = getbefore(mountpath, "index.html")
+                # paths[trimmedpath] = true 
+                # addroute(trimmedpath, headers, filepath, paths)
+                        
                 # add the route without the trailing "/" character
                 bare_path = getbefore(mountpath, "/index.html")
                 paths[bare_path] = true 

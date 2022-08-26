@@ -243,7 +243,12 @@ function createrouter(prefix::String,
             
             # register interval for this route 
             if !isnothing(interval) && interval >= 0.0
-                push!(repeattasks, (path, httpmethod, interval))
+                task = (path, httpmethod, interval)
+                # don't add duplicate tasks
+                if isnothing(findfirst(x -> x === task, repeattasks))
+                    println("added: $task")
+                    push!(repeattasks, task)
+                end
             end
 
             # register tags

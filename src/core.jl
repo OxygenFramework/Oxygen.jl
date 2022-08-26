@@ -31,7 +31,8 @@ oxygen_title = raw"""
 
 function serverwelcome(host::String, port::Int64)
     printstyled(oxygen_title, color = :blue, bold = true)  
-    @info "Starting server: http://$host:$port" 
+    @info "✅ Started server: http://$host:$port" 
+    @info "📖 Documentation: http://$host:$port$docspath"
 end
 
 
@@ -116,11 +117,6 @@ function startserver(host, port, kwargs, start)
     finally
         # stop background tasks between runs
         stoptasks()
-        # Reset the router & server between runs in interactive mode
-        if isinteractive()
-            terminate()
-            resetstate()
-        end
     end
 end
 

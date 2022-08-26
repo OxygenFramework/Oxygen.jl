@@ -25,7 +25,7 @@ const defaultSchema = Dict(
 
 global enable_auto_docs = true 
 global docspath = "/docs"
-global schemapath = "/docs/schema"
+global schemapath = "/schema"
 global mountedfolders = Set{String}()
 global taggedroutes = Dict{String, TaggedRoute}()
 global repeattasks = []
@@ -82,13 +82,13 @@ function disabledocs()
 end
 
 """
-    configdocs(docs_url::String = "/docs", schema_url::String = "/docs/schema")
+    configdocs(docs_url::String = "/docs", schema_url::String = "/schema")
 
 Configure the default docs and schema endpoints
 """
 function configdocs(docs_url::String = docspath, schema_url::String = schemapath)
     global docspath = docs_url
-    global schemapath = schema_url
+    global schemapath = "$docs_url$schema_url"
 end
 
 """

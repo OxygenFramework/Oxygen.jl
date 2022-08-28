@@ -45,6 +45,7 @@ function resetstatevariables()
     global repeattasks = []
     global schema = defaultSchema
     custommiddlware[] = Dict()
+    return
 end
 
 """

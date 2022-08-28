@@ -120,8 +120,13 @@ function startserver(host, port, kwargs, async, start)
             wait(server[])
         end
     finally
+        # close server on exit if we aren't running asynchronously
         if !async  
             terminate()
+        end
+        # only reset state on exit if we aren't running asynchronously & are running it interactively 
+        if !async && isinteractive()
+            resetstate()
         end
     end
 end

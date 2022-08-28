@@ -8,18 +8,26 @@ using JSON3
 
 # configdocs("/documentation", "/mycustomschema")
 
-@get "/add/{a}/{b}" function(req, a::Real, b::Real)
+@get "/add/{a}/{b}" function(req, a::Float64, b::Float64)
     a + b
 end
 
 
-# @get router("/repeat", interval = 1.5) function()
-#     println("repeat")
-#     return "repeat"
-# end
+@get "/stoptasks" function()
+    stoptasks()
+end
+
+@get "/terminate" function()
+    terminate()
+end
+
+@get router("/repeat", interval = 1.5) function()
+    println("repeat")
+    return "repeat"
+end
 
 
-serve()
+serveparallel(async=true)
 
 
 end

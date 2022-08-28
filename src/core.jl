@@ -42,6 +42,7 @@ end
 Start all background repeat tasks
 """
 function starttasks()
+    timers[] = []
     for task in getrepeatasks()
         path, httpmethod, interval = task
         action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))
@@ -61,6 +62,7 @@ function stoptasks()
             close(timer)
         end
     end
+    timers[] = []
 end
 
 """
@@ -68,9 +70,9 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, kwargs...)
-    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        HTTP.serve(setupmiddleware(middleware=middleware, serialize=serialize), host, port; server=server, kwargs...)
+function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, kwargs...)
+    startserver(host, port, kwargs, async, (server, kwargs) -> 
+        HTTP.serve!(setupmiddleware(middleware=middleware, serialize=serialize), host, port; server=server, kwargs...)
     )
 end
 
@@ -81,9 +83,9 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, kwargs...)
-    startserver(host, port, kwargs, (host, port, server, kwargs) ->  
-        StreamUtil.start(server, setupmiddleware(middleware=middleware, serialize=serialize); queuesize=queuesize, kwargs...)
+function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, kwargs...)
+    startserver(host, port, kwargs, async, (server, kwargs) -> 
+        StreamUtil.start(server, setupmiddleware(middleware=middleware, serialize=serialize); queuesize=queuesize ,kwargs...)
     )
 end
 
@@ -106,17 +108,21 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(host, port, kwargs, start)
+function startserver(host, port, kwargs, async, start)
     try
         serverwelcome(host, port)
         setup()
         kwargs = preprocesskwargs(kwargs)
-        server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
         starttasks()
-        start(host, port, server[], kwargs)
+        server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
+        start(server[], kwargs)
+        if !async     
+            wait(server[])
+        end
     finally
-        # stop background tasks between runs
-        stoptasks()
+        if !async  
+            terminate()
+        end
     end
 end
 
@@ -163,6 +169,7 @@ stops the webserver immediately
 function terminate()
     if !isnothing(server[]) && isopen(server[])
         close(server[])
+        stoptasks()
     end
 end
 

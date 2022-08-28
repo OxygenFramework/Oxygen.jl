@@ -58,29 +58,35 @@ function start(server::Sockets.TCPServer, handleReq::Function; queuesize = 1024,
         @Threads.spawn respond(handler, handleReq)
     end
 
-    try
-        HTTP.serve(;server = server, stream = true, kwargs...) do stream::HTTP.Stream  
-            try
-                if handler.count[] < queuesize
-                    Threads.atomic_add!(handler.count, 1)
-                    local request = WebRequest(stream, Threads.Event())
-                    put!(handler.queue, request)
-                    wait(request.done)
-                else
-                    @warn "Dropping connection..."
-                    HTTP.setstatus(stream, 500)
-                    write(stream, "Server overloaded.")
-                end 
-            catch e
-                @error "ERROR: " exception=(e, catch_backtrace())
-                HTTP.setstatus(stream, 500)
-                write(stream, "The Server encountered a problem")
-            end
-        end
-    finally
-        close(server)
+    # shutdown the handler
+    function shutdown()
+        println("shutting down")
         handler.shutdown[] = true
     end
+
+    HTTP.serve!(;server = server, stream = true, on_shutdown=shutdown, kwargs...) do stream::HTTP.Stream  
+        try
+            if handler.count[] < queuesize
+                Threads.atomic_add!(handler.count, 1)
+                local request = WebRequest(stream, Threads.Event())
+                put!(handler.queue, request)
+                wait(request.done)
+            else
+                @warn "Dropping connection..."
+                HTTP.setstatus(stream, 500)
+                write(stream, "Server overloaded.")
+            end 
+        catch e
+            @error "ERROR: " exception=(e, catch_backtrace())
+            HTTP.setstatus(stream, 500)
+            write(stream, "The Server encountered a problem")
+        end
+    end
+
+    # finally
+    #     close(server)
+    #     handler.shutdown[] = true
+    # end
 
 end
 

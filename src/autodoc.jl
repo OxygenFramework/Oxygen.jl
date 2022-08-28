@@ -246,7 +246,6 @@ function createrouter(prefix::String,
                 task = (path, httpmethod, interval)
                 # don't add duplicate tasks
                 if isnothing(findfirst(x -> x === task, repeattasks))
-                    println("added: $task")
                     push!(repeattasks, task)
                 end
             end

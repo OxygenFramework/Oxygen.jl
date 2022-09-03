@@ -2,6 +2,9 @@ module FileUtil
 
 using HTTP
 
+include("mimetypes.jl");    
+using .MimeTypes
+
 export file, mountedfolders, @mountfolder
 
 """
@@ -80,7 +83,7 @@ macro mountfolder(folder::String, mountdir::String, addroute)
             local body = file(filepath)
 
             # precalculate content type 
-            local content_type = HTTP.sniff(body)
+            local content_type = mimetype(filepath) #HTTP.sniff(body)
             local headers = ["Content-Type" => content_type]
 
             paths[mountpath] = true 

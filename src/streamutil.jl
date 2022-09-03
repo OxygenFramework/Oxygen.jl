@@ -4,7 +4,7 @@ module StreamUtil
 using Sockets
 using HTTP
 
-export start
+export start, stop
 
 struct WebRequest
     http::HTTP.Stream
@@ -19,6 +19,8 @@ struct Handler
         new(Channel{WebRequest}(queuesize), Threads.Atomic{Int}(0), Threads.Atomic{Bool}(false))
     end
 end
+
+global const HANDLER = Ref{Handler}(Handler())
 
 """
 This function is run in each spawned worker thread, which removes queued requests & handles them asynchronously
@@ -44,10 +46,21 @@ function respond(h::Handler, handleReq::Function)
 end
 
 """
+Shutdown the handler
+"""
+function stop()
+    HANDLER[].shutdown[] = true
+end
+
+
+"""
 Starts the webserver in streaming mode and spaws n - 1 worker threads to start processing incoming requests
 """
-function start(server::Sockets.TCPServer, handleReq::Function; queuesize = 1024, kwargs...)
-    local handler = Handler()
+function start(handleReq::Function; host="127.0.0.1", port=8080, queuesize = 1024, kwargs...)
+    
+    # reset handler on startup
+    HANDLER[] = Handler()
+    local handler = HANDLER[]
     local nthreads = Threads.nthreads() - 1
 
     if nthreads <= 0
@@ -58,13 +71,7 @@ function start(server::Sockets.TCPServer, handleReq::Function; queuesize = 1024,
         @Threads.spawn respond(handler, handleReq)
     end
 
-    # shutdown the handler
-    function shutdown()
-        println("shutting down")
-        handler.shutdown[] = true
-    end
-
-    HTTP.serve!(;server = server, stream = true, on_shutdown=shutdown, kwargs...) do stream::HTTP.Stream  
+    function streamhandler(stream::HTTP.Stream)
         try
             if handler.count[] < queuesize
                 Threads.atomic_add!(handler.count, 1)
@@ -83,10 +90,7 @@ function start(server::Sockets.TCPServer, handleReq::Function; queuesize = 1024,
         end
     end
 
-    # finally
-    #     close(server)
-    #     handler.shutdown[] = true
-    # end
+    return HTTP.serve!(streamhandler, host, port; stream=true, kwargs...) 
 
 end
 

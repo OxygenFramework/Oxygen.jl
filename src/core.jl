@@ -10,13 +10,13 @@ include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
 
 export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
-        start, serve, serveparallel, terminate, internalrequest,
+        start, serve, serveparallel, terminate, internalrequest, file,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
         starttasks, stoptasks, resetstate
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
-global const server = Ref{Union{Sockets.TCPServer, Nothing}}(nothing) 
+global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
 global const timers = Ref{Vector{Timer}}([])
 
 oxygen_title = raw"""
@@ -71,8 +71,8 @@ end
 Start the webserver with your own custom request handler
 """
 function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, kwargs...)
-    startserver(host, port, kwargs, async, (server, kwargs) -> 
-        HTTP.serve!(setupmiddleware(middleware=middleware, serialize=serialize), host, port; server=server, kwargs...)
+    startserver(host, port, kwargs, async, (kwargs) -> 
+        HTTP.serve!(setupmiddleware(middleware=middleware, serialize=serialize), host, port; kwargs...)
     )
 end
 
@@ -84,8 +84,8 @@ threads to process individual requests. A Channel is used to schedule individual
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
 function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, kwargs...)
-    startserver(host, port, kwargs, async, (server, kwargs) -> 
-        StreamUtil.start(server, setupmiddleware(middleware=middleware, serialize=serialize); queuesize=queuesize ,kwargs...)
+    startserver(host, port, kwargs, async, (kwargs) -> 
+        StreamUtil.start(setupmiddleware(middleware=middleware, serialize=serialize); host=host, port=port, queuesize=queuesize, kwargs...)
     )
 end
 
@@ -114,8 +114,7 @@ function startserver(host, port, kwargs, async, start)
         setup()
         kwargs = preprocesskwargs(kwargs)
         starttasks()
-        server[] = Sockets.listen(Sockets.InetAddr(parse(IPAddr, host), port))
-        start(server[], kwargs)
+        server[] = start(kwargs)
         if !async     
             wait(server[])
         end
@@ -173,8 +172,12 @@ stops the webserver immediately
 """
 function terminate()
     if !isnothing(server[]) && isopen(server[])
+        # stop server
         close(server[])
+        # stop background tasks
         stoptasks()
+        # shutdown any ansync handlers
+        StreamUtil.stop()
     end
 end
 

@@ -4,20 +4,30 @@ using HTTP
 
 export mimetype
 
+# Maps file exstenion => mime type
 global const mimetypes = Ref{Dict{String,String}}(Dict())
 
-# pull down the latest mime.types
-response = HTTP.get("https://svn.apache.org/repos/asf/httpd/httpd/trunk/docs/conf/mime.types")
+"""
+return the path to the mime types file 
+"""
+function datapath()
+    abspath(joinpath(@__DIR__, "..", "data", "mime.types"))
+end
 
-# parse all mime types 
-content = split(String(response.body), "\n") 
-for line in content
-    if !isempty(line) && !startswith(line, "#")
-        mimetype, exstenions... = split(line)
-        for ext in exstenions 
-            mimetypes[][ext] = mimetype
+"""
+Parse each line in the mime.types file
+"""
+function parsefile(filepath)
+    local data = Dict{String,String}()
+    for line in eachline(filepath)
+        if !isnothing(line) && !isempty(line) && !startswith(line, "#")
+            mimetype, exstenions... = split(line)
+            for ext in exstenions 
+                data[ext] = mimetype
+            end
         end
     end
+    return data
 end
 
 """
@@ -30,5 +40,9 @@ function mimetype(filename::String)
     exstension = split(filename, ".")[2] 
     return mimetypes[][exstension]
 end
+
+
+# Assign the paresd mimetypes
+mimetypes[] = parsefile(datapath())
 
 end

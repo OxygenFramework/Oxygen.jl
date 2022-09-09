@@ -8,7 +8,7 @@ using JSON3
 export terminate
 # configdocs("/documentation", "/mycustomschema")
 
-@get "/add/{a}/{b}" function(req, a::Float64, b::Float64)
+@route ["GET", "POST"] "/add/{a}/{b}" function(req, a::Float64, b::Float64)
     a + b
 end
 

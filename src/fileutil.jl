@@ -102,6 +102,7 @@ macro mountfolder(folder::String, mountdir::String, addroute)
                 bare_path = getbefore(mountpath, "/index.html")
                 paths[bare_path] = true 
                 addroute(bare_path, headers, filepath, paths)
+                
             end
 
         end

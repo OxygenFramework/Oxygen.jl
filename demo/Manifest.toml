@@ -179,6 +179,11 @@ git-tree-sha1 = "d24a825a95a6d98c385001212dc9020d609f2d4f"
 uuid = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 version = "1.8.1"
 
+[[deps.Suppressor]]
+git-tree-sha1 = "c6ed566db2fe3931292865b966d6d140b7ef32a9"
+uuid = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
+version = "0.2.1"
+
 [[deps.SwaggerMarkdown]]
 deps = ["JSON", "JSONSchema", "Test", "UUIDs", "YAML"]
 git-tree-sha1 = "ea2513768e67b5ca27bbbab19e34179714a78cab"

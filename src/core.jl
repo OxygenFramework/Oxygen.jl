@@ -120,7 +120,7 @@ function startserver(host, port, kwargs, async, start)
         end
     finally
         # close server on exit if we aren't running asynchronously
-        if !async  
+        if !async
             terminate()
         end
         # only reset state on exit if we aren't running asynchronously & are running it interactively 
@@ -176,7 +176,7 @@ function terminate()
         close(server[])
         # stop background tasks
         stoptasks()
-        # shutdown any ansync handlers
+        # stop any background worker threads
         StreamUtil.stop()
     end
 end

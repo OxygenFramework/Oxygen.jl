@@ -420,7 +420,7 @@ macro register(httpmethod, path, func)
         end
 
         # strip off any regex patterns attached to our path parameters
-        registerchema(route, method_type, zip(func_param_names, func_param_types), Base.return_types(action))
+        registerschema(route, method_type, zip(func_param_names, func_param_types), Base.return_types(action))
 
         # case 1.) The request handler is an anonymous function (don't parse out path params)
         if numfields <= 1

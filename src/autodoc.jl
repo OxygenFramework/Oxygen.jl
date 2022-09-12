@@ -4,7 +4,7 @@ using Dates
 
 include("util.jl"); using .Util 
 
-export registerchema, docspath, schemapath, getschema, 
+export registerschema, docspath, schemapath, getschema, 
     swaggerhtml, configdocs, mergeschema, setschema, router,
     enabledocs, disabledocs, isdocsenabled, registermountedfolder, 
     getrepeatasks, hasmiddleware, compose, resetstatevariables
@@ -311,7 +311,7 @@ end
 """
 Used to generate & register schema related for a specific endpoint 
 """
-function registerchema(path::String, httpmethod::String, parameters, returntype::Array)
+function registerschema(path::String, httpmethod::String, parameters, returntype::Array)
 
     # skip docs & schema paths 
     if path in [docspath, schemapath]

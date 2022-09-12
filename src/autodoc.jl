@@ -367,7 +367,8 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
 
     # remove any special regex patterns from the path before add this path to the schema
     cleanedpath = replace(path, r"(?=:)(.*?)(?=}/)" => "")
-    schema["paths"][cleanedpath] = route 
+    merged_routes = recursive_merge(get(schema["paths"],cleanedpath,Dict()),route)
+    schema["paths"][cleanedpath] = merged_routes
 end
 
 """

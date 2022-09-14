@@ -115,8 +115,8 @@ end
 
 Merge the schema of a specific route
 """
-function mergeschema(route::String, customschema::Dict)
-    global schema["paths"][route] = recursive_merge(schema["paths"][route], customschema)
+function mergeschema(route::String, customschema::Dict)    
+    global schema["paths"][route] = recursive_merge(get(schema["paths"], route, Dict()), customschema)
 end
 
 
@@ -365,10 +365,9 @@ function registerschema(path::String, httpmethod::String, parameters, returntype
         )
     )
 
-    # remove any special regex patterns from the path before add this path to the schema
+    # remove any special regex patterns from the path before adding this path to the schema
     cleanedpath = replace(path, r"(?=:)(.*?)(?=}/)" => "")
-    merged_routes = recursive_merge(get(schema["paths"],cleanedpath,Dict()),route)
-    schema["paths"][cleanedpath] = merged_routes
+    mergeschema(cleanedpath, route)
 end
 
 """

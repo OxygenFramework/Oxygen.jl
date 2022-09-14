@@ -4,7 +4,7 @@ using Dates
 
 include("util.jl"); using .Util 
 
-export registerchema, docspath, schemapath, getschema, 
+export registerschema, docspath, schemapath, getschema, 
     swaggerhtml, configdocs, mergeschema, setschema, router,
     enabledocs, disabledocs, isdocsenabled, registermountedfolder, 
     getrepeatasks, hasmiddleware, compose, resetstatevariables
@@ -117,13 +117,7 @@ end
 Merge the schema of a specific route
 """
 function mergeschema(route::String, customschema::Dict)
-    if haskey(schema["paths"], route)
-        # case 1: The path already has some schema registered to this route, so merge the two schema's
-        global schema["paths"][route] = recursive_merge(schema["paths"][route], customschema)
-    else
-        # case 2: Nothing is registered to this route, so just assign the new schema
-        global schema["paths"][route] = customschema
-    end
+    global schema["paths"][route] = recursive_merge(get(schema["paths"], route, Dict()), customschema)
 end
 
 
@@ -322,7 +316,7 @@ end
 """
 Used to generate & register schema related for a specific endpoint 
 """
-function registerchema(path::String, httpmethod::String, parameters, returntype::Array)
+function registerschema(path::String, httpmethod::String, parameters, returntype::Array)
 
     # skip docs & schema paths 
     if path in [docspath, schemapath]
@@ -376,7 +370,7 @@ function registerchema(path::String, httpmethod::String, parameters, returntype:
         )
     )
 
-    # remove any special regex patterns from the path before add this path to the schema
+    # remove any special regex patterns from the path before adding this path to the schema
     cleanedpath = replace(path, r"(?=:)(.*?)(?=}/)" => "")
     mergeschema(cleanedpath, route)
 end

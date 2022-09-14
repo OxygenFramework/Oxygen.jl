@@ -780,6 +780,7 @@ end
 # only run these tests if we have more than one thread to work with
 if Threads.nthreads() > 1
 
+    terminate()
     serveparallel(async=true)
     sleep(1)
 

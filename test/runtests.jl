@@ -768,7 +768,7 @@ terminate()
 try 
     # service should not have started and get requests should throw some error
     @async serveparallel()
-    sleep(1)
+    sleep(3)
     r = HTTP.get("$localhost/get"; readtimeout=1)
 catch e
     @test true
@@ -780,7 +780,7 @@ end
 # only run these tests if we have more than one thread to work with
 if Threads.nthreads() > 1
 
-    @async serveparallel()
+    serveparallel(async=true)
     sleep(1)
 
     r = HTTP.get("$localhost/get")

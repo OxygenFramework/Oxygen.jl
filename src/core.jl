@@ -3,6 +3,7 @@ module Core
 using HTTP 
 using Sockets 
 using JSON3
+using Suppressor
 
 include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
@@ -476,14 +477,18 @@ function setupswagger()
         return
     end
 
-    @get docspath function()
-        return swaggerhtml()
-    end
+    # suppress any replacement warnings for these built-in endpoints
+    @suppress begin
 
-    @get schemapath function()
-        return getschema() 
-    end
+        @get docspath function()
+            return swaggerhtml()
+        end
 
+        @get schemapath function()
+            return getschema() 
+        end
+
+    end
 end
 
 

@@ -178,7 +178,6 @@ function terminate()
         # stop any background worker threads
         StreamUtil.stop()
         # stop server
-        @info "The server was terminated"
         close(server[])
     end
 end

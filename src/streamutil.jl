@@ -51,8 +51,10 @@ Shutdown the handler
 function stop()
     # toggle the shutdown flag
     HANDLER[].shutdown[] = true
-    # close the Channel
-    close(HANDLER[].queue)
+    if isopen(HANDLER[].queue)
+        # close the Channel
+        close(HANDLER[].queue)
+    end
 end
 
 

@@ -49,7 +49,10 @@ end
 Shutdown the handler
 """
 function stop()
+    # toggle the shutdown flag
     HANDLER[].shutdown[] = true
+    # close the Channel
+    close(HANDLER[].queue)
 end
 
 

@@ -14,6 +14,11 @@ export terminate
     terminate()
 end
 
-serve()
+
+@get "/hello" function()
+    "hello"
+end
+
+serveparallel(async=false)
 
 end

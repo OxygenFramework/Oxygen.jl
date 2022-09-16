@@ -173,12 +173,12 @@ stops the webserver immediately
 """
 function terminate()
     if !isnothing(server[]) && isopen(server[])
-        # stop server
-        close(server[])
         # stop background tasks
         stoptasks()
         # stop any background worker threads
         StreamUtil.stop()
+        # stop server
+        close(server[])
     end
 end
 

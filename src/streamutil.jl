@@ -4,7 +4,7 @@ module StreamUtil
 using Sockets
 using HTTP
 
-export start
+export start, stop
 
 struct WebRequest
     http::HTTP.Stream
@@ -19,6 +19,8 @@ struct Handler
         new(Channel{WebRequest}(queuesize), Threads.Atomic{Int}(0), Threads.Atomic{Bool}(false))
     end
 end
+
+global const HANDLER = Ref{Handler}(Handler())
 
 """
 This function is run in each spawned worker thread, which removes queued requests & handles them asynchronously
@@ -44,10 +46,26 @@ function respond(h::Handler, handleReq::Function)
 end
 
 """
+Shutdown the handler
+"""
+function stop()
+    # toggle the shutdown flag
+    HANDLER[].shutdown[] = true
+    if isopen(HANDLER[].queue)
+        # close the Channel
+        close(HANDLER[].queue)
+    end
+end
+
+
+"""
 Starts the webserver in streaming mode and spaws n - 1 worker threads to start processing incoming requests
 """
-function start(server::Sockets.TCPServer, handleReq::Function; queuesize = 1024, kwargs...)
-    local handler = Handler()
+function start(handleReq::Function; host="127.0.0.1", port=8080, queuesize = 1024, kwargs...)
+    
+    # reset handler on startup
+    HANDLER[] = Handler()
+    local handler = HANDLER[]
     local nthreads = Threads.nthreads() - 1
 
     if nthreads <= 0
@@ -58,29 +76,26 @@ function start(server::Sockets.TCPServer, handleReq::Function; queuesize = 1024,
         @Threads.spawn respond(handler, handleReq)
     end
 
-    try
-        HTTP.serve(;server = server, stream = true, kwargs...) do stream::HTTP.Stream  
-            try
-                if handler.count[] < queuesize
-                    Threads.atomic_add!(handler.count, 1)
-                    local request = WebRequest(stream, Threads.Event())
-                    put!(handler.queue, request)
-                    wait(request.done)
-                else
-                    @warn "Dropping connection..."
-                    HTTP.setstatus(stream, 500)
-                    write(stream, "Server overloaded.")
-                end 
-            catch e
-                @error "ERROR: " exception=(e, catch_backtrace())
+    function streamhandler(stream::HTTP.Stream)
+        try
+            if handler.count[] < queuesize
+                Threads.atomic_add!(handler.count, 1)
+                local request = WebRequest(stream, Threads.Event())
+                put!(handler.queue, request)
+                wait(request.done)
+            else
+                @warn "Dropping connection..."
                 HTTP.setstatus(stream, 500)
-                write(stream, "The Server encountered a problem")
-            end
+                write(stream, "Server overloaded.")
+            end 
+        catch e
+            @error "ERROR: " exception=(e, catch_backtrace())
+            HTTP.setstatus(stream, 500)
+            write(stream, "The Server encountered a problem")
         end
-    finally
-        close(server)
-        handler.shutdown[] = true
     end
+
+    return HTTP.serve!(streamhandler, host, port; stream=true, kwargs...) 
 
 end
 

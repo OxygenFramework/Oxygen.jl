@@ -263,7 +263,7 @@ loaded into memory on startup.
 using Oxygen
 
 # mount all files inside the "content" folder under the "/static" path
-@staticfiles "content" "static"
+@staticfiles("content", "static")
 
 # start the web server
 serve()
@@ -277,7 +277,7 @@ Similar to @staticfiles, this macro mounts each path and re-reads the file for e
 using Oxygen
 
 # mount all files inside the "content" folder under the "/dynamic" path
-@dynamicfiles "content" "dynamic"
+@dynamicfiles("content", "dynamic")
 
 # start the web server
 serve()

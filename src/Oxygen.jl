@@ -4,9 +4,8 @@ using JSON3
 using Sockets
 
 include("util.jl" );        using .Util
-include("fileutil.jl");     using .FileUtil
 include("bodyparsers.jl");  using .BodyParsers
-include("core.jl");   using .Core
+include("core.jl");         using .Core
 
 export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
         serve, serveparallel, terminate, internalrequest, 

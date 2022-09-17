@@ -125,14 +125,6 @@ uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 
-[[deps.Oxygen]]
-deps = ["Dates", "HTTP", "JSON3", "Sockets"]
-git-tree-sha1 = "8be24b468f0abaf22c97c7b3449f4d0f8415093f"
-repo-rev = "feature/http-v1-upgrade"
-repo-url = ".."
-uuid = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
-version = "1.0.11"
-
 [[deps.Parsers]]
 deps = ["Dates"]
 git-tree-sha1 = "0044b23da09b5608b4ecacb4e5e6c6332f833a7e"
@@ -186,6 +178,11 @@ deps = ["Dates", "UUIDs"]
 git-tree-sha1 = "d24a825a95a6d98c385001212dc9020d609f2d4f"
 uuid = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 version = "1.8.1"
+
+[[deps.Suppressor]]
+git-tree-sha1 = "c6ed566db2fe3931292865b966d6d140b7ef32a9"
+uuid = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
+version = "0.2.1"
 
 [[deps.SwaggerMarkdown]]
 deps = ["JSON", "JSONSchema", "Test", "UUIDs", "YAML"]

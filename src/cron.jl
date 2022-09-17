@@ -66,7 +66,13 @@ end
 
 function matchPrimitives(input::SubString, time::DateTime, converter) :: Bool
     current = converter(time)
-    numericvalue = tryparse(Int64, input)
+
+    # Handle sole week or month expressions
+    if haskey(weeknames, input) || haskey(monthnames, input)
+        input = translate(input)
+    end
+
+    numericvalue = isa(input, Int64) ? input : tryparse(Int64, input)
 
     # Every Second
     if input == "*"
@@ -75,10 +81,6 @@ function matchPrimitives(input::SubString, time::DateTime, converter) :: Bool
     # At X seconds past the minute
     elseif numericvalue !== nothing
         return numericvalue == current
-
-    # Handle sole week or month name expressions
-    elseif haskey(weeknames, input) || haskey(monthnames, input)
-        return translate(input)
 
     elseif contains(input, ",")
         lowerbound, upperbound = split(input, ",")
@@ -118,7 +120,7 @@ function matchPrimitives(input::SubString, time::DateTime, converter) :: Bool
     end
 end
 
-cron = "* 34-35 23 * * MON-WED" # every 10 seconds
+cron = "* 34-35 23 * * WED" # every 10 seconds
 function run(time:: DateTime)
     seconds_expression, minute_expression, hour_expression,
     dayofmonth_expression, month_expression, dayofweek_expression = split(cron, " ")

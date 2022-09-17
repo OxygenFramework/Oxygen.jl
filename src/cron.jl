@@ -76,6 +76,10 @@ function matchPrimitives(input::SubString, time::DateTime, converter) :: Bool
     elseif numericvalue !== nothing
         return numericvalue == current
 
+    # Handle sole week or month name expressions
+    elseif haskey(weeknames, input) || haskey(monthnames, input)
+        return translate(input)
+
     elseif contains(input, ",")
         lowerbound, upperbound = split(input, ",")
         lowerbound, upperbound = translate(lowerbound), translate(upperbound)

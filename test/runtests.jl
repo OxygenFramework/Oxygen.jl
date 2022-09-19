@@ -578,7 +578,7 @@ enabledocs()
 @test isdocsenabled() == true 
 
 disabledocs()
-serve(async=true)
+@async serve(async=false)
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/swagger"))
@@ -770,7 +770,7 @@ terminate()
 
 try 
     # service should not have started and get requests should throw some error
-    serveparallel(async=true)
+    @async serveparallel()
     sleep(3)
     r = HTTP.get("$localhost/get"; readtimeout=1)
 catch e

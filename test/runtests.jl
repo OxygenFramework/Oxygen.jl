@@ -784,7 +784,7 @@ end
 if Threads.nthreads() > 1
 
     terminate()
-    serveparallel(async=true)
+    @async serveparallel()
     sleep(1)
 
     r = HTTP.get("$localhost/get")

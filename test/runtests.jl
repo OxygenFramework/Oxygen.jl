@@ -558,10 +558,13 @@ r = internalrequest(HTTP.Request("GET", "/customerror"))
 r = internalrequest(HTTP.Request("GET", "/undefinederror"))
 @test r.status == 500    
 
-# apparently you don't need to have StructTypes setup on a custom type with the latest JSON3 library
-r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
-@test r.status == 200
 
+try 
+    # apparently you don't need to have StructTypes setup on a custom type with the latest JSON3 library
+    r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
+catch e 
+    @test e isa ArgumentError
+end
 
 ## Swagger related tests 
 

@@ -785,9 +785,9 @@ if Threads.nthreads() > 1
 
     terminate()
     @async serveparallel()
-    sleep(1)
+    sleep(3)
 
-    r = HTTP.get("$localhost/get")
+    r = internalrequest(HTTP.Request("GET", "/get"))
     @test r.status == 200
 
     r = HTTP.post("$localhost/post", body="some demo content")

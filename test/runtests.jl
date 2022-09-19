@@ -578,7 +578,7 @@ enabledocs()
 @test isdocsenabled() == true 
 
 disabledocs()
-@async serve()
+@async serve(async=false)
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/swagger"))
@@ -781,11 +781,10 @@ finally
 end
 
 # only run these tests if we have more than one thread to work with
-if Threads.nthreads() > 1
+if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
 
-    terminate()
-    serveparallel(async=true)
-    sleep(1)
+    @async serveparallel()
+    sleep(3)
 
     r = HTTP.get("$localhost/get")
     @test r.status == 200

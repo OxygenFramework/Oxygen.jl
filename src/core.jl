@@ -32,18 +32,8 @@ oxygen_title = raw"""
 
 function serverwelcome(host::String, port::Int64)
     printstyled(oxygen_title, color = :blue, bold = true)  
-    start = "✅ Started server: http://$host:$port" 
-    docs = "📖 Documentation: http://$host:$port$docspath"
-    try 
-        @info start
-    catch 
-        println(start)
-    end
-    try 
-        @info docs
-    catch 
-        println(docs)
-    end
+    @info "✅ Started server: http://$host:$port" 
+    @info "📖 Documentation: http://$host:$port$docspath"
 end
 
 
@@ -77,7 +67,7 @@ function stoptasks()
 end
 
 """
-    serve(; middleware::Vector{Function}; host="127.0.0.1", port=8080, kwargs...)
+    serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -88,7 +78,7 @@ function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=t
 end
 
 """
-    serveparallel(; middleware::Vector{Function}; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
+    serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 

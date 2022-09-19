@@ -26,12 +26,7 @@ global const HANDLER = Ref{Handler}(Handler())
 This function is run in each spawned worker thread, which removes queued requests & handles them asynchronously
 """
 function respond(h::Handler, handleReq::Function)
-    message = "Started Worker Thread ~ id: $(Threads.threadid())"
-    try 
-        @info message
-    catch 
-        println(message)
-    end 
+    @info "Started Worker Thread ~ id: $(Threads.threadid())"
     streamhandler = HTTP.Handlers.streamhandler(handleReq)
     while h.shutdown[] == false
         task = take!(h.queue)

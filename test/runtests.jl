@@ -781,13 +781,12 @@ finally
 end
 
 # only run these tests if we have more than one thread to work with
-if Threads.nthreads() > 1
-    
-    sleep(1)
+if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
+
     @async serveparallel()
     sleep(3)
 
-    r = internalrequest(HTTP.Request("GET", "/get"))
+    r = HTTP.get("$localhost/get")
     @test r.status == 200
 
     r = HTTP.post("$localhost/post", body="some demo content")

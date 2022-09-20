@@ -19,7 +19,7 @@ end
 
 
 weeknames = Dict(
-    "SUN" => 0,
+    "SUN" => 7,
     "MON" => 1,
     "TUE" => 2,
     "WED" => 3,
@@ -47,7 +47,7 @@ function translate(input::SubString)
     if haskey(weeknames, input)
         return weeknames[input]
     elseif haskey(monthnames, input)
-        return weeknames[input]
+        return monthnames[input]
     else 
         return input
     end
@@ -64,15 +64,109 @@ end
 # https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/scheduling/support/CronExpression.html
 # https://crontab.cronhub.io/
 
-function matchPrimitives(input::SubString, time::DateTime, converter) :: Bool
-    current = converter(time)
 
+"""
+return the date for the last weekday (Friday) of the month
+"""
+function lastweekdayofmonth(time::DateTime)
+    current = lastdayofmonth(time)
+    while dayofweek(current) > 5
+        current -= Day(1)
+    end
+    return current
+end
+
+function isweekday(time::DateTime)
+    daynumber = dayofweek(time)
+    return daynumber >= 1 && daynumber <= 5
+end
+
+function isweekend(time::DateTime)
+    return dayofweek(time) in [0,6,7]
+end
+
+"""
+Return the date of the weekday that's nearest to the nth day of the month
+"""
+function nthweekdayofmonth(time::DateTime, n::Int64)
+
+    target = DateTime(year(time), month(time), day(n))
+    if isweekday(target)
+        return target
+    end
+
+    before = DateTime(year(time), month(time), day(n-1))
+    after = DateTime(year(time), month(time), day(n+1))
+
+    while true 
+        if isweekday(before)
+            return before
+        elseif isweekday(after)
+            return after
+        end 
+        before -= Day(1)
+        after += Day(1)
+    end
+end
+
+"""
+return the date for the last weekday (Friday) of the week
+"""
+function lastweekday(time::DateTime)
+    current = lastdayofweek(time)
+    while dayofweek(current) > 5
+        current -= Day(1)
+    end
+    return current
+end
+
+
+function lasttargetdayofmonth(time::DateTime, daynumber::Int64)
+    current = lastdayofmonth(time)
+    while dayofweek(current) !== daynumber
+        current -= Day(1)
+    end
+    return current
+end
+
+
+function getoccurance(time::DateTime, daynumber::Int64, occurance::Int64)
+    baseline = firstdayofmonth(time) 
+    # increment untill we hit the daytype we want 
+    while dayofweek(baseline) !== daynumber
+        baseline += Day(1)
+    end
+
+    # keep jumping by 7 days untill we the the target occurance
+    while dayofweekofmonth(baseline) !== occurance
+        baseline += Day(7)
+    end
+
+    return baseline
+end
+
+function matchexpression(input::Union{SubString,Nothing}, time::DateTime, converter, maxvalue) :: Bool
+    
+    # base case: return true if 
+    if isnothing(input)
+        return true
+    end
+
+    current = converter(time)
+    
     # Handle sole week or month expressions
     if haskey(weeknames, input) || haskey(monthnames, input)
         input = translate(input)
     end
 
     numericvalue = isa(input, Int64) ? input : tryparse(Int64, input)
+
+    # if given a datetime as a max value, means this is a special case expression
+    special_case = false
+    if maxvalue isa Function 
+        maxvalue = converter(maxvalue(time))
+        special_case = true
+    end
 
     # Every Second
     if input == "*"
@@ -81,6 +175,52 @@ function matchPrimitives(input::SubString, time::DateTime, converter) :: Bool
     # At X seconds past the minute
     elseif numericvalue !== nothing
         return numericvalue == current
+
+    elseif special_case
+
+        if input == "?"
+            return true 
+
+        # comamnd: Return the last valid value for this field
+        elseif input == "L"
+            return current == maxvalue   
+
+        # command: the last weekday of the month
+        elseif input == "LW"
+            return current == converter(lastweekdayofmonth(time))
+
+        # command negative offset (i.e. L-n), it means "nth-to-last day of the month".  
+        elseif contains(input, "L-")
+            return current >= maxvalue - customparse(Int64, replace(input, "L-" => ""))
+            
+        # ex.) "11W" = on the weekday nearest day 11th of the month
+        elseif match(r"[0-9]+W", input) !== nothing
+            daynumber = parse(Int64, replace(input, "W" => ""))
+            return current == dayofmonth(nthweekdayofmonth(time, daynumber))
+
+        # ex.) "4L" = last Thursday of the month
+        elseif match(r"[0-9]+L", input) !== nothing
+            daynumber = parse(Int64, replace(input, "L" => ""))
+            return current == converter(lasttargetdayofmonth(time, daynumber))
+
+        # ex.) "THUL" = last Thursday of the month
+        elseif match(r"([A-Z]+)L", input) !== nothing
+            dayabbreviation = match(r"([A-Z]+)L", input)[1]
+            daynumber = weeknames[dayabbreviation]
+            return current == converter(lasttargetdayofmonth(time, daynumber))
+
+        # ex.) 5#2" = the second Friday in the month
+        elseif match(r"([0-9])#([0-9])", input) !== nothing      
+            daynumber, position = match(r"([0-9])#([0-9])", input).captures
+            target = getoccurance(time, parse(Int64, daynumber), parse(Int64, position))
+            return dayofmonth(time) == dayofmonth(target)
+
+        # ex.) "MON#1" => the first Monday in the month
+        elseif match(r"([A-Z]+)#([0-9])", input) !== nothing
+            daynumber, position = match(r"([A-Z]+)#([0-9])", input).captures
+            target = getoccurance(time, weeknames[daynumber], parse(Int64, position))
+            return dayofmonth(time) == dayofmonth(target)
+        end
 
     elseif contains(input, ",")
         lowerbound, upperbound = split(input, ",")
@@ -115,28 +255,37 @@ function matchPrimitives(input::SubString, time::DateTime, converter) :: Bool
             denominator = customparse(Int64, denominator)
             return current % denominator == 0 && current >= numerator
         end
-    else 
-        return false
     end
+
+    return false
 end
 
-cron = "* 34-35 23 * * WED" # every 10 seconds
+cron = "* * * * * MON#3" # every 10 seconds
 function run(time:: DateTime)
-    seconds_expression, minute_expression, hour_expression,
-    dayofmonth_expression, month_expression, dayofweek_expression = split(cron, " ")
 
+    parsed_expression::Vector{Union{Nothing, SubString{String}}} = split(strip(cron), " ")
+
+    # fill in any missing arguments with nothing, so the array is always 
+    fill_length = 6 - length(parsed_expression)
+    if fill_length > 0
+        parsed_expression = vcat(parsed_expression, fill(nothing, fill_length))
+    end
+    
+    # extract individual expressions
+    seconds_expression, minute_expression, hour_expression,
+    dayofmonth_expression, month_expression, dayofweek_expression = parsed_expression
+    
     expressions = [
-        matchPrimitives(seconds_expression, time, second),
-        matchPrimitives(minute_expression, time, minute),
-        matchPrimitives(hour_expression, time, hour),
-        matchPrimitives(dayofmonth_expression, time, dayofmonth),
-        matchPrimitives(month_expression, time, month),
-        matchPrimitives(dayofweek_expression, time, dayofweek)
+        matchexpression(seconds_expression, time, second, 59),
+        matchexpression(minute_expression, time, minute, 59),
+        matchexpression(hour_expression, time, hour, 23),
+        matchexpression(dayofmonth_expression, time, dayofmonth, lastdayofmonth),
+        matchexpression(month_expression, time, month, 12),
+        matchexpression(dayofweek_expression, time, dayofweek, lastdayofweek)
     ]
 
     should_execute = all(expressions)
-    println(time)
-
+    # println(time)
     if should_execute
         println("boom")
     end

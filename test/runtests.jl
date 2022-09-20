@@ -492,7 +492,7 @@ r = internalrequest(HTTP.Request("GET", "/static/index.html"))
 # @test Dict(r.headers)["Content-Type"] == "text/html"
 # @test text(r) == file("content/index.html")
 
-r = internalrequest(HTTP.Request("GET", "/static"))
+r = internalrequest(HTTP.Request("GET", "/static/"))
 @test r.status == 200
 @test Dict(r.headers)["Content-Type"] == "text/html"
 @test text(r) == file("content/index.html")
@@ -558,10 +558,13 @@ r = internalrequest(HTTP.Request("GET", "/customerror"))
 r = internalrequest(HTTP.Request("GET", "/undefinederror"))
 @test r.status == 500    
 
-# apparently you don't need to have StructTypes setup on a custom type with the latest JSON3 library
-r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
-@test r.status == 200
 
+try 
+    # apparently you don't need to have StructTypes setup on a custom type with the latest JSON3 library
+    r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
+catch e 
+    @test e isa ArgumentError
+end
 
 ## Swagger related tests 
 
@@ -575,7 +578,7 @@ enabledocs()
 @test isdocsenabled() == true 
 
 disabledocs()
-@async serve()
+@async serve(async=false)
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/swagger"))
@@ -778,11 +781,10 @@ finally
 end
 
 # only run these tests if we have more than one thread to work with
-if Threads.nthreads() > 1
+if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
 
-    terminate()
-    serveparallel(async=true)
-    sleep(1)
+    @async serveparallel()
+    sleep(3)
 
     r = HTTP.get("$localhost/get")
     @test r.status == 200

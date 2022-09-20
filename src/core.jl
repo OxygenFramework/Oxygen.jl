@@ -3,7 +3,6 @@ module Core
 using HTTP 
 using Sockets 
 using JSON3
-using Suppressor
 
 include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
@@ -67,7 +66,7 @@ function stoptasks()
 end
 
 """
-    serve(; middleware::Vector{Function}; host="127.0.0.1", port=8080, kwargs...)
+    serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -78,7 +77,7 @@ function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=t
 end
 
 """
-    serveparallel(; middleware::Vector{Function}; host="127.0.0.1", port=8080, queuesize=1024, kwargs...)
+    serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
@@ -477,18 +476,14 @@ function setupswagger()
         return
     end
 
-    # suppress any replacement warnings for these built-in endpoints
-    @suppress begin
-
-        @get docspath function()
-            return swaggerhtml()
-        end
-
-        @get schemapath function()
-            return getschema() 
-        end
-
+    @get docspath function()
+        return swaggerhtml()
     end
+
+    @get schemapath function()
+        return getschema() 
+    end
+    
 end
 
 

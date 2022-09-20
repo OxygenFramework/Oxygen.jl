@@ -492,7 +492,7 @@ r = internalrequest(HTTP.Request("GET", "/static/index.html"))
 # @test Dict(r.headers)["Content-Type"] == "text/html"
 # @test text(r) == file("content/index.html")
 
-r = internalrequest(HTTP.Request("GET", "/static"))
+r = internalrequest(HTTP.Request("GET", "/static/"))
 @test r.status == 200
 @test Dict(r.headers)["Content-Type"] == "text/html"
 @test text(r) == file("content/index.html")

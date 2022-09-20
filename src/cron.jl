@@ -1,21 +1,9 @@
 module Cron
 
-using Dates
+using Dates, Base.Threads
 
-function everysecond(func)
-    # spin until our cpu hits a whole second
-    # @async begin 
-        previoustime::Union{DateTime, Nothing} = nothing
-        while true
-            # execute code on every whole second
-            current_time::DateTime = now()
-            if previoustime !== current_time && millisecond(current_time) == 0
-                func(current_time)
-            end
-            previoustime = current_time
-        end 
-    # end
-end
+
+export @cron, everysecond
 
 
 weeknames = Dict(
@@ -260,10 +248,49 @@ function matchexpression(input::Union{SubString,Nothing}, time::DateTime, conver
     return false
 end
 
-cron = "* * * * * MON#3" # every 10 seconds
-function run(time:: DateTime)
 
-    parsed_expression::Vector{Union{Nothing, SubString{String}}} = split(strip(cron), " ")
+
+
+jobs = []
+
+macro cron(expression, func)
+    quote 
+        local job = ($(esc(expression)), $(esc(func)))
+        push!($jobs, job)
+    end
+end
+
+
+# @cron "*/3" function()
+#     println("here")
+#     3
+# end
+
+
+function everysecond()
+
+    @async begin
+        # spin until our cpu hits a whole second
+        previoustime::Union{DateTime, Nothing} = nothing
+        while true
+            # execute code on every whole second
+            current_time::DateTime = now()
+            if previoustime !== current_time && millisecond(current_time) == 0
+                for (expression, func) in jobs 
+                    if iscronmatch(expression, current_time)
+                        func()
+                    end
+                end
+            end
+            previoustime = current_time
+        end 
+    end
+end
+
+
+# cron = "* * * * * MON#3" # every 10 seconds
+function iscronmatch(expression::String, time::DateTime) :: Bool
+    parsed_expression::Vector{Union{Nothing, SubString{String}}} = split(strip(expression), " ")
 
     # fill in any missing arguments with nothing, so the array is always 
     fill_length = 6 - length(parsed_expression)
@@ -283,16 +310,10 @@ function run(time:: DateTime)
         matchexpression(month_expression, time, month, 12),
         matchexpression(dayofweek_expression, time, dayofweek, lastdayofweek)
     ]
-
-    should_execute = all(expressions)
-    # println(time)
-    if should_execute
-        println("boom")
-    end
-
+    return all(expressions)
 end
 
-everysecond(run)
+
 
 
 end 

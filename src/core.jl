@@ -8,8 +8,9 @@ include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
+include("cron.jl");         using .Cron
 
-export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
+export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles, @cron,
         start, serve, serveparallel, terminate, internalrequest, file,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
@@ -115,6 +116,7 @@ function startserver(host, port, kwargs, async, start)
         kwargs = preprocesskwargs(kwargs)
         starttasks()
         server[] = start(kwargs)
+        # everysecond()
         if !async     
             wait(server[])
         end

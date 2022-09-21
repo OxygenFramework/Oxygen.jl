@@ -10,7 +10,7 @@ value = 0
     println("every 5 seconds")
 end
 
-@get router("/increment", cron="*/3") function(req)
+@get router("/increment", cron="*/3") function()
     global value += 1
     println(value)
     return value

@@ -1,10 +1,61 @@
 module Cron
 
-using Dates, Base.Threads
+using Dates
+export @cron, startcronjobs, stopcronjobs, resetcronstate
 
+global const jobs = Ref{Vector}([])
+global const stop = Ref{Bool}(false)
 
-export @cron, everysecond
+"""
+Registers a function with a cron expression
+"""
+macro cron(expression, func)
+    quote 
+        local job = ($(esc(expression)), $(esc(func)))
+        push!($jobs[], job)
+    end
+end
 
+"""
+Stop all cron jobs 
+"""
+function stopcronjobs()
+    stop[] = true
+    jobs[] = []
+end
+
+"""
+Reset the globals in this module 
+"""
+function resetcronstate()
+    jobs[] = []
+    stop[] = false
+end
+
+"""
+Starts all cronjobs. This function kicks off an async task that executes every second
+and iterates over all cron expressions to determine whether it needs to get run or not.
+Each registered function is called asynchronously so we don't slow down the time-sync loop. 
+"""
+function startcronjobs()
+    @async begin
+        # spin until our cpu hits a whole second
+        previoustime::Union{DateTime, Nothing} = nothing
+        while !stop[]
+            # execute code on every whole second
+            current_time::DateTime = now()
+            if previoustime !== current_time && millisecond(current_time) == 0
+                for (expression, func) in jobs[]
+                    if iscronmatch(expression, current_time)
+                        @async func()
+                    end
+                end
+            end
+            previoustime = current_time
+            yield()
+        end 
+    end
+end
 
 weeknames = Dict(
     "SUN" => 7,
@@ -67,10 +118,6 @@ end
 function isweekday(time::DateTime)
     daynumber = dayofweek(time)
     return daynumber >= 1 && daynumber <= 5
-end
-
-function isweekend(time::DateTime)
-    return dayofweek(time) in [0,6,7]
 end
 
 """
@@ -249,46 +296,6 @@ function matchexpression(input::Union{SubString,Nothing}, time::DateTime, conver
 end
 
 
-
-
-jobs = []
-
-macro cron(expression, func)
-    quote 
-        local job = ($(esc(expression)), $(esc(func)))
-        push!($jobs, job)
-    end
-end
-
-
-# @cron "*/3" function()
-#     println("here")
-#     3
-# end
-
-
-function everysecond()
-
-    @async begin
-        # spin until our cpu hits a whole second
-        previoustime::Union{DateTime, Nothing} = nothing
-        while true
-            # execute code on every whole second
-            current_time::DateTime = now()
-            if previoustime !== current_time && millisecond(current_time) == 0
-                for (expression, func) in jobs 
-                    if iscronmatch(expression, current_time)
-                        func()
-                    end
-                end
-            end
-            previoustime = current_time
-        end 
-    end
-end
-
-
-# cron = "* * * * * MON#3" # every 10 seconds
 function iscronmatch(expression::String, time::DateTime) :: Bool
     parsed_expression::Vector{Union{Nothing, SubString{String}}} = split(strip(expression), " ")
 
@@ -312,8 +319,5 @@ function iscronmatch(expression::String, time::DateTime) :: Bool
     ]
     return all(expressions)
 end
-
-
-
 
 end 

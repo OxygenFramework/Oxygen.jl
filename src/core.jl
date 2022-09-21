@@ -8,7 +8,6 @@ include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
-include("cron.jl");         using .Cron
 
 export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles, @cron,
         start, serve, serveparallel, terminate, internalrequest, file,
@@ -51,6 +50,20 @@ function starttasks()
         push!(timers[], timer)   
     end
 end 
+
+
+"""
+Register all cron jobs 
+"""
+function registercronjobs()
+    for job in getcronjobs()
+        path, httpmethod, expression = job
+        @cron expression function()
+            internalrequest(HTTP.Request(httpmethod, path))
+        end
+    end
+end 
+
 
 """
     stoptasks()
@@ -113,10 +126,10 @@ function startserver(host, port, kwargs, async, start)
     try
         serverwelcome(host, port)
         setup()
-        kwargs = preprocesskwargs(kwargs)
         starttasks()
-        server[] = start(kwargs)
-        # everysecond()
+        registercronjobs()
+        startcronjobs()
+        server[] = start(preprocesskwargs(kwargs))
         if !async     
             wait(server[])
         end
@@ -142,6 +155,8 @@ function resetstate()
     server[] = nothing
     # reset autodocs state variables
     resetstatevariables()
+    # reset cron module state
+    resetcronstate()
 end
 
 
@@ -174,6 +189,8 @@ stops the webserver immediately
 """
 function terminate()
     if !isnothing(server[]) && isopen(server[])
+        # stop background cron jobs
+        stopcronjobs()
         # stop background tasks
         stoptasks()
         # stop any background worker threads

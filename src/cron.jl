@@ -38,6 +38,11 @@ and iterates over all cron expressions to determine whether it needs to get run 
 Each registered function is called asynchronously so we don't slow down the time-sync loop. 
 """
 function startcronjobs()
+
+    if isempty(jobs)
+        return 
+    end
+
     @async begin
         # spin until our cpu hits a whole second
         previoustime::Union{DateTime, Nothing} = nothing
@@ -45,9 +50,9 @@ function startcronjobs()
             # execute code on every whole second
             current_time::DateTime = now()
             if previoustime !== current_time && millisecond(current_time) == 0
-                for (expression, func) in jobs[]
+                @async for (expression, func) in jobs[]
                     if iscronmatch(expression, current_time)
-                        @async func()
+                        func()
                     end
                 end
             end

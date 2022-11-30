@@ -185,15 +185,13 @@ function getoccurance(time::DateTime, daynumber::Int64, occurance::Int64)
     return baseline
 end
 
-function matchexpression(input::Union{SubString,Nothing}, time::DateTime, converter, maxvalue) :: Bool
+function matchexpression(input::Union{SubString,Nothing}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
     
     # base case: return true if 
     if isnothing(input)
         return true
     end
 
-    current = converter(time)
-    
     # Handle sole week or month expressions
     if haskey(weeknames, input) || haskey(monthnames, input)
         input = translate(input)
@@ -208,13 +206,26 @@ function matchexpression(input::Union{SubString,Nothing}, time::DateTime, conver
         special_case = true
     end
 
+    current = converter(time)
+
+    # need to convert zero based max values to their "real world" equivalent
+    if !isnothing(adjustedmax) && current == 0 
+        current = adjustedmax
+    end
+
     # Every Second
     if input == "*"
         return true 
 
     # At X seconds past the minute
     elseif numericvalue !== nothing
-        return numericvalue == current
+        # If this field is zero indexed and set to 0
+        if !isnothing(adjustedmax) && current == adjustedmax
+            # ensure they cancel each other out (should equal zero)
+            return numericvalue == (current - adjustedmax)
+        else
+            return numericvalue == current
+        end
 
     elseif special_case
 
@@ -313,16 +324,32 @@ function iscronmatch(expression::String, time::DateTime) :: Bool
     # extract individual expressions
     seconds_expression, minute_expression, hour_expression,
     dayofmonth_expression, month_expression, dayofweek_expression = parsed_expression
-    
-    expressions = [
-        matchexpression(seconds_expression, time, second, 59),
-        matchexpression(minute_expression, time, minute, 59),
-        matchexpression(hour_expression, time, hour, 23),
-        matchexpression(dayofmonth_expression, time, dayofmonth, lastdayofmonth),
-        matchexpression(month_expression, time, month, 12),
-        matchexpression(dayofweek_expression, time, dayofweek, lastdayofweek)
-    ]
-    return all(expressions)
+
+    if !matchexpression(seconds_expression, time, second, 59, 60)
+        return false
+    end
+
+    if !matchexpression(minute_expression, time, minute, 59, 60)
+        return false
+    end
+
+    if !matchexpression(hour_expression, time, hour, 23, 24)
+        return false 
+    end
+
+    if !matchexpression(dayofmonth_expression, time, dayofmonth, lastdayofmonth)
+        return false
+    end
+
+    if !matchexpression(month_expression, time, month, 12)
+        return false
+    end
+
+    if !matchexpression(dayofweek_expression, time, dayofweek, lastdayofweek)
+        return false 
+    end
+
+    return true 
 end
 
 end 

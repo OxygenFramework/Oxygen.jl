@@ -10,6 +10,9 @@ include("../src/Oxygen.jl")
 using .Oxygen
 
 
+include("./crontests.jl")
+
+
 struct Person
     name::String
     age::Int
@@ -818,7 +821,5 @@ if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
         terminate()
     end
 end
-
-resetstate()
 
 end 

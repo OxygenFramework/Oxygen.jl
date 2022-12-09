@@ -10,8 +10,7 @@ using Dates
 # using .Oxygen
 
 include("../src/cron.jl")
-using .Cron: iscronmatch
-
+using .Cron: iscronmatch, isweekday
 
 @testset "static matches" begin
 
@@ -148,6 +147,45 @@ end
     @test iscronmatch("*/15 * * * * *", DateTime(2022,1,9,1,0,15)) == true
     @test iscronmatch("*/15 * * * * *", DateTime(2022,1,9,1,0,30)) == true
     @test iscronmatch("*/15 * * * * *", DateTime(2022,1,9,1,0,45)) == true
+end
+
+
+@testset "6:00 AM and 7:00 PM every day" begin 
+    for day in 1:20
+        for hour in 0:23
+            @test iscronmatch("0 0 6,19 * * *", DateTime(2022,1,day,hour,0,0)) == (hour == 6 || hour == 19)
+        end
+    end
+end
+
+
+@testset "8:00, 8:30, 9:00, 9:30, 10:00 and 10:30 every day" begin 
+    for day in 1:20
+        for hour in 0:23
+            @test iscronmatch("0 0/30 8-10 * * *", DateTime(2022,1,day,hour,30,0)) == (hour >= 8 && hour <= 10)
+            @test iscronmatch("0 0/30 8-10 * * *", DateTime(2022,1,day,hour,0,0)) == (hour >= 8 && hour <= 10)
+        end
+    end
+end
+
+
+@testset "on the hour nine-to-five weekdays" begin 
+    for day in 1:20
+        if isweekday(DateTime(2022,1,day,0,0,0))
+            for hour in 0:23
+                @test iscronmatch("0 0 9-17 * * MON-FRI", DateTime(2022,1,day,hour,0,0)) == (hour >= 9 && hour <= 17)
+            end
+        end
+    end
+end
+
+
+@testset "every Christmas Day at midnight" begin 
+    for month in 1:12
+        for hour in 0:23
+            @test iscronmatch("0 0 0 25 12 ?", DateTime(2022,month,25,hour,0,0)) == (month == 12 && hour == 0)
+        end
+    end
 end
 
 end

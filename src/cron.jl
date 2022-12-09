@@ -227,6 +227,42 @@ function matchexpression(input::Union{SubString,Nothing}, time::DateTime, conver
             return numericvalue == current
         end
 
+    elseif contains(input, ",")
+        lowerbound, upperbound = split(input, ",")
+        lowerbound, upperbound = translate(lowerbound), translate(upperbound)
+        return current == customparse(Int64, lowerbound) || current === customparse(Int64, upperbound)
+
+    elseif contains(input, "-")
+        lowerbound, upperbound = split(input, "-")
+        lowerbound, upperbound = translate(lowerbound), translate(upperbound)
+
+        if lowerbound == "*"
+            return current <= customparse(Int64, upperbound)
+        elseif upperbound == "*"
+            return current >= customparse(Int64, lowerbound)
+        else 
+            return current >= customparse(Int64, lowerbound) && current <= customparse(Int64, upperbound)
+        end
+        
+    elseif contains(input, "/")
+        numerator, denominator = split(input, "/")
+        numerator, denominator = translate(numerator), translate(denominator)
+        # Every second, starting at Y seconds past the minute
+        if denominator == "*"
+            numerator = customparse(Int64, numerator)
+            return current >= numerator
+        elseif numerator == "*"
+            # Every X seconds
+            denominator = customparse(Int64, denominator)
+            return current % denominator == 0
+        else
+            # Every X seconds, starting at Y seconds past the minute
+            numerator = customparse(Int64, numerator)
+            denominator = customparse(Int64, denominator)
+            return current % denominator == 0 && current >= numerator
+        end
+
+    
     elseif special_case
 
         if input == "?"
@@ -273,39 +309,6 @@ function matchexpression(input::Union{SubString,Nothing}, time::DateTime, conver
             return dayofmonth(time) == dayofmonth(target)
         end
 
-    elseif contains(input, ",")
-        lowerbound, upperbound = split(input, ",")
-        lowerbound, upperbound = translate(lowerbound), translate(upperbound)
-        return current == customparse(Int64, lowerbound) || current === customparse(Int64, upperbound)
-
-    elseif contains(input, "-")
-        lowerbound, upperbound = split(input, "-")
-        lowerbound, upperbound = translate(lowerbound), translate(upperbound)
-        if lowerbound == "*"
-            return current <= customparse(Int64, upperbound)
-        elseif upperbound == "*"
-            return current >= customparse(Int64, lowerbound)
-        else 
-            return current >= customparse(Int64, lowerbound) && current <= customparse(Int64, upperbound)
-        end
-        
-    elseif contains(input, "/")
-        numerator, denominator = split(input, "/")
-        numerator, denominator = translate(numerator), translate(denominator)
-        # Every second, starting at Y seconds past the minute
-        if denominator == "*"
-            numerator = customparse(Int64, numerator)
-            return current >= numerator
-        elseif numerator == "*"
-            # Every X seconds
-            denominator = customparse(Int64, denominator)
-            return current % denominator == 0
-        else
-            # Every X seconds, starting at Y seconds past the minute
-            numerator = customparse(Int64, numerator)
-            denominator = customparse(Int64, denominator)
-            return current % denominator == 0 && current >= numerator
-        end
     end
 
     return false
@@ -344,8 +347,9 @@ function iscronmatch(expression::String, time::DateTime) :: Bool
     if !matchexpression(month_expression, time, month, 12)
         return false
     end
-
     if !matchexpression(dayofweek_expression, time, dayofweek, lastdayofweek)
+        println(time)
+        println(dayofweek(time))
         return false 
     end
 

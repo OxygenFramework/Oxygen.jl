@@ -533,7 +533,36 @@ mergeschema(
   )
 )
 ```
-## API Reference (macros)
+
+# Common Issues & Tips
+
+## Problems working with Julia's REPL
+
+This is a recurring issue that occurs when writing and testing code in the REPL. Often, people find that their changes are not reflected when they rerun the server. The reason for this is that all the routing utilities are defined as macros, and they are only executed during the precompilation stage. To have your changes take effect, you need to move your route declarations to the `__init__()` function in your module.
+
+```julia
+module OxygenExample
+using Oxygen
+using HTTP
+
+# is called whenever you load this module
+function __init__()
+    @get "/greet" function(req::HTTP.Request)
+        return "hello world!"
+    end
+end
+
+# you can call this function from the REPL to start the server
+function runserver()
+    serve()
+end
+
+end 
+```
+
+
+
+# API Reference (macros)
 
 #### @get, @post, @put, @patch, @delete
 ```julia

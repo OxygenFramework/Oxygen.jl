@@ -779,6 +779,13 @@ r = internalrequest(HTTP.Request("GET", "/get"))
 @test r.status == 200
 
 try 
+    # test the error handler inside the default handler
+    r = HTTP.get("$localhost/undefinederror"; readtimeout=1)
+catch e
+    @test true
+end
+
+try 
     # service should not have started and get requests should throw some error
     r = HTTP.get("$localhost/data"; readtimeout=1)
 catch e

@@ -405,7 +405,7 @@ macro register(httpmethod, path, func)
 
         # extract the function handler's field names & types 
         local fields = [x for x in fieldtypes(method.sig)]
-        local func_param_names = [String(param) for param in method_argnames(method)[3:end]]
+        local func_param_names = [String(param) for param in Base.method_argnames(method)[3:end]]
         local func_param_types = splice!(Array(fields), 3:numfields)
         
         # create a map of paramter name to type definition

@@ -340,7 +340,7 @@ function CorsMiddleware(handler)
     return function(req::HTTP.Request)
         println("CORS middleware")
         # determine if this is a pre-flight request from the browser
-        if HTTP.hasheader(req, "OPTIONS")  
+        if HTTP.method(req)=="OPTIONS"
             return HTTP.Response(200, CORS_HEADERS)  
         else 
             return handler(req) # passes the request to the AuthMiddleware

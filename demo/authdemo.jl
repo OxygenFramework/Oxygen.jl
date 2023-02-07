@@ -17,7 +17,7 @@ const CORS_HEADERS = [
 # https://juliaweb.github.io/HTTP.jl/stable/examples/#Cors-Server
 function CorsMiddleware(handler)
     return function(req::HTTP.Request)
-        if HTTP.hasheader(req, "OPTIONS")
+        if HTTP.method(req)=="OPTIONS"
             return HTTP.Response(200, CORS_HEADERS)
         else 
             return handler(req)

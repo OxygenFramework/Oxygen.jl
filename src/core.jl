@@ -114,7 +114,7 @@ function setupmiddleware(;middleware::Vector = [], serialize::Bool=true) :: Func
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware() ? [compose(getrouter(), middleware)] : reverse(middleware)
     # check if we should use our default serialization middleware function
-    serialized = serialize ? [DefaultHandler] : []
+    serialized = serialize ? [DefaultSerializer] : [DefaultHandler]
     # combine all our middleware functions
     return reduce(|>, [getrouter(), serialized..., custom_middleware...])    
 end
@@ -221,7 +221,21 @@ function getrouter()
     return ROUTER[]
 end 
 
+"""
+Provide an empty handler function, so that our middleware chain isn't broken
+"""
 function DefaultHandler(handle)
+    return function(req::HTTP.Request)
+        try 
+            return handle(req)         
+        catch error
+            @error "ERROR: " exception=(error, catch_backtrace())
+            return HTTP.Response(500, "The Server encountered a problem")
+        end  
+    end
+end
+
+function DefaultSerializer(handle)
     return function(req::HTTP.Request)
         try
             response_body = handle(req)            
@@ -410,7 +424,7 @@ macro register(httpmethod, path, func)
 
         # extract the function handler's field names & types 
         local fields = [x for x in fieldtypes(method.sig)]
-        local func_param_names = [String(param) for param in method_argnames(method)[3:end]]
+        local func_param_names = [String(param) for param in Base.method_argnames(method)[3:end]]
         local func_param_types = splice!(Array(fields), 3:numfields)
         
         # create a map of paramter name to type definition

@@ -8,6 +8,7 @@
     <strong>A breath of fresh air for programming web apps in Julia.</strong>
   </p>
   <p align="center">
+    <a href='https://juliahub.com/ui/Packages/Oxygen/JtS3f'><img src='https://juliahub.com/docs/Oxygen/version.svg?token=7GV8X1C98M' alt='Version' /></a>
     <a href='https://ndortega.github.io/Oxygen.jl/stable/'><img src='https://img.shields.io/badge/docs-stable-blue.svg' alt='documentation stable' /></a>
     <a href='https://github.com/ndortega/Oxygen.jl/actions/workflows/ci.yml'><img src='https://github.com/ndortega/Oxygen.jl/actions/workflows/ci.yml/badge.svg' alt='Build Status' /></a>
     <a href='https://codecov.io/gh/ndortega/Oxygen.jl'><img src='https://codecov.io/gh/ndortega/Oxygen.jl/branch/master/graph/badge.svg?token=7GV8X1C98M' alt='Coverage Status' /></a>
@@ -339,7 +340,7 @@ function CorsMiddleware(handler)
     return function(req::HTTP.Request)
         println("CORS middleware")
         # determine if this is a pre-flight request from the browser
-        if HTTP.hasheader(req, "OPTIONS")  
+        if HTTP.method(req)=="OPTIONS"
             return HTTP.Response(200, CORS_HEADERS)  
         else 
             return handler(req) # passes the request to the AuthMiddleware
@@ -533,7 +534,36 @@ mergeschema(
   )
 )
 ```
-## API Reference (macros)
+
+# Common Issues & Tips
+
+## Problems working with Julia's REPL
+
+This is a recurring issue that occurs when writing and testing code in the REPL. Often, people find that their changes are not reflected when they rerun the server. The reason for this is that all the routing utilities are defined as macros, and they are only executed during the precompilation stage. To have your changes take effect, you need to move your route declarations to the `__init__()` function in your module.
+
+```julia
+module OxygenExample
+using Oxygen
+using HTTP
+
+# is called whenever you load this module
+function __init__()
+    @get "/greet" function(req::HTTP.Request)
+        return "hello world!"
+    end
+end
+
+# you can call this function from the REPL to start the server
+function runserver()
+    serve()
+end
+
+end 
+```
+
+
+
+# API Reference (macros)
 
 #### @get, @post, @put, @patch, @delete
 ```julia

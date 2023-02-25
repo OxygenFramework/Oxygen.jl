@@ -58,6 +58,10 @@ end
     processtring(3)
 end
 
+@get "/data" function ()
+    return Dict("message" => "hello world")
+end
+
 @get "/undefinederror" function ()
     asdf
 end
@@ -771,6 +775,28 @@ terminate()
 terminate()
 terminate()
 
+# Test default handler by turning off serializaiton
+@async serve(serialize=false)
+sleep(3)
+r = internalrequest(HTTP.Request("GET", "/get"))
+@test r.status == 200
+
+try 
+    # test the error handler inside the default handler
+    r = HTTP.get("$localhost/undefinederror"; readtimeout=1)
+catch e
+    @test true
+end
+
+try 
+    # service should not have started and get requests should throw some error
+    r = HTTP.get("$localhost/data"; readtimeout=1)
+catch e
+    @test true
+finally
+    terminate()
+end
+
 try 
     # service should not have started and get requests should throw some error
     @async serveparallel()
@@ -778,7 +804,6 @@ try
     r = HTTP.get("$localhost/get"; readtimeout=1)
 catch e
     @test true
-
 finally
     terminate()
 end

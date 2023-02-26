@@ -129,23 +129,32 @@ end
 Return the date of the weekday that's nearest to the nth day of the month
 """
 function nthweekdayofmonth(time::DateTime, n::Int64)
+    if n < 1 || n > Dates.daysinmonth(time)
+        error("n must be between 1 and $(Dates.daysinmonth(time))")
+    end
 
     target = DateTime(year(time), month(time), day(n))
     if isweekday(target)
         return target
     end
 
-    before = DateTime(year(time), month(time), day(n-1))
-    after = DateTime(year(time), month(time), day(n+1))
+    current_month = month(time)
+    before = DateTime(year(time), month(time), day(max(1, n-1)))
+    after = DateTime(year(time), month(time), day(min(n+1, Dates.daysinmonth(time))))
 
-    while true 
-        if isweekday(before)
+    while true
+        if isweekday(before) && month(before) == current_month
             return before
-        elseif isweekday(after)
+        elseif isweekday(after) && month(after) == current_month
             return after
-        end 
-        before -= Day(1)
-        after += Day(1)
+        end
+        if day(before) > 1
+            before -= Day(1)
+        elseif day(after) < Dates.daysinmonth(time)
+            after += Day(1)
+        else
+            break
+        end
     end
 end
 
@@ -161,13 +170,23 @@ function lastweekday(time::DateTime)
 end
 
 
+# function lasttargetdayofmonth(time::DateTime, daynumber::Int64)
+#     current = lastdayofmonth(time)
+#     while dayofweek(current) !== daynumber
+#         current -= Day(1)
+#     end
+#     return current
+# end
+
 function lasttargetdayofmonth(time::DateTime, daynumber::Int64)
-    current = lastdayofmonth(time)
-    while dayofweek(current) !== daynumber
+    last_day = lastdayofmonth(time)
+    current = DateTime(year(last_day), month(last_day), day(Dates.daysinmonth(time)))
+    while dayofweek(current) != daynumber
         current -= Day(1)
     end
     return current
 end
+
 
 
 function getoccurance(time::DateTime, daynumber::Int64, occurance::Int64)
@@ -185,7 +204,85 @@ function getoccurance(time::DateTime, daynumber::Int64, occurance::Int64)
     return baseline
 end
 
+
 function matchexpression(input::Union{SubString,Nothing}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
+    try 
+            
+        # base case: return true if 
+        if isnothing(input)
+            return true
+        end
+
+        # Handle sole week or month expressions
+        if haskey(weeknames, input) || haskey(monthnames, input)
+            input = translate(input)
+        end 
+
+        numericvalue = isa(input, Int64) ? input : tryparse(Int64, input)
+
+        current = converter(time)
+
+        # need to convert zero based max values to their "real world" equivalent
+        if !isnothing(adjustedmax) && current == 0 
+            current = adjustedmax
+        end
+
+        # Every Second
+        if input == "*" 
+            return true 
+        # At X seconds past the minute
+        elseif numericvalue !== nothing
+            # If this field is zero indexed and set to 0
+            if !isnothing(adjustedmax) && current == adjustedmax
+                return numericvalue == (current - adjustedmax)
+            else
+                return numericvalue == current
+            end
+
+        elseif contains(input, ",")
+            lowerbound, upperbound = split(input, ",")
+            lowerbound, upperbound = translate(lowerbound), translate(upperbound)
+            return current == customparse(Int64, lowerbound) || current === customparse(Int64, upperbound)
+
+        elseif contains(input, "-")
+            lowerbound, upperbound = split(input, "-")
+            lowerbound, upperbound = translate(lowerbound), translate(upperbound)
+
+            if lowerbound == "*"
+                return current <= customparse(Int64, upperbound)
+            elseif upperbound == "*"
+                return current >= customparse(Int64, lowerbound)
+            else 
+                return current >= customparse(Int64, lowerbound) && current <= customparse(Int64, upperbound)
+            end
+            
+        elseif contains(input, "/")
+            numerator, denominator = split(input, "/")
+            numerator, denominator = translate(numerator), translate(denominator)
+            # Every second, starting at Y seconds past the minute
+            if denominator == "*"
+                numerator = customparse(Int64, numerator)
+                return current >= numerator
+            elseif numerator == "*"
+                # Every X seconds
+                denominator = customparse(Int64, denominator)
+                return current % denominator == 0
+            else
+                # Every X seconds, starting at Y seconds past the minute
+                numerator = customparse(Int64, numerator)
+                denominator = customparse(Int64, denominator)
+                return current % denominator == 0 && current >= numerator
+            end
+        end
+
+        return false
+    catch 
+        return false 
+    end
+end
+
+
+function match_special(input::Union{SubString,Nothing}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
     
     # base case: return true if 
     if isnothing(input)
@@ -195,15 +292,14 @@ function matchexpression(input::Union{SubString,Nothing}, time::DateTime, conver
     # Handle sole week or month expressions
     if haskey(weeknames, input) || haskey(monthnames, input)
         input = translate(input)
-    end
-
+    end 
+    
     numericvalue = isa(input, Int64) ? input : tryparse(Int64, input)
+    current = converter(time)
 
     # if given a datetime as a max value, means this is a special case expression
-    special_case = false
     if maxvalue isa Function 
         maxvalue = converter(maxvalue(time))
-        special_case = true
     end
 
     current = converter(time)
@@ -213,105 +309,61 @@ function matchexpression(input::Union{SubString,Nothing}, time::DateTime, conver
         current = adjustedmax
     end
 
-    # Every Second
-    if input == "*"
-        return true 
-
     # At X seconds past the minute
-    elseif numericvalue !== nothing
+    if numericvalue !== nothing
         # If this field is zero indexed and set to 0
         if !isnothing(adjustedmax) && current == adjustedmax
-            # ensure they cancel each other out (should equal zero)
             return numericvalue == (current - adjustedmax)
         else
             return numericvalue == current
         end
 
-    elseif contains(input, ",")
-        lowerbound, upperbound = split(input, ",")
-        lowerbound, upperbound = translate(lowerbound), translate(upperbound)
-        return current == customparse(Int64, lowerbound) || current === customparse(Int64, upperbound)
+    elseif input == "?" || input == "*"
+        return true 
 
-    elseif contains(input, "-")
-        lowerbound, upperbound = split(input, "-")
-        lowerbound, upperbound = translate(lowerbound), translate(upperbound)
+    # comamnd: Return the last valid value for this field
+    elseif input == "L"
+        return current == maxvalue   
 
-        if lowerbound == "*"
-            return current <= customparse(Int64, upperbound)
-        elseif upperbound == "*"
-            return current >= customparse(Int64, lowerbound)
-        else 
-            return current >= customparse(Int64, lowerbound) && current <= customparse(Int64, upperbound)
-        end
+    # command: the last weekday of the month
+    elseif input == "LW"
+        return current == converter(lastweekdayofmonth(time))
+
+    # command negative offset (i.e. L-n), it means "nth-to-last day of the month".  
+    elseif contains(input, "L-")
+        return current == maxvalue - customparse(Int64, replace(input, "L-" => ""))
         
-    elseif contains(input, "/")
-        numerator, denominator = split(input, "/")
-        numerator, denominator = translate(numerator), translate(denominator)
-        # Every second, starting at Y seconds past the minute
-        if denominator == "*"
-            numerator = customparse(Int64, numerator)
-            return current >= numerator
-        elseif numerator == "*"
-            # Every X seconds
-            denominator = customparse(Int64, denominator)
-            return current % denominator == 0
-        else
-            # Every X seconds, starting at Y seconds past the minute
-            numerator = customparse(Int64, numerator)
-            denominator = customparse(Int64, denominator)
-            return current % denominator == 0 && current >= numerator
-        end
+    # ex.) "11W" = on the weekday nearest day 11th of the month
+    elseif match(r"[0-9]+W", input) !== nothing
+        daynumber = parse(Int64, replace(input, "W" => ""))
+        return current == dayofmonth(nthweekdayofmonth(time, daynumber))
 
-    
-    elseif special_case
+    # ex.) "4L" = last Thursday of the month
+    elseif match(r"[0-9]+L", input) !== nothing
+        daynumber = parse(Int64, replace(input, "L" => ""))
+        return dayofmonth(time) == dayofmonth(lasttargetdayofmonth(time, daynumber))
+        
+    # ex.) "THUL" = last Thursday of the month
+    elseif match(r"([A-Z]+)L", input) !== nothing
+        dayabbreviation = match(r"([A-Z]+)L", input)[1]
+        daynumber = weeknames[dayabbreviation]
+        return dayofmonth(time) == dayofmonth(lasttargetdayofmonth(time, daynumber))
 
-        if input == "?"
-            return true 
+    # ex.) 5#2" = the second Friday in the month
+    elseif match(r"([0-9])#([0-9])", input) !== nothing      
+        daynumber, position = match(r"([0-9])#([0-9])", input).captures
+        target = getoccurance(time, parse(Int64, daynumber), parse(Int64, position))
+        return dayofmonth(time) == dayofmonth(target)
 
-        # comamnd: Return the last valid value for this field
-        elseif input == "L"
-            return current == maxvalue   
-
-        # command: the last weekday of the month
-        elseif input == "LW"
-            return current == converter(lastweekdayofmonth(time))
-
-        # command negative offset (i.e. L-n), it means "nth-to-last day of the month".  
-        elseif contains(input, "L-")
-            return current >= maxvalue - customparse(Int64, replace(input, "L-" => ""))
-            
-        # ex.) "11W" = on the weekday nearest day 11th of the month
-        elseif match(r"[0-9]+W", input) !== nothing
-            daynumber = parse(Int64, replace(input, "W" => ""))
-            return current == dayofmonth(nthweekdayofmonth(time, daynumber))
-
-        # ex.) "4L" = last Thursday of the month
-        elseif match(r"[0-9]+L", input) !== nothing
-            daynumber = parse(Int64, replace(input, "L" => ""))
-            return current == converter(lasttargetdayofmonth(time, daynumber))
-
-        # ex.) "THUL" = last Thursday of the month
-        elseif match(r"([A-Z]+)L", input) !== nothing
-            dayabbreviation = match(r"([A-Z]+)L", input)[1]
-            daynumber = weeknames[dayabbreviation]
-            return current == converter(lasttargetdayofmonth(time, daynumber))
-
-        # ex.) 5#2" = the second Friday in the month
-        elseif match(r"([0-9])#([0-9])", input) !== nothing      
-            daynumber, position = match(r"([0-9])#([0-9])", input).captures
-            target = getoccurance(time, parse(Int64, daynumber), parse(Int64, position))
-            return dayofmonth(time) == dayofmonth(target)
-
-        # ex.) "MON#1" => the first Monday in the month
-        elseif match(r"([A-Z]+)#([0-9])", input) !== nothing
-            daynumber, position = match(r"([A-Z]+)#([0-9])", input).captures
-            target = getoccurance(time, weeknames[daynumber], parse(Int64, position))
-            return dayofmonth(time) == dayofmonth(target)
-        end
-
+    # ex.) "MON#1" => the first Monday in the month
+    elseif match(r"([A-Z]+)#([0-9])", input) !== nothing
+        daynumber, position = match(r"([A-Z]+)#([0-9])", input).captures
+        target = getoccurance(time, weeknames[daynumber], parse(Int64, position))
+        return dayofmonth(time) == dayofmonth(target)
+    else
+        return false
     end
 
-    return false
 end
 
 
@@ -332,7 +384,7 @@ function iscronmatch(expression::String, time::DateTime) :: Bool
         return false
     end
 
-    if !matchexpression(minute_expression, time, minute, 59, 60)
+    if !matchexpression(minute_expression, time, minute, 59, 60) 
         return false
     end
 
@@ -340,16 +392,14 @@ function iscronmatch(expression::String, time::DateTime) :: Bool
         return false 
     end
 
-    if !matchexpression(dayofmonth_expression, time, dayofmonth, lastdayofmonth)
+    if !(match_special(dayofmonth_expression, time, dayofmonth, lastdayofmonth) || matchexpression(dayofmonth_expression, time, dayofmonth, lastdayofmonth))
         return false
     end
 
-    if !matchexpression(month_expression, time, month, 12)
+    if !(match_special(month_expression, time, month, 12) || matchexpression(month_expression, time, month, 12))
         return false
     end
-    if !matchexpression(dayofweek_expression, time, dayofweek, lastdayofweek)
-        println(time)
-        println(dayofweek(time))
+    if !(match_special(dayofweek_expression, time, dayofweek, lastdayofweek) || matchexpression(dayofweek_expression, time, dayofweek, lastdayofweek))
         return false 
     end
 

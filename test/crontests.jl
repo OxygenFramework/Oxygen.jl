@@ -10,7 +10,7 @@ using Dates
 # using .Oxygen
 
 include("../src/cron.jl")
-using .Cron: iscronmatch, isweekday
+using .Cron: iscronmatch, isweekday, lastweekdayofmonth
 
 @testset "static matches" begin
 
@@ -22,7 +22,7 @@ using .Cron: iscronmatch, isweekday
     @test iscronmatch("39", DateTime(2022,1,1,1,0,39)) == true
     @test iscronmatch("59", DateTime(2022,1,1,1,0,59)) == true
 
-    # # Exact minute match
+    # Exact minute match
     @test iscronmatch("* 0", DateTime(2022,1,1,1,0,0)) == true
     @test iscronmatch("* 1", DateTime(2022,1,1,1,1,0)) == true
     @test iscronmatch("* 5", DateTime(2022,1,1,1,5,0)) == true
@@ -83,22 +83,22 @@ using .Cron: iscronmatch, isweekday
 
 end
 
-# More specific test cases
-# "0 0 * * * *" = the top of every hour of every day.
-# "*/10 * * * * *" = every ten seconds.
-# "0 0 8-10 * * *" = 8, 9 and 10 o'clock of every day.
-# "0 0 6,19 * * *" = 6:00 AM and 7:00 PM every day.
-# "0 0/30 8-10 * * *" = 8:00, 8:30, 9:00, 9:30, 10:00 and 10:30 every day.
-# "0 0 9-17 * * MON-FRI" = on the hour nine-to-five weekdays
-# "0 0 0 25 12 ?" = every Christmas Day at midnight
-# "0 0 0 L * *" = last day of the month at midnight
-# "0 0 0 L-3 * *" = third-to-last day of the month at midnight
-# "0 0 0 1W * *" = first weekday of the month at midnight
-# "0 0 0 LW * *" = last weekday of the month at midnight
-# "0 0 0 * * 5L" = last Friday of the month at midnight
-# "0 0 0 * * THUL" = last Thursday of the month at midnight
-# "0 0 0 ? * 5#2" = the second Friday in the month at midnight
-# "0 0 0 ? * MON#1" = the first Monday in the month at midnight
+# # More specific test cases
+# # "0 0 * * * *" = the top of every hour of every day.
+# # "*/10 * * * * *" = every ten seconds.
+# # "0 0 8-10 * * *" = 8, 9 and 10 o'clock of every day.
+# # "0 0 6,19 * * *" = 6:00 AM and 7:00 PM every day.
+# # "0 0/30 8-10 * * *" = 8:00, 8:30, 9:00, 9:30, 10:00 and 10:30 every day.
+# # "0 0 9-17 * * MON-FRI" = on the hour nine-to-five weekdays
+# # "0 0 0 25 12 ?" = every Christmas Day at midnight
+# # "0 0 0 L * *" = last day of the month at midnight
+# # "0 0 0 L-3 * *" = third-to-last day of the month at midnight
+# # "0 0 0 1W * *" = first weekday of the month at midnight
+# # "0 0 0 LW * *" = last weekday of the month at midnight
+# # "0 0 0 * * 5L" = last Friday of the month at midnight
+# # "0 0 0 * * THUL" = last Thursday of the month at midnight
+# # "0 0 0 ? * 5#2" = the second Friday in the month at midnight
+# # "0 0 0 ? * MON#1" = the first Monday in the month at midnight
 
 
 @testset "the top of every hour of every day" begin
@@ -187,5 +187,93 @@ end
         end
     end
 end
+
+@testset "last day of the month at midnight" begin 
+    for month in 1:12
+        num_days = daysinmonth(2022, month)
+        for day in 1:num_days
+            for hour in 0:23
+                @test iscronmatch("0 0 0 L * *", DateTime(2022,month,day,hour,0,0)) == (day == num_days && hour == 0)
+            end
+        end
+    end
+end
+
+
+@testset "third-to-last day of the month at midnight" begin 
+    for month in 1:12
+        num_days = daysinmonth(2022, month)
+        for day in 1:num_days
+            for hour in 0:23
+                @test iscronmatch("0 0 0 L-3 * *", DateTime(2022,month,day,hour,0,0)) == (day == (num_days-3) && hour == 0)
+            end
+        end
+    end
+end
+
+@testset "first weekday of the month at midnight" begin
+
+    @test iscronmatch("0 0 0 1W * *", DateTime(2022, 1, 3, 0, 0, 0)) 
+    @test iscronmatch("0 0 0 9W * *", DateTime(2022, 1, 10, 0, 0, 0)) 
+    @test iscronmatch("0 0 0 13W * *", DateTime(2022, 1, 13, 0, 0, 0)) 
+    @test iscronmatch("0 0 0 15W * *", DateTime(2022, 1, 14, 0, 0, 0)) 
+    @test iscronmatch("0 0 0 22W * *", DateTime(2022, 1, 21, 0, 0, 0)) 
+    @test iscronmatch("0 0 0 31W * *", DateTime(2022, 1, 31, 0, 0, 0)) 
+
+end
+
+@testset "last weekday of the month at midnight" begin
+    @test iscronmatch("0 0 0 LW * *", DateTime(2022, 1, 28, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 LW * *", DateTime(2022, 1, 29, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 LW * *", DateTime(2022, 1, 30, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 LW * *", DateTime(2022, 1, 30, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 LW * *", DateTime(2022, 1, 31, 0, 0, 0)) 
+end
+
+@testset "last Friday of the month at midnight" begin
+    @test iscronmatch("0 0 0 * * 5L", DateTime(2022, 1, 28, 0, 0, 0))
+    @test iscronmatch("0 0 0 * * 5L", DateTime(2022, 1, 29, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 * * 5L", DateTime(2022, 1, 29, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 * * 5L", DateTime(2022, 2, 25, 0, 0, 0))
+end
+
+
+@testset "last Thursday of the month at midnight" begin
+    @test iscronmatch("0 0 0 * * THUL", DateTime(2022, 1, 26, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 * * THUL", DateTime(2022, 1, 27, 0, 0, 0))
+    @test iscronmatch("0 0 0 * * THUL", DateTime(2022, 1, 28, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 * * THUL", DateTime(2022, 2, 3, 0, 0, 0)) == false
+end
+
+
+@testset "the second Friday in the month at midnight" begin
+    @test iscronmatch("0 0 0 ? * 5#2", DateTime(2022, 1, 14, 0, 0, 0))
+    @test iscronmatch("0 0 0 ? * 5#2", DateTime(2022, 2, 11, 0, 0, 0))
+    @test iscronmatch("0 0 0 ? * 5#2", DateTime(2022, 3, 11, 0, 0, 0))
+    @test iscronmatch("0 0 0 ? * 5#2", DateTime(2022, 4, 8, 0, 0, 0))
+    @test iscronmatch("0 0 0 ? * 5#2", DateTime(2022, 5, 13, 0, 0, 0))
+end
+
+
+@testset "the first Monday in the month at midnight" begin
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 1, 2, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 1, 3, 0, 0, 0))
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 1, 4, 0, 0, 0)) == false
+
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 2, 6, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 2, 7, 0, 0, 0))
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 2, 8, 0, 0, 0)) == false
+
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 3, 6, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 3, 7, 0, 0, 0))
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 3, 8, 0, 0, 0)) == false
+
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 4, 3, 0, 0, 0)) == false
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 4, 4, 0, 0, 0))
+    @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 4, 5, 0, 0, 0)) == false
+end
+
+# # "0 0 0 ? * 5#2" = the second Friday in the month at midnight
+# # "0 0 0 ? * MON#1" = the first Monday in the month at midnight
 
 end

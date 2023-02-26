@@ -380,28 +380,28 @@ function iscronmatch(expression::String, time::DateTime) :: Bool
     seconds_expression, minute_expression, hour_expression,
     dayofmonth_expression, month_expression, dayofweek_expression = parsed_expression
 
-    if !match_seconds(seconds_expression, time)
+    if !match_month(month_expression, time)
         return false
     end
 
-    if !match_minutes(minute_expression, time)
+    if !match_dayofmonth(dayofmonth_expression, time)
         return false
+    end
+    
+    if !match_dayofweek(dayofweek_expression, time)
+        return false 
     end
 
     if !match_hour(hour_expression, time)
         return false 
     end
 
-    if !match_dayofmonth(dayofmonth_expression, time)
+    if !match_minutes(minute_expression, time)
         return false
     end
 
-    if !match_month(month_expression, time)
+    if !match_seconds(seconds_expression, time)
         return false
-    end
-    
-    if !match_dayofweek(dayofweek_expression, time)
-        return false 
     end
 
     return true 

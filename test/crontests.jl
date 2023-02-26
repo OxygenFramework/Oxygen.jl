@@ -10,7 +10,7 @@ using Dates
 # using .Oxygen
 
 include("../src/cron.jl")
-using .Cron: iscronmatch, isweekday, lastweekdayofmonth
+using .Cron: iscronmatch, isweekday, lastweekdayofmonth, next, sleep_until
 
 @testset "static matches" begin
 
@@ -272,8 +272,5 @@ end
     @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 4, 4, 0, 0, 0))
     @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 4, 5, 0, 0, 0)) == false
 end
-
-# # "0 0 0 ? * 5#2" = the second Friday in the month at midnight
-# # "0 0 0 ? * MON#1" = the first Monday in the month at midnight
 
 end

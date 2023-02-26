@@ -380,30 +380,164 @@ function iscronmatch(expression::String, time::DateTime) :: Bool
     seconds_expression, minute_expression, hour_expression,
     dayofmonth_expression, month_expression, dayofweek_expression = parsed_expression
 
-    if !matchexpression(seconds_expression, time, second, 59, 60)
+    if !match_seconds(seconds_expression, time)
         return false
     end
 
-    if !matchexpression(minute_expression, time, minute, 59, 60) 
+    if !match_minutes(minute_expression, time)
         return false
     end
 
-    if !matchexpression(hour_expression, time, hour, 23, 24)
+    if !match_hour(hour_expression, time)
         return false 
     end
 
-    if !(match_special(dayofmonth_expression, time, dayofmonth, lastdayofmonth) || matchexpression(dayofmonth_expression, time, dayofmonth, lastdayofmonth))
+    if !match_dayofmonth(dayofmonth_expression, time)
         return false
     end
 
-    if !(match_special(month_expression, time, month, 12) || matchexpression(month_expression, time, month, 12))
+    if !match_month(month_expression, time)
         return false
     end
-    if !(match_special(dayofweek_expression, time, dayofweek, lastdayofweek) || matchexpression(dayofweek_expression, time, dayofweek, lastdayofweek))
+    
+    if !match_dayofweek(dayofweek_expression, time)
         return false 
     end
 
     return true 
+end
+
+
+function match_seconds(seconds_expression, time::DateTime)
+    return matchexpression(seconds_expression, time, second, 59, 60)
+end
+
+function match_minutes(minute_expression, time::DateTime)
+    return matchexpression(minute_expression, time, minute, 59, 60)
+end
+
+function match_hour(hour_expression, time::DateTime)
+    return matchexpression(hour_expression, time, hour, 23, 24)
+end
+
+function match_dayofmonth(dayofmonth_expression, time::DateTime)
+    return match_special(dayofmonth_expression, time, dayofmonth, lastdayofmonth) || matchexpression(dayofmonth_expression, time, dayofmonth, lastdayofmonth)
+end
+
+function match_month(month_expression, time::DateTime)
+    return match_special(month_expression, time, month, 12) || matchexpression(month_expression, time, month, 12)
+end
+
+function match_dayofweek(dayofweek_expression, time::DateTime)
+    return match_special(dayofweek_expression, time, dayofweek, lastdayofweek) || matchexpression(dayofweek_expression, time, dayofweek, lastdayofweek)
+end
+
+
+
+"""
+This function takes a cron expression and a start_time and returns the next datetime object that matches this 
+expression
+"""
+function next(cron_expr::String, start_time::DateTime)::DateTime
+
+    parsed_expression::Vector{Union{Nothing, SubString{String}}} = split(strip(cron_expr), " ")
+
+    # fill in any missing arguments with nothing, so the array is always 
+    fill_length = 6 - length(parsed_expression)
+    if fill_length > 0
+        parsed_expression = vcat(parsed_expression, fill(nothing, fill_length))
+    end
+        
+    # extract individual expressions
+    seconds_expression, minute_expression, hour_expression,
+    dayofmonth_expression, month_expression, dayofweek_expression = parsed_expression
+
+    # initialize a candidate time with start_time plus one second 
+    candidate_time = start_time + Second(1)
+
+    # loop until candidate time matches all fields of cron expression 
+    while true
+
+        # check if candidate time matches month field 
+        if !match_month(month_expression, candidate_time)
+            # increment candidate time by one month and reset day, hour,
+            # minute and second to minimum values 
+            candidate_time += Month(1) - Day(day(candidate_time)) + Day(1) -
+                                Hour(hour(candidate_time)) + Hour(0) -
+                                Minute(minute(candidate_time)) + Minute(0) -
+                                Second(second(candidate_time)) + Second(0)
+            continue 
+        end
+
+        # check if candidate time matches day of month field 
+        if !match_dayofmonth(dayofmonth_expression, candidate_time)
+            # increment candidate time by one day and reset hour,
+            # minute and second to minimum values 
+            candidate_time += Day(1) - Hour(hour(candidate_time)) +
+                                Hour(0) - Minute(minute(candidate_time)) +
+                                Minute(0) - Second(second(candidate_time)) +
+                                Second(0)
+            continue 
+        end
+
+        # check if candidate time matches day of week field 
+        if !match_dayofweek(dayofweek_expression, candidate_time)
+            # increment candidate time by one day and reset hour,
+            # minute and second to minimum values 
+            candidate_time += Day(1) - Hour(hour(candidate_time)) +
+                                Hour(0) - Minute(minute(candidate_time)) +
+                                Minute(0) - Second(second(candidate_time)) +
+                                Second(0)
+            continue 
+        end
+
+        # check if candidate time matches hour field 
+        if !match_hour(hour_expression, candidate_time)
+            # increment candidate time by one hour and reset minute
+            # and second to minimum values 
+            candidate_time += Hour(1) - Minute(minute(candidate_time))
+                            + Minute(0) - Second(second(candidate_time))
+                            + Second(0)
+            continue 
+        end
+
+        # check if candidate time matches minute field
+        if !match_minutes(minute_expression, candidate_time)
+            # increment candidate time by one minute and reset second
+            # to minimum value
+            candidate_time += Minute(1) - Second(second(candidate_time))
+                            + Second(0)
+            continue
+        end
+
+        # check if candidatet ime matches second field
+        if !match_seconds(seconds_expression, candidate_time)
+            # increment candidatet ime by one second
+            candidate_time += Second(1)
+            continue
+        end
+
+        break # exit the loop as all fields match
+    end 
+
+    return candidate_time # return the next matching tme
+end 
+
+
+
+function sleep_until(future::DateTime)
+    # Get the current datetime
+    now = Dates.now()
+    # Check if the future datetime is later than the current datetime
+    if future > now
+        # Convert the difference between future and now to milliseconds
+        ms = Dates.value(future - now)
+        # Return the milliseconds to sleep
+        return ms
+    else
+        # Return zero if the future datetime is not later than the current datetime
+        return 0
+    end
 end
 
 end 

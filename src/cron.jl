@@ -57,9 +57,6 @@ function resetcronstate()
     stop[] = false
 end
 
-using Printf
-
-
 """
 Start all the cron jobs within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
@@ -71,12 +68,12 @@ function startcronjobs()
     end
 
     println()
-    printstyled("[Preparing $(length(jobs[])) CRON job(s)]\n", color = :blue, bold = true)  
+    printstyled("[Preparing $(length(jobs[])) CRON job(s)]\n", color = :green, bold = true)  
 
-    i = 0
-    @async for (expression, name, func) in jobs[]
+    i = 1
+    for (expression, name, func) in jobs[]
         message = isnothing(name) ? "$expression" : "id: $i | name: $name | expr: $expression"
-        printstyled("[Starting CRON] $message\n", color = :blue, bold = true)  
+        printstyled("[Starting CRON] $message\n", color = :green, bold = true)  
         t = @async begin 
             while !stop[]
                 # get the current datetime object

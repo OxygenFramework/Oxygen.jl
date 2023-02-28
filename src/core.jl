@@ -43,8 +43,20 @@ Start all background repeat tasks
 """
 function starttasks()
     timers[] = []
-    for task in getrepeatasks()
+    tasks = getrepeatasks()
+
+    # exit function early if no tasks are register
+    if isempty(tasks)
+        return 
+    end
+
+    println()
+    printstyled("[Preparing $(length(tasks)) Repeat Task(s)]\n", color = :magenta, bold = true)  
+    
+    for task in tasks
         path, httpmethod, interval = task
+        message = "method: $httpmethod | path: $path | inverval: $interval (s)"
+        printstyled("[Starting Repeat Task] $message\n", color = :magenta, bold = true)  
         action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))
         timer = Timer(action, 0, interval=interval)
         push!(timers[], timer)   

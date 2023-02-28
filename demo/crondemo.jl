@@ -15,7 +15,6 @@ end
     println("every 5 seconds")
 end
 
-
 value = 0
 
 # You can also just use the 'cron' keyword that's apart of the router() function

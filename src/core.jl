@@ -51,12 +51,13 @@ function starttasks()
     end
 
     println()
-    printstyled("[Preparing $(length(tasks)) Repeat Task(s)]\n", color = :magenta, bold = true)  
+    printstyled("[ Starting $(length(tasks)) Repeat Task(s)\n", color = :magenta, bold = true)  
     
     for task in tasks
         path, httpmethod, interval = task
-        message = "method: $httpmethod | path: $path | inverval: $interval (s)"
-        printstyled("[Starting Repeat Task] $message\n", color = :magenta, bold = true)  
+        message = "method: $httpmethod, path: $path, inverval: $interval seconds"
+        printstyled("[ Task: ", color = :magenta, bold = true)  
+        println(message)
         action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))
         timer = Timer(action, 0, interval=interval)
         push!(timers[], timer)   

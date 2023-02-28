@@ -68,12 +68,13 @@ function startcronjobs()
     end
 
     println()
-    printstyled("[Preparing $(length(jobs[])) CRON job(s)]\n", color = :green, bold = true)  
+    printstyled("[ Starting $(length(jobs[])) Cron job(s)\n", color = :green, bold = true)  
 
     i = 1
     for (expression, name, func) in jobs[]
-        message = isnothing(name) ? "$expression" : "id: $i | name: $name | expr: $expression"
-        printstyled("[Starting CRON] $message\n", color = :green, bold = true)  
+        message = isnothing(name) ? "$expression" : "id: $i, expr: $expression, name: $name"
+        printstyled("[ Cron: ", color = :green, bold = true)  
+        println(message)
         t = @async begin 
             while !stop[]
                 # get the current datetime object
@@ -96,6 +97,7 @@ function startcronjobs()
         push!(tasks[], t)
         i += 1
     end
+    println()
 end
 
 weeknames = Dict(

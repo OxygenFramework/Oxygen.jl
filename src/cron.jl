@@ -4,15 +4,38 @@ using Dates
 export @cron, startcronjobs, stopcronjobs, resetcronstate
 
 global const jobs = Ref{Vector}([])
+global const tasks = Ref{Vector}([])
 global const stop = Ref{Bool}(false)
 
 """
-Registers a function with a cron expression
+Registers a function with a cron expression. This will extract either the function name 
+or the random Id julia assigns to each lambda function. 
 """
 macro cron(expression, func)
     quote 
-        local job = ($(esc(expression)), $(esc(func)))
+        local f = $(esc(func))
+        local job = ($(esc(expression)), "$f", f)
         push!($jobs[], job)
+    end
+end
+
+macro cron(expression, name, func)
+    quote 
+        local job = ($(esc(expression)), $(esc(name)), $(esc(func)))
+        push!($jobs[], job)
+    end
+end
+
+
+"""
+Stop each background task by sending an InterruptException to each one
+"""
+function killtasks()
+    for t in tasks[]
+        try 
+            Base.throwto(t, InterruptException()) # stop the task
+        catch 
+        end
     end
 end
 
@@ -21,44 +44,60 @@ Stop all cron jobs
 """
 function stopcronjobs()
     stop[] = true
-    jobs[] = []
+    killtasks()
 end
 
 """
 Reset the globals in this module 
 """
 function resetcronstate()
+    killtasks()
     jobs[] = []
+    tasks[]= []
     stop[] = false
 end
 
+using Printf
+
+
 """
-Starts all cronjobs. This function kicks off an async task that executes every second
-and iterates over all cron expressions to determine whether it needs to get run or not.
-Each registered function is called asynchronously so we don't slow down the time-sync loop. 
+Start all the cron jobs within their own async task. Each individual task will loop conintually 
+and sleep untill the next time it's suppost to 
 """
 function startcronjobs()
-
+    
     if isempty(jobs)
         return 
     end
 
-    @async begin
-        # spin until our cpu hits a whole second
-        previoustime::Union{DateTime, Nothing} = nothing
-        while !stop[]
-            # execute code on every whole second
-            current_time::DateTime = now()
-            if previoustime !== current_time && millisecond(current_time) == 0
-                @async for (expression, func) in jobs[]
-                    if iscronmatch(expression, current_time)
-                        func()
+    println()
+    printstyled("[Preparing $(length(jobs[])) CRON job(s)]\n", color = :blue, bold = true)  
+
+    i = 0
+    @async for (expression, name, func) in jobs[]
+        message = isnothing(name) ? "$expression" : "id: $i | name: $name | expr: $expression"
+        printstyled("[Starting CRON] $message\n", color = :blue, bold = true)  
+        t = @async begin 
+            while !stop[]
+                # get the current datetime object
+                current_time::DateTime = now()
+                # get the next datetime object that matches this cron expression
+                next_date = next(expression, current_time)
+                # figure out how long we need to wait
+                ms_to_wait = sleep_until(current_time, next_date)
+                # Ensures that the function is never called twice in the in same second
+                if ms_to_wait > 1_000
+                    sleep(Millisecond(ms_to_wait))
+                    try 
+                        @async func()
+                    catch error 
+                        @error "ERROR in CRON job: " exception=(error, catch_backtrace())
                     end
                 end
             end
-            previoustime = current_time
-            yield()
-        end 
+        end
+        push!(tasks[], t)
+        i += 1
     end
 end
 
@@ -169,15 +208,6 @@ function lastweekday(time::DateTime)
     return current
 end
 
-
-# function lasttargetdayofmonth(time::DateTime, daynumber::Int64)
-#     current = lastdayofmonth(time)
-#     while dayofweek(current) !== daynumber
-#         current -= Day(1)
-#     end
-#     return current
-# end
-
 function lasttargetdayofmonth(time::DateTime, daynumber::Int64)
     last_day = lastdayofmonth(time)
     current = DateTime(year(last_day), month(last_day), day(Dates.daysinmonth(time)))
@@ -186,8 +216,6 @@ function lasttargetdayofmonth(time::DateTime, daynumber::Int64)
     end
     return current
 end
-
-
 
 function getoccurance(time::DateTime, daynumber::Int64, occurance::Int64)
     baseline = firstdayofmonth(time) 
@@ -433,7 +461,6 @@ function match_dayofweek(dayofweek_expression, time::DateTime)
 end
 
 
-
 """
 This function takes a cron expression and a start_time and returns the next datetime object that matches this 
 expression
@@ -520,14 +547,15 @@ function next(cron_expr::String, start_time::DateTime)::DateTime
         break # exit the loop as all fields match
     end 
 
-    return candidate_time # return the next matching tme
+    return remove_milliseconds(candidate_time) # return the next matching tme
 end 
 
+# remove the milliseconds from a datetime by rounding down at the seconds
+function remove_milliseconds(dt::DateTime)
+    return floor(dt, Dates.Second)
+end
 
-
-function sleep_until(future::DateTime)
-    # Get the current datetime
-    now = Dates.now()
+function sleep_until(now::DateTime, future::DateTime)
     # Check if the future datetime is later than the current datetime
     if future > now
         # Convert the difference between future and now to milliseconds

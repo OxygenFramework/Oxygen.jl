@@ -5,36 +5,46 @@ using .Oxygen
 using HTTP
 using Dates
 
-# value = 0
+# You can use the @cron macro directly 
 
-# for x in 1:59
-#     @cron "$x" function()
-#         println("job $x - $(now())")
-#     end    
-# end
+@cron "*/2" function()
+    println("every 2 seconds")
+end
+
+@cron "*/5" function every5seconds()
+    println("every 5 seconds")
+end
 
 
-@cron "0 0" function()
-    println("$(now())")
-end    
+value = 0
 
-# # Here's utility macro to call functions directly
-# @cron "*/5" function()
-#     println("every 5 seconds")
-# end
+# You can also just use the 'cron' keyword that's apart of the router() function
+@get router("/increment", cron="*/11") function()
+    global value += 1
+    return value
+end
 
-# # You can also just use the 'cron' keyword that's apart of the router() function
-# @get router("/increment", cron="*/3") function()
-#     global value += 1
-#     println(value)
-#     return value
-# end
+@get router("/getvalue") function()
+    return value
+end
 
+# all endpoints will inherit this cron expression
+pingpong = router("/pingpong", cron="*/3")
+
+@get router("/ping") function()
+    println("ping")
+    return "pring"
+end
+
+# here we override the inherited cron expression
+@get router("/pong", cron="*/7") function()
+    println("pong")
+    return "pong"
+end
 
 @get "/home" function()
     "home"
 end
-
 
 serve()
 

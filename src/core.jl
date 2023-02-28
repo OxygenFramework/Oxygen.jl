@@ -58,7 +58,7 @@ Register all cron jobs
 function registercronjobs()
     for job in getcronjobs()
         path, httpmethod, expression = job
-        @cron expression function()
+        @cron expression path function()
             internalrequest(HTTP.Request(httpmethod, path))
         end
     end
@@ -126,10 +126,10 @@ function startserver(host, port, kwargs, async, start)
     try
         serverwelcome(host, port)
         setup()
+        server[] = start(preprocesskwargs(kwargs))
         starttasks()
         registercronjobs()
         startcronjobs()
-        server[] = start(preprocesskwargs(kwargs))
         if !async     
             wait(server[])
         end
@@ -156,6 +156,7 @@ function resetstate()
     # reset autodocs state variables
     resetstatevariables()
     # reset cron module state
+    stopcronjobs()
     resetcronstate()
 end
 

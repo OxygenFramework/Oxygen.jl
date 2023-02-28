@@ -9,7 +9,7 @@ export registerschema, docspath, schemapath, getschema,
     swaggerhtml, configdocs, mergeschema, setschema, router,
     enabledocs, disabledocs, isdocsenabled, registermountedfolder, 
     getrepeatasks, hasmiddleware, compose, resetstatevariables,
-    @cron, stopcronjobs, startcronjobs, getcronjobs
+    @cron, stopcronjobs, startcronjobs, getcronjobs, resetcronstate
 
 struct TaggedRoute 
     httpmethods::Vector{String} 

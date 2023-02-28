@@ -68,7 +68,7 @@ function startcronjobs()
     end
 
     println()
-    printstyled("[ Starting $(length(jobs[])) Cron job(s)\n", color = :green, bold = true)  
+    printstyled("[ Starting $(length(jobs[])) Cron Job(s)\n", color = :green, bold = true)  
 
     i = 1
     for (expression, name, func) in jobs[]

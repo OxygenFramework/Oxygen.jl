@@ -30,13 +30,13 @@ end
 # all endpoints will inherit this cron expression
 pingpong = router("/pingpong", cron="*/3")
 
-@get router("/ping") function()
+@get pingpong("/ping") function()
     println("ping")
-    return "pring"
+    return "ping"
 end
 
 # here we override the inherited cron expression
-@get router("/pong", cron="*/7") function()
+@get pingpong("/pong", cron="*/7") function()
     println("pong")
     return "pong"
 end

@@ -6,8 +6,8 @@ using StructTypes
 using Sockets
 using Dates 
 
-# include("../src/Oxygen.jl")
-# using .Oxygen
+include("../src/Oxygen.jl")
+using .Oxygen
 
 include("../src/cron.jl")
 using .Cron: iscronmatch, isweekday, lastweekdayofmonth, next, sleep_until
@@ -272,5 +272,38 @@ end
     @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 4, 4, 0, 0, 0))
     @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 4, 5, 0, 0, 0)) == false
 end
+
+routerdict = Dict("value" => 0, "api_value" => 0)
+
+@cron "*" function()
+    routerdict["value"] += 1
+    return routerdict["value"]
+end
+
+@get router("/cron-increment", cron="*") function(req)
+    routerdict["api_value"] += 1
+    return routerdict["api_value"]
+end
+
+@get "/get-cron-increment" function()
+    return routerdict["api_value"]
+end
+
+serve(async=true)
+sleep(3)
+
+@testset "Testing CRON Api calls" begin
+    r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))
+    @test r.status == 200
+    @test parse(Int64, text(r)) > 0
+end
+
+
+@testset "Testing CRON function calls" begin
+    @test routerdict["value"] > 0
+end
+
+terminate()
+resetstate()
 
 end

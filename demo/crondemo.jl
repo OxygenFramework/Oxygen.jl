@@ -18,7 +18,7 @@ end
 value = 0
 
 # You can also just use the 'cron' keyword that's apart of the router() function
-@get router("/increment", cron="*/11") function()
+@get router("/increment", cron="*/11", interval=4) function()
     global value += 1
     return value
 end

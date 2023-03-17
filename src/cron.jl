@@ -3,9 +3,9 @@ module Cron
 using Dates
 export @cron, startcronjobs, stopcronjobs, resetcronstate
 
-global const jobs = Ref{Vector}([])
-global const tasks = Ref{Vector}([])
 global const stop = Ref{Bool}(false)
+global const jobs = Ref{Vector}([])
+global const job_definitions = Ref{Vector}([])
 
 """
 Registers a function with a cron expression. This will extract either the function name 
@@ -15,14 +15,14 @@ macro cron(expression, func)
     quote 
         local f = $(esc(func))
         local job = ($(esc(expression)), "$f", f)
-        push!($jobs[], job)
+        push!($job_definitions[], job)
     end
 end
 
 macro cron(expression, name, func)
     quote 
         local job = ($(esc(expression)), $(esc(name)), $(esc(func)))
-        push!($jobs[], job)
+        push!($job_definitions[], job)
     end
 end
 
@@ -30,8 +30,8 @@ end
 """
 Stop each background task by sending an InterruptException to each one
 """
-function killtasks()
-    for t in tasks[]
+function stopcronjobs()
+    for t in jobs[]
         try 
             Base.throwto(t, InterruptException()) # stop the task
         catch 
@@ -40,43 +40,34 @@ function killtasks()
 end
 
 """
-Stop all cron jobs 
-"""
-function stopcronjobs()
-    stop[] = true
-    killtasks()
-end
-
-"""
 Reset the globals in this module 
 """
 function resetcronstate()
-    killtasks()
-    jobs[] = []
-    tasks[]= []
-    stop[] = false
+    stopcronjobs()
+    job_definitions[] = []
+    jobs[]= []
 end
 
 """
-Start all the cron jobs within their own async task. Each individual task will loop conintually 
+Start all the cron job_definitions within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
 """
 function startcronjobs()
     
-    if isempty(jobs)
+    if isempty(job_definitions)
         return 
     end
 
     println()
-    printstyled("[ Starting $(length(jobs[])) Cron Job(s)\n", color = :green, bold = true)  
+    printstyled("[ Starting $(length(job_definitions[])) Cron Job(s)\n", color = :green, bold = true)  
 
     i = 1
-    for (expression, name, func) in jobs[]
+    for (expression, name, func) in job_definitions[]
         message = isnothing(name) ? "$expression" : "id: $i, expr: $expression, name: $name"
         printstyled("[ Cron: ", color = :green, bold = true)  
         println(message)
         t = @async begin 
-            while !stop[]
+            while true
                 # get the current datetime object
                 current_time::DateTime = now()
                 # get the next datetime object that matches this cron expression
@@ -84,7 +75,7 @@ function startcronjobs()
                 # figure out how long we need to wait
                 ms_to_wait = sleep_until(current_time, next_date)
                 # Ensures that the function is never called twice in the in same second
-                if ms_to_wait > 1_000
+                if ms_to_wait >= 1_000
                     sleep(Millisecond(ms_to_wait))
                     try 
                         @async func()
@@ -94,7 +85,7 @@ function startcronjobs()
                 end
             end
         end
-        push!(tasks[], t)
+        push!(jobs[], t)
         i += 1
     end
     println()

@@ -13,7 +13,7 @@ export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles, 
         start, serve, serveparallel, terminate, internalrequest, file,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
-        starttasks, stoptasks, resetstate
+        starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
@@ -169,7 +169,6 @@ function resetstate()
     # reset autodocs state variables
     resetstatevariables()
     # reset cron module state
-    stopcronjobs()
     resetcronstate()
 end
 

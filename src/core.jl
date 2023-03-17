@@ -29,7 +29,7 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(host::String, port::Int64)
+function serverwelcome(host::String, port::Int)
     printstyled(oxygen_title, color = :blue, bold = true)  
     @info "✅ Started server: http://$host:$port" 
     @info "📖 Documentation: http://$host:$port$docspath"

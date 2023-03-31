@@ -311,6 +311,9 @@ end
     return "emptysubpath - post"
 end
 
+terminate()
+serve(async=true)
+
 r = internalrequest(HTTP.Request("GET", "/anonymous"))
 @test r.status == 200
 @test text(r) == "no args"

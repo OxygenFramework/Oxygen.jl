@@ -273,25 +273,33 @@ end
     @test iscronmatch("0 0 0 ? * MON#1", DateTime(2022, 4, 5, 0, 0, 0)) == false
 end
 
-crondata = Dict("api_value" => 0)
 
-@get router("/cron-increment", cron="*") function(req)
-    crondata["api_value"] = crondata["api_value"] + 1
-    return crondata["api_value"]
+@testset "Testing CRON API access" begin
+
+    localhost = "http://127.0.0.1:8080"
+
+
+    crondata = Dict("api_value" => 0)
+
+    @get router("/cron-increment", cron="*") function(req)
+        crondata["api_value"] = crondata["api_value"] + 1
+        return crondata["api_value"]
+    end
+    
+    @get "/get-cron-increment" function()
+        return crondata["api_value"]
+    end
+    
+    serve(async=true)
+    sleep(3)
+    
+    r =  HTTP.get("$localhost/get-cron-increment"; readtimeout=1)
+    @test r.status == 200
+    @test parse(Int64, text(r)) > 0
+    
 end
 
-@get "/get-cron-increment" function()
-    return crondata["api_value"]
-end
-
-serve(async=true)
-sleep(3)
-
-r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))
-@test r.status == 200
-@test parse(Int64, text(r)) > 0
-
-@async terminate()
-@async resetstate()
+terminate()
+resetstate()
 
 end

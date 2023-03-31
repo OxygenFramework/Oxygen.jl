@@ -29,7 +29,7 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(host::String, port::Int64)
+function serverwelcome(host::String, port::Int)
     printstyled(oxygen_title, color = :blue, bold = true)  
     @info "✅ Started server: http://$host:$port" 
     @info "📖 Documentation: http://$host:$port$docspath"
@@ -66,13 +66,45 @@ function stoptasks()
 end
 
 """
+    decorate_request(ip::IPAddr)
+
+This function can be used to add additional usefull metadata to the incoming 
+request context dictionary. At the moment, it just inserts the caller's ip address
+"""
+function decorate_request(ip::IPAddr)
+    return function(handle)
+        return function(req::HTTP.Request)
+            req.context[:ip] = ip
+            handle(req)
+        end
+    end
+end
+
+"""
+This function determines how we handle the incoming request 
+"""
+function stream_handler(middleware::Function)
+    return function (stream::HTTP.Stream)
+        # extract the caller's ip address
+        ip, _ = Sockets.getpeername(stream)
+        # build up a streamhandler to handle our incoming requests
+        handle_stream = HTTP.streamhandler(middleware |> decorate_request(ip))
+        # handle the incoming request
+        return handle_stream(stream)
+    end
+end 
+
+"""
     serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, kwargs...)
 
 Start the webserver with your own custom request handler
 """
 function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, kwargs...)
-    startserver(host, port, kwargs, async, (kwargs) -> 
-        HTTP.serve!(setupmiddleware(middleware=middleware, serialize=serialize), host, port; kwargs...)
+    # compose our middleware ahead of time (so it only has to be built up once)
+    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize)
+
+    startserver(host, port, kwargs, async, (kwargs) ->  
+        HTTP.serve!(stream_handler(configured_middelware), host, port; kwargs...)
     )
 end
 
@@ -84,11 +116,13 @@ threads to process individual requests. A Channel is used to schedule individual
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
 function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, kwargs...)
+    # compose our middleware ahead of time (so it only has to be built up once)
+    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize)
+
     startserver(host, port, kwargs, async, (kwargs) -> 
-        StreamUtil.start(setupmiddleware(middleware=middleware, serialize=serialize); host=host, port=port, queuesize=queuesize, kwargs...)
+        StreamUtil.start(stream_handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
 end
-
 
 
 """
@@ -148,10 +182,15 @@ Used to overwrite defaults to any incoming keyword arguments
 """
 function preprocesskwargs(kwargs)
     kwargs_dict = Dict{Symbol, Any}(kwargs)
+
+    # always set to streaming mode (regardless of what was passed)
+    kwargs_dict[:stream] = true
+
     # user passed no loggin preferences - use defualt logging format 
     if isempty(kwargs_dict) || !haskey(kwargs_dict, :access_log)
         kwargs_dict[:access_log] = logfmt"$time_iso8601 - $remote_addr:$remote_port - \"$request\" $status"
     end  
+
     return kwargs_dict
 end
 

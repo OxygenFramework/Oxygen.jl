@@ -38,7 +38,7 @@ function mimetype(filename::String)
         return "text/plain"
     end
     extension = split(filename, ".")[end]
-    return mimetypes[][extension]
+    return get(mimetypes[], extension, "text/plain")
 end
 
 

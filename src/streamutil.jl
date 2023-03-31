@@ -25,15 +25,14 @@ global const HANDLER = Ref{Handler}(Handler())
 """
 This function is run in each spawned worker thread, which removes queued requests & handles them asynchronously
 """
-function respond(h::Handler, handleReq::Function)
+function respond(h::Handler, handle_stream::Function)
     @info "Started Worker Thread ~ id: $(Threads.threadid())"
-    streamhandler = HTTP.Handlers.streamhandler(handleReq)
     while h.shutdown[] == false
         task = take!(h.queue)
         Threads.atomic_sub!(h.count, 1)
         @async begin
             try
-                streamhandler(task.http)
+                handle_stream(task.http)
             catch error 
                 @error "ERROR: " exception=(error, catch_backtrace())
                 HTTP.setstatus(task.http, 500)
@@ -61,7 +60,7 @@ end
 """
 Starts the webserver in streaming mode and spaws n - 1 worker threads to start processing incoming requests
 """
-function start(handleReq::Function; host="127.0.0.1", port=8080, queuesize = 1024, kwargs...)
+function start(handle_stream::Function; host="127.0.0.1", port=8080, queuesize = 1024, kwargs...)
     
     # reset handler on startup
     HANDLER[] = Handler()
@@ -73,7 +72,7 @@ function start(handleReq::Function; host="127.0.0.1", port=8080, queuesize = 102
     end
 
     for i in 1:nthreads
-        @Threads.spawn respond(handler, handleReq)
+        @Threads.spawn respond(handler, handle_stream)
     end
 
     function streamhandler(stream::HTTP.Stream)

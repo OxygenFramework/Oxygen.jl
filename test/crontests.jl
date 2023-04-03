@@ -10,7 +10,87 @@ include("../src/Oxygen.jl")
 using .Oxygen
 
 include("../src/cron.jl")
-using .Cron: iscronmatch, isweekday, lastweekdayofmonth, next, sleep_until
+using .Cron: iscronmatch, isweekday, lastweekdayofmonth, next, sleep_until, lastweekday, nthweekdayofmonth
+
+
+@testset "methods" begin 
+    @test lastweekday(DateTime(2022,1,1,0,0,0)) == DateTime(2021,12,31,0,0,0)
+
+    @test lastweekday(DateTime(2022,1,3,0,0,0)) != DateTime(2022,1,8,0,0,0)
+    @test lastweekday(DateTime(2022,1,3,0,0,0)) == DateTime(2022,1,7,0,0,0)
+    @test lastweekday(DateTime(2022,1,3,0,0,0)) != DateTime(2022,1,6,0,0,0)
+
+end
+
+@testset "lastweekdayofmonth" begin
+    @test lastweekdayofmonth(DateTime(2022,1,1,0,0,0)) == DateTime(2022,1,31,0,0,0)
+end
+
+
+@testset "nthweekdayofmonth" begin
+    @test_throws ErrorException nthweekdayofmonth(DateTime(2022,1,1,0,0,0), -1)
+    @test_throws ErrorException nthweekdayofmonth(DateTime(2022,1,1,0,0,0), 50)
+end
+
+@testset "sleep_until" begin
+    @test sleep_until(now(), DateTime(2020,1,1,0,0,0)) == 0
+end
+
+
+@testset "next function tests" begin
+    # Test all fields with asterisk (wildcard)
+    start_time = DateTime(2023, 4, 3, 12, 30, 45)
+    @test next("* * * * * *", start_time) == start_time + Second(1)
+
+    # Test matching specific fields
+    start_time = DateTime(2023, 1, 1, 0, 0, 0)
+    @test next("30 15 10 5 2 *", start_time) == DateTime(2023, 2, 5, 10, 15, 30)
+
+    # Test edge case: leap year
+    start_time = DateTime(2020, 1, 1, 0, 0, 0)
+    @test next("0 0 0 29 2 *", start_time) == DateTime(2020, 2, 29, 0, 0, 0)
+
+    # Test edge case: end of the month
+    start_time = DateTime(2023, 12, 30, 23, 59, 59)
+    @test next("0 0 0 31 12 *", start_time) == DateTime(2023, 12, 31, 0, 0, 0)
+
+    # Test edge case: end of the year
+    start_time = DateTime(2022, 12, 31, 23, 59, 59)
+    @test next("0 0 0 1 1 *", start_time) == DateTime(2023, 1, 1, 0, 0, 0)
+
+    # Test day of the week
+    start_time = DateTime(2023, 4, 3, 11, 59, 59)
+    @test next("0 0 12 * * 1", start_time) == DateTime(2023, 4, 3, 12, 0, 0)
+
+    # Test ranges and increments
+    start_time = DateTime(2023, 4, 3, 10, 35, 0)
+    @test next("0 */10 8-18 * * *", start_time) == DateTime(2023, 4, 3, 10, 40, 0)
+
+    # Test wrapping around years
+    start_time = DateTime(2023, 12, 31, 23, 59, 59)
+    @test next("0 0 0 1 1 *", start_time) == DateTime(2024, 1, 1, 0, 0, 0)
+
+    # Test wrapping around months
+    start_time = DateTime(2023, 12, 31, 23, 59, 59)
+    @test next("0 0 0 1 * *", start_time) == DateTime(2024, 1, 1, 0, 0, 0)
+
+    # Test wrapping around days
+    start_time = DateTime(2023, 4, 3, 23, 59, 59)
+    @test next("0 0 * * * *", start_time) == DateTime(2023, 4, 4, 0, 0, 0)
+
+    # Test wrapping around hours
+    start_time = DateTime(2023, 4, 3, 23, 59, 59)
+    @test next("0 * * * * *", start_time) == DateTime(2023, 4, 4, 0, 0, 0)
+
+    # Test wrapping around minutes
+    start_time = DateTime(2023, 4, 3, 23, 59, 59)
+    @test next("* * * * * *", start_time) == DateTime(2023, 4, 4, 0, 0, 0)
+
+    # Test case with only seconds field
+    start_time = DateTime(2023, 4, 3, 12, 30, 29)
+    @test next("30 * * * * *", start_time) == DateTime(2023, 4, 3, 12, 30, 30)
+end
+    
 
 @testset "static matches" begin
 
@@ -298,6 +378,5 @@ sleep(3)
 end
 
 close(server) 
-
 
 end

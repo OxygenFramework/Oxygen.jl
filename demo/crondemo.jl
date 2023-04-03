@@ -45,6 +45,14 @@ end
     "home"
 end
 
+@get "/stop" function()
+    stopcronjobs()
+end
+
+@get "/start" function()
+    startcronjobs()
+end
+
 serve()
 
 end

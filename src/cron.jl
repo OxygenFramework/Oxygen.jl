@@ -3,7 +3,6 @@ module Cron
 using Dates
 export @cron, startcronjobs, stopcronjobs, resetcronstate
 
-global const stop = Ref{Bool}(false)
 global const jobs = Ref{Vector}([])
 global const job_definitions = Ref{Vector}([])
 
@@ -31,9 +30,9 @@ end
 Stop each background task by sending an InterruptException to each one
 """
 function stopcronjobs()
-    for t in jobs[]
+   for job in jobs[]
         try 
-            Base.throwto(t, InterruptException()) # stop the task
+            Base.throwto(job, InterruptException()) # stop the task
         catch 
         end
     end
@@ -45,7 +44,7 @@ Reset the globals in this module
 function resetcronstate()
     stopcronjobs()
     job_definitions[] = []
-    jobs[]= []
+    jobs[] = []
 end
 
 """
@@ -54,7 +53,7 @@ and sleep untill the next time it's suppost to
 """
 function startcronjobs()
     
-    if isempty(job_definitions)
+    if isempty(job_definitions[])
         return 
     end
 

@@ -101,6 +101,7 @@ function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=t
     startserver(host, port, kwargs, async, (kwargs) -> 
         HTTP.serve!(setupmiddleware(middleware=middleware, serialize=serialize), host, port; kwargs...)
     )
+    server[] # this value is returned if startserver() is ran in async mode
 end
 
 """
@@ -114,6 +115,7 @@ function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, que
     startserver(host, port, kwargs, async, (kwargs) -> 
         StreamUtil.start(setupmiddleware(middleware=middleware, serialize=serialize); host=host, port=port, queuesize=queuesize, kwargs...)
     )
+    server[] # this value is returned if startserver() is ran in async mode
 end
 
 
@@ -144,11 +146,15 @@ function startserver(host, port, kwargs, async, start)
         registercronjobs()
         startcronjobs()
         if !async     
-            wait(server[])
+            try 
+                wait(server[])
+            catch 
+                println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
+            end
         end
     finally
         # close server on exit if we aren't running asynchronously
-        if !async
+        if !async 
             terminate()
         end
         # only reset state on exit if we aren't running asynchronously & are running it interactively 

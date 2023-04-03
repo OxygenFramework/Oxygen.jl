@@ -6,12 +6,10 @@ using StructTypes
 using Sockets
 using Dates 
 
+include("crontests.jl")
+
 include("../src/Oxygen.jl")
 using .Oxygen
-
-
-include("./crontests.jl")
-
 
 struct Person
     name::String
@@ -310,9 +308,6 @@ end
 @post emptysubpath("") function(req)
     return "emptysubpath - post"
 end
-
-terminate()
-serve(async=true)
 
 r = internalrequest(HTTP.Request("GET", "/anonymous"))
 @test r.status == 200
@@ -849,5 +844,8 @@ if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
         terminate()
     end
 end
+
+terminate()
+resetstate()
 
 end 

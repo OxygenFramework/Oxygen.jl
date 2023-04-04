@@ -31,10 +31,7 @@ Stop each background task by sending an InterruptException to each one
 """
 function stopcronjobs()
    for job in jobs[]
-        try 
-            Base.throwto(job, InterruptException()) # stop the task
-        catch 
-        end
+        try Base.throwto(job, InterruptException()) catch end
     end
 end
 

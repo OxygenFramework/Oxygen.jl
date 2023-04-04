@@ -10,7 +10,9 @@ include("../src/Oxygen.jl")
 using .Oxygen
 
 include("../src/cron.jl")
-using .Cron: iscronmatch, isweekday, lastweekdayofmonth, next, sleep_until, lastweekday, nthweekdayofmonth
+using .Cron: iscronmatch, isweekday, lastweekdayofmonth, 
+            next, sleep_until, lastweekday, nthweekdayofmonth, 
+            matchexpression
 
 
 @testset "methods" begin 
@@ -35,6 +37,35 @@ end
 @testset "sleep_until" begin
     @test sleep_until(now(), DateTime(2020,1,1,0,0,0)) == 0
 end
+
+
+@testset "lastweekdayofmonth function tests" begin
+    # Test when last day of the month is a Friday
+    time = DateTime(2023, 9, 20)
+    @test lastweekdayofmonth(time) == DateTime(2023, 9, 29)
+
+    # Test when last day of the month is a Saturday
+    time = DateTime(2023, 4, 15)
+    @test lastweekdayofmonth(time) == DateTime(2023, 4, 28)
+
+    # Test when last day of the month is a Sunday
+    time = DateTime(2023, 10, 10)
+    @test lastweekdayofmonth(time) == DateTime(2023, 10, 31) # Corrected date
+
+    # Test when last day of the month is a weekday (Monday-Thursday)
+    time = DateTime(2023, 11, 15)
+    @test lastweekdayofmonth(time) == DateTime(2023, 11, 30)
+
+    # Test with a leap year (February)
+    time = DateTime(2024, 2, 20)
+    @test lastweekdayofmonth(time) == DateTime(2024, 2, 29)
+
+    # Test with a non-leap year (February)
+    time = DateTime(2023, 2, 20)
+    @test lastweekdayofmonth(time) == DateTime(2023, 2, 28) # Corrected date
+end
+
+
 
 
 @testset "next function tests" begin
@@ -90,7 +121,38 @@ end
     start_time = DateTime(2023, 4, 3, 12, 30, 29)
     @test next("30 * * * * *", start_time) == DateTime(2023, 4, 3, 12, 30, 30)
 end
+
+using Test
+@testset "matchexpression function tests" begin
+    time = DateTime(2023, 4, 3, 23, 59, 59)
+    minute = Dates.minute
+    second = Dates.second
+
+    @test matchexpression(SubString("*"), time, minute, 59) == true
+    @test matchexpression(SubString("59"), time, minute, 59) == true
+    @test matchexpression(SubString("15"), time, minute, 59) == false
+    @test matchexpression(SubString("45,59"), time, second, 59) == true
+    @test matchexpression(SubString("15,30"), time, second, 59) == false
+    @test matchexpression(SubString("50-59"), time, second, 59) == true
+    @test matchexpression(SubString("10-40"), time, second, 59) == false
+    @test matchexpression(SubString("59-*"), time, minute, 59) == true
+    @test matchexpression(SubString("*-58"), time, minute, 59) == false
+    @test matchexpression(SubString("*/10"), time, minute, 59) == false
+    @test matchexpression(SubString("25/5"), time, minute, 59) == false
+end
+
+
+
     
+@testset "seconds tests" begin 
+    # check exact second 
+    @test iscronmatch("5/*", DateTime(2022,1,1,1,0,5)) == true
+    @test iscronmatch("7/*", DateTime(2022,1,1,1,0,7)) == true
+
+    # check between ranges
+    @test iscronmatch("5-*", DateTime(2022,1,1,1,0,7)) == true
+    @test iscronmatch("*-10", DateTime(2022,1,1,1,0,7)) == true
+end
 
 @testset "static matches" begin
 

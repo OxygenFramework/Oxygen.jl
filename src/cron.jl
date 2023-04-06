@@ -7,6 +7,8 @@ global const jobs = Ref{Vector}([])
 global const job_definitions = Ref{Vector}([])
 
 """
+    @cron(expression::String, func::Function)
+
 Registers a function with a cron expression. This will extract either the function name 
 or the random Id julia assigns to each lambda function. 
 """
@@ -18,6 +20,12 @@ macro cron(expression, func)
     end
 end
 
+"""
+    @cron(expression::String, name::String, func::Function)
+
+This variation Provide another way manually "name" a registered function. This information 
+is used by the server on startup to log out all cron jobs.
+"""
 macro cron(expression, name, func)
     quote 
         local job = ($(esc(expression)), $(esc(name)), $(esc(func)))
@@ -27,6 +35,8 @@ end
 
 
 """
+    stopcronjobs()
+
 Stop each background task by sending an InterruptException to each one
 """
 function stopcronjobs()
@@ -45,6 +55,8 @@ function resetcronstate()
 end
 
 """
+    startcronjobs()
+    
 Start all the cron job_definitions within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
 """

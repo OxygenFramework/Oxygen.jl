@@ -9,11 +9,11 @@ include("fileutil.jl");     using .FileUtil
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
 
-export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles,
+export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles, @cron,
         start, serve, serveparallel, terminate, internalrequest, file,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
-        starttasks, stoptasks, resetstate
+        starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
@@ -43,13 +43,40 @@ Start all background repeat tasks
 """
 function starttasks()
     timers[] = []
-    for task in getrepeatasks()
+    tasks = getrepeatasks()
+
+    # exit function early if no tasks are register
+    if isempty(tasks)
+        return 
+    end
+
+    println()
+    printstyled("[ Starting $(length(tasks)) Repeat Task(s)\n", color = :magenta, bold = true)  
+    
+    for task in tasks
         path, httpmethod, interval = task
+        message = "method: $httpmethod, path: $path, inverval: $interval seconds"
+        printstyled("[ Task: ", color = :magenta, bold = true)  
+        println(message)
         action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))
         timer = Timer(action, 0, interval=interval)
         push!(timers[], timer)   
     end
 end 
+
+
+"""
+Register all cron jobs 
+"""
+function registercronjobs()
+    for job in getcronjobs()
+        path, httpmethod, expression = job
+        @cron expression path function()
+            internalrequest(HTTP.Request(httpmethod, path))
+        end
+    end
+end 
+
 
 """
     stoptasks()
@@ -106,6 +133,7 @@ function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=t
     startserver(host, port, kwargs, async, (kwargs) ->  
         HTTP.serve!(stream_handler(configured_middelware), host, port; kwargs...)
     )
+    server[] # this value is returned if startserver() is ran in async mode
 end
 
 """
@@ -122,6 +150,7 @@ function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, que
     startserver(host, port, kwargs, async, (kwargs) -> 
         StreamUtil.start(stream_handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
+    server[] # this value is returned if startserver() is ran in async mode
 end
 
 
@@ -146,15 +175,20 @@ function startserver(host, port, kwargs, async, start)
     try
         serverwelcome(host, port)
         setup()
-        kwargs = preprocesskwargs(kwargs)
+        server[] = start(preprocesskwargs(kwargs))
         starttasks()
-        server[] = start(kwargs)
+        registercronjobs()
+        startcronjobs()
         if !async     
-            wait(server[])
+            try 
+                wait(server[])
+            catch 
+                println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
+            end
         end
     finally
         # close server on exit if we aren't running asynchronously
-        if !async
+        if !async 
             terminate()
         end
         # only reset state on exit if we aren't running asynchronously & are running it interactively 
@@ -174,6 +208,8 @@ function resetstate()
     server[] = nothing
     # reset autodocs state variables
     resetstatevariables()
+    # reset cron module state
+    resetcronstate()
 end
 
 
@@ -211,6 +247,8 @@ stops the webserver immediately
 """
 function terminate()
     if !isnothing(server[]) && isopen(server[])
+        # stop background cron jobs
+        stopcronjobs()
         # stop background tasks
         stoptasks()
         # stop any background worker threads

@@ -49,13 +49,20 @@ json
 binary
 ```
 
+## Repeat Tasks & Cron Scheduling
+```@docs 
+@cron
+starttasks
+stoptasks
+startcronjobs
+stopcronjobs
+```
+
 ## Extra's
 ```@docs 
 router
 internalrequest
 redirect
 terminate
-starttasks
-stoptasks
 resetstate
 ```

@@ -14,6 +14,7 @@ makedocs(
             "tutorial/path_parameters.md",
             "tutorial/query_parameters.md",
             "tutorial/request_body.md",
+            "tutorial/cron_scheduling.md",
             "tutorial/bigger_applications.md",
             "tutorial/oauth2.md"
         ]

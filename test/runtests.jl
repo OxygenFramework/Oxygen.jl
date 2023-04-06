@@ -6,9 +6,10 @@ using StructTypes
 using Sockets
 using Dates 
 
+include("crontests.jl")
+
 include("../src/Oxygen.jl")
 using .Oxygen
-
 
 struct Person
     name::String
@@ -844,6 +845,7 @@ if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
     end
 end
 
+terminate()
 resetstate()
 
 end 

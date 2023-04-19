@@ -7,7 +7,8 @@ include("util.jl" );        using .Util
 include("bodyparsers.jl");  using .BodyParsers
 include("core.jl");         using .Core
 
-export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles, @cron,
+export @get, @post, @put, @patch, @delete, @route, @cron, 
+        @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
         serve, serveparallel, terminate, internalrequest, 
         redirect, queryparams, binary, text, json, html, file, 
         configdocs, mergeschema, setschema, getschema, router,

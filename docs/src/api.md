@@ -23,6 +23,8 @@ serveparallel
 ```@docs
 @staticfiles
 @dynamicfiles
+staticfiles
+dynamicfiles
 file
 ```
 

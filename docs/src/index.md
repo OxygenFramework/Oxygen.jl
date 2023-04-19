@@ -336,14 +336,14 @@ serve()
 
 ## Mounting Static Files
 
-You can mount static files using this handy macro which recursively searches a folder for files and mounts everything. All files are 
+You can mount static files using this handy function which recursively searches a folder for files and mounts everything. All files are 
 loaded into memory on startup.
 
 ```julia
 using Oxygen
 
 # mount all files inside the "content" folder under the "/static" path
-@staticfiles("content", "static")
+staticfiles("content", "static")
 
 # start the web server
 serve()
@@ -351,13 +351,13 @@ serve()
 
 ## Mounting Dynamic Files 
 
-Similar to @staticfiles, this macro mounts each path and re-reads the file for each request. This means that any changes to the files after the server has started will be displayed.
+Similar to staticfiles, this function mounts each path and re-reads the file for each request. This means that any changes to the files after the server has started will be displayed.
 
 ```julia
 using Oxygen
 
 # mount all files inside the "content" folder under the "/dynamic" path
-@dynamicfiles("content", "dynamic")
+dynamicfiles("content", "dynamic")
 
 # start the web server
 serve()
@@ -668,9 +668,9 @@ Used to register a function to a specific endpoint to handle that corresponding 
 Low-level macro that allows a route to be handle multiple request types
 
 
-#### @staticfiles
+#### staticfiles
 ```julia
-  @staticfiles(folder, mount)
+  staticfiles(folder, mount)
 ```
 | Parameter | Type     | Description                |
 | :-------- | :------- | :------------------------- |

@@ -9,7 +9,8 @@ include("fileutil.jl");     using .FileUtil
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
 
-export @get, @post, @put, @patch, @delete, @route, @staticfiles, @dynamicfiles, @cron,
+export @get, @post, @put, @patch, @delete, @route, @cron, 
+        @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest, file,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
@@ -375,46 +376,6 @@ macro delete(path, func)
     end
 end
 
-"""
-    @staticfiles(folder::String, mountdir::String)
-
-Mount all files inside the /static folder (or user defined mount point)
-"""
-macro staticfiles(folder::String, mountdir::String="static")
-    registermountedfolder(mountdir)
-    quote 
-        function addroute(currentroute, headers, filepath, registeredpaths; code=200)
-            local body = file(filepath)
-            @get currentroute function(req)
-                # return 404 for paths that don't match our files
-                validpath::Bool = get(registeredpaths, req.target, false)
-                return validpath ? HTTP.Response(code, headers , body=body) : HTTP.Response(404)
-            end
-        end
-        @mountfolder($folder, $mountdir, addroute)
-    end
-end
-
-
-"""
-    @dynamicfiles(folder::String, mountdir::String)
-
-Mount all files inside the /static folder (or user defined mount point), 
-but files are re-read on each request
-"""
-macro dynamicfiles(folder::String, mountdir::String="static")
-    registermountedfolder(mountdir)
-    quote 
-        function addroute(currentroute, headers, filepath, registeredpaths; code = 200)
-            @get currentroute function(req)   
-                # return 404 for paths that don't match our files
-                validpath::Bool = get(registeredpaths, req.target, false)
-                return validpath ?  HTTP.Response(code, headers , body=file(filepath)) : HTTP.Response(404) 
-            end
-        end
-        @mountfolder($folder, $mountdir, addroute)
-    end        
-end
 
 """
     @route(methods::Array{String}, path::String, func::Function)
@@ -575,6 +536,71 @@ function setupswagger()
         return getschema() 
     end
     
+end
+
+
+"""
+    @staticfiles(folder::String, mountdir::String)
+
+Mount all files inside the /static folder (or user defined mount point)
+"""
+macro staticfiles(folder, mountdir="static")
+    printstyled("@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
+    quote
+        staticfiles($(esc(folder)), $(esc(mountdir))) 
+    end
+end
+
+
+"""
+    @dynamicfiles(folder::String, mountdir::String)
+
+Mount all files inside the /static folder (or user defined mount point), 
+but files are re-read on each request
+"""
+macro dynamicfiles(folder, mountdir="static")
+    printstyled("@dynamicfiles macro is deprecated, please use the dynamicfiles() function instead\n", color = :red, bold = true) 
+    quote
+        dynamicfiles($(esc(folder)), $(esc(mountdir))) 
+    end      
+end
+
+
+"""
+    staticfiles(folder::String, mountdir::String)
+
+Mount all files inside the /static folder (or user defined mount point)
+"""
+function staticfiles(folder::String, mountdir::String="static")
+    registermountedfolder(mountdir)
+    function addroute(currentroute, headers, filepath, registeredpaths; code=200)
+        body = file(filepath)
+        @get currentroute function(req)
+            # return 404 for paths that don't match our files
+            validpath::Bool = get(registeredpaths, req.target, false)
+            return validpath ? HTTP.Response(code, headers , body=body) : HTTP.Response(404)
+        end
+    end
+    mountfolder(folder, mountdir, addroute)
+end
+
+
+"""
+    dynamicfiles(folder::String, mountdir::String)
+
+Mount all files inside the /static folder (or user defined mount point), 
+but files are re-read on each request
+"""
+function dynamicfiles(folder::String, mountdir::String="static")
+    registermountedfolder(mountdir)
+    function addroute(currentroute, headers, filepath, registeredpaths; code = 200)
+        @get currentroute function(req)   
+            # return 404 for paths that don't match our files
+            validpath::Bool = get(registeredpaths, req.target, false)
+            return validpath ?  HTTP.Response(code, headers , body=file(filepath)) : HTTP.Response(404) 
+        end
+    end
+    mountfolder(folder, mountdir, addroute)    
 end
 
 

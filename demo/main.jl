@@ -97,8 +97,6 @@ end
 staticfiles("content")
 dynamicfiles("content", "dynamic")
 
-
-
 # CORS headers that show what kinds of complex requests are allowed to API
 headers = [
     "Access-Control-Allow-Origin" => "*",
@@ -117,9 +115,8 @@ function CorsHandler(handle)
     end
 end
 
-# # start the web server
-# serve(middleware=[CorsHandler])
-serve()
+# start the web server
+serve(middleware=[CorsHandler])
 
 end
 

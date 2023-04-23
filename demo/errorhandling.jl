@@ -4,7 +4,7 @@ include("../src/Oxygen.jl")
 using .Oxygen
 using HTTP
 
-@get "/greet" function(req::HTTP.Request)
+@get "/" function(req::HTTP.Request)
     return "hello world!"
 end
 
@@ -17,19 +17,16 @@ end
 function errorcatcher(handle)
     function(req)
         try 
-            println("here!")
             response = handle(req)
-            println("response: $(String(response.body))")
             return response
         catch e 
-            println("whoops there was an error")
-            return HTTP.Response(200, "nice")
+            return HTTP.Response(500, "here's a custom error response")
         end
     end
 end
 
 
 # start the web server
-serve(middleware=[errorcatcher], error_handling=false)
+serve(middleware=[errorcatcher], catch_errors=false)
 
 end

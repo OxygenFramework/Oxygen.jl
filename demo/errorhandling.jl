@@ -30,6 +30,6 @@ end
 
 
 # start the web server
-serveparallel(middleware=[errorcatcher], error_handling=false)
+serve(middleware=[errorcatcher], error_handling=false)
 
 end

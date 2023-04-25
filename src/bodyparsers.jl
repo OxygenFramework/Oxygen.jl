@@ -37,7 +37,6 @@ function json(req::HTTP.Request) :: JSON3.Object
     return eof(body) ? nothing : JSON3.read(body)
 end
 
-
 """
     json(request::HTTP.Request, classtype)
 
@@ -46,6 +45,16 @@ Read the body of a HTTP.Request as JSON and serialize it into a custom struct
 function json(req::HTTP.Request, classtype)
     body = IOBuffer(HTTP.payload(req))
     return eof(body) ? nothing : JSON3.read(body, classtype)    
+end
+
+"""
+    json(request::HTTP.Request, classtype)
+
+Read the body of a HTTP.Request as JSON with additional arguments for the read/serializer.
+"""
+function json(req::HTTP.Request; kwargs...)
+    body = IOBuffer(HTTP.payload(req))
+    return eof(body) ? nothing : JSON3.read(body; kwargs...)    
 end
 
 

@@ -435,6 +435,18 @@ r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
 r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
 @test r.status == 500
 
+#struct request tests
+
+req = HTTP.Request("GET", "/json", [], "{\"message\":[NaN,1.0]}")
+@test isnan(json(req, allow_inf = true)["message"][1])
+@test !isnan(json(req, allow_inf = true)["message"][2])
+
+req = HTTP.Request("GET", "/json", [], "{\"message\":[Inf,1.0]}")
+@test isinf(json(req, allow_inf = true)["message"][1])
+
+req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
+@test isnothing(json(req, allow_inf = false)["message"][1])
+
 # float 
 r = internalrequest(HTTP.Request("GET", "/float/3.5"))
 @test r.status == 200

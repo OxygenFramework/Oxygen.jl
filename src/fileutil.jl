@@ -1,9 +1,7 @@
 module FileUtil
 
 using HTTP
-
-include("mimetypes.jl");    
-using .MimeTypes
+using MIMEs
 
 export file, mountedfolders, mountfolder
 
@@ -74,7 +72,7 @@ function mountfolder(folder::String, mountdir::String, addroute)
         mountpath = mountdir == "/" || isnothing(mountdir) || isempty(mountdir) || all(isspace, mountdir) ? "/$cleanedmountpath" : "/$mountdir/$cleanedmountpath"
 
         # precalculate content type 
-        content_type = mimetype(filepath)
+        content_type = mime_from_path(filepath, MIME"text/plain"()) |> contenttype_from_mime
         headers = ["Content-Type" => content_type]
 
         paths[mountpath] = true 

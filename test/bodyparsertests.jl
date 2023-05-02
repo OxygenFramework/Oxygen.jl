@@ -2,14 +2,18 @@
 module BodyParserTests 
 using Test
 using HTTP
+using StructTypes
 
 include("../src/Oxygen.jl")
 using .Oxygen
 
 struct rank
-    title  :: String 
+    title   :: String 
     power   :: Float64
 end
+
+# added supporting structype
+StructTypes.StructType(::Type{rank}) = StructTypes.Struct()
 
 @testset "json() struct keyword tests" begin 
 
@@ -23,12 +27,58 @@ end
     req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
     @test isnothing(json(req, allow_inf = false)["message"][1])
 
+end
+
+
+@testset "json() stuct keyword with classtype" begin 
+
     req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": NaN}""")
     myjson = json(req, rank, allow_inf = true)
     @test isnan(myjson.power)
 
     req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": 9000.1}""")
     myjson = json(req, rank, allow_inf = false)
+    @test myjson.power == 9000.1
+
+end
+
+
+@testset "regular json() tests" begin 
+
+    req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
+    @test isnothing(json(req)["message"][1])
+    @test json(req)["message"][2] == 1
+
+    req = HTTP.Request("GET", "/json", [], """{"message":["hello",1.0]}""")
+    @test json(req)["message"][1] == "hello"
+    @test json(req)["message"][2] == 1
+
+    req = HTTP.Request("GET", "/json", [], "{\"message\":[3.4,4.0]}")
+    @test json(req)["message"][1] == 3.4
+    @test json(req)["message"][2] == 4
+
+    req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
+    @test isnothing(json(req)["message"][1])
+end
+
+
+@testset "json() with classtype" begin 
+
+    req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": NaN}""")
+    myjson = json(req, rank)
+    @test isnan(myjson.power)
+
+    req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": 9000.1}""")
+    myjson = json(req, rank)
+    @test myjson.power == 9000.1
+
+    # test invalid json
+    req = HTTP.Request("GET","/", [],"""{}""")
+    @test_throws MethodError json(req, rank) 
+
+    # test extra key
+    req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")
+    myjson = json(req, rank)
     @test myjson.power == 9000.1
 
 end

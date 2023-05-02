@@ -15,6 +15,9 @@ end
 # added supporting structype
 StructTypes.StructType(::Type{rank}) = StructTypes.Struct()
 
+req = HTTP.Request("GET", "/json", [], """{"message":["hello",1.0]}""")
+json(req)
+
 @testset "json() Request struct keyword tests" begin 
 
     req = HTTP.Request("GET", "/json", [], "{\"message\":[NaN,1.0]}")

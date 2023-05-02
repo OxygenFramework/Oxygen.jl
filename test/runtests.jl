@@ -6,6 +6,7 @@ using StructTypes
 using Sockets
 using Dates 
 
+include("bodyparsertests.jl")
 include("crontests.jl")
 
 include("../src/Oxygen.jl")

@@ -6,6 +6,7 @@ using StructTypes
 using Sockets
 using Dates 
 
+include("bodyparsertests.jl")
 include("crontests.jl")
 
 include("../src/Oxygen.jl")
@@ -478,28 +479,28 @@ data = json(r)
 r = internalrequest(HTTP.Request("GET", "/static/test.txt"))
 body = text(r)
 @test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/plain"
+@test Dict(r.headers)["Content-Type"] == "text/plain; charset=utf-8"
 @test body == file("content/test.txt")
 @test body == "this is a sample text file"
 
 r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
 @test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/html"
+@test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
 @test text(r) == file("content/sample.html")
 
 r = internalrequest(HTTP.Request("GET", "/static/index.html"))
 @test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/html"
+@test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
 @test text(r) == file("content/index.html")
 
 # r = internalrequest(HTTP.Request("GET", "/static/"))
 # @test r.status == 200
-# @test Dict(r.headers)["Content-Type"] == "text/html"
+# @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
 # @test text(r) == file("content/index.html")
 
 r = internalrequest(HTTP.Request("GET", "/static/"))
 @test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/html"
+@test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
 @test text(r) == file("content/index.html")
 
 # Body transformation tests

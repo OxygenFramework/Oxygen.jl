@@ -788,7 +788,7 @@ end
 # Test default handler by turning off serializaiton
 @async serve(serialize=false, middleware=[error_catcher], catch_errors=false)
 sleep(3)
-r = internalrequest(HTTP.Request("GET", "/get"))
+r = internalrequest(HTTP.Request("GET", "/get"), catch_errors=false)
 @test r.status == 200
 
 try 

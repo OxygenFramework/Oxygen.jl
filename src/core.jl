@@ -266,8 +266,8 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true) :: HTTP.Response
-    return req |> setupmiddleware(middleware=middleware, serialize=serialize) 
+function internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true, catch_errors=true) :: HTTP.Response
+    return req |> setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors) 
 end
 
 
@@ -296,7 +296,7 @@ end
 """
 Provide an empty handler function, so that our middleware chain isn't broken
 """
-function DefaultHandler(catch_errors::Bool=true)
+function DefaultHandler(catch_errors::Bool)
     return function(handle)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
@@ -306,7 +306,7 @@ function DefaultHandler(catch_errors::Bool=true)
     end
 end
 
-function DefaultSerializer(catch_errors::Bool=true)
+function DefaultSerializer(catch_errors::Bool)
     return function(handle)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 

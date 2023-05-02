@@ -123,7 +123,7 @@ function stream_handler(middleware::Function)
 end 
 
 """
-    serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, kwargs...)
+    serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -138,7 +138,7 @@ function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=t
 end
 
 """
-    serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, kwargs...)
+    serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
@@ -261,7 +261,7 @@ end
 
 
 """
-    internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true)
+    internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true, catch_errors::Bool=true)
 
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware

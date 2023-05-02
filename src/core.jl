@@ -127,9 +127,9 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, kwargs...)
+function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize)
+    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors)
 
     startserver(host, port, kwargs, async, (kwargs) ->  
         HTTP.serve!(stream_handler(configured_middelware), host, port; kwargs...)
@@ -144,9 +144,9 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, kwargs...)
+function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize)
+    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors)
 
     startserver(host, port, kwargs, async, (kwargs) -> 
         StreamUtil.start(stream_handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
@@ -160,11 +160,11 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(;middleware::Vector = [], serialize::Bool=true) :: Function
+function setupmiddleware(;middleware::Vector = [], serialize::Bool=true, catch_errors::Bool=true) :: Function
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware() ? [compose(getrouter(), middleware)] : reverse(middleware)
     # check if we should use our default serialization middleware function
-    serialized = serialize ? [DefaultSerializer] : [DefaultHandler]
+    serialized = serialize ? [DefaultSerializer(catch_errors)] : [DefaultHandler(catch_errors)]
     # combine all our middleware functions
     return reduce(|>, [getrouter(), serialized..., custom_middleware...])    
 end
@@ -266,8 +266,8 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true) :: HTTP.Response
-    return req |> setupmiddleware(middleware=middleware, serialize=serialize) 
+function internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true, catch_errors=true) :: HTTP.Response
+    return req |> setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors) 
 end
 
 
@@ -280,13 +280,12 @@ function getrouter()
     return ROUTER[]
 end 
 
-"""
-Provide an empty handler function, so that our middleware chain isn't broken
-"""
-function DefaultHandler(handle)
-    return function(req::HTTP.Request)
+function handlerequest(getresponse::Function, catch_errors::Bool) :: HTTP.Response
+    if !catch_errors
+        return getresponse()
+    else 
         try 
-            return handle(req)         
+            return getresponse()       
         catch error
             @error "ERROR: " exception=(error, catch_backtrace())
             return HTTP.Response(500, "The Server encountered a problem")
@@ -294,27 +293,39 @@ function DefaultHandler(handle)
     end
 end
 
-function DefaultSerializer(handle)
-    return function(req::HTTP.Request)
-        try
-            response_body = handle(req)            
-            # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
-            if isa(response_body, HTTP.Messages.Response)
-                return response_body 
-            # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
-            elseif isa(response_body, String)
-                headers = ["Content-Type" => HTTP.sniff(response_body)]
-                return HTTP.Response(200, headers , body=response_body)
-            # case 3.) An object of some type was returned and should be serialized into JSON 
-            else 
-                body = JSON3.write(response_body)
-                headers = ["Content-Type" => "application/json; charset=utf-8"]
-                return HTTP.Response(200, headers , body=body)
-            end 
-        catch error
-            @error "ERROR: " exception=(error, catch_backtrace())
-            return HTTP.Response(500, "The Server encountered a problem")
-        end   
+"""
+Provide an empty handler function, so that our middleware chain isn't broken
+"""
+function DefaultHandler(catch_errors::Bool)
+    return function(handle)
+        return function(req::HTTP.Request)
+            return handlerequest(catch_errors) do 
+                handle(req)
+            end
+        end
+    end
+end
+
+function DefaultSerializer(catch_errors::Bool)
+    return function(handle)
+        return function(req::HTTP.Request)
+            return handlerequest(catch_errors) do 
+                response_body = handle(req)            
+                # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
+                if isa(response_body, HTTP.Messages.Response)
+                    return response_body 
+                # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
+                elseif isa(response_body, String)
+                    headers = ["Content-Type" => HTTP.sniff(response_body)]
+                    return HTTP.Response(200, headers , body=response_body)
+                # case 3.) An object of some type was returned and should be serialized into JSON 
+                else 
+                    body = JSON3.write(response_body)
+                    headers = ["Content-Type" => "application/json; charset=utf-8"]
+                    return HTTP.Response(200, headers , body=body)
+                end 
+            end
+        end
     end
 end
 
@@ -508,12 +519,7 @@ macro register(httpmethod, path, func)
         end
 
         local requesthandler = function (req)
-            try 
-                return handle(req)
-            catch error
-                @error "ERROR: " exception=(error, catch_backtrace())
-                return HTTP.Response(500, "The Server encountered a problem")
-            end
+            return handle(req)
         end
 
         HTTP.register!(router, method_type, route, requesthandler)

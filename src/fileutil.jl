@@ -75,7 +75,7 @@ function mountfolder(folder::String, mountdir::String, addroute)
         mountpath = mountdir == "/" || isnothing(mountdir) || isempty(mountdir) || all(isspace, mountdir) ? "/$cleanedmountpath" : "/$mountdir/$cleanedmountpath"
 
         # precalculate content type 
-        content_type = mime_from_path(filepath, MIME"text/plain"()) |> contenttype_from_mime
+        content_type = mime_from_path(filepath, MIME"application/octet-stream"()) |> contenttype_from_mime
         headers = ["Content-Type" => content_type]
 
         paths[mountpath] = true 

@@ -774,8 +774,19 @@ terminate()
 terminate()
 terminate()
 
+function errorcatcher(handle)
+    function(req)
+        try 
+            response = handle(req)
+            return response
+        catch e 
+            return HTTP.Response(500, "here's a custom error response")
+        end
+    end
+end
+
 # Test default handler by turning off serializaiton
-@async serve(serialize=false)
+@async serve(serialize=false, middleware=[error_catcher], catch_errors=false)
 sleep(3)
 r = internalrequest(HTTP.Request("GET", "/get"))
 @test r.status == 200

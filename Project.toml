@@ -1,7 +1,7 @@
 name = "Oxygen"
 uuid = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
 authors = ["Nathan Ortega <nate.ortega95@gmail.com>"]
-version = "1.1.8"
+version = "1.2.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
@@ -14,4 +14,4 @@ Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 HTTP = "^1"
 JSON3 = "^1.9"
 julia = "^1.6.6"
-MIMEs = "0 - 1"
+MIMEs = "^0"

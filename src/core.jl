@@ -331,8 +331,7 @@ function DefaultSerializer(catch_errors::Bool)
     end
 end
 
-
-### Core Routing Macros ###
+### Routing Macros ###
 
 """
     @get(path::String, func::Function)
@@ -378,7 +377,6 @@ macro patch(path, func)
     end
 end
 
-
 """
     @delete(path::String, func::Function)
 
@@ -389,7 +387,6 @@ macro delete(path, func)
         @route ["DELETE"] $(esc(path)) $(esc(func))
     end
 end
-
 
 """
     @route(methods::Array{String}, path::String, func::Function)
@@ -402,29 +399,7 @@ macro route(methods, path, func)
     end  
 end
 
-
-### Core Routing Functions ###
-
-
-function Base.get(path::String, func::Function)
-    route(["GET"], path, func)
-end
-
-function post(path::String, func::Function)
-    route(["POST"], path, func)
-end
-
-function put(path::String, func::Function)
-    route(["PUT"], path, func)
-end
-
-function patch(path::String, func::Function)
-    route(["PATCH"], path, func)
-end
-
-function delete(path::String, func::Function)
-    route(["DELETE"], path, func)
-end
+### Core Routing Function ###
 
 function route(methods::Vector{String}, path::Union{String,Function}, func::Function)
     for method in methods
@@ -432,33 +407,22 @@ function route(methods::Vector{String}, path::Union{String,Function}, func::Func
     end
 end
 
+### Routing Functions ###
+
+Base.get(path::String, func::Function)  = route(["GET"], path, func)
+post(path::String, func::Function)      = route(["POST"], path, func)
+put(path::String, func::Function)       = route(["PUT"], path, func)
+patch(path::String, func::Function)     = route(["PATCH"], path, func)
+delete(path::String, func::Function)    = route(["DELETE"], path, func)
 
 ### Core Routing Functions Support for do..end Syntax ###
 
-function Base.get(func::Function, path::String)
-    get(path, func)
- end
-
-function post(func::Function, path::String)
-    post(path, func)
-end
-
-function put(func::Function, path::String)
-    put(path, func)
-end
-
-function patch(func::Function, path::String)
-    patch(path, func)
-end
-
-function delete(func::Function, path::String)
-    delete(path, func)
-end
-
-function route(func::Function, methods::Vector{String}, path::Union{String,Function})
-    route(methods, path, func)
-end
-
+Base.get(func::Function, path::String)  = get(path, func)
+post(func::Function, path::String)      = post(path, func)
+put(func::Function, path::String)       = put(path, func)
+patch(func::Function, path::String)     = patch(path, func)
+delete(func::Function, path::String)    = delete(path, func)
+route(func::Function, methods::Vector{String}, path::Union{String,Function}) = route(methods, path, func)
 
 """
     register(httpmethod::String, route::String, func::Function)

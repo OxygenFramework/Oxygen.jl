@@ -399,7 +399,7 @@ macro route(methods, path, func)
     end  
 end
 
-### Core Routing Function ###
+### Core Routing Functions ###
 
 function route(methods::Vector{String}, path::Union{String,Function}, func::Function)
     for method in methods
@@ -409,20 +409,22 @@ end
 
 ### Routing Functions ###
 
-Base.get(path::String, func::Function)  = route(["GET"], path, func)
-post(path::String, func::Function)      = route(["POST"], path, func)
-put(path::String, func::Function)       = route(["PUT"], path, func)
-patch(path::String, func::Function)     = route(["PATCH"], path, func)
-delete(path::String, func::Function)    = route(["DELETE"], path, func)
+Base.get(path::Union{String,Function}, func::Function)  = route(["GET"], path, func)
+post(path::Union{String,Function}, func::Function)      = route(["POST"], path, func)
+put(path::Union{String,Function}, func::Function)       = route(["PUT"], path, func)
+patch(path::Union{String,Function}, func::Function)     = route(["PATCH"], path, func)
+delete(path::Union{String,Function}, func::Function)    = route(["DELETE"], path, func)
 
 ### Core Routing Functions Support for do..end Syntax ###
 
-Base.get(func::Function, path::String)  = get(path, func)
-post(func::Function, path::String)      = post(path, func)
-put(func::Function, path::String)       = put(path, func)
-patch(func::Function, path::String)     = patch(path, func)
-delete(func::Function, path::String)    = delete(path, func)
+Base.get(func::Function, path::Union{String,Function})  = get(path, func)
+post(func::Function, path::Union{String,Function})      = post(path, func)
+put(func::Function, path::Union{String,Function})       = put(path, func)
+patch(func::Function, path::Union{String,Function})     = patch(path, func)
+delete(func::Function, path::Union{String,Function})    = delete(path, func)
+
 route(func::Function, methods::Vector{String}, path::Union{String,Function}) = route(methods, path, func)
+
 
 """
     register(httpmethod::String, route::String, func::Function)

@@ -11,27 +11,27 @@ using .Oxygen
 
 ##### Setup Routes #####
 
-get("/inline/add/{x}/{y}", function(request::HTTP.Request, x::Int, y::Int) x + y end)
+get("/inline/add/{x}/{y}", (request::HTTP.Request, x::Int, y::Int) -> x + y)
 get("/add/{x}/{y}") do request::HTTP.Request, x::Int, y::Int
     x + y
 end
 
-post("/inline/sub/{x}/{y}", function(request::HTTP.Request, x::Int, y::Int) x - y end)
+post("/inline/sub/{x}/{y}", (request::HTTP.Request, x::Int, y::Int) -> x - y)
 post("/sub/{x}/{y}") do request::HTTP.Request, x::Int, y::Int
     x - y
 end
 
-put("/inline/power/{x}/{y}", function(request::HTTP.Request, x::Int, y::Int) x ^ y end)
+put("/inline/power/{x}/{y}", (request::HTTP.Request, x::Int, y::Int) -> x ^ y)
 put("/power/{x}/{y}") do request::HTTP.Request, x::Int, y::Int
     x ^ y
 end
 
-patch("/inline/mulitply/{x}/{y}", function(request::HTTP.Request, x::Int, y::Int) x * y end)
+patch("/inline/mulitply/{x}/{y}", (request::HTTP.Request, x::Int, y::Int) -> x * y)
 patch("/mulitply/{x}/{y}") do request::HTTP.Request, x::Int, y::Int
     x * y
 end
 
-delete("/inline/divide/{x}/{y}", function(request::HTTP.Request, x::Int, y::Int) x / y end)
+delete("/inline/divide/{x}/{y}", (request::HTTP.Request, x::Int, y::Int) -> x / y)
 delete("/divide/{x}/{y}") do request::HTTP.Request, x::Int, y::Int
     x / y
 end

@@ -2,7 +2,6 @@ module FunctionsRoutingDemo
 
 include("../src/Oxygen.jl")
 using .Oxygen
-using .Oxygen: get
 
 using HTTP
 

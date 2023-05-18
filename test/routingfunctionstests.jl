@@ -36,7 +36,13 @@ delete("/divide/{x}/{y}") do request::HTTP.Request, x::Int, y::Int
     x / y
 end
 
+route(["GET"], "/inline/route/add/{x}/{y}", (request::HTTP.Request, x::Int, y::Int) -> x + y)
+route(["GET"], "/route/add/{x}/{y}") do request::HTTP.Request, x::Int, y::Int
+    x + y
+end
+
 ##### Begin tests #####
+
 
 @testset "GET routing functions" begin 
     r = internalrequest(HTTP.Request("GET", "/inline/add/5/4"))
@@ -44,6 +50,14 @@ end
     @test text(r) == "9"
 
     r = internalrequest(HTTP.Request("GET", "/add/5/4"))
+    @test r.status == 200
+    @test text(r) == "9"
+
+    r = internalrequest(HTTP.Request("GET", "/inline/route/add/5/4"))
+    @test r.status == 200
+    @test text(r) == "9"
+
+    r = internalrequest(HTTP.Request("GET", "/route/add/5/4"))
     @test r.status == 200
     @test text(r) == "9"
 end

@@ -455,6 +455,9 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
 
+    # ensure the route variable is a string at this point
+    route = string(route)
+    
     # determine if we have parameters defined in our path
     hasPathParams = contains(route, variableRegex)
     

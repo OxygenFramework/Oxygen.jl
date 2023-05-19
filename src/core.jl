@@ -456,7 +456,7 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
     hasBraces = r"({)|(})"
     
     # determine if we have parameters defined in our path
-    hasPathParams = occursin(variableRegex, route)
+    hasPathParams = occursin(variableRegex, string(route))
     
     # track which index the params are located in
     positions = []

@@ -431,7 +431,8 @@ end
 end
 
 server = serve(async=true)
-sleep(10)
+startcronjobs()
+sleep(3)
 
 @testset "Testing CRON API access" begin
     r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))

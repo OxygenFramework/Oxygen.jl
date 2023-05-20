@@ -454,14 +454,17 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
     router = getrouter()
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
+
+    # ensure the route variable is a string at this point
+    route = isa(route, String) ? route : string(route)
     
     # determine if we have parameters defined in our path
-    hasPathParams = occursin(variableRegex, string(route))
+    hasPathParams = contains(route, variableRegex)
     
     # track which index the params are located in
     positions = []
     for (index, value) in enumerate(HTTP.URIs.splitpath(route)) 
-        if occursin(hasBraces, value)
+        if contains(value, hasBraces)
             # extract the variable name
             variable = replace(value, hasBraces => "") |> x -> split(x, ":") |> first        
             push!(positions, (index, variable))

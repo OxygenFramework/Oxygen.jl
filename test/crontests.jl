@@ -421,17 +421,20 @@ localhost = "http://127.0.0.1:8080"
 
 crondata = Dict("api_value" => 0)
 
-@get router("/cron-increment", cron="*") function(req)
+@cron "*" function()
     crondata["api_value"] = crondata["api_value"] + 1
-    return crondata["api_value"]
 end
+
+# @get router("/cron-increment", cron="*") function(req)
+#     crondata["api_value"] = crondata["api_value"] + 1
+#     return crondata["api_value"]
+# end
 
 @get "/get-cron-increment" function()
     return crondata["api_value"]
 end
 
 server = serve(async=true)
-startcronjobs()
 sleep(3)
 
 @testset "Testing CRON API access" begin

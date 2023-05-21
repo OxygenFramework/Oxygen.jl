@@ -434,7 +434,7 @@ Register a request handler function with a path to the ROUTER
 function register(httpmethod::String, route::Union{String,Function}, func::Function)
 
     # check if path is a callable function (that means it's a router higher-order-function)
-    if !isempty(methods(route))
+    if isa(route, Function)
 
         # This is true when the user passes the router() directly to the path.
         # We call the generated function without args so it uses the default args 

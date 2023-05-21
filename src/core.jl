@@ -454,10 +454,11 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
     router = getrouter()
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
-
-    # ensure the route variable is a string at this point
-    route = isa(route, String) ? route : string(route)
     
+    if !isa(route, String)
+        throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
+    end    
+
     # determine if we have parameters defined in our path
     hasPathParams = contains(route, variableRegex)
     

@@ -458,9 +458,8 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
     
-    println("Number of args in route: $(countargs(route))")
-
     if !isa(route, String)
+        println("Number of args in route: $(countargs(route))")
         throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
     end    
 

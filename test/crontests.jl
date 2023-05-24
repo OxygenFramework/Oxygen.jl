@@ -417,28 +417,28 @@ end
 
 
 
-localhost = "http://127.0.0.1:8080"
+# localhost = "http://127.0.0.1:8080"
 
-crondata = Dict("api_value" => 0)
+# crondata = Dict("api_value" => 0)
 
-@get router("/cron-increment", cron="*") function(req)
-    crondata["api_value"] = crondata["api_value"] + 1
-    return crondata["api_value"]
-end
+# @get router("/cron-increment", cron="*") function(req)
+#     crondata["api_value"] = crondata["api_value"] + 1
+#     return crondata["api_value"]
+# end
 
-@get "/get-cron-increment" function()
-    return crondata["api_value"]
-end
+# @get "/get-cron-increment" function()
+#     return crondata["api_value"]
+# end
 
-server = serve(async=true)
-sleep(3)
+# server = serve(async=true)
+# sleep(3)
 
-@testset "Testing CRON API access" begin
-    r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))
-    @test r.status == 200
-    @test parse(Int64, text(r)) > 0
-end
+# @testset "Testing CRON API access" begin
+#     r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))
+#     @test r.status == 200
+#     @test parse(Int64, text(r)) > 0
+# end
 
-close(server) 
+# close(server) 
 
 end

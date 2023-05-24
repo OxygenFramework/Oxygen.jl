@@ -454,16 +454,29 @@ Register a request handler function with a path to the ROUTER
 """
 function register(httpmethod::String, route::Union{String,Function}, func::Function)
 
-    route = unwrap_route(httpmethod, route)
+    # check if path is a callable function (that means it's a router higher-order-function)
+    if isa(route, Function)
+        println("Route is a function with $(countargs(route)) arguments")
 
+        # This is true when the user passes the router() directly to the path.
+        # We call the generated function without args so it uses the default args 
+        # from the parent function.
+        if countargs(route) == 1
+            route = route()
+            println("Updated route to: $route of type $(typeof(route))")
+        end
+
+        # If it's still a function, then that means this is from the 3rd inner function 
+        # defined in the createrouter() function.
+        if countargs(route) == 2
+            route = route(httpmethod)
+            println("Updated route to: $route of type $(typeof(route))")
+        end
+    end
+    
     router = getrouter()
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
-    
-    if !isa(route, String)
-        print(">> unwrapping a second time")
-        route = unwrap_route(httpmethod, route)
-    end 
     
     if !isa(route, String)
         println("Number of args in route: $(countargs(route))")

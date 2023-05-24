@@ -473,7 +473,7 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
             println("Updated route to: $route of type $(typeof(route))")
         end
     end
-    
+
     router = getrouter()
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
@@ -576,11 +576,11 @@ function setupswagger()
         return
     end
 
-    @get docspath function()
+    @get "$docspath" function()
         return swaggerhtml()
     end
 
-    @get schemapath function()
+    @get "$schemapath" function()
         return getschema() 
     end
     
@@ -623,7 +623,7 @@ function staticfiles(folder::String, mountdir::String="static")
     registermountedfolder(mountdir)
     function addroute(currentroute, headers, filepath, registeredpaths; code=200)
         body = file(filepath)
-        @get currentroute function(req)
+        @get "$currentroute" function(req)
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)
             return validpath ? HTTP.Response(code, headers , body=body) : HTTP.Response(404)
@@ -642,7 +642,7 @@ but files are re-read on each request
 function dynamicfiles(folder::String, mountdir::String="static")
     registermountedfolder(mountdir)
     function addroute(currentroute, headers, filepath, registeredpaths; code = 200)
-        @get currentroute function(req)   
+        @get "$currentroute" function(req)   
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)
             return validpath ?  HTTP.Response(code, headers , body=file(filepath)) : HTTP.Response(404) 

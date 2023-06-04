@@ -17,6 +17,13 @@ serveparallel
 @patch(path, func)
 @delete(path, func)
 @route(methods, path, func)
+
+get(path, func)
+post(path, func)
+put(path, func)
+patch(path, func)
+delete(path, func)
+route(methods, path, func)
 ```
 
 ## Mounting Files

@@ -5,7 +5,14 @@ using Dates
 
 export countargs, recursive_merge, parseparam, queryparams, html, redirect
 
-# return the number of args inside a function
+"""
+countargs(func)
+
+Return the number of arguments of the first method of the function `f`.
+
+# Arguments
+- `f`: The function to get the number of arguments for.
+"""
 function countargs(f::Function)
     return methods(f) |> first |> x -> x.nargs
 end

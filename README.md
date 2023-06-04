@@ -22,7 +22,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 
 ## Features
 
-- Straightforward routing (`@get`, `@post`, `@put`, `@patch`, `@delete` and `@route` macros)
+- Straightforward routing
 - Auto-generated swagger documentation
 - Out-of-the-box JSON serialization & deserialization (customizable)
 - Type definition support for path parameters
@@ -88,6 +88,35 @@ end
 serve()
 ```
 
+## Routing Macro & Function Syntax
+
+There are two primary ways to register your request handlers: the standard routing macros or the routing functions which utilize the do-block syntax. 
+
+For each routing macro, we now have a an equivalent routing function
+
+```julia
+@get    -> get()
+@post   -> post()
+@put    -> put()
+@patch  -> patch()
+@delete -> delete()
+@route  -> route()
+```
+
+The only practical difference between the two is that the routing macros are called during the precompilation
+stage, whereas the routing functions are only called when invoked. (The routing macros call the routing functions under the hood)
+
+```julia
+# Routing Macro syntax
+@get "/add/{x}/{y}" function(request::HTTP.Request, x::Int, y::Int)
+    x + y
+end
+
+# Routing Function syntax
+get("/add/{x}/{y}") do request::HTTP.Request, x::Int, y::Int
+    x + y
+end
+```
 
 ## Path parameters
 

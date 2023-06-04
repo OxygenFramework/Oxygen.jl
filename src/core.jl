@@ -425,7 +425,6 @@ delete(func::Function, path::Union{String,Function})    = delete(path, func)
 
 route(func::Function, methods::Vector{String}, path::Union{String,Function}) = route(methods, path, func)
 
-
 """
     register(httpmethod::String, route::String, func::Function)
 
@@ -448,7 +447,6 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
         if countargs(route) == 2
             route = route(httpmethod)
         end
-        
     end
 
     # if the route is still a function, then it's from the  3rd inner function 
@@ -558,11 +556,11 @@ function setupswagger()
         return
     end
 
-    @get docspath function()
+    @get "$docspath" function()
         return swaggerhtml()
     end
 
-    @get schemapath function()
+    @get "$schemapath" function()
         return getschema() 
     end
     
@@ -605,7 +603,7 @@ function staticfiles(folder::String, mountdir::String="static")
     registermountedfolder(mountdir)
     function addroute(currentroute, headers, filepath, registeredpaths; code=200)
         body = file(filepath)
-        @get currentroute function(req)
+        @get "$currentroute" function(req)
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)
             return validpath ? HTTP.Response(code, headers , body=body) : HTTP.Response(404)
@@ -624,7 +622,7 @@ but files are re-read on each request
 function dynamicfiles(folder::String, mountdir::String="static")
     registermountedfolder(mountdir)
     function addroute(currentroute, headers, filepath, registeredpaths; code = 200)
-        @get currentroute function(req)   
+        @get "$currentroute" function(req)   
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)
             return validpath ?  HTTP.Response(code, headers , body=file(filepath)) : HTTP.Response(404) 

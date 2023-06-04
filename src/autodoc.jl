@@ -240,13 +240,34 @@ function createrouter(prefix::String,
                     interval::Union{Real, Nothing} = routerinterval,
                     cron::Union{String, Nothing} = routercron)
 
-        # combine the current routers prefix with this specfic path 
-        path = !isnothing(path) ? "$(fixpath(prefix))$(fixpath(path))" : fixpath(prefix)
-
-        combinedtags = [tags..., routertags...]
-
         # this is called inside the @register macro (only it knows the exact httpmethod associated with each path)
         return function(httpmethod::String)
+            
+            """
+            This scenario can happen when the user passes a router object directly like so: 
+
+            @get router("/math/power/{a}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
+                return a ^ b
+            end
+
+            Under normal circumstances, the function returned by the router call is used when registering routes. 
+            However, in this specific case, the call to router returns a higher-order function (HOF) that's nested one 
+            layer deeper than expected.
+
+            Due to the way we call these functions to derive the path for the currently registered route, 
+            the path argument can sometimes be mistakenly set to the HTTP method (e.g., "GET", "POST"). 
+            This can lead to the path getting concatenated with the HTTP method string.
+
+            To account for this specific use case, we've added a check in the inner function to verify whether 
+            path matches the current passed in httpmethod. If it does, we assume that path has been incorrectly 
+            set to the HTTP method, and we update path to use the router prefix instead.
+            """
+            if path === httpmethod
+                path = prefix
+            else 
+                # combine the current routers prefix with this specfic path 
+                path = !isnothing(path) ? "$(fixpath(prefix))$(fixpath(path))" : fixpath(prefix)
+            end
 
             if !(isnothing(routermiddleware) && isnothing(middleware))
                 # add both router & route-sepecific middleware
@@ -270,6 +291,8 @@ function createrouter(prefix::String,
                     push!(cronjobs, task)
                 end
             end
+
+            combinedtags = [tags..., routertags...]
 
             # register tags
             if !haskey(taggedroutes, path)

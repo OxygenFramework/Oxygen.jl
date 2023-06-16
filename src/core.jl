@@ -407,23 +407,33 @@ function route(methods::Vector{String}, path::Union{String,Function}, func::Func
     end
 end
 
-### Routing Functions ###
+# This variation supports the do..block syntax
+route(func::Function, methods::Vector{String}, path::Union{String,Function}) = route(methods, path, func)
 
-Base.get(path::Union{String,Function}, func::Function)  = route(["GET"], path, func)
-post(path::Union{String,Function}, func::Function)      = route(["POST"], path, func)
-put(path::Union{String,Function}, func::Function)       = route(["PUT"], path, func)
-patch(path::Union{String,Function}, func::Function)     = route(["PATCH"], path, func)
-delete(path::Union{String,Function}, func::Function)    = route(["DELETE"], path, func)
+
+# these utility functions help reduce the amount of repeated hardcoded values
+get_handler(path::Union{String,Function}, func::Function)     = route(["GET"], path, func)
+post_handler(path::Union{String,Function}, func::Function)    = route(["POST"], path, func)
+put_handler(path::Union{String,Function}, func::Function)     = route(["PUT"], path, func)
+patch_handler(path::Union{String,Function}, func::Function)   = route(["PATCH"], path, func)
+delete_handler(path::Union{String,Function}, func::Function)  = route(["DELETE"], path, func)
 
 ### Core Routing Functions Support for do..end Syntax ###
 
-Base.get(func::Function, path::Union{String,Function})  = get(path, func)
-post(func::Function, path::Union{String,Function})      = post(path, func)
-put(func::Function, path::Union{String,Function})       = put(path, func)
-patch(func::Function, path::Union{String,Function})     = patch(path, func)
-delete(func::Function, path::Union{String,Function})    = delete(path, func)
+Base.get(func::Function, path::String)      = get_handler(path, func)
+Base.get(func::Function, path::Function)    = get_handler(path, func)
 
-route(func::Function, methods::Vector{String}, path::Union{String,Function}) = route(methods, path, func)
+post(func::Function, path::String)          = post_handler(path, func)
+post(func::Function, path::Function)        = post_handler(path, func)
+
+put(func::Function, path::String)           = put_handler(path, func)
+put(func::Function, path::Function)         = put_handler(path, func)
+
+patch(func::Function, path::String)         = patch_handler(path, func)
+patch(func::Function, path::Function)       = patch_handler(path, func)
+
+delete(func::Function, path::String)        = delete_handler(path, func)
+delete(func::Function, path::Function)      = delete_handler(path, func)
 
 """
     register(httpmethod::String, route::String, func::Function)
@@ -457,8 +467,8 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
 
     if !isa(route, String)
         throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
-    end    
-
+    end  
+    
     router = getrouter()
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"

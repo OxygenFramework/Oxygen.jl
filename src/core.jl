@@ -125,33 +125,33 @@ function stream_handler(middleware::Function)
 end 
 
 """
-    serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
 
 Start the webserver with your own custom request handler
 """
-function serve(; middleware::Vector=[], host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
+function serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors)
 
     startserver(host, port, kwargs, async, (kwargs) ->  
-        HTTP.serve!(stream_handler(configured_middelware), host, port; kwargs...)
+        HTTP.serve!(handler(configured_middelware), host, port; kwargs...)
     )
     server[] # this value is returned if startserver() is ran in async mode
 end
 
 """
-    serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
+    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(; middleware::Vector=[], host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
+function serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors)
 
     startserver(host, port, kwargs, async, (kwargs) -> 
-        StreamUtil.start(stream_handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
+        StreamUtil.start(handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
     server[] # this value is returned if startserver() is ran in async mode
 end

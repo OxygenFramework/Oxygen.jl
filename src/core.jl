@@ -578,28 +578,28 @@ end
 
 
 """
-    @staticfiles(folder::String, mountdir::String)
+    @staticfiles(folder::String, mountdir::String, set_headers::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point)
 """
-macro staticfiles(folder, mountdir="static")
+macro staticfiles(folder, mountdir="static", set_headers=nothing)
     printstyled("@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
     quote
-        staticfiles($(esc(folder)), $(esc(mountdir))) 
+        staticfiles($(esc(folder)), $(esc(mountdir)), set_headers=$(esc(set_headers))) 
     end
 end
 
 
 """
-    @dynamicfiles(folder::String, mountdir::String)
+    @dynamicfiles(folder::String, mountdir::String, set_headers::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point), 
 but files are re-read on each request
 """
-macro dynamicfiles(folder, mountdir="static")
+macro dynamicfiles(folder, mountdir="static", set_headers=nothing)
     printstyled("@dynamicfiles macro is deprecated, please use the dynamicfiles() function instead\n", color = :red, bold = true) 
     quote
-        dynamicfiles($(esc(folder)), $(esc(mountdir))) 
+        dynamicfiles($(esc(folder)), $(esc(mountdir)), set_headers=$(esc(set_headers))) 
     end      
 end
 

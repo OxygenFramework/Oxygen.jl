@@ -80,7 +80,7 @@ function mountfolder(folder::String, mountdir::String, addroute)
 
         paths[mountpath] = true 
         # register the file route
-        addroute(mountpath, headers, filepath, paths)
+        addroute(mountpath, content_type, headers, filepath, paths)
 
         # also register file to the root of each subpath if this file is an index.html
         if endswith(mountpath, "/index.html")
@@ -93,7 +93,7 @@ function mountfolder(folder::String, mountdir::String, addroute)
             # add the route with the trailing "/" character
             trimmedpath = getbefore(mountpath, "index.html")
             paths[trimmedpath] = true
-            addroute(trimmedpath, headers, filepath, paths)
+            addroute(trimmedpath, content_type, headers, filepath, paths)
         
         end
 

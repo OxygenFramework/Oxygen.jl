@@ -578,41 +578,44 @@ end
 
 
 """
-    @staticfiles(folder::String, mountdir::String)
+    @staticfiles(folder::String, mountdir::String, set_headers::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point)
 """
-macro staticfiles(folder, mountdir="static")
+macro staticfiles(folder, mountdir="static", set_headers=nothing)
     printstyled("@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
     quote
-        staticfiles($(esc(folder)), $(esc(mountdir))) 
+        staticfiles($(esc(folder)), $(esc(mountdir)), set_headers=$(esc(set_headers))) 
     end
 end
 
 
 """
-    @dynamicfiles(folder::String, mountdir::String)
+    @dynamicfiles(folder::String, mountdir::String, set_headers::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point), 
 but files are re-read on each request
 """
-macro dynamicfiles(folder, mountdir="static")
+macro dynamicfiles(folder, mountdir="static", set_headers=nothing)
     printstyled("@dynamicfiles macro is deprecated, please use the dynamicfiles() function instead\n", color = :red, bold = true) 
     quote
-        dynamicfiles($(esc(folder)), $(esc(mountdir))) 
+        dynamicfiles($(esc(folder)), $(esc(mountdir)), set_headers=$(esc(set_headers))) 
     end      
 end
 
 
 """
-    staticfiles(folder::String, mountdir::String)
+    staticfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing)
 
-Mount all files inside the /static folder (or user defined mount point)
+Mount all files inside the /static folder (or user defined mount point). 
+The `set_headers` callback is passed the route, mime type, and the current headers for the given 
+resource and should return a finalized vector of pairs to use as the headers in the outgoing Request
 """
-function staticfiles(folder::String, mountdir::String="static")
+function staticfiles(folder::String, mountdir::String="static"; set_headers::Union{Function,Nothing}=nothing)
     registermountedfolder(mountdir)
-    function addroute(currentroute, headers, filepath, registeredpaths; code=200)
+    function addroute(currentroute, content_type, derived_headers, filepath, registeredpaths; code=200)
         body = file(filepath)
+        headers = !isnothing(set_headers) ? set_headers(currentroute, content_type, derived_headers) : derived_headers
         @get "$currentroute" function(req)
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)
@@ -624,14 +627,18 @@ end
 
 
 """
-    dynamicfiles(folder::String, mountdir::String)
+    dynamicfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point), 
-but files are re-read on each request
+but files are re-read on each request.
+The `set_headers` callback is passed the route, mime type, and the current headers for the given 
+resource and should return a finalized vector of pairs to use as the headers in the outgoing Request.
 """
-function dynamicfiles(folder::String, mountdir::String="static")
+function dynamicfiles(folder::String, mountdir::String="static"; set_headers::Union{Function,Nothing}=nothing)
     registermountedfolder(mountdir)
-    function addroute(currentroute, headers, filepath, registeredpaths; code = 200)
+    function addroute(currentroute, content_type, derived_headers, filepath, registeredpaths; code = 200)
+        # We can precompute the headers ahead of time because while the file can change - the name and exstension shouldn't
+        headers = !isnothing(set_headers) ? set_headers(currentroute, content_type, derived_headers) : derived_headers
         @get "$currentroute" function(req)   
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)

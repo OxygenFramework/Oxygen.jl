@@ -25,7 +25,7 @@ end
 
 localhost = "http://127.0.0.1:8080"
 
-# configdocs("/docs", "/schema")
+configdocs("/docs", "/schema")
 
 StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 

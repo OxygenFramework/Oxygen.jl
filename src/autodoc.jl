@@ -110,7 +110,7 @@ Configure the default docs and schema endpoints
 """
 function configdocs(docs_url::String = docspath, schema_url::String = schemapath)
     global docspath = docs_url
-    global schemapath = "$docs_url$schema_url"
+    global schemapath = schemapath
 end
 
 """

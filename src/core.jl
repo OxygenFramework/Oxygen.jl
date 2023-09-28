@@ -578,7 +578,6 @@ function setupswagger()
         return redochtml()
     end
 
-    println(">> getschemapath: $(getschemapath())")
     @get "$(getschemapath())" function()
         return getschema() 
     end

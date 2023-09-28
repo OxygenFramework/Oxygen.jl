@@ -767,3 +767,41 @@ Returns the body of a request as a binary file (returns a vector of `UInt8`s)
 | `classtype` | `struct` | A struct to deserialize a JSON object into |
 
 Deserialize the body of a request into a julia struct 
+
+
+### Working with Basic Templating
+This section only gives a very quick introduction into how to use Jinja2-Like syntax with Oxygen.jl.
+Our templating engine of choice can either be Mustache.jl via `render_html()` or OteraEngine.jl via `render_template()`. This is a very basic implementation and hopefully will be improved with more features.
+
+With these we can pass data from the backend to our frontend html files as below
+
+```julia 
+using Oxygen
+using HTTP
+
+@get "/blog/{title}" function(req::HTTP.Request,title::String)
+    mylist = [3,5,1]
+    context = Dict("title" => uppercase(title),"mylist" => mylist)
+    return render_template("blog.html", context, status=200)
+end
+
+serve()
+
+```
+This provides the option of using `{{}}` or `{% %}` to render variables from our context or Julia code.
+
+```html
+<body>
+    <div>
+        <h2>Blog List</h2>
+        <p>{{ title }}</p>
+        <div>
+            {% for i in mylist %}
+          <ul>
+            <li> Hello {{i}} {{ title }}</li>
+          </ul>
+           {% end %}
+        </div>
+    </div>
+</body>
+```

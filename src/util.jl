@@ -2,6 +2,8 @@ module Util
 using HTTP 
 using JSON3
 using Dates
+using OteraEngine
+using Mustache 
 
 export countargs, recursive_merge, parseparam, queryparams, html, redirect
 
@@ -115,6 +117,59 @@ return a redirect response
 function redirect(path::String; code = 307) :: HTTP.Response
     return HTTP.Response(code, ["Location" => path])
 end
+
+"""
+    render_html(html_file::String,context::Dict)
+
+    render html files with or without context data using '{{}}' in the html file 
+"""
+function render_html(html_file::String ,context::Dict = Dict(); status=200, headers = ["Content-Type" => "text/html; charset=utf-8"]) :: HTTP.Response
+    is_context_empty = isempty(context) === true
+    # Return the raw HTML content as the response body without context 
+    if is_context_empty
+        io = open(html_file, "r") do file
+            read(file, String)
+        end
+        template = io |> String
+    else
+         # Render the Mustache template with the provided context
+        io = open(html_file, "r") do file
+            read(file, String) 
+        end
+        template = String(Mustache.render(io, context))
+    end
+
+    return HTTP.Response(status, headers, body= template)
+end
+
+
+"""
+    render_template(html_file::String,context::Dict)
+
+    render html files with or without context data using Jinja Like syntax such as
+    '{{}}'or {% %} in the html file. Allows support for variables and Julia code in html 
+"""
+function render_template(html_file::String ,context::Dict = Dict(); status=200, headers = ["Content-Type" => "text/html; charset=utf-8"]) :: HTTP.Response
+    is_context_empty = isempty(context) === true
+    # Return the raw HTML content as the response body without context 
+    if is_context_empty
+        io = open(html_file, "r") do file
+            read(file, String)
+        end
+        template = io |> String
+    else
+         # Render using OteraEngine template with the provided context
+        io = open(html_file, "r") do file
+            read(file, String) 
+        end
+        txt = io |> String
+        tmp = Template(txt, path = false)
+        template = tmp(tmp_init = context)
+    end
+
+    return HTTP.Response(status, headers, body= template)
+end
+
 
 
 end

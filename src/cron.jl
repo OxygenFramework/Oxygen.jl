@@ -74,7 +74,7 @@ function startcronjobs()
         message = isnothing(name) ? "$expression" : "id: $i, expr: $expression, name: $name"
         printstyled("[ Cron: ", color = :green, bold = true)  
         println(message)
-        t = @async begin 
+        t = Threads.@spawn begin 
             while true
                 # get the current datetime object
                 current_time::DateTime = now()

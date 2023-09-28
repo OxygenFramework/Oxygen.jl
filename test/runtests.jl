@@ -25,7 +25,7 @@ end
 
 localhost = "http://127.0.0.1:8080"
 
-configdocs("/swagger", "/schema")
+# configdocs("/docs", "/schema")
 
 StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 
@@ -573,7 +573,7 @@ catch e
     @test e isa ArgumentError
 end
 
-## Swagger related tests 
+## docs related tests 
 
 # should be set to true by default
 @test isdocsenabled() == true 
@@ -588,10 +588,10 @@ disabledocs()
 @async serve(async=false)
 sleep(1)
 
-r = internalrequest(HTTP.Request("GET", "/swagger"))
+r = internalrequest(HTTP.Request("GET", "/docs"))
 @test r.status == 404
 
-r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
+r = internalrequest(HTTP.Request("GET", "/docs/schema"))
 @test r.status == 404
 
 terminate()
@@ -662,9 +662,17 @@ stoptasks()
 r = internalrequest(HTTP.Request("GET", "/get"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/swagger"))
+r = internalrequest(HTTP.Request("GET", "/docs"))
 @test r.status == 200
 
+r = internalrequest(HTTP.Request("GET", "/docs/swagger"))
+@test r.status == 200
+
+r = internalrequest(HTTP.Request("GET", "/docs/redoc"))
+@test r.status == 200
+
+r = internalrequest(HTTP.Request("GET", "/docs/schema"))
+@test r.status == 200
 
 invocation = []
 
@@ -694,10 +702,10 @@ r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), middleware=[handler1, 
 @test invocation == [1,2,3] # enusre the handlers are called in the correct order
 @test text(r) == "18.0" 
 
-r = internalrequest(HTTP.Request("GET", "/swagger"), middleware=[handler1])
+r = internalrequest(HTTP.Request("GET", "/docs"), middleware=[handler1])
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/swagger/schema"))
+r = internalrequest(HTTP.Request("GET", "/docs/schema"))
 @test r.status == 200
 @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
 

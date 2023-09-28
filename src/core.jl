@@ -570,7 +570,16 @@ function setupswagger()
         return swaggerhtml()
     end
 
-    @get "$schemapath" function()
+    @get "$docspath/swagger" function()
+        return swaggerhtml()
+    end
+
+    @get "$docspath/redoc" function()
+        return redochtml()
+    end
+
+    println(">> getschemapath: $(getschemapath())")
+    @get "$(getschemapath())" function()
         return getschema() 
     end
     

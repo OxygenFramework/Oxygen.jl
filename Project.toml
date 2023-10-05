@@ -1,13 +1,15 @@
 name = "Oxygen"
 uuid = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
 authors = ["Nathan Ortega <nate.ortega95@gmail.com>"]
-version = "1.2"
+version = "1.2.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
 MIMEs = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
+Mustache = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
+OteraEngine = "b2d7f28f-acd6-4007-8b26-bc27716e5513"
 RelocatableFolders = "05181044-ff0b-4ac5-8273-598c1e38db00"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 
@@ -16,4 +18,6 @@ HTTP = "^1"
 JSON3 = "^1.9"
 MIMEs = "^0.1.4"
 RelocatableFolders = "^1"
+Mustache = "^1"
+OteraEngine = "^0"
 julia = "^1.6"

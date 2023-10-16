@@ -14,5 +14,8 @@ export @get, @post, @put, @patch, @delete, @route, @cron,
         redirect, queryparams, binary, text, json, html, file, 
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, starttasks, stoptasks,
-        resetstate, startcronjobs, stopcronjobs, mustache, otera
+        resetstate, startcronjobs, stopcronjobs
+
+include("plugins/load.jl");
+
 end

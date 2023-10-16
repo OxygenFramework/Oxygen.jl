@@ -9,7 +9,6 @@ include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
-include("templating.jl");   using .Templating
 
 export @get, @post, @put, @patch, @delete, @route, @cron, 
         @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
@@ -17,8 +16,7 @@ export @get, @post, @put, @patch, @delete, @route, @cron,
         start, serve, serveparallel, terminate, internalrequest, file,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
-        starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs,
-        mustache, otera
+        starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 

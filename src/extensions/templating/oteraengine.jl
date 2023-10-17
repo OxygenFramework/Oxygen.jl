@@ -14,14 +14,19 @@ Returns a function that takes a dictionary `data` (default is an empty dictionar
 optional `status`, `headers`, and `template_kwargs`, and returns an HTTP Response object
 with the rendered content.
 """
-function otera(template::String; kwargs...)
+function otera(template::String; mime_type=nothing, kwargs...)
     is_file_path = isfile(template)
+    mime_is_known = !isnothing(mime_type)
 
     # Case 1: a path to a file was passed
     if is_file_path
-        # deterime the mime type based on the extension type 
-        content_type = mime_from_path(template, MIME"application/octet-stream"()) |> contenttype_from_mime
-        return otera(open(template); mime_type=content_type, kwargs...)
+        if mime_is_known
+            return otera(open(template); mime_type=mime_type, kwargs...)
+        else
+            # deterime the mime type based on the extension type 
+            content_type = mime_from_path(template, MIME"application/octet-stream"()) |> contenttype_from_mime
+            return otera(open(template); mime_type=content_type, kwargs...)
+        end
     end
 
     # Case 2: A string template was passed directly
@@ -36,7 +41,8 @@ function otera(template::String; kwargs...)
             combined_kwargs[:jl_init] = jl_init
         end
         content = tmp(; combined_kwargs...)
-        response(content, status, headers)
+        resp_headers = mime_is_known ? [["Content-Type" => mime_type]; headers] : headers
+        response(content, status, resp_headers; detect=!mime_is_known)
     end
 
 end
@@ -51,17 +57,8 @@ and returns an HTTP Response object with the rendered content.
 """
 function otera(file::IO; mime_type=nothing, kwargs...)
     template = read(file, String)
+    mime_is_known = !isnothing(mime_type)
     tmp = Template(template, path=false; kwargs...)
-    
-    function create_response(content, status, headers)
-        if isnothing(mime_type)
-            # case 1: No mime type is passed, so we should guess it based on the file contents
-            return response(content, status, headers)
-        else 
-            # case 2: We have a mime type based on the file extension, so pass it directly
-            return response(content, status, [["Content-Type" => mime_type]; headers]; detect=false)
-        end
-    end
 
     return function(;tmp_init=nothing, jl_init=nothing, status=200, headers=[], template_kwargs...)
         combined_kwargs = Dict{Symbol, Any}(template_kwargs)
@@ -72,7 +69,8 @@ function otera(file::IO; mime_type=nothing, kwargs...)
             combined_kwargs[:jl_init] = jl_init
         end
         content = tmp(; combined_kwargs...)
-        create_response(content, status, headers)
+        resp_headers = mime_is_known ? [["Content-Type" => mime_type]; headers] : headers
+        response(content, status, resp_headers; detect=!mime_is_known)
     end
 
 end

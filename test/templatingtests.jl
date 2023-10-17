@@ -59,21 +59,55 @@ Well, 6000.0 dollars, after taxes.
 """
 
 @testset "mustache() from string tests " begin 
+    render = mustache(mustache_template_str, mime_type="text/plain")
+    response = render(data)
+    @test response.body |> String |> clean_output == expected_output
+end
+
+@testset "mustache() from string tests w/ content type" begin 
     render = mustache(mustache_template_str)
     response = render(data)
     @test response.body |> String |> clean_output == expected_output
 end
 
 
-@testset "mustache() from file " begin 
+
+@testset "mustache() from file no content type" begin 
     render = mustache("./content/mustache_template.txt")
     response = render(data)
     @test response.body |> String |> clean_output == expected_output
 end
 
+@testset "mustache() from file w/ content type" begin 
+    render = mustache("./content/mustache_template.txt", mime_type="text/plain")
+    response = render(data)
+    @test response.body |> String |> clean_output == expected_output
+end
+
+
+
+@testset "mustache() from file with no content type" begin 
+    render = mustache(open("./content/mustache_template.txt"))
+    response = render(data)
+    @test response.body |> String |> clean_output == expected_output
+end
+
+@testset "mustache() from file with content type" begin 
+    render = mustache(open("./content/mustache_template.txt"), mime_type="text/plain")
+    response = render(data)
+    @test response.body |> String |> clean_output == expected_output
+end
+
+
 
 @testset "mustache() from template" begin 
     render = mustache(mustache_template)
+    response = render(data)
+    @test response.body |> String |> clean_output == expected_output
+end
+
+@testset "mustache() from template with content type" begin 
+    render = mustache(mustache_template, mime_type="text/plain")
     response = render(data)
     @test response.body |> String |> clean_output == expected_output
 end
@@ -152,8 +186,15 @@ end
     </html>
     """ |> remove_trailing_newline
 
+    # detect content type
     data = Dict("name" => "watasu")
     render = otera(template)
+    result = render(tmp_init=data)
+    @test result.body |> String |> clean_output == expected_output
+
+    # with explicit content type
+    data = Dict("name" => "watasu")
+    render = otera(template; mime_type="text/html")
     result = render(tmp_init=data)
     @test result.body |> String |> clean_output == expected_output
 
@@ -187,6 +228,11 @@ end
     render = otera("./content/otera_template.html")
     result = render(tmp_init=data)
     @test result.body |> String |> clean_output == expected_output
+
+    # with explicit content type
+    render = otera(open("./content/otera_template.html"); mime_type="text/html")
+    result = render(tmp_init=data)
+    @test result.body |> String |> clean_output == expected_output
 end
 
 
@@ -213,6 +259,10 @@ end
     """ |> remove_trailing_newline
 
     render = otera("./content/otera_template_no_vars.html")
+    result = render()
+    @test result.body |> String |> clean_output == expected_output
+
+    render = otera("./content/otera_template_no_vars.html", mime_type="text/html")
     result = render()
     @test result.body |> String |> clean_output == expected_output
 end
@@ -248,7 +298,19 @@ end
     @test result.body |> String |> clean_output == expected_output
 end
 
+@testset "otera() combined tmp_init & jl_init test" begin 
+    template = "```parse(Int, value) ^ 3```. Hello {{name}}!"
+    expected_output = "27. Hello World!"
+    render = otera(template)
+    result = render(tmp_init=Dict("name" => "World"), jl_init=Dict("value" => "3"))
+end
 
+@testset "otera() combined tmp_init & jl_init test with content type" begin 
+    template = "```parse(Int, value) ^ 3```. Hello {{name}}!"
+    expected_output = "27. Hello World!"
+    render = otera(template, mime_type = "text/plain")
+    result = render(tmp_init=Dict("name" => "World"), jl_init=Dict("value" => "3"))
+end
 
 
 

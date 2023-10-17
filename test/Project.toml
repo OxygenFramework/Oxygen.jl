@@ -13,9 +13,11 @@ StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-julia = "^1.6"
+Dates = "^1"
 HTTP = "^1"
 JSON3 = "^1.9"
 MIMEs = "^0.1.4"
-Requires = "^1"
 RelocatableFolders = "^1"
+Requires = "^1"
+Sockets = "^1"
+julia = "^1.6"

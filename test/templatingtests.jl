@@ -268,6 +268,22 @@ end
 end
 
 
+@testset "otera() from template file with jl init data" begin 
+
+    expected_output = """
+    <html>
+        <head><title>MyPage</title></head>
+        <body>
+            <h1>Hello World!</h1>
+        </body>
+    </html>
+    """ |> remove_trailing_newline
+
+    render = otera("./content/otera_template_jl.html")
+    result = render(jl_init=Dict("name" => "World"))
+    @test result.body |> String |> clean_output == expected_output
+end
+
 @testset "otera() running julia code in template" begin 
     template = "```3 ^ 3```. Hello {{ name }}!"
     expected_output = "27. Hello world!"

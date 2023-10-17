@@ -1,0 +1,14 @@
+<html>
+    <head><title>MyPage</title></head>
+    <body>
+        {% if name == "watasu" %}
+        your name is {{ name }}, right?
+        {% end %}
+        {% for i in 1 : 10 %}
+        Hello {{i}}
+        {% end %}
+        {% with age = 15 %}
+        and your age is {{ age }}.
+        {% end %}
+    </body>
+</html>

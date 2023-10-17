@@ -6,13 +6,14 @@ using StructTypes
 using Sockets
 using Dates 
 
+include("../src/Oxygen.jl")
+using .Oxygen
+
 include("templatingtests.jl")
 include("routingfunctionstests.jl")
 include("bodyparsertests.jl")
 include("crontests.jl")
 
-include("../src/Oxygen.jl")
-using .Oxygen
 
 struct Person
     name::String

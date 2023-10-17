@@ -1,10 +1,12 @@
 using Requires
 
-################################################################
-#                       Templating Plugins                     #
-################################################################
-
 function __init__()
+
+    
+    ################################################################
+    #                       Templating Extensions                     #
+    ################################################################
+
     @require Mustache="ffc61752-8dc7-55ee-8c37-f3e9cdd09e70" begin
         include("templating/mustache.jl"); using .MustacheTemplating
         export mustache

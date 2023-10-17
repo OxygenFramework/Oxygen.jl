@@ -2,11 +2,14 @@ module TemplatingTests
 using MIMEs
 using Test
 using HTTP
-# using Mustache
+using Mustache
 using OteraEngine
 
 include("../src/Oxygen.jl")
 using .Oxygen
+
+# ensure the init is called so we can load the extensions
+Oxygen.__init__()
 
 
 function clean_output(result::String)
@@ -33,80 +36,80 @@ data = Dict(
     "in_ca" => true
 )
 
-# mustache_template = mt"""
-# Hello {{name}}
-# You have just won {{value}} dollars!
-# {{#in_ca}}
-# Well, {{taxed_value}} dollars, after taxes.
-# {{/in_ca}}
-# """
+mustache_template = mt"""
+Hello {{name}}
+You have just won {{value}} dollars!
+{{#in_ca}}
+Well, {{taxed_value}} dollars, after taxes.
+{{/in_ca}}
+"""
 
-# mustache_template_str = """
-# Hello {{name}}
-# You have just won {{value}} dollars!
-# {{#in_ca}}
-# Well, {{taxed_value}} dollars, after taxes.
-# {{/in_ca}}
-# """
+mustache_template_str = """
+Hello {{name}}
+You have just won {{value}} dollars!
+{{#in_ca}}
+Well, {{taxed_value}} dollars, after taxes.
+{{/in_ca}}
+"""
 
-# expected_output = """
-# Hello Chris
-# You have just won 10000 dollars!
-# Well, 6000.0 dollars, after taxes.
-# """
+expected_output = """
+Hello Chris
+You have just won 10000 dollars!
+Well, 6000.0 dollars, after taxes.
+"""
 
-# @testset "mustache() from string tests " begin 
-#     render = mustache(mustache_template_str)
-#     response = render(data)
-#     @test response.body |> String |> clean_output == expected_output
-# end
-
-
-# @testset "mustache() from file " begin 
-#     render = mustache("./content/mustache_template.txt")
-#     response = render(data)
-#     @test response.body |> String |> clean_output == expected_output
-# end
+@testset "mustache() from string tests " begin 
+    render = mustache(mustache_template_str)
+    response = render(data)
+    @test response.body |> String |> clean_output == expected_output
+end
 
 
-# @testset "mustache() from template" begin 
-#     render = mustache(mustache_template)
-#     response = render(data)
-#     @test response.body |> String |> clean_output == expected_output
-# end
+@testset "mustache() from file " begin 
+    render = mustache("./content/mustache_template.txt")
+    response = render(data)
+    @test response.body |> String |> clean_output == expected_output
+end
 
 
-# @testset "mustache api tests" begin 
+@testset "mustache() from template" begin 
+    render = mustache(mustache_template)
+    response = render(data)
+    @test response.body |> String |> clean_output == expected_output
+end
 
-#     mus_str = mustache(mustache_template_str)
-#     mus_tpl = mustache(mustache_template)
-#     mus_file = mustache("./content/mustache_template.txt")
+
+@testset "mustache api tests" begin 
+
+    mus_str = mustache(mustache_template_str)
+    mus_tpl = mustache(mustache_template)
+    mus_file = mustache("./content/mustache_template.txt")
     
-#     @get "/mustache/string" function()
-#         return mus_str(data)
-#     end
+    @get "/mustache/string" function()
+        return mus_str(data)
+    end
     
-#     @get "/mustache/template" function()
-#         return mus_tpl(data)
-#     end
+    @get "/mustache/template" function()
+        return mus_tpl(data)
+    end
     
-#     @get "/mustache/file" function()
-#         return mus_file(data)
-#     end
+    @get "/mustache/file" function()
+        return mus_file(data)
+    end
     
-#     r = internalrequest(HTTP.Request("GET", "/mustache/string"))
-#     @test r.status == 200
-#     @test r.body |> String |> clean_output == expected_output
+    r = internalrequest(HTTP.Request("GET", "/mustache/string"))
+    @test r.status == 200
+    @test r.body |> String |> clean_output == expected_output
     
-#     r = internalrequest(HTTP.Request("GET", "/mustache/template"))
-#     @test r.status == 200
-#     @test r.body |> String |> clean_output == expected_output
+    r = internalrequest(HTTP.Request("GET", "/mustache/template"))
+    @test r.status == 200
+    @test r.body |> String |> clean_output == expected_output
     
-#     r = internalrequest(HTTP.Request("GET", "/mustache/file"))
-#     @test r.status == 200
-#     @test r.body |> String |> clean_output == expected_output
+    r = internalrequest(HTTP.Request("GET", "/mustache/file"))
+    @test r.status == 200
+    @test r.body |> String |> clean_output == expected_output
     
-# end
+end
 
 
 

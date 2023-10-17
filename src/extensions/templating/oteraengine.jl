@@ -74,6 +74,7 @@ function otera(file::IO; mime_type=nothing, kwargs...)
         content = tmp(; combined_kwargs...)
         create_response(content, status, headers)
     end
+
 end
 
 end

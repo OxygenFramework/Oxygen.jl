@@ -16,6 +16,7 @@ export @get, @post, @put, @patch, @delete, @route, @cron,
         enabledocs, disabledocs, isdocsenabled, starttasks, stoptasks,
         resetstate, startcronjobs, stopcronjobs
 
-include("plugins/load.jl");
+# Load any optional extensions
+include("extensions/load.jl");
 
 end

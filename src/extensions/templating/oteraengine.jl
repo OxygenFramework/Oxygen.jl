@@ -62,10 +62,10 @@ function otera(file::IO; mime_type=nothing, kwargs...)
 
     return function(;tmp_init=nothing, jl_init=nothing, status=200, headers=[], template_kwargs...)
         combined_kwargs = Dict{Symbol, Any}(template_kwargs)
-        if !isnothing(tmp_init)
+        if tmp_init !== nothing
             combined_kwargs[:tmp_init] = tmp_init
         end
-        if !isnothing(jl_init)
+        if jl_init !== nothing
             combined_kwargs[:jl_init] = jl_init
         end
         content = tmp(; combined_kwargs...)

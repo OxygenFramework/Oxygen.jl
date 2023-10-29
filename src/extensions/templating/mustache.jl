@@ -13,6 +13,8 @@ Create a function that renders a Mustache `template` string with the provided `k
 If `template` is a file path, it reads the file content as the template string.
 Returns a function that takes a dictionary `data`, optional `status`, and `headers`, and
 returns an HTTP Response object with the rendered content.
+
+To get more info read the docs here: https://github.com/jverzani/Mustache.jl
 """
 function mustache(template::String; mime_type=nothing, kwargs...)
     mime_is_known = !isnothing(mime_type)
@@ -42,6 +44,8 @@ end
 Create a function that renders a Mustache template defined by `tokens` with the provided `kwargs`.
 Returns a function that takes a dictionary `data`, optional `status`, and `headers`, and
 returns an HTTP Response object with the rendered content.
+
+To get more info read the docs here: https://github.com/jverzani/Mustache.jl
 """
 function mustache(tokens::Mustache.MustacheTokens; mime_type=nothing, kwargs...)
     mime_is_known = !isnothing(mime_type)
@@ -58,6 +62,8 @@ end
 Create a function that renders a Mustache template from a file `file` with the provided `kwargs`.
 Returns a function that takes a dictionary `data`, optional `status`, and `headers`, and
 returns an HTTP Response object with the rendered content.
+
+To get more info read the docs here: https://github.com/jverzani/Mustache.jl
 """
 function mustache(file::IO; mime_type=nothing, kwargs...)
     template = read(file, String)

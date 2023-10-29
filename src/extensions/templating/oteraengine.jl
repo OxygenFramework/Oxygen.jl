@@ -13,6 +13,8 @@ If `template` is a file path, it reads the file content as the template string.
 Returns a function that takes a dictionary `data` (default is an empty dictionary),
 optional `status`, `headers`, and `template_kwargs`, and returns an HTTP Response object
 with the rendered content.
+
+To get more info read the docs here: https://github.com/MommaWatasu/OteraEngine.jl
 """
 function otera(template::String; mime_type=nothing, kwargs...)
     is_file_path = isfile(template)
@@ -54,6 +56,8 @@ end
 Create a function that renders an Otera template from a file `file` with the provided `kwargs`.
 Returns a function that takes a dictionary `data`, optional `status`, `headers`, and `template_kwargs`,
 and returns an HTTP Response object with the rendered content.
+
+To get more info read the docs here: https://github.com/MommaWatasu/OteraEngine.jl
 """
 function otera(file::IO; mime_type=nothing, kwargs...)
     template = read(file, String)

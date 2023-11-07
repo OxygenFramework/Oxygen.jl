@@ -4,6 +4,9 @@ using HTTP
 using Sockets 
 using JSON3
 using Base 
+using Revise
+# Revise has problems tracking this package
+push!(Revise.dont_watch_pkgs, :Oxygen) 
 
 include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
@@ -13,12 +16,15 @@ include("autodoc.jl");      using .AutoDoc
 export @get, @post, @put, @patch, @delete, @route, @cron, 
         @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
         get, post, put, patch, delete, route,
-        start, serve, serveparallel, terminate, internalrequest, file,
-        configdocs, mergeschema, setschema, getschema, router,
+        start, serve, servedebug, serveparallel, terminate,
+        internalrequest, file, configdocs,
+        mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
-        starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs
+        starttasks, stoptasks, clear_routes, resetstate,
+        startcronjobs, stopcronjobs
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
+global server_lock = ReentrantLock()
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
 global const timers = Ref{Vector{Timer}}([])
 
@@ -32,8 +38,16 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(host::String, port::Int)
+function serverwelcome(host::String, port::Int; debug=false, report_watch=nothing)
     printstyled(oxygen_title, color = :blue, bold = true)  
+    if debug
+        @info "🐛 Debugging mode enabled" 
+        if report_watch !== nothing
+            @info "👀 Watching filesystem for changes: $report_watch" 
+        else
+            @info "👀 Watching filesystem for changes" 
+        end
+    end
     @info "✅ Started server: http://$host:$port" 
     @info "📖 Documentation: http://$host:$port$docspath"
 end
@@ -139,6 +153,58 @@ function serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1"
     server[] # this value is returned if startserver() is ran in async mode
 end
 
+function InvokeLatestMiddleware(handler)
+    return function(req::HTTP.Request)
+        return Base.@invokelatest handler(req)
+    end
+end
+
+"""
+    servedebug(; watches=(autodetect), watch_all=true, revise_pause=0.02, revise_callbacks::Vector=[], middleware::Vector=[], middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
+
+Start the debug webserver with your own custom request handler
+"""
+function servedebug(; watches=nothing, watch_all=true, revise_pause=0.02, revise_callbacks::Vector=[], middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, catch_errors=true, kwargs...)
+    watch_dir = nothing
+    if watches === nothing
+        caller_file = String(stacktrace()[3].file)
+        caller_dir = dirname(caller_file)
+        project_dir = caller_dir
+        found = false
+        while true
+            if isfile(joinpath(project_dir, "Project.toml"))
+                found = true
+                break
+            end
+            parent = dirname(project_dir)
+            if parent == project_dir
+                break
+            end
+            project_dir = parent
+        end
+        if found
+            watch_dir = project_dir
+        else
+            watch_dir = caller_dir
+        end
+        watches = [watch_dir]
+    end
+
+    insert!(middleware, 1, InvokeLatestMiddleware)
+
+    function start(kwargs)
+        # recompose our middleware each time we restart the
+        # middleware so we can pick up changes
+        configured_middleware = setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors)
+        final_handler = Base.@invokelatest handler(configured_middleware)
+        HTTP.serve!(final_handler, host, port; kwargs...)
+    end
+
+    startdebugserver(host, port, kwargs, start
+    ; watches=watches, watch_all=watch_all, revise_pause=revise_pause,
+      revise_callbacks=revise_callbacks, report_watch=watch_dir)
+end
+
 """
     serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
 
@@ -199,6 +265,50 @@ function startserver(host, port, kwargs, async, start)
             resetstate()
         end
     end
+end
+
+"""
+Internal helper function to launch a debug server
+"""
+function startdebugserver(host, port, kwargs, start; watches, watch_all, revise_pause, revise_callbacks, report_watch=nothing)
+    addr = Sockets.InetAddr(host, port)
+    socket_server = Sockets.listen(addr)
+    try
+        serverwelcome(host, port, debug=true, report_watch=report_watch)
+        setup()
+        preprocessed_kwargs = preprocesskwargs(kwargs)
+        preprocessed_kwargs[:server] = socket_server
+        server[] = start(preprocessed_kwargs)
+        Revise.entr(watches; postpone=true, all=watch_all, pause=revise_pause) do 
+            Core.println(Core.stderr, "Revising")
+            for callback in revise_callbacks
+                callback()
+            end
+            close(socket_server)
+            socket_server = Sockets.listen(addr)
+            preprocessed_kwargs[:server] = socket_server
+            server[] = start(preprocessed_kwargs)
+        end
+        starttasks()
+        registercronjobs()
+        startcronjobs()
+        try 
+            wait(server[])
+        catch 
+            println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
+        end
+    finally
+        # close server on exit
+        terminate()
+        # only reset state on exit if we aren't running asynchronously & are running it interactively 
+        if isinteractive()
+            resetstate()
+        end
+    end
+end
+
+function clear_routes()
+    ROUTER[] = HTTP.Router()
 end
 
 """
@@ -536,7 +646,7 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
     # case 1.) The request handler is an anonymous function (don't parse out path params)
     if numfields <= 1
         handle = function (req)
-            func()
+            Base.@invokelatest func()
         end   
     # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
     elseif hasPathParams && numfields > 2
@@ -546,12 +656,12 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
             # convert params to their designated type (if applicable)
             pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
             # pass all parameters to handler in the correct order 
-            func(req, pathParams...)
+            Base.@invokelatest func(req, pathParams...)
         end
     # case 3.) This function should only get passed the request object
     else 
         handle = function (req) 
-            func(req)
+            Base.@invokelatest func(req)
         end
     end
 

@@ -10,9 +10,9 @@ include("core.jl");         using .Core
 export @get, @post, @put, @patch, @delete, @route, @cron, 
         @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
         get, post, put, patch, delete, route,
-        serve, serveparallel, terminate, internalrequest, 
+        serve, serveparallel, servedebug, terminate, internalrequest, 
         redirect, queryparams, binary, text, json, html, file, 
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, starttasks, stoptasks,
-        resetstate, startcronjobs, stopcronjobs
+        clear_routes, resetstate, startcronjobs, stopcronjobs
 end

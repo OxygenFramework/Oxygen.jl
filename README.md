@@ -30,6 +30,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 - Built-in Cron Scheduling (on endpoints & functions)
 - Middleware chaining (at the application, router, and route levels)
 - Static & Dynamic file hosting
+- Templating Support
 - Route tagging
 - Repeat tasks
 
@@ -362,6 +363,105 @@ end
 
 serve()
 ```
+
+
+## Templating
+
+Rather than building an internal engine for templating or adding additional dependencies, Oxygen 
+provides two package extensions and helper functions to support `Mustache.jl` and `OteraEngine.jl` templates.
+
+Oxygen provides a simple wrapper api around both packages that makes it easy to render templates from strings,
+templates, and files. This api returns a `render` function which takes accepts input arguments to fill out the
+template.
+
+In all scenarios, the rendered template is formatted inside a single HTTP.Response object ready to get served by the api.
+By default, the mime types are auto-detected either by looking at the content of the template or the extension name on the file.
+If you know the mime type you can pass it directly through the `mime_type` keyword argument to skip the detection process.
+
+### Mustache Templating
+Please take a look at the [Mustache.jl](https://jverzani.github.io/Mustache.jl/dev/) documentation to learn the full capabilities of the package
+
+Example 1: Rendering a Mustache Template from a File
+
+```julia
+using Oxygen
+
+# Load the Mustache template from a file and create a render function
+render = mustache("./templates/greeting.txt", from_file=false)
+
+@get "/mustache/file" function()
+    data = Dict("name" => "Chris")
+    return render(data)  # This will return an HTML.Response with the rendered template
+end
+```
+
+Example 2: Specifying MIME Type for a plain string Mustache Template
+```julia
+using Oxygen
+
+# Define a Mustache template (both plain strings and mustache templates are supported)
+template_str = "Hello, {{name}}!"
+
+# Create a render function, specifying the MIME type as text/plain
+render = mustache(template_str, mime_type="text/plain") # mime_type keyword arg is optional 
+
+@get "/plain/text" function()
+    data = Dict("name" => "Chris")
+    return render(data)  # This will return a plain text response with the rendered template
+end
+```
+
+### Otera Templating
+Please take a look at the [OteraEngine.jl](https://mommawatasu.github.io/OteraEngine.jl/dev/tutorial/#API) documentation to learn the full capabilities of the package
+
+Example 1: Rendering an Otera Template with Logic and Loops
+
+```julia
+using Oxygen
+
+# Define an Otera template
+template_str = """
+<html>
+    <head><title>{{ title }}</title></head>
+    <body>
+        {% for name in names %}
+        Hello {{ name }}<br>
+        {% end %}
+    </body>
+</html>
+"""
+
+# Create a render function for the Otera template
+render = otera(template_str)
+
+@get "/otera/loop" function()
+    data = Dict("title" => "Greetings", "names" => ["Alice", "Bob", "Chris"])
+    return render(data)  # This will return an HTML.Response with the rendered template
+end
+```
+
+In this example, an Otera template is defined with a for-loop that iterates over a list of names, greeting each name.
+
+Example 2: Running Julia Code in Otera Template
+```julia
+using Oxygen
+
+# Define an Otera template with embedded Julia code
+template_str = """
+The square of {{ number }} is {< number^2 >}.
+"""
+
+# Create a render function for the Otera template
+render = otera(template_str)
+
+@get "/otera/square" function()
+    data = Dict("number" => 5)
+    return render(data)  # This will return an HTML.Response with the rendered template
+end
+
+```
+
+In this example, an Otera template is defined with embedded Julia code that calculates the square of a given number. 
 
 ## Mounting Static Files
 

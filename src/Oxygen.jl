@@ -15,4 +15,8 @@ export @get, @post, @put, @patch, @delete, @route, @cron,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, starttasks, stoptasks,
         resetstate, startcronjobs, stopcronjobs
+
+# Load any optional extensions
+include("extensions/load.jl");
+
 end

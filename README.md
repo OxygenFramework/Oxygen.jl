@@ -368,13 +368,13 @@ serve()
 ## Templating
 
 Rather than building an internal engine for templating or adding additional dependencies, Oxygen 
-provides two package extensions and helper functions to support `Mustache.jl` and `OteraEngine.jl` templates.
+provides two package extensions to support `Mustache.jl` and `OteraEngine.jl` templates.
 
 Oxygen provides a simple wrapper api around both packages that makes it easy to render templates from strings,
-templates, and files. This api returns a `render` function which takes accepts input arguments to fill out the
+templates, and files. This wrapper api returns a `render` function which accepts a dictionary of inputs to fill out the
 template.
 
-In all scenarios, the rendered template is formatted inside a single HTTP.Response object ready to get served by the api.
+In all scenarios, the rendered template is returned inside a HTTP.Response object ready to get served by the api.
 By default, the mime types are auto-detected either by looking at the content of the template or the extension name on the file.
 If you know the mime type you can pass it directly through the `mime_type` keyword argument to skip the detection process.
 

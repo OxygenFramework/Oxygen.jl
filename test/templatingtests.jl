@@ -13,13 +13,15 @@ Oxygen.__init__()
 
 
 function clean_output(result::String)
-    # handles running on windows with carrige returns
-    if occursin("\r\n", result)
-        return replace(result, "\r\n" =>"\n")
-    else 
-        return result
-    end
+    # Replace carriage returns followed by line feeds (\r\n) with a single newline (\n)
+    tmp = replace(result, "\r\n" => "\n")
+
+    # Replace sequences of newline followed by spaces (\n\s*) with a single newline (\n)
+    tmp = replace(tmp, r"\n\s*\n" => "\n")
+
+    return tmp
 end
+
 
 function remove_trailing_newline(s::String)::String
     if !isempty(s) && last(s) == '\n'
@@ -58,6 +60,13 @@ You have just won 10000 dollars!
 Well, 6000.0 dollars, after taxes.
 """
 
+@testset "mustache() from string no args " begin 
+    plain_temp = "Hello World!"
+    render = mustache(plain_temp, mime_type="text/plain")
+    response = render()
+    @test response.body |> String |> clean_output == plain_temp
+end
+
 @testset "mustache() from string tests " begin 
     render = mustache(mustache_template_str, mime_type="text/plain")
     response = render(data)
@@ -73,13 +82,13 @@ end
 
 
 @testset "mustache() from file no content type" begin 
-    render = mustache("./content/mustache_template.txt")
+    render = mustache("./content/mustache_template.txt", from_file=true)
     response = render(data)
     @test response.body |> String |> clean_output == expected_output
 end
 
 @testset "mustache() from file w/ content type" begin 
-    render = mustache("./content/mustache_template.txt", mime_type="text/plain")
+    render = mustache("./content/mustache_template.txt", mime_type="text/plain", from_file=true)
     response = render(data)
     @test response.body |> String |> clean_output == expected_output
 end
@@ -117,7 +126,7 @@ end
 
     mus_str = mustache(mustache_template_str)
     mus_tpl = mustache(mustache_template)
-    mus_file = mustache("./content/mustache_template.txt")
+    mus_file = mustache("./content/mustache_template.txt", from_file=true)
     
     @get "/mustache/string" function()
         return mus_str(data)
@@ -159,7 +168,7 @@ end
             {% for i in 1 : 10 %}
             Hello {{i}}
             {% end %}
-            {% with age = 15 %}
+            {% if age == 15 %}
             and your age is {{ age }}.
             {% end %}
         </body>
@@ -187,15 +196,15 @@ end
     """ |> remove_trailing_newline
 
     # detect content type
-    data = Dict("name" => "watasu")
+    data = Dict("name" => "watasu", "age" => 15)
     render = otera(template)
-    result = render(tmp_init=data)
+    result = render(data)
     @test result.body |> String |> clean_output == expected_output
 
     # with explicit content type
-    data = Dict("name" => "watasu")
+    data = Dict("name" => "watasu", "age" => 15)
     render = otera(template; mime_type="text/html")
-    result = render(tmp_init=data)
+    result = render(data)
     @test result.body |> String |> clean_output == expected_output
 
 end
@@ -223,15 +232,15 @@ end
     </html>
     """ |> remove_trailing_newline
 
-    data = Dict("name" => "watasu")
+    data = Dict("name" => "watasu", "age" => 15)
 
-    render = otera("./content/otera_template.html")
-    result = render(tmp_init=data)
+    render = otera("./content/otera_template.html", from_file=true)
+    result = render(data)
     @test result.body |> String |> clean_output == expected_output
 
     # with explicit content type
     render = otera(open("./content/otera_template.html"); mime_type="text/html")
-    result = render(tmp_init=data)
+    result = render(data)
     @test result.body |> String |> clean_output == expected_output
 end
 
@@ -258,11 +267,11 @@ end
     </html>
     """ |> remove_trailing_newline
 
-    render = otera("./content/otera_template_no_vars.html")
+    render = otera("./content/otera_template_no_vars.html", from_file=true)
     result = render()
     @test result.body |> String |> clean_output == expected_output
 
-    render = otera("./content/otera_template_no_vars.html", mime_type="text/html")
+    render = otera("./content/otera_template_no_vars.html", mime_type="text/html", from_file=true)
     result = render()
     @test result.body |> String |> clean_output == expected_output
 end
@@ -279,23 +288,23 @@ end
     </html>
     """ |> remove_trailing_newline
 
-    render = otera("./content/otera_template_jl.html")
-    result = render(jl_init=Dict("name" => "World"))
+    render = otera("./content/otera_template_jl.html", from_file=true)
+    result = render(Dict("name" => "World"))
     @test result.body |> String |> clean_output == expected_output
 end
 
 @testset "otera() running julia code in template" begin 
-    template = "```3 ^ 3```. Hello {{ name }}!"
+    template = "{< 3 ^ 3 >}. Hello {{ name }}!"
     expected_output = "27. Hello world!"
     render = otera(template)
-    result = render(tmp_init=Dict("name"=>"world"))
+    result = render(Dict("name"=>"world"))
     @test result.body |> String |> clean_output == expected_output
 
     template = """
     <html>
         <head><title>Jinja Test Page</title></head>
         <body>
-            Hello, ```name```!
+            Hello, {<name>}!
         </body>
     </html>
     """ |> remove_trailing_newline
@@ -310,22 +319,22 @@ end
     """ |> remove_trailing_newline
 
     render = otera(template)
-    result = render(jl_init=Dict("name"=>"world"))
+    result = render(Dict("name"=>"world"))
     @test result.body |> String |> clean_output == expected_output
 end
 
-@testset "otera() combined tmp_init & jl_init test" begin 
-    template = "```parse(Int, value) ^ 3```. Hello {{name}}!"
+@testset "otera() combined tmp_init & init test" begin 
+    template = "{< parse(Int, value) ^ 3 >}. Hello {{name}}!"
     expected_output = "27. Hello World!"
     render = otera(template)
-    result = render(tmp_init=Dict("name" => "World"), jl_init=Dict("value" => "3"))
+    result = render(Dict("name" => "World", "value" => "3"))
 end
 
-@testset "otera() combined tmp_init & jl_init test with content type" begin 
-    template = "```parse(Int, value) ^ 3```. Hello {{name}}!"
+@testset "otera() combined tmp_init & init test with content type" begin 
+    template = "{< parse(Int, value) ^ 3 >}. Hello {{name}}!"
     expected_output = "27. Hello World!"
     render = otera(template, mime_type = "text/plain")
-    result = render(tmp_init=Dict("name" => "World"), jl_init=Dict("value" => "3"))
+    result = render(Dict("name" => "World", "value" => "3"))
 end
 
 

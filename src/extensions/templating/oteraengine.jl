@@ -16,12 +16,11 @@ with the rendered content.
 
 To get more info read the docs here: https://github.com/MommaWatasu/OteraEngine.jl
 """
-function otera(template::String; mime_type=nothing, kwargs...)
-    is_file_path = isfile(template)
+function otera(template::String; mime_type=nothing, from_file=false, kwargs...)
     mime_is_known = !isnothing(mime_type)
 
     # Case 1: a path to a file was passed
-    if is_file_path
+    if from_file
         if mime_is_known
             return otera(open(template); mime_type=mime_type, kwargs...)
         else
@@ -32,21 +31,16 @@ function otera(template::String; mime_type=nothing, kwargs...)
     end
 
     # Case 2: A string template was passed directly
-    tmp = Template(template, path=is_file_path; kwargs...)
-
-    return function(;tmp_init=nothing, jl_init=nothing, status=200, headers=[], template_kwargs...)
+    tmp = Template(template, path=from_file; kwargs...)
+    return function(data = nothing; status=200, headers=[], template_kwargs...)
         combined_kwargs = Dict{Symbol, Any}(template_kwargs)
-        if tmp_init !== nothing
-            combined_kwargs[:tmp_init] = tmp_init
-        end
-        if jl_init !== nothing
-            combined_kwargs[:jl_init] = jl_init
+        if data !== nothing
+            combined_kwargs[:init] = data
         end
         content = tmp(; combined_kwargs...)
         resp_headers = mime_is_known ? [["Content-Type" => mime_type]; headers] : headers
         response(content, status, resp_headers; detect=!mime_is_known)
     end
-
 end
 
 
@@ -63,20 +57,16 @@ function otera(file::IO; mime_type=nothing, kwargs...)
     template = read(file, String)
     mime_is_known = !isnothing(mime_type)
     tmp = Template(template, path=false; kwargs...)
-
-    return function(;tmp_init=nothing, jl_init=nothing, status=200, headers=[], template_kwargs...)
+    
+    return function(data = nothing; status=200, headers=[], template_kwargs...)
         combined_kwargs = Dict{Symbol, Any}(template_kwargs)
-        if tmp_init !== nothing
-            combined_kwargs[:tmp_init] = tmp_init
-        end
-        if jl_init !== nothing
-            combined_kwargs[:jl_init] = jl_init
+        if data !== nothing
+            combined_kwargs[:init] = data
         end
         content = tmp(; combined_kwargs...)
         resp_headers = mime_is_known ? [["Content-Type" => mime_type]; headers] : headers
         response(content, status, resp_headers; detect=!mime_is_known)
     end
-
 end
 
 end

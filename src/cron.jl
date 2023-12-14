@@ -3,8 +3,14 @@ module Cron
 using Dates
 export @cron, startcronjobs, stopcronjobs, resetcronstate
 
+# The vector of all running tasks
 global const jobs = Ref{Vector}([])
+
+# Vector of cron expressions and lambda
 global const job_definitions = Ref{Vector}([])
+
+# The global flag used to stop all tasks
+global const run = Ref{Bool}(false)
 
 """
     @cron(expression::String, func::Function)
@@ -33,6 +39,13 @@ macro cron(expression, name, func)
     end
 end
 
+"""
+Clear any internal reference's to prexisting jobs
+"""
+function clearcronjobs()
+    job_definitions[] = []
+    jobs[] = []
+end
 
 """
     stopcronjobs()
@@ -40,9 +53,8 @@ end
 Stop each background task by sending an InterruptException to each one
 """
 function stopcronjobs()
-   for job in jobs[]
-        try Base.throwto(job, InterruptException()) catch end
-    end
+    run[] = false
+    clearcronjobs()
 end
 
 """
@@ -50,8 +62,6 @@ Reset the globals in this module
 """
 function resetcronstate()
     stopcronjobs()
-    job_definitions[] = []
-    jobs[] = []
 end
 
 """
@@ -66,6 +76,8 @@ function startcronjobs()
         return 
     end
 
+    run[] = true
+
     println()
     printstyled("[ Starting $(length(job_definitions[])) Cron Job(s)\n", color = :green, bold = true)  
 
@@ -75,16 +87,21 @@ function startcronjobs()
         printstyled("[ Cron: ", color = :green, bold = true)  
         println(message)
         t = Threads.@spawn begin 
-            while true
+            while run[]
                 # get the current datetime object
                 current_time::DateTime = now()
                 # get the next datetime object that matches this cron expression
                 next_date = next(expression, current_time)
                 # figure out how long we need to wait
                 ms_to_wait = sleep_until(current_time, next_date)
-                # Ensures that the function is never called twice in the in same second
-                if ms_to_wait >= 1_000
-                    sleep(Millisecond(ms_to_wait))
+                # breaking the sleep into 1-second intervals
+                while ms_to_wait > 0 && run[]
+                    sleep_time = min(1000, ms_to_wait)  # Sleep for 1 second or the remaining time
+                    sleep(Millisecond(sleep_time))
+                    ms_to_wait -= sleep_time  # Reduce the wait time
+                end
+                # Execute the function if it's time and if we are still running
+                if ms_to_wait <= 0 && run[]
                     try 
                         @async func()
                     catch error 

@@ -16,7 +16,8 @@ export @get, @post, @put, @patch, @delete, @route, @cron,
         start, serve, serveparallel, terminate, internalrequest, file,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, registermountedfolder,
-        starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs
+        starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs, 
+        clearcronjobs
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 

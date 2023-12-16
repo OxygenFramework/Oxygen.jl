@@ -46,11 +46,10 @@ end
 """
     clearcronjobs()
 
-Clear any internal reference's to prexisting cron jobsjobs
+Clear any internal reference's to prexisting cron jobs
 """
 function clearcronjobs()
     empty!(job_definitions[])
-    empty!(jobs[])
 end
 
 """

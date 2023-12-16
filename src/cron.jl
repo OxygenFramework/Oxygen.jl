@@ -87,7 +87,6 @@ function startcronjobs()
 
     run[] = true
 
-    println(job_definitions[])
     println()
     printstyled("[ Starting $(length(job_definitions[])) Cron Job(s)\n", color = :green, bold = true)  
 

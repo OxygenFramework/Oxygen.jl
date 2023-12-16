@@ -13,13 +13,12 @@ function logtime()
     @info "current time: $(now())"
 end
 
+# initialize the app with an already running cron job
 @cron "*" logtime
 
 get("/register") do
-    @info "registering jobs"
-    @cron "*/2" function()
-        @info "current time: $(now())"
-    end
+    @info "registering new job"
+    @cron "*/2" logtime
     "registered jobs"
 end
 

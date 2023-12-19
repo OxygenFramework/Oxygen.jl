@@ -9,6 +9,7 @@ include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
+include("metrics.jl");      using .Metrics
 
 export @get, @post, @put, @patch, @delete, @route, @cron, 
         @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
@@ -163,13 +164,19 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(;middleware::Vector = [], serialize::Bool=true, catch_errors::Bool=true) :: Function
+function setupmiddleware(;middleware::Vector = [], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware() ? [compose(getrouter(), middleware)] : reverse(middleware)
     # check if we should use our default serialization middleware function
-    serialized = serialize ? [DefaultSerializer(catch_errors)] : [DefaultHandler(catch_errors)]
+    serializer = serialize ? DefaultSerializer : DefaultHandler
+
     # combine all our middleware functions
-    return reduce(|>, [getrouter(), serialized..., custom_middleware...])    
+    return reduce(|>, [
+        getrouter(), 
+        serializer(!metrics && catch_errors), # disable error catching if metrics is enabled
+        MetricsMiddleware(catch_errors), 
+        custom_middleware...
+    ])    
 end
 
 """
@@ -241,6 +248,7 @@ This function called right before serving the server, which is useful for perfor
 """
 function setup()
     setupswagger()
+    setupmetrics()
 end
 
 
@@ -283,18 +291,6 @@ function getrouter()
     return ROUTER[]
 end 
 
-function handlerequest(getresponse::Function, catch_errors::Bool) :: HTTP.Response
-    if !catch_errors
-        return getresponse()
-    else 
-        try 
-            return getresponse()       
-        catch error
-            @error "ERROR: " exception=(error, catch_backtrace())
-            return HTTP.Response(500, "The Server encountered a problem")
-        end  
-    end
-end
 
 """
 Provide an empty handler function, so that our middleware chain isn't broken
@@ -331,6 +327,7 @@ function DefaultSerializer(catch_errors::Bool)
         end
     end
 end
+
 
 ### Routing Macros ###
 
@@ -585,6 +582,21 @@ function setupswagger()
     
 end
 
+
+# add the swagger and swagger/schema routes 
+function setupmetrics()
+    @get "$docspath/metrics" function()
+        return Dict(
+            "get_endpoints_hits" => get_endpoints_hits(), 
+            "get_ip_hits" => get_ip_hits(), 
+            "get_total_requests" => get_total_requests(), 
+            "get_unique_clients" => get_unique_clients(), 
+            "get_error_rate" => get_error_rate(), 
+            "average_response_time" => average_response_time(),
+            "error_rate" => calculate_error_rate(),
+        )
+    end
+end
 
 """
     @staticfiles(folder::String, mountdir::String, set_headers::Union{Function,Nothing}=nothing)

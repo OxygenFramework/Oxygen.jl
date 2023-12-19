@@ -14,7 +14,12 @@ function logtime()
 end
 
 # initialize the app with an already running cron job
-@cron "*" logtime
+# @cron "*" logtime
+
+
+get("/error") do
+    "a" + 3
+end
 
 get("/register") do
     @info "registering new job"

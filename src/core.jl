@@ -587,7 +587,7 @@ end
 function setupmetrics()
     @get "$docspath/metrics" function()
         return Dict(
-           "server" =>calculate_server_metrics(),
+           "server" => calculate_server_metrics(),
            "endpoints" => calculate_metrics_all_endpoints()
         )
     end

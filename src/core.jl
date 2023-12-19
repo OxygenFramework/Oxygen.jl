@@ -38,6 +38,7 @@ function serverwelcome(host::String, port::Int)
     printstyled(oxygen_title, color = :blue, bold = true)  
     @info "✅ Started server: http://$host:$port" 
     @info "📖 Documentation: http://$host:$port$docspath"
+    @info "📊 Metrics: http://$host:$port$docspath/metrics"
 end
 
 
@@ -165,17 +166,22 @@ users to 'chain' middleware functions like `serve(handler1, handler2, handler3)`
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
 function setupmiddleware(;middleware::Vector = [], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
+
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware() ? [compose(getrouter(), middleware)] : reverse(middleware)
+
     # check if we should use our default serialization middleware function
-    serializer = serialize ? DefaultSerializer : DefaultHandler
+    serializer = serialize ? [DefaultSerializer(catch_errors)] : []
+
+    # check if we need to track metrics
+    collect_metrics = metrics ? [MetricsMiddleware(false)] : []
 
     # combine all our middleware functions
     return reduce(|>, [
         getrouter(), 
-        serializer(!metrics && catch_errors), # disable error catching if metrics is enabled
-        MetricsMiddleware(catch_errors), 
-        custom_middleware...
+        serializer...,
+        custom_middleware...,
+        collect_metrics...
     ])    
 end
 
@@ -586,9 +592,14 @@ end
 # add the swagger and swagger/schema routes 
 function setupmetrics()
     @get "$docspath/metrics" function()
+        return dashboard()
+    end
+    
+    @get "$docspath/metrics/data" function()
         return Dict(
            "server" => calculate_server_metrics(),
-           "endpoints" => calculate_metrics_all_endpoints()
+           "endpoints" => calculate_metrics_all_endpoints(),
+           "history" => get_history()
         )
     end
 end

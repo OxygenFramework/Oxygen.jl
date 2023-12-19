@@ -119,7 +119,7 @@ end
 
 
 
-function handlerequest(getresponse::Function, catch_errors::Bool) :: HTTP.Response
+function handlerequest(getresponse::Function, catch_errors::Bool)
     if !catch_errors
         return getresponse()
     else 

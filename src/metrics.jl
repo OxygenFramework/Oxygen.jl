@@ -1,19 +1,36 @@
 module Metrics
 
-using DataStructures
 using Statistics
 using HTTP
 using JSON3
 using Profile
 using Dates
 
-# include("util.jl"); using .Util
+include("util.jl"); using .Util
 
-export MetricsMiddleware, get_endpoints_hits, get_ip_hits, 
-    get_total_requests, get_unique_clients, get_error_rate, get_resource_usage,
-    calculate_error_rate, average_response_time, get_history, handlerequest
+export MetricsMiddleware, get_history, get_history_size, 
+    calculate_server_metrics,
+    calculate_metrics_all_endpoints
 
-global const history = Ref{CircularDeque{HTTP.Request}}(CircularDeque{HTTP.Request}(10_000))
+struct HTTPTransaction
+    # Intristic Properties
+    ip::String
+    uri::String
+    timestamp::DateTime
+
+    # derived properties
+    duration::Float64
+    sucess::Bool
+    error_message::Union{String,Nothing}
+end
+    
+global const history_size = Ref{Int}(0)
+global const history = Ref{Vector{HTTPTransaction}}([])
+
+function push_history(transaction::HTTPTransaction)
+    history_size[] += 1
+    push!(history[], transaction)
+end
 
 ### Individual global constants for each metric
 
@@ -28,116 +45,81 @@ global const resource_usage = Ref{Any}(Dict())
 global cumulative_response_time = Ref{Float64}(0.0)
 global response_count = Ref{Int}(0)
 
-function get_history()
-    return history[]
+function get_history_size() :: Int
+    return copy(history_size[])
 end
 
-### Getter functions
-function get_endpoints_hits()
-    return copy(endpoints_hits[])
-end
-
-function get_ip_hits()
-    return copy(ip_hits[])
-end
-
-function get_total_requests()
-    return copy(total_requests[])
-end
-
-function get_unique_clients()
-    return copy(unique_clients[])
-end
-
-function get_error_rate()
-    return copy(error_rate[])
-end
-
-function get_resource_usage()
-    return copy(resource_usage[])
+function get_history() :: Vector{HTTPTransaction}
+    return copy(history[])
 end
 
 
-### Metric Functions
-
-function log_endpoint_hit(endpoint::String)
-    endpoints_hits[][endpoint] = get(endpoints_hits[], endpoint, 0) + 1
+# Helper function to calculate percentile
+function percentile(values, p)
+    index = ceil(Int, p / 100 * length(values))
+    return sort(values)[index]
 end
 
-function log_ip_hit(ip::String)
-    ip_hits[][ip] = get(ip_hits[], ip, 0) + 1
-    push!(unique_clients[], ip)
-end
-
-function log_response_time(time::Float64)
-    push!(response_times[], time)
-end
-
-function update_request_count()
-    total_requests[] += 1
-end
-
-function log_error(endpoint::String, error_type::String)
-    if !haskey(error_rate[], endpoint)
-        error_rate[][endpoint] = Dict()
+### Helper function to calculate metrics for a set of transactions
+function calculate_metrics_for_transactions(transactions::Vector{HTTPTransaction})
+    if isempty(transactions)
+        return Dict(
+            "total_requests" => 0,
+            "avg_latency" => 0,
+            "min_latency" => 0,
+            "max_latency" => 0,
+            "95th_percentile_latency" => 0,
+            "error_rate" => 0
+        )
     end
-    error_rate[][endpoint][error_type] = get(error_rate[][endpoint], error_type, 0) + 1
+
+    total_requests = length(transactions)
+    latencies = [t.duration for t in transactions]
+    successes = [t.sucess for t in transactions]
+
+    avg_latency = mean(latencies)
+    min_latency = minimum(latencies)
+    max_latency = maximum(latencies)
+    percentile_95_latency = percentile(latencies, 95)
+    total_errors = count(!, successes)
+    error_rate = total_errors / total_requests
+
+    return Dict(
+        "total_requests" => total_requests,
+        "avg_latency" => avg_latency,
+        "min_latency" => min_latency,
+        "max_latency" => max_latency,
+        "95th_percentile_latency" => percentile_95_latency,
+        "error_rate" => error_rate
+    )
 end
 
-
-function log_response_time(time::Float64)
-    cumulative_response_time[] += time
-    response_count[] += 1
-end
-
-function average_response_time()
-    return response_count[] > 0 ? cumulative_response_time[] / response_count[] : 0.0
-end
-
-function calculate_error_rate()
-    total_requests = sum(values(endpoints_hits[]))
-    total_errors = sum([sum(values(ep_errors)) for ep_errors in values(error_rate[])])
-    return total_requests > 0 ? total_errors / total_requests : 0.0
-end
-
-function reset_metrics()
-    endpoints_hits[] = Dict()
-    ip_hits[] = Dict()
-    total_requests[] = 0
-    unique_clients[] = Set()
-    error_rate[] = Dict()
-    resource_usage[] = Dict()
-    cumulative_response_time[] = 0.0
-    response_count[] = 0
-end
-
-struct HTTPTransaction
-    # Intristic Properties
-    ip::String
-    uri::String
-    start::DateTime
-    request::HTTP.Request
-    response::HTTP.Response
-
-    # derived properties
-    duration::Float64
-    error::Bool
-    error_message::String
-end
-
-function handlerequest(getresponse::Function, catch_errors::Bool) :: HTTP.Response
-    if !catch_errors
-        return getresponse()
-    else 
-        try 
-            return getresponse()       
-        catch error
-            @error "ERROR: " exception=(error, catch_backtrace())
-            return HTTP.Response(500, "The Server encountered a problem")
-        end  
+### Helper function to group transactions by endpoint
+function group_transactions_by_endpoint()
+    grouped_transactions = Dict{String, Vector{HTTPTransaction}}()
+    for transaction in history[]
+        push!(get!(grouped_transactions, transaction.uri, []), transaction)
     end
+    return grouped_transactions
 end
 
+function calculate_server_metrics()
+    calculate_metrics_for_transactions(history[])
+end
+
+function calculate_endpoint_metrics(endpoint_uri::String)
+    endpoint_transactions = filter(t -> t.uri == endpoint_uri, history[])
+    return calculate_metrics_for_transactions(endpoint_transactions)
+end
+
+function calculate_metrics_all_endpoints()
+    grouped_transactions = group_transactions_by_endpoint()
+    endpoint_metrics = Dict{String, Dict}()
+    for (uri, transactions) in grouped_transactions
+        endpoint_metrics[uri] = calculate_metrics_for_transactions(transactions)
+    end
+    return endpoint_metrics
+end
 
 ### Middleware
 
@@ -145,15 +127,8 @@ function MetricsMiddleware(catch_errors::Bool)
     return function(handler)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
-                push!(history[], req)
-
-                println(now(UTC))
 
                 start_time = time()
-                # Update metrics for request
-                log_endpoint_hit(string(req.target))
-                log_ip_hit(string(req.context[:ip]))
-                update_request_count()
 
                 try
                     # Handle the request
@@ -161,13 +136,31 @@ function MetricsMiddleware(catch_errors::Bool)
     
                     # Log response time
                     response_time = time() - start_time
-                    log_response_time(response_time)
+
+                    push_history(HTTPTransaction(
+                        string(req.context[:ip]),
+                        string(req.target),
+                        now(UTC),
+                        response_time,
+                        true,
+                        nothing
+                    ))
 
                     # Return the response
                     return response
                 catch e
+
+                    response_time = time() - start_time
+
                     # Log the error
-                    log_error(string(req.target), string(typeof(e)))
+                    push_history(HTTPTransaction(
+                        string(req.context[:ip]),
+                        string(req.target),
+                        now(UTC),
+                        response_time,
+                        false,
+                        string(typeof(e))
+                    ))
 
                     # let our caller figure out if they want to handle the error or not
                     rethrow(e)
@@ -178,4 +171,4 @@ function MetricsMiddleware(catch_errors::Bool)
 end
 
 
-end # module
+end

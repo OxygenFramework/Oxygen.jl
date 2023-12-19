@@ -587,13 +587,8 @@ end
 function setupmetrics()
     @get "$docspath/metrics" function()
         return Dict(
-            "get_endpoints_hits" => get_endpoints_hits(), 
-            "get_ip_hits" => get_ip_hits(), 
-            "get_total_requests" => get_total_requests(), 
-            "get_unique_clients" => get_unique_clients(), 
-            "get_error_rate" => get_error_rate(), 
-            "average_response_time" => average_response_time(),
-            "error_rate" => calculate_error_rate(),
+           "metrics" =>calculate_server_metrics(),
+           "endpoints" => calculate_metrics_all_endpoints()
         )
     end
 end

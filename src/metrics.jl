@@ -71,7 +71,7 @@ function calculate_metrics_for_transactions(transactions::Vector{HTTPTransaction
             "avg_latency" => 0,
             "min_latency" => 0,
             "max_latency" => 0,
-            "95th_percentile_latency" => 0,
+            "percentile_latency_95th" => 0,
             "error_rate" => 0
         )
     end
@@ -92,7 +92,7 @@ function calculate_metrics_for_transactions(transactions::Vector{HTTPTransaction
         "avg_latency" => avg_latency,
         "min_latency" => min_latency,
         "max_latency" => max_latency,
-        "95th_percentile_latency" => percentile_95_latency,
+        "percentile_latency_95th" => percentile_95_latency,
         "error_rate" => error_rate
     )
 end

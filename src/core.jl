@@ -599,7 +599,7 @@ function setupmetrics()
         return Dict(
            "server" => calculate_server_metrics(),
            "endpoints" => calculate_metrics_all_endpoints(),
-           "history" => get_history()
+           "bins" => bin_and_count_transactions()
         )
     end
 end

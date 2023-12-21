@@ -12,7 +12,7 @@ include("bodyparsers.jl"); using .BodyParsers
 export MetricsMiddleware, get_history, get_history_size, 
     calculate_server_metrics,
     calculate_metrics_all_endpoints, 
-    capture_metrics, dashboard
+    capture_metrics, dashboard, bin_and_count_transactions
 
 struct HTTPTransaction
     # Intristic Properties
@@ -122,6 +122,27 @@ function calculate_metrics_all_endpoints()
         endpoint_metrics[uri] = calculate_metrics_for_transactions(transactions)
     end
     return endpoint_metrics
+end
+
+function bin_and_count_transactions(transactions::Vector{HTTPTransaction}=get_history(), window::Int = 15)
+    current_time = now()
+
+    # Filter transactions older than 'window' minutes
+    recent_transactions = filter(t -> current_time - t.timestamp <= Minute(window), transactions)
+
+    # Bin transactions by minute and count them
+    bin_counts = Dict{DateTime, Int}()
+    for t in recent_transactions
+        minute_bin = floor(t.timestamp, Minute)
+        bin_counts[minute_bin] = get(bin_counts, minute_bin, 0) + 1
+    end
+
+    # Sort the bins by time and return the 15 most recent bins
+    sorted_bins = sort(collect(bin_counts), by=first, rev=true)
+    recent_bins = sorted_bins[1:min(15, length(sorted_bins))]
+
+    # Create an array of objects with timestamp and count
+    return [Dict("timestamp" => k, "count"=> v) for (k,v) in recent_bins]
 end
 
 ### Middleware

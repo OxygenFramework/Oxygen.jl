@@ -4,6 +4,11 @@ import React from 'react';
 import { hookstate, useHookstate, ImmutableObject} from '@hookstate/core';
 
 
+interface TimedBins {
+    timestamp: Date
+    count: number
+}
+
 interface Stats {
     percentile_latency_95th: number
     avg_latency: number
@@ -28,7 +33,7 @@ interface Endpoints {
 
 interface Metrics {
     server: Stats
-    history: Transaction[]
+    bins: TimedBins[]
     endpoints: Endpoints
 }
 
@@ -46,7 +51,7 @@ const defaultState: AppState = {
             min_latency: NaN,
             error_rate: NaN
         },
-        history: [],
+        bins: [],
         endpoints: {}
     }
 }

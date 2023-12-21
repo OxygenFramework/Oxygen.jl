@@ -14,7 +14,8 @@ import LineChart from "components/Charts/LineChart";
 import {DonutChart} from "components/Charts/DonutChart";
 import {TimeSeriesChart} from "components/Charts/TimeSeriesChart";
 import {LineChartCustom} from "components/Charts/LineChartCustom";
-
+import {LineChartDemo} from "components/Charts/LineDemo";
+import {LineChartV2} from "components/Charts/LineChartV2"
 // Custom icons
 import {
   CartIcon,
@@ -32,6 +33,8 @@ import Projects from "./components/Projects";
 import SalesOverview from "./components/SalesOverview";
 import WorkWithTheRockets from "./components/WorkWithTheRockets";
 import { getMetrics, globalState } from "../../../state/index.ts";
+
+import { lineChartData, lineChartOptions } from "variables/charts";
 
 // "95th_percentile_latency": 0.5103640556335449,
 // "avg_latency": 0.10452442169189453,
@@ -60,84 +63,9 @@ export default function Dashboard() {
 
     }, {keys: [], values: []}
   )
+  
+  const data = bins?.map(bin => [new Date(bin.timestamp).getTime(), bin.count])
 
-  const hardcoded_data = {
-    "bins": [
-      {
-          "count": 4,
-          "timestamp": "2023-12-21T03:16:00.0"
-      },
-      {
-          "count": 10,
-          "timestamp": "2023-12-21T03:15:00.0"
-      },
-      {
-          "count": 19,
-          "timestamp": "2023-12-21T03:14:00.0"
-      },
-      {
-          "count": 60,
-          "timestamp": "2023-12-21T03:13:00.0"
-      },
-      {
-          "count": 60,
-          "timestamp": "2023-12-21T03:12:00.0"
-      },
-      {
-          "count": 61,
-          "timestamp": "2023-12-21T03:11:00.0"
-      },
-      {
-          "count": 59,
-          "timestamp": "2023-12-21T03:10:00.0"
-      },
-      {
-          "count": 26,
-          "timestamp": "2023-12-21T03:09:00.0"
-      },
-      {
-          "count": 27,
-          "timestamp": "2023-12-21T03:08:00.0"
-      },
-      {
-          "count": 38,
-          "timestamp": "2023-12-21T03:07:00.0"
-      },
-      {
-          "count": 18,
-          "timestamp": "2023-12-21T03:06:00.0"
-      },
-      {
-          "count": 13,
-          "timestamp": "2023-12-21T03:05:00.0"
-      }
-  ]
-  }
-
-
-
-let data = {
-  series: [{
-    data: bins.map(bin => bin.count)
-  }]
-
-  }
-
-
-  let chartops = {
-    xaxis: {
-      type: "datetime",
-      categories: [bins.map(bin => bin.timestamp)],
-      labels: {
-        style: {
-          colors: "#c8cfca",
-          fontSize: "12px",
-        },
-      },
-    }
-  }
-
-  console.log(chartops)
   return (
     <Flex flexDirection='column' pt={{ base: "120px", md: "75px" }}>
       <SimpleGrid columns={{ sm: 1, md: 2, xl: 3 }} spacing='24px'>
@@ -210,6 +138,20 @@ let data = {
         templateRows={{ sm: "repeat(2, 1fr)", lg: "1fr" }}
         gap='24px'
         mb={{ lg: "26px" }}>
+
+
+                
+        <SalesOverview
+          title={"Requests Distribution"}
+          percentage={undefined}
+          chart={<DonutChart series={total_requests.values} options={{labels: total_requests.keys}}/>}
+        />
+
+        <SalesOverview
+          title={"Incoming Requests (15 Minute Window)"}
+          chart={ <LineChartV2 data={data}/>}
+        /> 
+
         <ActiveUsers
           title={"Active Users"}
           percentage={23}
@@ -221,17 +163,6 @@ let data = {
           chart={<LineChart />}
         />
 
-        <SalesOverview
-          title={"Requests Distribution"}
-          percentage={undefined}
-          chart={<DonutChart series={total_requests.values} options={{labels: total_requests.keys}}/>}
-        />
-        <SalesOverview
-            title={"Time Series"}
-            percentage={undefined}
-            chart={<LineChartCustom series={data} options={chartops}/>}
-          />
-        
       </Grid>
 
     </Flex>

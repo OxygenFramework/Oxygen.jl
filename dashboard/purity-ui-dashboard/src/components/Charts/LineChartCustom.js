@@ -1,6 +1,7 @@
 import React from "react";
 import ReactApexChart from "react-apexcharts";
-import { lineChartData, lineChartOptions } from "variables/charts";
+// import { lineChartData, lineChartOptions } from "variables/charts";
+
 
 export class LineChartCustom extends React.PureComponent {
   constructor(props) {
@@ -10,8 +11,8 @@ export class LineChartCustom extends React.PureComponent {
   render() {
     return (
       <ReactApexChart
-        options={this.props.options}
-        series={this.props.series}
+        options={{}}
+        series={[]}
         type="area"
         width="100%"
         height="100%"

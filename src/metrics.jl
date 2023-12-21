@@ -98,9 +98,21 @@ function calculate_metrics_for_transactions(transactions::Vector{HTTPTransaction
 end
 
 ### Helper function to group transactions by endpoint
+
+function recent_transactions(window::Union{Int,Nothing} = nothing) :: Vector{HTTPTransaction}
+    # return everything if no window is passed
+    if isnothing(window)
+        return history[]
+    end
+    current_time = now()
+    lower_bound = Minute(window)
+    return filter(t -> current_time - t.timestamp <= lower_bound, history[]) 
+end
+
 function group_transactions_by_endpoint()
     grouped_transactions = Dict{String, Vector{HTTPTransaction}}()
-    for transaction in history[]
+    transactions = recent_transactions()
+    for transaction in transactions
         push!(get!(grouped_transactions, transaction.uri, []), transaction)
     end
     return grouped_transactions
@@ -108,6 +120,11 @@ end
 
 function calculate_server_metrics()
     calculate_metrics_for_transactions(history[])
+end
+
+function calculate_server_metrics()
+    transactions = recent_transactions()
+    calculate_metrics_for_transactions(transactions)
 end
 
 function calculate_endpoint_metrics(endpoint_uri::String)
@@ -124,15 +141,13 @@ function calculate_metrics_all_endpoints()
     return endpoint_metrics
 end
 
-function bin_and_count_transactions(transactions::Vector{HTTPTransaction}=get_history(), window::Int = 15)
-    current_time = now()
+function bin_and_count_transactions(window::Int = 15)
 
-    # Filter transactions older than 'window' minutes
-    recent_transactions = filter(t -> current_time - t.timestamp <= Minute(window), transactions)
+    transactions = recent_transactions(window)
 
     # Bin transactions by minute and count them
     bin_counts = Dict{DateTime, Int}()
-    for t in recent_transactions
+    for t in transactions
         minute_bin = floor(t.timestamp, Minute)
         bin_counts[minute_bin] = get(bin_counts, minute_bin, 0) + 1
     end

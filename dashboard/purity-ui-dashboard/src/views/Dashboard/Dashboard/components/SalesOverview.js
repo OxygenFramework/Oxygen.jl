@@ -9,7 +9,7 @@ const SalesOverview = ({ title, percentage, chart }) => {
   const textColor = useColorModeValue("gray.700", "white");
   return (
     <Card p='28px 10px 16px 0px' mb={{ sm: "26px", lg: "0px" }}>
-      <CardHeader mb='20px' pl='22px'>
+      <CardHeader mb='10px' pl='22px'>
         <Flex direction='column' alignSelf='flex-start'>
           <Text fontSize='lg' color={textColor} fontWeight='bold' mb='6px'>
             {title}

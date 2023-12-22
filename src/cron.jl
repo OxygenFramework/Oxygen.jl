@@ -1,10 +1,16 @@
 module Cron
 
 using Dates
-export @cron, startcronjobs, stopcronjobs, resetcronstate
+export @cron, startcronjobs, stopcronjobs, clearcronjobs, resetcronstate
 
-global const jobs = Ref{Vector}([])
-global const job_definitions = Ref{Vector}([])
+# The vector of all running tasks
+global const jobs = Ref{Set}(Set())
+
+# Vector of cron expressions and lambda
+global const job_definitions = Ref{Set}(Set())
+
+# The global flag used to stop all tasks
+global const run = Ref{Bool}(false)
 
 """
     @cron(expression::String, func::Function)
@@ -15,8 +21,10 @@ or the random Id julia assigns to each lambda function.
 macro cron(expression, func)
     quote 
         local f = $(esc(func))
-        local job = ($(esc(expression)), "$f", f)
-        push!($job_definitions[], job)
+        local job_definition = ($(esc(expression)), "$f", f)
+        local job_id = hash(job_definition)
+        local job = (job_id, job_definition...)
+        push!($job_definitions[], job)  
     end
 end
 
@@ -28,21 +36,31 @@ is used by the server on startup to log out all cron jobs.
 """
 macro cron(expression, name, func)
     quote 
-        local job = ($(esc(expression)), $(esc(name)), $(esc(func)))
+        local job_definition = ($(esc(expression)), $(esc(name)), $(esc(func)))
+        local job_id = hash(job_definition)
+        local job = (job_id, job_definition...)
         push!($job_definitions[], job)
     end
 end
 
+"""
+    clearcronjobs()
+
+Clear any internal reference's to prexisting cron jobs
+"""
+function clearcronjobs()
+    empty!(job_definitions[])
+end
 
 """
     stopcronjobs()
 
-Stop each background task by sending an InterruptException to each one
+Stop each background task by toggling a global reference that all cron jobs reference
 """
 function stopcronjobs()
-   for job in jobs[]
-        try Base.throwto(job, InterruptException()) catch end
-    end
+    run[] = false
+    # clear the set of all running job ids
+    empty!(jobs[])
 end
 
 """
@@ -50,8 +68,7 @@ Reset the globals in this module
 """
 function resetcronstate()
     stopcronjobs()
-    job_definitions[] = []
-    jobs[] = []
+    clearcronjobs()
 end
 
 """
@@ -63,40 +80,62 @@ and sleep untill the next time it's suppost to
 function startcronjobs()
     
     if isempty(job_definitions[])
+        # printstyled("[ Cron: There are no registered cron jobs to start\n", color = :green, bold = true)  
         return 
     end
+
+    run[] = true
 
     println()
     printstyled("[ Starting $(length(job_definitions[])) Cron Job(s)\n", color = :green, bold = true)  
 
-    i = 1
-    for (expression, name, func) in job_definitions[]
-        message = isnothing(name) ? "$expression" : "id: $i, expr: $expression, name: $name"
+    for (job_id, expression, name, func) in job_definitions[]
+
+        # prevent duplicate jobs from getting ran
+        if job_id in jobs[]
+            printstyled("[ Cron: Job already Exists ", color = :green, bold = true)
+            println("{ id: $job_id, expr: $expression, name: $name }")
+            continue
+        end
+
+        # add job it to set of running jobs
+        push!(jobs[], job_id)
+
+        message = isnothing(name) ? "$expression" : "{ id: $job_id, expr: $expression, name: $name }"
         printstyled("[ Cron: ", color = :green, bold = true)  
         println(message)
-        t = Threads.@spawn begin 
-            while true
-                # get the current datetime object
-                current_time::DateTime = now()
-                # get the next datetime object that matches this cron expression
-                next_date = next(expression, current_time)
-                # figure out how long we need to wait
-                ms_to_wait = sleep_until(current_time, next_date)
-                # Ensures that the function is never called twice in the in same second
-                if ms_to_wait >= 1_000
-                    sleep(Millisecond(ms_to_wait))
-                    try 
-                        @async func()
-                    catch error 
-                        @error "ERROR in CRON job: " exception=(error, catch_backtrace())
+        Threads.@spawn begin
+            try 
+
+                while run[]
+                    # get the current datetime object
+                    current_time::DateTime = now()
+                    # get the next datetime object that matches this cron expression
+                    next_date = next(expression, current_time)
+                    # figure out how long we need to wait
+                    ms_to_wait = sleep_until(current_time, next_date)
+                    # breaking the sleep into 1-second intervals
+                    while ms_to_wait > 0 && run[]
+                        sleep_time = min(1000, ms_to_wait)  # Sleep for 1 second or the remaining time
+                        sleep(Millisecond(sleep_time))
+                        ms_to_wait -= sleep_time  # Reduce the wait time
+                    end
+                    # Execute the function if it's time and if we are still running
+                    if ms_to_wait <= 0 && run[]
+                        try 
+                            @async func()
+                        catch error 
+                            @error "ERROR in CRON job { id: $job_id, expr: $expression, name: $name }: " exception=(error, catch_backtrace())
+                        end
                     end
                 end
+            finally
+                # remove job id if the job fails
+                delete!(jobs[], job_id)
             end
         end
-        push!(jobs[], t)
-        i += 1
+        
     end
-    println()
 end
 
 weeknames = Dict(

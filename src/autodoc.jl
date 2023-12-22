@@ -10,7 +10,7 @@ export registerschema, docspath, schemapath, getschema,
     swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, 
     router, enabledocs, disabledocs, isdocsenabled, registermountedfolder, 
     getrepeatasks, hasmiddleware, compose, resetstatevariables,
-    @cron, stopcronjobs, startcronjobs, getcronjobs, resetcronstate
+    @cron, stopcronjobs, startcronjobs, getcronjobs, clearcronjobs, resetcronstate
 
 const SWAGGER_VERSION = "swagger@5.7.2"
 const REDOC_VERSION = "redoc@2.1.2"

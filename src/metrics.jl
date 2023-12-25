@@ -13,7 +13,8 @@ export MetricsMiddleware, get_history, get_history_size,
     calculate_server_metrics,
     calculate_metrics_all_endpoints, 
     capture_metrics, dashboard, bin_and_count_transactions,
-    bin_transactions, requests_per_unit, avg_latency_per_unit
+    bin_transactions, requests_per_unit, avg_latency_per_unit,
+    timeseries, series_format
 
 struct HTTPTransaction
     # Intristic Properties
@@ -141,6 +142,30 @@ function calculate_metrics_all_endpoints()
     return endpoint_metrics
 end
 
+struct TimeseriesRecord 
+    timestamp::DateTime
+    value::Number
+end
+
+"""
+Convert a dictionary of timeseries data into an array of sorted records
+"""
+function timeseries(data) :: Vector{TimeseriesRecord}
+    # Convert the dictionary into an array of [timestamp, value] pairs
+    timestamp_value_pairs = [TimeseriesRecord(k, v) for (k, v) in data]
+    
+    # Sort the array based on the timestamps (the first element in each pair)
+    return sort(timestamp_value_pairs, by=x->x.timestamp)    
+end
+
+
+"""
+Convert a TimeseriesRecord into a matrix format that works better with apex charts
+"""
+function series_format(data::Vector{TimeseriesRecord}) :: Vector{Vector{Union{DateTime,Number}}}
+    return [[item.timestamp, item.value] for item in data]
+end
+
 """
 Helper function to group transactions within a given timeframe
 """
@@ -163,58 +188,12 @@ function bin_transactions(lower_bound=Minute(15), unit=Minute, strategy=nothing)
     return binned
 end
 
-
-# """
-# Return the average latency per second for the server
-# """
-# function avg_latency_per_second(lower_bound=Minute(15))
-
-#     bin_counts = Dict{DateTime, Vector{Number}}()
-
-#     function strategy(bin, transaction) 
-#         if haskey(bin_counts, bin)
-#             push!(bin_counts[bin], transaction.duration)
-#         else 
-#             bin_counts[bin] = [transaction.duration]
-#         end
-
-#     end
-
-#     bin_transactions(lower_bound, Second, strategy)
-    
-#     averages = Dict{DateTime, Number}()
-#     for (k,v) in bin_counts
-#         averages[k] = mean(v)
-#     end
-
-#     return averages
-# end
-
-
-
-# function requests_per_second(lower_bound=Minute(15))
-
-#     bin_counts = Dict{DateTime, Int}()
-
-#     function strategy(bin, transaction) 
-#         bin_counts[bin] = get(bin_counts, bin, 0) + 1
-#     end
-
-#     bin_transactions(lower_bound, Second, strategy)
-    
-#     return bin_counts
-# end
-
 function requests_per_unit(unit, lower_bound=Minute(15))
-
     bin_counts = Dict{DateTime, Int}()
-
     function count_transactions(bin, transaction) 
         bin_counts[bin] = get(bin_counts, bin, 0) + 1
     end
-
     bin_transactions(lower_bound, unit, count_transactions)
-
     return bin_counts
 end
 
@@ -222,25 +201,19 @@ end
 Return the average latency per minute for the server
 """
 function avg_latency_per_unit(unit, lower_bound=Minute(15))
-
     bin_counts = Dict{DateTime, Vector{Number}}()
-
     function strategy(bin, transaction) 
         if haskey(bin_counts, bin)
             push!(bin_counts[bin], transaction.duration)
         else 
             bin_counts[bin] = [transaction.duration]
         end
-
     end
-
     bin_transactions(lower_bound, unit, strategy)
-    
     averages = Dict{DateTime, Number}()
     for (k,v) in bin_counts
         averages[k] = mean(v)
     end
-
     return averages
 end
 

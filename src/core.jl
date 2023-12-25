@@ -600,10 +600,10 @@ function setupmetrics()
         return Dict(
            "server" => calculate_server_metrics(),
            "endpoints" => calculate_metrics_all_endpoints(),
-           "avg_latency_per_second" => requests_per_unit(Second),
-           "requests_per_second" => avg_latency_per_unit(Second),
-           "avg_latency_per_minute" => avg_latency_per_unit(Minute),
-           "requests_per_minute" => requests_per_unit(Minute)
+           "avg_latency_per_second" => requests_per_unit(Second)  |> timeseries |> series_format,
+           "requests_per_second" => avg_latency_per_unit(Second)  |> timeseries |> series_format,
+           "avg_latency_per_minute" => avg_latency_per_unit(Minute)  |> timeseries |> series_format,
+           "requests_per_minute" => requests_per_unit(Minute) |> timeseries |> series_format #series_format(timeseries(
         )
     end
 end

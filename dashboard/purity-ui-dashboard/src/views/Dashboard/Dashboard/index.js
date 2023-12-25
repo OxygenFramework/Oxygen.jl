@@ -49,8 +49,6 @@ export default function Dashboard() {
     avg_latency_per_second,
     requests_per_second
   } = state.metrics.get();
-  // const requests_per_second = state.metrics.requests_per_second.get()
-  // const avg_latency_per_second = state.metrics.avg_latency_per_second.get()
 
   const total_requests = Object.entries(state.metrics.endpoints.get() || {})?.reduce((acc, item) => {
         let [k,v] = item;
@@ -61,12 +59,6 @@ export default function Dashboard() {
     }, {keys: [], values: []}
   )
 
-  function timeseries(data){
-    // Convert the data into an array of [timestamp, value] pairs
-    return Object.entries(data)
-            .map(item => [new Date(item[0]).getTime(), item[1]])
-            .sort((a, b) => a[0] - b[0])
-  }
 
   return (
     <Flex flexDirection='column' pt={{ base: "120px", md: "75px" }}>
@@ -155,22 +147,22 @@ export default function Dashboard() {
 
         <SalesOverview
           title={"Requests / Minute (15 Minute Window)"}
-          chart={ <LineChartV2 data={timeseries(requests_per_minute)}/>}
+          chart={<LineChartV2 data={requests_per_minute}/>}
         /> 
 
         <SalesOverview
           title={"Avg Latency / Minute (15 Minute Window)"}
-          chart={ <LineChartV2 data={timeseries(avg_latency_per_minute)}/>}
+          chart={<LineChartV2 data={avg_latency_per_minute}/>}
         /> 
 
         <SalesOverview
           title={"Requests / Second (15 Minute Window)"}
-          chart={ <LineChartV2 data={timeseries(requests_per_second)}/>}
+          chart={<LineChartV2 data={requests_per_second}/>}
         /> 
 
         <SalesOverview
           title={"Avg Latency / Second (15 Minute Window)"}
-          chart={<LineChartV2 data={timeseries(avg_latency_per_second)}/>}
+          chart={<LineChartV2 data={avg_latency_per_second}/>}
         /> 
 
         {/* <ActiveUsers

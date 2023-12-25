@@ -4,6 +4,7 @@ using HTTP
 using Sockets 
 using JSON3
 using Base 
+using Dates
 
 include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
@@ -599,7 +600,10 @@ function setupmetrics()
         return Dict(
            "server" => calculate_server_metrics(),
            "endpoints" => calculate_metrics_all_endpoints(),
-           "bins" => bin_and_count_transactions()
+           "avg_latency_per_second" => requests_per_unit(Second),
+           "requests_per_second" => avg_latency_per_unit(Second),
+           "avg_latency_per_minute" => avg_latency_per_unit(Minute),
+           "requests_per_minute" => requests_per_unit(Minute)
         )
     end
 end

@@ -34,15 +34,6 @@ import SalesOverview from "./components/SalesOverview";
 import WorkWithTheRockets from "./components/WorkWithTheRockets";
 import { getMetrics, globalState } from "../../../state/index.ts";
 
-import { lineChartData, lineChartOptions } from "variables/charts";
-
-// "95th_percentile_latency": 0.5103640556335449,
-// "avg_latency": 0.10452442169189453,
-// "max_latency": 0.5103640556335449,
-// "total_requests": 5,
-// "min_latency": 0.000011920928955078125,
-// "error_rate": 0.2
-
 import { useHookstate, State } from '@hookstate/core';
 
 export default function Dashboard() {
@@ -52,8 +43,14 @@ export default function Dashboard() {
   const state = useHookstate(globalState);
 
   const server = state.metrics.server.get();
-
-  const bins = state.metrics.bins.get() || [];
+  const {
+    avg_latency_per_minute,
+    requests_per_minute,
+    avg_latency_per_second,
+    requests_per_second
+  } = state.metrics.get();
+  // const requests_per_second = state.metrics.requests_per_second.get()
+  // const avg_latency_per_second = state.metrics.avg_latency_per_second.get()
 
   const total_requests = Object.entries(state.metrics.endpoints.get() || {})?.reduce((acc, item) => {
         let [k,v] = item;
@@ -63,8 +60,13 @@ export default function Dashboard() {
 
     }, {keys: [], values: []}
   )
-  
-  const data = bins?.map(bin => [new Date(bin.timestamp).getTime(), bin.count])
+
+  function timeseries(data){
+    // Convert the data into an array of [timestamp, value] pairs
+    return Object.entries(data)
+            .map(item => [new Date(item[0]).getTime(), item[1]])
+            .sort((a, b) => a[0] - b[0])
+  }
 
   return (
     <Flex flexDirection='column' pt={{ base: "120px", md: "75px" }}>
@@ -139,20 +141,39 @@ export default function Dashboard() {
         gap='24px'
         mb={{ lg: "26px" }}>
 
-
-                
         <SalesOverview
           title={"Requests Distribution"}
           percentage={undefined}
-          chart={<DonutChart series={total_requests.values} options={{labels: total_requests.keys}}/>}
+          chart={<DonutChart series={total_requests.values} 
+            options={{
+              labels: total_requests.keys,
+              legend: {
+                position: 'bottom',
+              }
+            }}/>}
         />
 
         <SalesOverview
-          title={"Incoming Requests (15 Minute Window)"}
-          chart={ <LineChartV2 data={data}/>}
+          title={"Requests / Minute (15 Minute Window)"}
+          chart={ <LineChartV2 data={timeseries(requests_per_minute)}/>}
         /> 
 
-        <ActiveUsers
+        <SalesOverview
+          title={"Avg Latency / Minute (15 Minute Window)"}
+          chart={ <LineChartV2 data={timeseries(avg_latency_per_minute)}/>}
+        /> 
+
+        <SalesOverview
+          title={"Requests / Second (15 Minute Window)"}
+          chart={ <LineChartV2 data={timeseries(requests_per_second)}/>}
+        /> 
+
+        <SalesOverview
+          title={"Avg Latency / Second (15 Minute Window)"}
+          chart={<LineChartV2 data={timeseries(avg_latency_per_second)}/>}
+        /> 
+
+        {/* <ActiveUsers
           title={"Active Users"}
           percentage={23}
           chart={<BarChart />}
@@ -161,10 +182,11 @@ export default function Dashboard() {
           title={"Sales Overview"}
           percentage={5}
           chart={<LineChart />}
-        />
+        /> */}
 
       </Grid>
 
     </Flex>
   );
+
 }

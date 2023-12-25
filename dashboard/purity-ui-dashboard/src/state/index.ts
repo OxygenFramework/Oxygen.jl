@@ -31,10 +31,14 @@ interface Endpoints {
     [name: string]: Stats;
 }
 
+
 interface Metrics {
     server: Stats
-    bins: TimedBins[]
     endpoints: Endpoints
+    avg_latency_per_second: Map<Date, Number>
+    requests_per_second: Map<Date, Number>
+    requests_per_minute: Map<Date, Number>
+    avg_latency_per_minute: Map<Date, Number>
 }
 
 export interface AppState {
@@ -51,8 +55,11 @@ const defaultState: AppState = {
             min_latency: NaN,
             error_rate: NaN
         },
-        bins: [],
-        endpoints: {}
+        endpoints: {},
+        avg_latency_per_second: new Map(),
+        requests_per_second: new Map(),
+        requests_per_minute: new Map(),
+        avg_latency_per_minute:  new Map()
     }
 }
 

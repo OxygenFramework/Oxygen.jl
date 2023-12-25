@@ -5,6 +5,7 @@ export const LineChartV2 = (props) => {
 
   const [chartOptions, setChartOptions] = useState({
     options: {
+      stacked: false,
       chart: {
         toolbar: {
           show: false,
@@ -20,7 +21,7 @@ export const LineChartV2 = (props) => {
         curve: "smooth",
       },
       xaxis: {
-        type: "datetime",
+        type: 'datetime',
         labels: {
           style: {
             colors: "#c8cfca",
@@ -33,6 +34,14 @@ export const LineChartV2 = (props) => {
           style: {
             colors: "#c8cfca",
             fontSize: "12px",
+          },
+          formatter: function (value) {
+            // Check if the value has more than three decimal places
+            if (value % 1 !== 0) {
+              return parseFloat(value).toFixed(3);
+            }
+            // If it doesn't have more than three decimal places, leave it as is
+            return value;
           },
         },
       },

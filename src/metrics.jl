@@ -12,7 +12,8 @@ include("bodyparsers.jl"); using .BodyParsers
 export MetricsMiddleware, get_history, get_history_size, 
     calculate_server_metrics,
     calculate_metrics_all_endpoints, 
-    capture_metrics, dashboard, bin_and_count_transactions
+    capture_metrics, dashboard, bin_and_count_transactions,
+    bin_transactions, requests_per_unit, avg_latency_per_unit
 
 struct HTTPTransaction
     # Intristic Properties
@@ -99,19 +100,18 @@ end
 
 ### Helper function to group transactions by endpoint
 
-function recent_transactions(window::Union{Int,Nothing} = nothing) :: Vector{HTTPTransaction}
+function recent_transactions(lower_bound=nothing) :: Vector{HTTPTransaction}
     # return everything if no window is passed
-    if isnothing(window)
+    if isnothing(lower_bound)
         return history[]
     end
     current_time = now()
-    lower_bound = Minute(window)
     return filter(t -> current_time - t.timestamp <= lower_bound, history[]) 
 end
 
 function group_transactions_by_endpoint()
     grouped_transactions = Dict{String, Vector{HTTPTransaction}}()
-    transactions = recent_transactions()
+    transactions = recent_transactions(Minute(15))
     for transaction in transactions
         push!(get!(grouped_transactions, transaction.uri, []), transaction)
     end
@@ -122,8 +122,8 @@ function calculate_server_metrics()
     calculate_metrics_for_transactions(history[])
 end
 
-function calculate_server_metrics()
-    transactions = recent_transactions()
+function calculate_server_metrics(lower_bound=Minute(15))
+    transactions = recent_transactions(lower_bound)
     calculate_metrics_for_transactions(transactions)
 end
 
@@ -141,24 +141,110 @@ function calculate_metrics_all_endpoints()
     return endpoint_metrics
 end
 
-function bin_and_count_transactions(window::Int = 15)
-
-    transactions = recent_transactions(window)
-
-    # Bin transactions by minute and count them
-    bin_counts = Dict{DateTime, Int}()
+"""
+Helper function to group transactions within a given timeframe
+"""
+function bin_transactions(lower_bound=Minute(15), unit=Minute, strategy=nothing) :: Dict{DateTime,Vector{HTTPTransaction}}
+    transactions = recent_transactions(lower_bound)
+    binned = Dict{DateTime, Vector{HTTPTransaction}}()
     for t in transactions
-        minute_bin = floor(t.timestamp, Minute)
-        bin_counts[minute_bin] = get(bin_counts, minute_bin, 0) + 1
+        # create bin's based on the given unit
+        bin_value = floor(t.timestamp, unit)
+        if !haskey(binned, bin_value)
+            binned[bin_value] = [t]
+        else
+            push!(binned[bin_value], t)
+        end
+        
+        if !isnothing(strategy)
+            strategy(bin_value, t)
+        end
+    end
+    return binned
+end
+
+
+# """
+# Return the average latency per second for the server
+# """
+# function avg_latency_per_second(lower_bound=Minute(15))
+
+#     bin_counts = Dict{DateTime, Vector{Number}}()
+
+#     function strategy(bin, transaction) 
+#         if haskey(bin_counts, bin)
+#             push!(bin_counts[bin], transaction.duration)
+#         else 
+#             bin_counts[bin] = [transaction.duration]
+#         end
+
+#     end
+
+#     bin_transactions(lower_bound, Second, strategy)
+    
+#     averages = Dict{DateTime, Number}()
+#     for (k,v) in bin_counts
+#         averages[k] = mean(v)
+#     end
+
+#     return averages
+# end
+
+
+
+# function requests_per_second(lower_bound=Minute(15))
+
+#     bin_counts = Dict{DateTime, Int}()
+
+#     function strategy(bin, transaction) 
+#         bin_counts[bin] = get(bin_counts, bin, 0) + 1
+#     end
+
+#     bin_transactions(lower_bound, Second, strategy)
+    
+#     return bin_counts
+# end
+
+function requests_per_unit(unit, lower_bound=Minute(15))
+
+    bin_counts = Dict{DateTime, Int}()
+
+    function count_transactions(bin, transaction) 
+        bin_counts[bin] = get(bin_counts, bin, 0) + 1
     end
 
-    # Sort the bins by time and return the 15 most recent bins
-    sorted_bins = sort(collect(bin_counts), by=first, rev=true)
-    recent_bins = sorted_bins[1:min(15, length(sorted_bins))]
+    bin_transactions(lower_bound, unit, count_transactions)
 
-    # Create an array of objects with timestamp and count
-    return [Dict("timestamp" => k, "count"=> v) for (k,v) in recent_bins]
+    return bin_counts
 end
+
+"""
+Return the average latency per minute for the server
+"""
+function avg_latency_per_unit(unit, lower_bound=Minute(15))
+
+    bin_counts = Dict{DateTime, Vector{Number}}()
+
+    function strategy(bin, transaction) 
+        if haskey(bin_counts, bin)
+            push!(bin_counts[bin], transaction.duration)
+        else 
+            bin_counts[bin] = [transaction.duration]
+        end
+
+    end
+
+    bin_transactions(lower_bound, unit, strategy)
+    
+    averages = Dict{DateTime, Number}()
+    for (k,v) in bin_counts
+        averages[k] = mean(v)
+    end
+
+    return averages
+end
+
+
 
 ### Middleware
 

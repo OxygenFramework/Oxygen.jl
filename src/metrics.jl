@@ -14,7 +14,7 @@ export MetricsMiddleware, get_history, get_history_size,
     calculate_metrics_all_endpoints, 
     capture_metrics, dashboard, bin_and_count_transactions,
     bin_transactions, requests_per_unit, avg_latency_per_unit,
-    timeseries, series_format
+    timeseries, series_format, error_distribution
 
 struct HTTPTransaction
     # Intristic Properties
@@ -24,7 +24,7 @@ struct HTTPTransaction
 
     # derived properties
     duration::Float64
-    sucess::Bool
+    success::Bool
     status::Int16
     error_message::Union{String,Nothing}
 end
@@ -80,7 +80,7 @@ function calculate_metrics_for_transactions(transactions::Vector{HTTPTransaction
 
     total_requests = length(transactions)
     latencies = [t.duration for t in transactions if t.duration != 0.0]
-    successes = [t.sucess for t in transactions]
+    successes = [t.success for t in transactions]
 
     avg_latency = mean(latencies)
     min_latency = minimum(latencies)
@@ -133,14 +133,28 @@ function calculate_endpoint_metrics(endpoint_uri::String)
     return calculate_metrics_for_transactions(endpoint_transactions)
 end
 
-function calculate_metrics_all_endpoints()
+function calculate_metrics_all_endpoints(filter=nothing)
     grouped_transactions = group_transactions_by_endpoint()
     endpoint_metrics = Dict{String, Dict}()
     for (uri, transactions) in grouped_transactions
+        if !isnothing(filter)
+            transactions = filter(transactions)
+        end
         endpoint_metrics[uri] = calculate_metrics_for_transactions(transactions)
     end
     return endpoint_metrics
 end
+
+function error_distribution()
+    failed_counts = Dict{String, Int}()
+    for transaction in history[]
+        if !transaction.success
+            failed_counts[transaction.uri] = get(failed_counts, transaction.uri, 0) + 1
+        end
+    end
+    return failed_counts
+end
+
 
 struct TimeseriesRecord 
     timestamp::DateTime
@@ -153,7 +167,6 @@ Convert a dictionary of timeseries data into an array of sorted records
 function timeseries(data) :: Vector{TimeseriesRecord}
     # Convert the dictionary into an array of [timestamp, value] pairs
     timestamp_value_pairs = [TimeseriesRecord(k, v) for (k, v) in data]
-    
     # Sort the array based on the timestamps (the first element in each pair)
     return sort(timestamp_value_pairs, by=x->x.timestamp)    
 end

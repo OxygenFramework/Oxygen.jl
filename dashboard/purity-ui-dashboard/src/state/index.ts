@@ -22,7 +22,7 @@ interface Transaction {
     uri: string
     timestamp: Date
     duration: number
-    sucess: boolean
+    success: boolean
     status: number,
     error_message: null | string
 }
@@ -35,6 +35,7 @@ interface Endpoints {
 interface Metrics {
     server: Stats
     endpoints: Endpoints
+    errors: Map<String,Number>
     avg_latency_per_second: Map<Date, Number>
     requests_per_second: Map<Date, Number>
     requests_per_minute: Map<Date, Number>
@@ -56,6 +57,7 @@ const defaultState: AppState = {
             error_rate: NaN
         },
         endpoints: {},
+        errors: new Map(),
         avg_latency_per_second: new Map(),
         requests_per_second: new Map(),
         requests_per_minute: new Map(),

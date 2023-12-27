@@ -38,8 +38,6 @@ import { useHookstate, State } from '@hookstate/core';
 
 export default function Dashboard() {
   const iconBoxInside = useColorModeValue("white", "white");
-  // const {server, history, endpoints} = getMetrics();
-
   const state = useHookstate(globalState);
 
   const server = state.metrics.server.get();
@@ -51,14 +49,20 @@ export default function Dashboard() {
   } = state.metrics.get();
 
   const total_requests = Object.entries(state.metrics.endpoints.get() || {})?.reduce((acc, item) => {
-        let [k,v] = item;
-        acc.keys.push(k);
-        acc.values.push(v.total_requests);
-        return acc;
-
+      let [k,v] = item;
+      acc.keys.push(k);
+      acc.values.push(v.total_requests);
+      return acc;
     }, {keys: [], values: []}
   )
 
+  const all_errors = Object.entries(state.metrics.errors.get() || {})?.reduce((acc, item) => {
+      let [k,v] = item;
+      acc.keys.push(k);
+      acc.values.push(v);
+      return acc;
+    }, {keys: [], values: []}
+  )
 
   return (
     <Flex flexDirection='column' pt={{ base: "120px", md: "75px" }}>
@@ -128,7 +132,7 @@ export default function Dashboard() {
         /> */}
       </Grid>
       <Grid
-        templateColumns={{ sm: "1fr", lg: "1.3fr 1.7fr" }}
+        templateColumns={{ sm: "1fr", lg: "1.5fr 1.5fr" }}
         templateRows={{ sm: "repeat(2, 1fr)", lg: "1fr" }}
         gap='24px'
         mb={{ lg: "26px" }}>
@@ -139,6 +143,18 @@ export default function Dashboard() {
           chart={<DonutChart series={total_requests.values} 
             options={{
               labels: total_requests.keys,
+              legend: {
+                position: 'bottom',
+              }
+            }}/>}
+        />
+
+        <SalesOverview
+          title={"Errors Distribution"}
+          percentage={undefined}
+          chart={<DonutChart series={all_errors.values} 
+            options={{
+              labels: all_errors.keys,
               legend: {
                 position: 'bottom',
               }

@@ -5,6 +5,7 @@ using Sockets
 using JSON3
 using Base 
 using Dates
+using RelocatableFolders
 
 include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
@@ -21,9 +22,14 @@ export @get, @post, @put, @patch, @delete, @route, @cron,
         starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs, 
         clearcronjobs
 
+
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
 global const timers = Ref{Vector{Timer}}([])
+
+# Generate a reliable path to our internal data folder that works when the 
+# package is used with PackageCompiler.jl
+global const DATA_PATH = @path abspath(joinpath(@__DIR__, "..", "data"))
 
 oxygen_title = raw"""
    ____                            
@@ -592,19 +598,24 @@ end
 
 # add the swagger and swagger/schema routes 
 function setupmetrics()
-    @get "$docspath/metrics" function()
-        return dashboard()
-    end
+
+    println("loading from: $DATA_PATH/dashboard")
+
+    staticfiles("$DATA_PATH/dashboard")
+
+    # @get "$docspath/metrics" function()
+    #     return dashboard()
+    # end
     
     @get "$docspath/metrics/data" function()
         return Dict(
            "server" => calculate_server_metrics(),
            "endpoints" => calculate_metrics_all_endpoints(),
            "errors" => error_distribution(),
-           "avg_latency_per_second" => requests_per_unit(Second)  |> timeseries |> series_format,
-           "requests_per_second" => avg_latency_per_unit(Second)  |> timeseries |> series_format,
+           "avg_latency_per_second" =>  avg_latency_per_unit(Second) |> timeseries |> series_format,
+           "requests_per_second" =>  requests_per_unit(Second) |> timeseries |> series_format,
            "avg_latency_per_minute" => avg_latency_per_unit(Minute)  |> timeseries |> series_format,
-           "requests_per_minute" => requests_per_unit(Minute) |> timeseries |> series_format
+           "requests_per_minute" => requests_per_unit(Minute)  |> timeseries |> series_format
         )
     end
 end

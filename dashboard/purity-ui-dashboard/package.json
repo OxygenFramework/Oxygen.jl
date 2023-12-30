@@ -46,7 +46,7 @@
     "build": "react-scripts build && gulp licenses",
     "test": "react-scripts test --env=jsdom",
     "eject": "react-scripts eject",
-    "deploy": "npm run build",
+    "deploy": "cross-env PUBLIC_URL=/static/ react-scripts build && gulp licenses && cp -r ./build ../../data/dashboard",
     "lint:check": "eslint . --ext=js,jsx;  exit 0",
     "lint:fix": "eslint . --ext=js,jsx --fix;  exit 0",
     "install:clean": "rm -rf node_modules/ && rm -rf package-lock.json && npm install && npm start"
@@ -58,6 +58,7 @@
   "devDependencies": {
     "@babel/plugin-transform-react-jsx-source": "^7.14.5",
     "@hookstate/core": "^4.0.1",
+    "cross-env": "^7.0.3",
     "eslint-config-prettier": "8.3.0",
     "eslint-plugin-prettier": "3.4.0",
     "gulp": "4.0.2",

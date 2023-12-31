@@ -14,7 +14,7 @@ include("bodyparsers.jl"); using .BodyParsers
 export MetricsMiddleware, get_history, get_history_size, 
     calculate_server_metrics,
     calculate_metrics_all_endpoints, 
-    capture_metrics, dashboard, bin_and_count_transactions,
+    capture_metrics, bin_and_count_transactions,
     bin_transactions, requests_per_unit, avg_latency_per_unit,
     timeseries, series_format, error_distribution
 
@@ -40,17 +40,16 @@ function push_history(transaction::HTTPTransaction)
 end
 
 ### Individual global constants for each metric
-
 global const endpoints_hits = Ref{Dict{String, Int}}(Dict())
-global const ip_hits = Ref{Dict{String, Int}}(Dict())
+global const ip_hits        = Ref{Dict{String, Int}}(Dict())
 global const total_requests = Ref{Int}(0)
 global const unique_clients = Ref{Set{String}}(Set())
-global const error_rate = Ref{Dict{String, Dict{String, Int}}}(Dict())
+global const error_rate     = Ref{Dict{String, Dict{String, Int}}}(Dict())
 global const resource_usage = Ref{Any}(Dict())
 
 ### New variables for response time calculation
 global cumulative_response_time = Ref{Float64}(0.0)
-global response_count = Ref{Int}(0)
+global response_count           = Ref{Int}(0)
 
 function get_history_size() :: Int
     return copy(history_size[])
@@ -60,12 +59,37 @@ function get_history() :: Vector{HTTPTransaction}
     return copy(history[])
 end
 
-
 # Helper function to calculate percentile
 function percentile(values, p)
     index = ceil(Int, p / 100 * length(values))
     return sort(values)[index]
 end
+
+# Function to group HTTPTransaction objects by URI prefix with a maximum depth limit
+function group_transactions_by_prefix_depth_limit(transactions::Vector{HTTPTransaction}, max_depth::Int)
+    # Create a dictionary to store the grouped transactions
+    grouped_transactions = Dict{String, Vector{HTTPTransaction}}()
+
+    for transaction in transactions
+        # Split the URI by '/' to get the segments
+        uri_parts = split(transaction.uri, '/')
+
+        # Determine the depth and create the prefix
+        depth = min(length(uri_parts), max_depth + 1)
+        prefix = join(uri_parts[1:depth], '/')
+
+        # Check if the prefix exists in the dictionary, if not, create an empty vector
+        if !haskey(grouped_transactions, prefix)
+            grouped_transactions[prefix] = []
+        end
+
+        # Append the transaction to the corresponding prefix
+        push!(grouped_transactions[prefix], transaction)
+    end
+
+    return grouped_transactions
+end
+
 
 ### Helper function to calculate metrics for a set of transactions
 function calculate_metrics_for_transactions(transactions::Vector{HTTPTransaction})
@@ -93,6 +117,7 @@ function calculate_metrics_for_transactions(transactions::Vector{HTTPTransaction
 
     return Dict(
         "total_requests" => total_requests,
+        "total_errors" => total_errors,
         "avg_latency" => avg_latency,
         "min_latency" => min_latency,
         "max_latency" => max_latency,
@@ -121,9 +146,16 @@ function group_transactions_by_endpoint()
     return grouped_transactions
 end
 
-function calculate_server_metrics()
-    calculate_metrics_for_transactions(history[])
+
+"""
+Group transactions by URI depth with a maximum depth limit using the function
+"""
+function calculate_metrics_all_endpoints(lower_bound=Minute(15); max_depth=4)
+    transactions = recent_transactions(lower_bound)    
+    groups = group_transactions_by_prefix_depth_limit(transactions, max_depth)
+    return Dict(k => calculate_metrics_for_transactions(v) for (k,v) in groups)
 end
+
 
 function calculate_server_metrics(lower_bound=Minute(15))
     transactions = recent_transactions(lower_bound)
@@ -135,23 +167,25 @@ function calculate_endpoint_metrics(endpoint_uri::String)
     return calculate_metrics_for_transactions(endpoint_transactions)
 end
 
-function calculate_metrics_all_endpoints(filter=nothing)
-    grouped_transactions = group_transactions_by_endpoint()
-    endpoint_metrics = Dict{String, Dict}()
-    for (uri, transactions) in grouped_transactions
-        if !isnothing(filter)
-            transactions = filter(transactions)
-        end
-        endpoint_metrics[uri] = calculate_metrics_for_transactions(transactions)
-    end
-    return endpoint_metrics
-end
+# function calculate_metrics_all_endpoints(filter=nothing)
+#     grouped_transactions = group_transactions_by_endpoint()
+#     endpoint_metrics = Dict{String, Dict}()
+#     for (uri, transactions) in grouped_transactions
+#         if !isnothing(filter)
+#             transactions = filter(transactions)
+#         end
+#         endpoint_metrics[uri] = calculate_metrics_for_transactions(transactions)
+#     end
+#     return endpoint_metrics
+# end
 
-function error_distribution()
+function error_distribution(lower_bound=Minute(15))
+    metrics = calculate_metrics_all_endpoints(lower_bound)
     failed_counts = Dict{String, Int}()
-    for transaction in history[]
-        if !transaction.success
-            failed_counts[transaction.uri] = get(failed_counts, transaction.uri, 0) + 1
+    for (group_prefix, transaction_metrics) in metrics
+        failures = transaction_metrics["total_errors"]
+        if failures > 0
+            failed_counts[group_prefix] = get(failed_counts, group_prefix, 0) + failures
         end
     end
     return failed_counts
@@ -293,117 +327,5 @@ function MetricsMiddleware(catch_errors::Bool)
         end
     end
 end
-
-
-function dashboard()
-    html(
-    """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>ApexCharts with Preact</title>
-        <style>
-            #chart {
-                width: 500px;
-                height: 400px;
-            }
-        </style>
-    </head>
-    <body>
-        <div id="chart"></div>
-        <script type="module">
-            import { h, Fragment, render } from 'https://esm.sh/preact@10.19.3';
-            import { useEffect, useState } from 'https://esm.sh/preact@10.19.3/hooks';
-            import ApexCharts from 'https://esm.sh/apexcharts@3.45.0';
-    
-            function EndpointPieChart() {
-                const [chartData, setChartData] = useState({ series: [], labels: [] });
-    
-                useEffect(() => {
-                    // Fetch data
-                    fetch('http://127.0.0.1:8080/docs/metrics/data')
-                        .then(response => response.json())
-                        .then(data => {
-                            const endpointsData = data.endpoints;
-                            const series = [];
-                            const labels = [];
-    
-                            for (const endpoint in endpointsData) {
-                                labels.push(endpoint);
-                                series.push(endpointsData[endpoint].total_requests);
-                            }
-    
-                            setChartData({ series, labels });
-                        })
-                        .catch(error => console.error('Error fetching data:', error));
-                }, []);
-    
-                useEffect(() => {
-                    // Render chart if data is available
-                    if (chartData.series.length > 0 && chartData.labels.length > 0) {
-                        const options = {
-                            chart: {
-                                type: 'pie',
-                                height: '100%'
-                            },
-                            series: chartData.series,
-                            labels: chartData.labels,
-                            responsive: [{
-                                breakpoint: 480,
-                                options: {
-                                    chart: {
-                                        width: 200
-                                    },
-                                    legend: {
-                                        position: 'bottom'
-                                    }
-                                }
-                            }]
-                        };
-    
-                        var chart = new ApexCharts(document.querySelector("#chart"), options);
-                        chart.render();
-                    }
-                }, [chartData]); // Depend on chartData
-    
-                return h('div', null);
-            }
-    
-    
-            function Chart() {
-                useEffect(() => {
-                    const options = {
-                        chart: {
-                            type: 'bar',
-                            height: '100%'
-                        },
-                        series: [{
-                            name: 'sales',
-                            data: [30, 40, 453, 50, 49, 60, 70, 91, 125]
-                        }],
-                        xaxis: {
-                            categories: [1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999]
-                        }
-                    };
-    
-                    var chart = new ApexCharts(document.querySelector("#chart"), options);
-                    chart.render();
-                }, []);
-    
-                return h('div', null);
-            }
-            
-    
-            render(h(EndpointPieChart), document.querySelector("#chart"));
-        </script>
-    </body>
-    </html>
-    
-    """
-    )
-end
-
 
 end

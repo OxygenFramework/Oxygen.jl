@@ -1,12 +1,12 @@
 module Metrics
 
-using Statistics
 using HTTP
 using JSON3
-using Profile
 using Dates
+using Profile
+using DataStructures
+using Statistics
 using RelocatableFolders
-
 
 include("util.jl"); using .Util
 include("bodyparsers.jl"); using .BodyParsers
@@ -30,33 +30,15 @@ struct HTTPTransaction
     status::Int16
     error_message::Union{String,Nothing}
 end
-    
-global const history_size = Ref{Int}(0)
-global const history = Ref{Vector{HTTPTransaction}}([])
+
+global const history = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(10_000))
 
 function push_history(transaction::HTTPTransaction)
-    history_size[] += 1
-    push!(history[], transaction)
-end
-
-### Individual global constants for each metric
-global const endpoints_hits = Ref{Dict{String, Int}}(Dict())
-global const ip_hits        = Ref{Dict{String, Int}}(Dict())
-global const total_requests = Ref{Int}(0)
-global const unique_clients = Ref{Set{String}}(Set())
-global const error_rate     = Ref{Dict{String, Dict{String, Int}}}(Dict())
-global const resource_usage = Ref{Any}(Dict())
-
-### New variables for response time calculation
-global cumulative_response_time = Ref{Float64}(0.0)
-global response_count           = Ref{Int}(0)
-
-function get_history_size() :: Int
-    return copy(history_size[])
+    pushfirst!(history[], transaction)
 end
 
 function get_history() :: Vector{HTTPTransaction}
-    return copy(history[])
+    return collect(history[])
 end
 
 # Helper function to calculate percentile
@@ -131,10 +113,10 @@ end
 function recent_transactions(lower_bound=nothing) :: Vector{HTTPTransaction}
     # return everything if no window is passed
     if isnothing(lower_bound)
-        return history[]
+        return get_history()
     end
     current_time = now()
-    return filter(t -> current_time - t.timestamp <= lower_bound, history[]) 
+    return filter(t -> current_time - t.timestamp <= lower_bound, get_history()) 
 end
 
 function group_transactions_by_endpoint()
@@ -163,21 +145,9 @@ function calculate_server_metrics(lower_bound=Minute(15))
 end
 
 function calculate_endpoint_metrics(endpoint_uri::String)
-    endpoint_transactions = filter(t -> t.uri == endpoint_uri, history[])
+    endpoint_transactions = filter(t -> t.uri == endpoint_uri, get_history())
     return calculate_metrics_for_transactions(endpoint_transactions)
 end
-
-# function calculate_metrics_all_endpoints(filter=nothing)
-#     grouped_transactions = group_transactions_by_endpoint()
-#     endpoint_metrics = Dict{String, Dict}()
-#     for (uri, transactions) in grouped_transactions
-#         if !isnothing(filter)
-#             transactions = filter(transactions)
-#         end
-#         endpoint_metrics[uri] = calculate_metrics_for_transactions(transactions)
-#     end
-#     return endpoint_metrics
-# end
 
 function error_distribution(lower_bound=Minute(15))
     metrics = calculate_metrics_all_endpoints(lower_bound)

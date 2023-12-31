@@ -26,14 +26,14 @@ var dashRoutes = [
     component: Dashboard,
     layout: "/admin",
   },
-  {
-    path: "/metrics",
-    name: "Metrics",
-    rtlName: "لوحة القيادة",
-    icon: <StatsIcon color="inherit" />,
-    component: Tables,
-    layout: "/admin",
-  },
+  // {
+  //   path: "/metrics",
+  //   name: "Metrics",
+  //   rtlName: "لوحة القيادة",
+  //   icon: <StatsIcon color="inherit" />,
+  //   component: Tables,
+  //   layout: "/admin",
+  // },
   // {
   //   path: "/billing",
   //   name: "Billing",

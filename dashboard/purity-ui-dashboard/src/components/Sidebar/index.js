@@ -47,8 +47,8 @@ function Sidebar(props) {
           m={sidebarMargins}
           borderRadius={sidebarRadius}
         >
-          <SidebarContent routes={routes}
-        logoText={"Oxygen Metrics Dashboard"}
+        <SidebarContent routes={routes}
+        logoText={"Oxygen Metrics"}
         display="none"
         sidebarVariant={sidebarVariant}
         />

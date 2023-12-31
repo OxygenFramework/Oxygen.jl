@@ -595,17 +595,20 @@ function setupswagger()
     
 end
 
-
 # add the swagger and swagger/schema routes 
 function setupmetrics()
 
-    println("loading from: $DATA_PATH/dashboard")
+    # This allows us to customize the path to the metrics dashboard
+    function loadfile(filepath)
+        if contains(filepath, "index.html")
+            content = file(filepath)
+            return replace(content, "/oxygen-internal-metrics" => "$docspath/metrics")
+        else 
+            return file(filepath)
+        end  
+    end
 
-    staticfiles("$DATA_PATH/dashboard")
-
-    # @get "$docspath/metrics" function()
-    #     return dashboard()
-    # end
+    staticfiles("$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
     @get "$docspath/metrics/data" function()
         return Dict(
@@ -648,16 +651,27 @@ end
 
 
 """
-    staticfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing)
+    staticfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing;map)
 
 Mount all files inside the /static folder (or user defined mount point). 
 The `set_headers` callback is passed the route, mime type, and the current headers for the given 
 resource and should return a finalized vector of pairs to use as the headers in the outgoing Request
 """
-function staticfiles(folder::String, mountdir::String="static"; set_headers::Union{Function,Nothing}=nothing)
+function staticfiles(
+        folder::String, 
+        mountdir::String="static"; 
+        set_headers::Union{Function,Nothing}=nothing, 
+        loadfile::Union{Function,Nothing}=nothing
+    )
+
+    # remove the leading slash 
+    if first(mountdir) == '/'
+        mountdir = mountdir[2:end]
+    end
+    
     registermountedfolder(mountdir)
     function addroute(currentroute, content_type, derived_headers, filepath, registeredpaths; code=200)
-        body = file(filepath)
+        body = isnothing(map) ? file(filepath) : loadfile(filepath)
         headers = !isnothing(set_headers) ? set_headers(currentroute, content_type, derived_headers) : derived_headers
         @get "$currentroute" function(req)
             # return 404 for paths that don't match our files
@@ -678,6 +692,10 @@ The `set_headers` callback is passed the route, mime type, and the current heade
 resource and should return a finalized vector of pairs to use as the headers in the outgoing Request.
 """
 function dynamicfiles(folder::String, mountdir::String="static"; set_headers::Union{Function,Nothing}=nothing)
+    # remove the leading slash 
+    if first(mountdir) == '/'
+        mountdir = mountdir[2:end]
+    end
     registermountedfolder(mountdir)
     function addroute(currentroute, content_type, derived_headers, filepath, registeredpaths; code = 200)
         # We can precompute the headers ahead of time because while the file can change - the name and exstension shouldn't

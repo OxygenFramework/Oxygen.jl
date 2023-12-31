@@ -11,6 +11,7 @@ MIMEs = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
 RelocatableFolders = "05181044-ff0b-4ac5-8273-598c1e38db00"
 Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
+Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 
 [compat]
 Dates = "^1"
@@ -20,4 +21,5 @@ MIMEs = "^0.1.4"
 RelocatableFolders = "^1"
 Requires = "^1"
 Sockets = "^1"
+Suppressor = "^1"
 julia = "^1.6"

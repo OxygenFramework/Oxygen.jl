@@ -2,6 +2,7 @@ module FileUtil
 
 using HTTP
 using MIMEs
+using Suppressor
 
 export file, mountedfolders, mountfolder
 
@@ -85,18 +86,19 @@ function mountfolder(folder::String, mountdir::String, addroute)
         # also register file to the root of each subpath if this file is an index.html
         if endswith(mountpath, "/index.html")
 
-            # # add the route without the trailing "/" character
-            # bare_path = getbefore(mountpath, "/index.html")
-            # paths[bare_path] = true
-            # addroute(bare_path, headers, filepath, paths)
+            @suppress begin
+                # add the route with the trailing "/" character
+                trimmedpath = getbefore(mountpath, "index.html")
+                paths[trimmedpath] = true
+                addroute(trimmedpath, content_type, headers, filepath, paths)
 
-            # add the route with the trailing "/" character
-            trimmedpath = getbefore(mountpath, "index.html")
-            paths[trimmedpath] = true
-            addroute(trimmedpath, content_type, headers, filepath, paths)
-        
+                # add the route without the trailing "/" character
+                bare_path = getbefore(mountpath, "/index.html")
+                paths[bare_path] = true
+                addroute(bare_path, content_type, headers, filepath, paths)
+
+            end
         end
-
     end
     
 end

@@ -31,7 +31,7 @@ struct HTTPTransaction
     error_message::Union{String,Nothing}
 end
 
-global const history = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(10_000))
+global const history = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(100_000))
 
 function push_history(transaction::HTTPTransaction)
     pushfirst!(history[], transaction)

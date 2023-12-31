@@ -600,12 +600,8 @@ function setupmetrics()
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath)
-        if contains(filepath, "index.html")
-            content = file(filepath)
-            return replace(content, "/oxygen-internal-metrics" => "$docspath/metrics")
-        else 
-            return file(filepath)
-        end  
+        content = file(filepath)
+        return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$docspath/metrics/")
     end
 
     staticfiles("$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)

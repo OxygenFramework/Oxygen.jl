@@ -429,7 +429,7 @@ function MetricsMiddleware(catch_errors::Bool)
                         now(UTC),
                         response_time,
                         false,
-                        response.status,
+                        500,
                         string(typeof(e))
                     ))
 
@@ -710,10 +710,10 @@ function setupmetrics()
            "server" => calculate_server_metrics(),
            "endpoints" => calculate_metrics_all_endpoints(),
            "errors" => error_distribution(),
-           "avg_latency_per_second" =>  avg_latency_per_unit(Second) |> timeseries |> series_format,
-           "requests_per_second" =>  requests_per_unit(Second) |> timeseries |> series_format,
-           "avg_latency_per_minute" => avg_latency_per_unit(Minute)  |> timeseries |> series_format,
-           "requests_per_minute" => requests_per_unit(Minute)  |> timeseries |> series_format
+           "avg_latency_per_second" =>  avg_latency_per_unit(Second) |> prepare_timeseries_data(),
+           "requests_per_second" =>  requests_per_unit(Second) |> prepare_timeseries_data(),
+           "avg_latency_per_minute" => avg_latency_per_unit(Minute)  |> prepare_timeseries_data(Minute(1)),
+           "requests_per_minute" => requests_per_unit(Minute)  |>  prepare_timeseries_data(Minute(1))
         )
     end
 end

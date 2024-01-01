@@ -21,6 +21,10 @@ get("/error") do
     "a" + 3
 end
 
+get("/long") do
+    sleep(0.1)
+end
+
 get("/register") do
     @info "registering new job"
     @cron "*/2" logtime

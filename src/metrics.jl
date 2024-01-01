@@ -12,11 +12,18 @@ include("util.jl"); using .Util
 include("bodyparsers.jl"); using .BodyParsers
 
 export MetricsMiddleware, get_history, push_history, HTTPTransaction,
+    fill_missing_data,
     calculate_server_metrics,
     calculate_metrics_all_endpoints, 
     capture_metrics, bin_and_count_transactions,
     bin_transactions, requests_per_unit, avg_latency_per_unit,
-    timeseries, series_format, error_distribution
+    timeseries, series_format, error_distribution,
+    prepare_timeseries_data
+
+struct TimeseriesRecord 
+    timestamp::DateTime
+    value::Number
+end
 
 struct HTTPTransaction
     # Intristic Properties
@@ -140,6 +147,19 @@ end
 
 
 function calculate_server_metrics(lower_bound=Minute(15))
+
+    # # Example usage:
+    # records = [
+    #     TimeseriesRecord(DateTime(2024, 1, 1, 3, 28, 10), 100),
+    #     TimeseriesRecord(DateTime(2024, 1, 1, 3, 28, 23), 200),
+    #     TimeseriesRecord(DateTime(2024, 1, 1, 3, 28, 30), 300)
+    # ]
+
+    # filled_records = fill_missing_data(records)
+    # for record in filled_records
+    #     println("Timestamp: ", record.timestamp, ", Value: ", record.value)
+    # end
+
     transactions = recent_transactions(lower_bound)
     calculate_metrics_for_transactions(transactions)
 end
@@ -161,11 +181,57 @@ function error_distribution(lower_bound=Minute(15))
     return failed_counts
 end
 
-
-struct TimeseriesRecord 
-    timestamp::DateTime
-    value::Number
+"""
+Helper function used to convert internal data so that it can be viewd by a graph more easily
+"""
+function prepare_timeseries_data(unit::Dates.TimePeriod=Second(1))
+    function(binned_records::Dict)
+        binned_records |> timeseries |> fill_missing_data(unit, fill_to_current=true, sort=false) |> series_format
+    end
 end
+
+function fill_missing_data(unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
+    return function(records::Vector{TimeseriesRecord})
+        return fill_missing_data(records, unit, fill_to_current=fill_to_current, sort=sort)
+    end
+end
+
+function fill_missing_data(records::Vector{TimeseriesRecord}, unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
+    # Ensure the input is sorted by timestamp
+    if sort 
+        sort!(records, by = x -> x.timestamp)
+    end
+
+    filled_records = Vector{TimeseriesRecord}()
+    last_record_time = nothing  # Initialize variable to store the time of the last record
+
+    for i in 1:length(records)
+        # Add the current record to the filled_records
+        push!(filled_records, records[i])
+        last_record_time = records[i].timestamp  # Update the time of the last record
+
+        # If this is not the last record, check the gap to the next record
+        if i < length(records)
+            next_time = records[i+1].timestamp
+            while last_record_time + unit < next_time
+                last_record_time += unit
+                push!(filled_records, TimeseriesRecord(last_record_time, 0))
+            end
+        end
+    end
+
+    # If fill_to_current is true, fill in the gap between the last record and the current time
+    if fill_to_current && !isnothing(last_record_time)
+        current_time = now(UTC)
+        while last_record_time + unit < current_time
+            last_record_time += unit
+            push!(filled_records, TimeseriesRecord(last_record_time, 0))
+        end
+    end
+
+    return filled_records
+end
+
 
 """
 Convert a dictionary of timeseries data into an array of sorted records

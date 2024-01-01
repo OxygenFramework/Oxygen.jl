@@ -11,7 +11,7 @@ using RelocatableFolders
 include("util.jl"); using .Util
 include("bodyparsers.jl"); using .BodyParsers
 
-export MetricsMiddleware, get_history, get_history_size, 
+export MetricsMiddleware, get_history, push_history, HTTPTransaction,
     calculate_server_metrics,
     calculate_metrics_all_endpoints, 
     capture_metrics, bin_and_count_transactions,
@@ -237,65 +237,5 @@ function avg_latency_per_unit(unit, lower_bound=Minute(15))
 end
 
 
-
-### Middleware
-
-function MetricsMiddleware(catch_errors::Bool)
-    return function(handler)
-        return function(req::HTTP.Request)
-            return handlerequest(catch_errors) do 
-                start_time = time()
-                try
-                    # Handle the request
-                    response = handler(req)
-
-                    # Log response time
-                    response_time = time() - start_time
-
-                    if response.status == 200
-                        push_history(HTTPTransaction(
-                            string(req.context[:ip]),
-                            string(req.target),
-                            now(UTC),
-                            response_time,
-                            true,
-                            response.status,
-                            nothing
-                        ))
-                    else 
-                        push_history(HTTPTransaction(
-                            string(req.context[:ip]),
-                            string(req.target),
-                            now(UTC),
-                            response_time,
-                            false,
-                            response.status,
-                            text(response)
-                        ))
-                    end
-
-                    # Return the response
-                    return response
-                catch e
-                    response_time = time() - start_time
-
-                    # Log the error
-                    push_history(HTTPTransaction(
-                        string(req.context[:ip]),
-                        string(req.target),
-                        now(UTC),
-                        response_time,
-                        false,
-                        response.status,
-                        string(typeof(e))
-                    ))
-
-                    # let our caller figure out if they want to handle the error or not
-                    rethrow(e)
-                end
-            end
-        end
-    end
-end
 
 end

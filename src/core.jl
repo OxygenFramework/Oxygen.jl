@@ -41,11 +41,11 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(host::String, port::Int)
+function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool)
     printstyled(oxygen_title, color = :blue, bold = true)  
     @info "✅ Started server: http://$host:$port" 
-    @info "📖 Documentation: http://$host:$port$docspath"
-    @info "📊 Metrics: http://$host:$port$docspath/metrics"
+    docs    && @info "📖 Documentation: http://$host:$port$docspath"
+    metrics && @info "📊 Metrics: http://$host:$port$docspath/metrics"
 end
 
 
@@ -135,32 +135,65 @@ function stream_handler(middleware::Function)
 end 
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, metrics=true, kwargs...)
 
 Start the webserver with your own custom request handler
 """
-function serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
-    # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors)
+function serve(; 
+    middleware::Vector=[], 
+    handler=stream_handler, 
+    host="127.0.0.1", 
+    port=8080, 
+    serialize=true, 
+    async=false, 
+    catch_errors=true, 
+    docs=true,
+    metrics=true, 
+    kwargs...)
 
-    startserver(host, port, kwargs, async, (kwargs) ->  
+    # compose our middleware ahead of time (so it only has to be built up once)
+    configured_middelware = setupmiddleware(
+        middleware=middleware, 
+        serialize=serialize, 
+        catch_errors=catch_errors, 
+        metrics=metrics
+    )
+
+    startserver(host, port, docs, metrics, kwargs, async, (kwargs) ->  
         HTTP.serve!(handler(configured_middelware), host, port; kwargs...)
     )
     server[] # this value is returned if startserver() is ran in async mode
 end
 
 """
-    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
+    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, metrics=true, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
-    # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors)
+function serveparallel(; 
+    middleware::Vector=[], 
+    handler=stream_handler, 
+    host="127.0.0.1", 
+    port=8080, 
+    queuesize=1024, 
+    serialize=true, 
+    async=false, 
+    catch_errors=true,
+    docs=true,
+    metrics=true, 
+    kwargs...)
 
-    startserver(host, port, kwargs, async, (kwargs) -> 
+    # compose our middleware ahead of time (so it only has to be built up once)
+    configured_middelware = setupmiddleware(
+        middleware=middleware, 
+        serialize=serialize, 
+        catch_errors=catch_errors,
+        metrics=metrics
+    )
+
+    startserver(host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
     server[] # this value is returned if startserver() is ran in async mode
@@ -172,7 +205,7 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(;middleware::Vector = [], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
+function setupmiddleware(;middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
 
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware() ? [compose(getrouter(), middleware)] : reverse(middleware)
@@ -181,11 +214,11 @@ function setupmiddleware(;middleware::Vector = [], metrics::Bool=true, serialize
     serializer = serialize ? [DefaultSerializer(catch_errors)] : []
 
     # check if we need to track metrics
-    collect_metrics = metrics ? [MetricsMiddleware(false)] : []
+    collect_metrics = metrics ? [MetricsMiddleware(metrics)] : []
 
     # combine all our middleware functions
     return reduce(|>, [
-        getrouter(), 
+        getrouter(),
         serializer...,
         custom_middleware...,
         collect_metrics...
@@ -195,10 +228,10 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(host, port, kwargs, async, start)
+function startserver(host, port, docs, metrics, kwargs, async, start)
     try
-        serverwelcome(host, port)
-        setup()
+        serverwelcome(host, port, docs, metrics)
+        setup(docs)
         server[] = start(preprocesskwargs(kwargs))
         starttasks()
         registercronjobs()
@@ -259,7 +292,12 @@ end
 """
 This function called right before serving the server, which is useful for performing any additional setup
 """
-function setup()
+function setup(docs::Bool)
+    if docs
+        enabledocs()
+    else
+        disabledocs()
+    end
     setupswagger()
     setupmetrics()
 end
@@ -341,6 +379,67 @@ function DefaultSerializer(catch_errors::Bool)
     end
 end
 
+function MetricsMiddleware(catch_errors::Bool)
+    return function(handler)
+        return function(req::HTTP.Request)
+            return handlerequest(catch_errors) do 
+                
+                # Don't capture metrics on the documenation internals
+                if contains(req.target, docspath)
+                    return handler(req)
+                end
+
+                start_time = time()
+                try
+                    # Handle the request
+                    response = handler(req)
+                    # Log response time
+                    response_time = time() - start_time
+                    if response.status == 200
+                        push_history(HTTPTransaction(
+                            string(req.context[:ip]),
+                            string(req.target),
+                            now(UTC),
+                            response_time,
+                            true,
+                            response.status,
+                            nothing
+                        ))
+                    else 
+                        push_history(HTTPTransaction(
+                            string(req.context[:ip]),
+                            string(req.target),
+                            now(UTC),
+                            response_time,
+                            false,
+                            response.status,
+                            text(response)
+                        ))
+                    end
+
+                    # Return the response
+                    return response
+                catch e
+                    response_time = time() - start_time
+
+                    # Log the error
+                    push_history(HTTPTransaction(
+                        string(req.context[:ip]),
+                        string(req.target),
+                        now(UTC),
+                        response_time,
+                        false,
+                        response.status,
+                        string(typeof(e))
+                    ))
+
+                    # let our caller figure out if they want to handle the error or not
+                    rethrow(e)
+                end
+            end
+        end
+    end
+end
 
 ### Routing Macros ###
 

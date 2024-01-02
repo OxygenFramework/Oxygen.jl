@@ -147,19 +147,6 @@ end
 
 
 function calculate_server_metrics(lower_bound=Minute(15))
-
-    # # Example usage:
-    # records = [
-    #     TimeseriesRecord(DateTime(2024, 1, 1, 3, 28, 10), 100),
-    #     TimeseriesRecord(DateTime(2024, 1, 1, 3, 28, 23), 200),
-    #     TimeseriesRecord(DateTime(2024, 1, 1, 3, 28, 30), 300)
-    # ]
-
-    # filled_records = fill_missing_data(records)
-    # for record in filled_records
-    #     println("Timestamp: ", record.timestamp, ", Value: ", record.value)
-    # end
-
     transactions = recent_transactions(lower_bound)
     calculate_metrics_for_transactions(transactions)
 end
@@ -186,7 +173,8 @@ Helper function used to convert internal data so that it can be viewd by a graph
 """
 function prepare_timeseries_data(unit::Dates.TimePeriod=Second(1))
     function(binned_records::Dict)
-        binned_records |> timeseries |> fill_missing_data(unit, fill_to_current=true, sort=false) |> series_format
+        binned_records |> timeseries |> series_format
+        # binned_records |> timeseries |> fill_missing_data(unit, fill_to_current=true, sort=false) |> series_format
     end
 end
 

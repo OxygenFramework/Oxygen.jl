@@ -1,7 +1,7 @@
 {
   "files": {
     "main.css": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/css/main.ef50dc76.css",
-    "main.js": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/js/main.42c9dab5.js",
+    "main.js": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/js/main.ad56613f.js",
     "static/media/ImageArchitect3.png": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/ImageArchitect3.db5ecbbde9f4af32d7d3.png",
     "static/media/BackgroundCard1.png": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/BackgroundCard1.55c062c0873c8bc288f8.png",
     "static/media/ImageArchitect2.png": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/ImageArchitect2.960c2b9cde21744e7afb.png",
@@ -43,15 +43,15 @@
     "static/media/roboto-vietnamese-400-normal.woff2": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/roboto-vietnamese-400-normal.3230f9b040f3c630e0c3.woff2",
     "static/media/roboto-vietnamese-700-normal.woff2": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/roboto-vietnamese-700-normal.3425a701027d0699e369.woff2",
     "static/media/logo-white.svg": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/logo-white.db174f3abf15e02cce0dfc1c14ccbd33.svg",
-    "index.html": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/index.html",
     "static/media/roboto-greek-ext-500-normal.woff2": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/roboto-greek-ext-500-normal.6fb9cffb1d3e72bf9293.woff2",
     "static/media/roboto-greek-ext-400-normal.woff2": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/roboto-greek-ext-400-normal.169619821ea93019d1bb.woff2",
     "static/media/roboto-greek-ext-700-normal.woff2": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/roboto-greek-ext-700-normal.bd9854c751441ccc1a70.woff2",
+    "index.html": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/index.html",
     "main.ef50dc76.css.map": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/css/main.ef50dc76.css.map",
-    "main.42c9dab5.js.map": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/js/main.42c9dab5.js.map"
+    "main.ad56613f.js.map": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/js/main.ad56613f.js.map"
   },
   "entrypoints": [
     "static/css/main.ef50dc76.css",
-    "static/js/main.42c9dab5.js"
+    "static/js/main.ad56613f.js"
   ]
 }

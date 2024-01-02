@@ -33,7 +33,7 @@ import Projects from "./components/Projects";
 import SalesOverview from "./components/SalesOverview";
 import WorkWithTheRockets from "./components/WorkWithTheRockets";
 import { getMetrics, globalState } from "../../../state/index.ts";
-
+import { fillMissingData } from "./util";
 import { useHookstate, State } from '@hookstate/core';
 
 export default function Dashboard() {
@@ -47,6 +47,10 @@ export default function Dashboard() {
     avg_latency_per_second,
     requests_per_second
   } = state.metrics.get();
+  
+  function fill_data(data, unit=1000){
+    return fillMissingData(Array.from(data).map(x => [...x]), unit);
+  }
 
   const total_requests = Object.entries(state.metrics.endpoints.get() || {})?.reduce((acc, item) => {
       let [k,v] = item;
@@ -71,7 +75,7 @@ export default function Dashboard() {
           title={"Total Requests"}
           amount={server.total_requests}
           percentage={undefined}
-          icon={<WalletIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
         />
         <MiniStatistics
           title={"Error Rate"}
@@ -83,25 +87,25 @@ export default function Dashboard() {
           title={"Avg Latency"}
           amount={(server.avg_latency * 1000).toFixed(2) + "ms"}
           percentage={undefined}
-          icon={<DocumentIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
         />
         <MiniStatistics
           title={"95th Percentile Latency"}
           amount={(server.percentile_latency_95th * 1000).toFixed(2) + "ms"}
           percentage={undefined}
-          icon={<CartIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
         />
         <MiniStatistics
           title={"Min Latency"}
           amount={(server.min_latency  * 1000).toFixed(2) + "ms"}
           percentage={undefined}
-          icon={<DocumentIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
         />
         <MiniStatistics
           title={"Max Latency"}
           amount={(server.max_latency  * 1000).toFixed(2) + "ms"}
           percentage={undefined}
-          icon={<DocumentIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
         />
       </SimpleGrid>
       <Grid
@@ -119,22 +123,22 @@ export default function Dashboard() {
 
         <SalesOverview
           title={"Requests / Second (15 Minute Window)"}
-          chart={<LineChartV2 data={requests_per_second}/>}
+          chart={<LineChartV2 data={fill_data(requests_per_second)}/>}
         /> 
 
         <SalesOverview
           title={"Avg Latency / Second (15 Minute Window)"}
-          chart={<LineChartV2 data={avg_latency_per_second}/>}
+          chart={<LineChartV2 data={fill_data(avg_latency_per_second)}/>}
         /> 
 
         <SalesOverview
           title={"Requests / Minute (15 Minute Window)"}
-          chart={<LineChartV2 data={requests_per_minute}/>}
+          chart={<LineChartV2 data={fill_data(requests_per_minute, 60_000)}/>}
         /> 
 
         <SalesOverview
           title={"Avg Latency / Minute (15 Minute Window)"}
-          chart={<LineChartV2 data={avg_latency_per_minute}/>}
+          chart={<LineChartV2 data={fill_data(avg_latency_per_minute, 60_000)}/>}
         /> 
 
         <SalesOverview

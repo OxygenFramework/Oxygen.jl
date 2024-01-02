@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import ReactApexChart from "react-apexcharts";
+import moment from "moment";
 
 export const LineChartV2 = (props) => {
 
@@ -22,7 +23,12 @@ export const LineChartV2 = (props) => {
       },
       xaxis: {
         type: 'datetime',
+        tickAmount: 3,
         labels: {
+          formatter: function(value, timestamp) {
+            // Format the label as a local time string
+            return moment(value).format('hh:mm:ss A'); // Customize this format as needed
+          },
           style: {
             colors: "#c8cfca",
             fontSize: "12px",
@@ -72,7 +78,7 @@ export const LineChartV2 = (props) => {
   const [chartData, setChartData] = useState({
     series: [
       {
-        name: "Total Requests",
+        // name: "Total Requests",
         data: [],
       },
     ],
@@ -82,7 +88,7 @@ export const LineChartV2 = (props) => {
     setChartData({
       series: [
         {
-          name: "Total Requests",
+          // name: "Total Requests",
           data: props.data,
         }
       ],

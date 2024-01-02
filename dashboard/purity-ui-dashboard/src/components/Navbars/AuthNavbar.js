@@ -20,6 +20,7 @@ import PropTypes from "prop-types";
 import React from "react";
 import { NavLink } from "react-router-dom";
 import routes from "routes.js";
+
 export default function AuthNavbar(props) {
   const [open, setOpen] = React.useState(false);
   const handleDrawerToggle = () => {
@@ -79,7 +80,8 @@ export default function AuthNavbar(props) {
       alignItems="center"
       color={mainText}
     >
-      <CreativeTimLogo w="32px" h="32px" me="10px" />
+      {/* <CreativeTimLogo w="32px" h="32px" me="10px" /> */}
+      
       <Text fontSize="sm" mt="3px">
         {logoText}
       </Text>

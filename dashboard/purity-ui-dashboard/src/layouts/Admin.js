@@ -90,10 +90,8 @@ export default function Dashboard(props) {
 
 	useEffect(() => {
         async function load(){
-            console.log("loading...")
             let freshData = await fetch("http://127.0.0.1:8080/docs/metrics/data").then(response => response.json());
 			setMetrics(freshData)
-            console.log("loaded")
         }
         // load();
         setInterval(() => load(), 3000)
@@ -104,7 +102,7 @@ export default function Dashboard(props) {
 		<ChakraProvider theme={theme} resetCss={false}>
 			<Sidebar
 				routes={routes}
-				logoText={'PURITY UI DASHBOARD'}
+				logoText={'Oxygen Metrics'}
 				display='none'
 				sidebarVariant={sidebarVariant}
 				{...rest}
@@ -117,7 +115,7 @@ export default function Dashboard(props) {
 				<Portal>
 					<AdminNavbar
 						onOpen={onOpen}
-						logoText={'PURITY UI DASHBOARD'}
+						logoText={'Oxygen Metrics'}
 						brandText={getActiveRoute(routes)}
 						secondary={getActiveNavbar(routes)}
 						fixed={fixed}

@@ -9,6 +9,7 @@ import {
     DrawerCloseButton,
     DrawerContent,
     DrawerOverlay,
+    Image,
     Flex,
     Link,
     Stack,
@@ -22,6 +23,7 @@ import { Separator } from "components/Separator/Separator";
 import { SidebarHelp } from "components/Sidebar/SidebarHelp";
 import React from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import OxygenLogo from "assets/img/oxygen-logo.png";
 
 function SidebarResponsive(props) {
     // to check for active links and opened collapses
@@ -201,7 +203,8 @@ function SidebarResponsive(props) {
           alignItems="center"
           fontSize="11px"
         >
-          <CreativeTimLogo w="32px" h="32px" me="10px" />
+          {/* <CreativeTimLogo w="32px" h="32px" me="10px" /> */}
+          <Image src={OxygenLogo} width={10} marginRight={5}/>
           <Text fontSize="sm" mt="3px">
             {logoText}
           </Text>
@@ -256,7 +259,7 @@ function SidebarResponsive(props) {
                 <Stack direction="column" mb="40px">
                   <Box>{links}</Box>
                 </Stack>
-                <SidebarHelp></SidebarHelp>
+                {/* <SidebarHelp></SidebarHelp> */}
               </Box>
             </DrawerBody>
           </DrawerContent>

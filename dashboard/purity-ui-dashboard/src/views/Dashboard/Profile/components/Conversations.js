@@ -53,7 +53,7 @@ const Conversations = ({ title }) => {
               <Text
                 fontSize='sm'
                 fontWeight='600'
-                color='teal.300'
+                color='blue.700'
                 alignSelf='center'>
                 REPLY
               </Text>
@@ -81,7 +81,7 @@ const Conversations = ({ title }) => {
               <Text
                 fontSize='sm'
                 fontWeight='600'
-                color='teal.300'
+                color='blue.700'
                 alignSelf='center'>
                 REPLY
               </Text>
@@ -109,7 +109,7 @@ const Conversations = ({ title }) => {
               <Text
                 fontSize='sm'
                 fontWeight='600'
-                color='teal.300'
+                color='blue.700'
                 alignSelf='center'>
                 REPLY
               </Text>
@@ -137,7 +137,7 @@ const Conversations = ({ title }) => {
               <Text
                 fontSize='sm'
                 fontWeight='600'
-                color='teal.300'
+                color='blue.700'
                 alignSelf='center'>
                 REPLY
               </Text>
@@ -165,7 +165,7 @@ const Conversations = ({ title }) => {
               <Text
                 fontSize='sm'
                 fontWeight='600'
-                color='teal.300'
+                color='blue.700'
                 alignSelf='center'>
                 REPLY
               </Text>

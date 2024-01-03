@@ -18,7 +18,7 @@ import signInImage from "assets/img/signInImage.png";
 
 function SignIn() {
   // Chakra color mode
-  const titleColor = useColorModeValue("teal.300", "teal.200");
+  const titleColor = useColorModeValue("blue.700", "teal.200");
   const textColor = useColorModeValue("gray.400", "white");
   return (
     <Flex position='relative' mb='40px'>
@@ -88,7 +88,7 @@ function SignIn() {
               <Button
                 fontSize='10px'
                 type='submit'
-                bg='teal.300'
+                bg='blue.700'
                 w='100%'
                 h='45'
                 mb='20px'

@@ -69,9 +69,9 @@ export const LineChartV2 = (props) => {
           opacityTo: 0,
           stops: [],
         },
-        colors: ["#4FD1C5", "#2D3748"],
+        colors: ["#0BC5EA", "#2D3748"],
       },
-      colors: ["#4FD1C5", "#2D3748"],
+      colors: ["#0BC5EA", "#2D3748"],
     }
   });
 

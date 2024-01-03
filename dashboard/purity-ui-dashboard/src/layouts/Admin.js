@@ -18,8 +18,8 @@ import FixedPlugin from '../components/FixedPlugin/FixedPlugin';
 import MainPanel from '../components/Layout/MainPanel';
 import PanelContainer from '../components/Layout/PanelContainer';
 import PanelContent from '../components/Layout/PanelContent';
-import { setMetrics } from '../state/index.ts';
-
+import { setMetrics, globalState } from '../state/index.ts';
+import { useHookstate } from '@hookstate/core';
 
 export default function Dashboard(props) {
 	const { ...rest } = props;
@@ -88,14 +88,35 @@ export default function Dashboard(props) {
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	document.documentElement.dir = 'ltr';
 
+	const state = useHookstate(globalState);
+	const { poll, interval } = state.settings.get();
+
+	async function load() {
+		try {
+		  let freshData = await fetch("http://127.0.0.1:8080/docs/metrics/data")
+			.then(response => response.json());
+		  setMetrics(freshData);
+		} catch (error) {
+		  console.error("Failed to load metrics:", error);
+		}
+	  }
+	
 	useEffect(() => {
-        async function load(){
-            let freshData = await fetch("http://127.0.0.1:8080/docs/metrics/data").then(response => response.json());
-			setMetrics(freshData)
-        }
-        // load();
-        setInterval(() => load(), 3000)
-    }, []);
+
+		if(!poll){
+			return;
+		}
+
+		// Call load initially
+		load();
+	
+		// Set up the interval to call load every intervalDuration ms
+		const intervalId = setInterval(load, interval * 1000);
+	
+		// Clear the interval when the component is unmounted or the intervalDuration changes
+		return () => clearInterval(intervalId);
+	}, [poll, interval]); // Dependency array now includes intervalDuration
+
 
 	// Chakra Color Mode
 	return (

@@ -12,20 +12,32 @@ import {
   Link,
   Switch,
   Text,
+  Stack,
+  FormControl,
+  FormLabel,
+  Select,
   useColorMode,
   useColorModeValue,
+  useDisclosure
 } from "@chakra-ui/react";
 import GitHubButton from "react-github-btn";
 import { Separator } from "components/Separator/Separator";
 import PropTypes from "prop-types";
 import React, { useState } from "react";
-import { FaTwitter, FaFacebook } from "react-icons/fa";
+import { useHookstate } from '@hookstate/core';
+import { globalState } from "../../state/index.ts";
 
 export default function Configurator(props) {
+
+  const state = useHookstate(globalState);
+
   const { secondary, isOpen, onClose, fixed, ...rest } = props;
   const [switched, setSwitched] = useState(props.isChecked);
 
+  const pollingSettings = useDisclosure({defaultIsOpen: true});
+
   const { colorMode, toggleColorMode } = useColorMode();
+
   // Chakra Color Mode
   let fixedDisplay = "flex";
   if (props.secondary) {
@@ -41,6 +53,13 @@ export default function Configurator(props) {
   const secondaryButtonBorder = useColorModeValue("gray.700", "white");
   const secondaryButtonColor = useColorModeValue("gray.700", "white");
   const settingsRef = React.useRef();
+
+  const isPollingOn = state.settings.poll.get();
+
+  function togglePolling(){
+    state.settings.poll.set(prev => !prev);
+  }
+
   return (
     <>
       <Drawer
@@ -54,7 +73,7 @@ export default function Configurator(props) {
           <DrawerHeader pt="24px" px="24px">
             <DrawerCloseButton />
             <Text fontSize="xl" fontWeight="bold" mt="16px">
-              Purity UI Configurator
+              Oxygen Metrics Settings
             </Text>
             <Text fontSize="md" mb="16px">
               See your dashboard options.
@@ -63,6 +82,34 @@ export default function Configurator(props) {
           </DrawerHeader>
           <DrawerBody w="340px" ps="24px" pe="40px">
             <Flex flexDirection="column">
+
+              <Box display={fixedDisplay} justifyContent="space-between">
+                <Text fontSize="md" fontWeight="600" mb="4px">
+                    Polling Server
+                </Text>
+                <Switch isChecked={isPollingOn} onChange={togglePolling} />
+              </Box>
+
+              <Box display={fixedDisplay} justifyContent="space-between" mt={3}>
+                <Text fontSize="md" fontWeight="600" mb="4px">
+                  Interval
+                </Text>
+                <Select id='poll-interval'
+                  onChange={(e) => state.settings.interval.set(parseInt(e.target.value))}
+                  value={state.settings.interval.get()} 
+                  size='md' width={140} 
+                  >
+                  <option value={3}>3 Seconds</option>
+                  <option value={1}>1 Second</option>
+                  <option value={5}>5 Seconds</option>
+                  <option value={10}>10 Seconds</option>
+                  <option value={30}>30 Seconds</option>
+                  <option value={60}>60 Seconds</option>
+                </Select>
+              </Box>
+
+              <Separator mt="5" mb="5"/>
+
               <Box>
                 <Text fontSize="md" fontWeight="600">
                   Sidenav Type
@@ -135,93 +182,6 @@ export default function Configurator(props) {
               </Flex>
 
               <Separator />
-              {/* <Box mt="24px">
-                <Text fontSize="md" fontWeight="600">
-                  Sidenav Type
-                </Text>
-                <Text fontSize="sm" mb="16px">
-                  Choose between 2 different sidenav types.
-                </Text>
-                <Box>
-                  <Link
-                    href="https://www.creative-tim.com/product/purity-ui-dashboard"
-                    w="100%"
-                    mb="16px"
-                  >
-                    <Button
-                      w="100%"
-                      mb="16px"
-                      bg={bgButton}
-                      color={colorButton}
-                      fontSize="xs"
-                      variant="no-hover"
-                      px="30px"
-                    >
-                      Free Download
-                    </Button>
-                  </Link>
-                  <Link
-                    href="https://demos.creative-tim.com/docs-purity-ui-dashboard/"
-                    w="100%"
-                  >
-                    <Button
-                      w="100%"
-                      bg={secondaryButtonBg}
-                      border="1px solid"
-                      borderColor={secondaryButtonBorder}
-                      color={secondaryButtonColor}
-                      fontSize="xs"
-                      variant="no-hover"
-                      px="20px"
-                      mb="16px"
-                    >
-                      <Text textDecorationColor="none">Documentation</Text>
-                    </Button>
-                  </Link>
-                </Box>
-                <Flex
-                  justifyContent="center"
-                  alignItems="center"
-                  w="100%"
-                  mb="16px"
-                >
-                  <GitHubButton
-                    href="https://github.com/creativetimofficial/purity-ui-dashboard"
-                    data-icon="octicon-star"
-                    data-show-count="true"
-                    aria-label="Star creativetimofficial/purity-ui-dashboard on GitHub"
-                  >
-                    Star
-                  </GitHubButton>
-                </Flex>
-                <Box w="100%">
-                  <Text mb="6px" textAlign="center">
-                    Thank you for sharing!
-                  </Text>
-                  <Flex justifyContent="center" alignContent="center">
-                    <Link
-                      isExternal="true"
-                      href="https://twitter.com/intent/tweet?url=https%3A%2F%2Fwww.creative-tim.com%2Fproduct%2Fpurity-ui-dashboard&text=Check%20Purity%20UI%20Dashboard%20made%20by%20%40CreativeTim%20and%20%40simmmple_web%20%23webdesign%20%23dashboard%20%23chakra"
-                    >
-                      <Button
-                        colorScheme="twitter"
-                        leftIcon={<FaTwitter />}
-                        me="10px"
-                      >
-                        <Text>Tweet</Text>
-                      </Button>
-                    </Link>
-                    <Link
-                      isExternal="true"
-                      href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fwww.creative-tim.com%2Fproduct%2Fpurity-ui-dashboard"
-                    >
-                      <Button colorScheme="facebook" leftIcon={<FaFacebook />}>
-                        <Text>Share</Text>
-                      </Button>
-                    </Link>
-                  </Flex>
-                </Box>
-              </Box> */}
             </Flex>
           </DrawerBody>
         </DrawerContent>

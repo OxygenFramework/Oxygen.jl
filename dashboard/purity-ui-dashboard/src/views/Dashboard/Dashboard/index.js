@@ -3,7 +3,14 @@ import {
   Flex,
   Grid,
   SimpleGrid,
-  useColorModeValue
+  useColorModeValue,
+  Stack,
+  HStack,
+  Switch,
+  Select,
+  FormControl,
+  FormLabel,
+  useDisclosure
 } from "@chakra-ui/react";
 // assets
 import { DonutChart } from "components/Charts/DonutChart";
@@ -22,6 +29,7 @@ import { IoTimerOutline, IoWarningOutline } from "react-icons/io5";
 import { RiArrowDownDoubleLine, RiArrowUpDoubleLine } from "react-icons/ri";
 
 export default function Dashboard() {
+
   const iconBoxInside = useColorModeValue("white", "white");
   const state = useHookstate(globalState);
 

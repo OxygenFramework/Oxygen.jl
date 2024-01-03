@@ -31,7 +31,6 @@ interface Endpoints {
     [name: string]: Stats;
 }
 
-
 interface Metrics {
     server: Stats
     endpoints: Endpoints
@@ -44,9 +43,17 @@ interface Metrics {
 
 export interface AppState {
     metrics: Metrics
+    settings: {
+        poll: boolean,
+        interval: number
+    }
 }
 
 const defaultState: AppState = {
+    settings: {
+        poll: true,
+        interval: 3
+    },
     metrics: {
         server: {
             percentile_latency_95th: NaN,

@@ -2,39 +2,24 @@
 import {
   Flex,
   Grid,
-  Image,
   SimpleGrid,
-  useColorModeValue,
+  useColorModeValue
 } from "@chakra-ui/react";
 // assets
-import peopleImage from "assets/img/people-image.png";
-import logoChakra from "assets/svg/logo-white.svg";
-import BarChart from "components/Charts/BarChart";
-import LineChart from "components/Charts/LineChart";
-import {DonutChart} from "components/Charts/DonutChart";
-import {TimeSeriesChart} from "components/Charts/TimeSeriesChart";
-import {LineChartCustom} from "components/Charts/LineChartCustom";
-import {LineChartDemo} from "components/Charts/LineDemo";
-import {LineChartV2} from "components/Charts/LineChartV2"
+import { DonutChart } from "components/Charts/DonutChart";
+import { LineChartV2 } from "components/Charts/LineChartV2";
 // Custom icons
-import {
-  CartIcon,
-  DocumentIcon,
-  GlobeIcon,
-  WalletIcon,
-} from "components/Icons/Icons.js";
+import { useHookstate } from '@hookstate/core';
 import React from "react";
-import { dashboardTableData, timelineData } from "variables/general";
-import ActiveUsers from "./components/ActiveUsers";
-import BuiltByDevelopers from "./components/BuiltByDevelopers";
+import { globalState } from "../../../state/index.ts";
 import MiniStatistics from "./components/MiniStatistics";
-import OrdersOverview from "./components/OrdersOverview";
-import Projects from "./components/Projects";
 import SalesOverview from "./components/SalesOverview";
-import WorkWithTheRockets from "./components/WorkWithTheRockets";
-import { getMetrics, globalState } from "../../../state/index.ts";
 import { fillMissingData } from "./util";
-import { useHookstate, State } from '@hookstate/core';
+
+import { CiGlobe } from "react-icons/ci";
+import { IoMdPodium } from "react-icons/io";
+import { IoTimerOutline, IoWarningOutline } from "react-icons/io5";
+import { RiArrowDownDoubleLine, RiArrowUpDoubleLine } from "react-icons/ri";
 
 export default function Dashboard() {
   const iconBoxInside = useColorModeValue("white", "white");
@@ -73,39 +58,39 @@ export default function Dashboard() {
       <SimpleGrid columns={{ sm: 1, md: 2, xl: 3 }} spacing='24px'>
         <MiniStatistics
           title={"Total Requests"}
-          amount={server.total_requests}
+          amount={server.total_requests.toLocaleString()}
           percentage={undefined}
-          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<CiGlobe color={iconBoxInside} style={{ width: '24px', height: '24px' }}/>}
         />
         <MiniStatistics
           title={"Error Rate"}
           amount={(server.error_rate * 100).toFixed(2) + "%"}
           percentage={undefined}
-          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<IoWarningOutline color={iconBoxInside} style={{ width: '24px', height: '24px' }}/>}
         />
         <MiniStatistics
           title={"Avg Latency"}
           amount={(server.avg_latency * 1000).toFixed(2) + "ms"}
           percentage={undefined}
-          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<IoTimerOutline color={iconBoxInside} style={{ width: '24px', height: '24px' }} />}
         />
         <MiniStatistics
           title={"95th Percentile Latency"}
           amount={(server.percentile_latency_95th * 1000).toFixed(2) + "ms"}
           percentage={undefined}
-          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<IoMdPodium color={iconBoxInside} style={{ width: '24px', height: '24px' }} />}
         />
         <MiniStatistics
           title={"Min Latency"}
           amount={(server.min_latency  * 1000).toFixed(2) + "ms"}
           percentage={undefined}
-          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<RiArrowDownDoubleLine color={iconBoxInside} style={{ width: '24px', height: '24px' }} />}
         />
         <MiniStatistics
           title={"Max Latency"}
           amount={(server.max_latency  * 1000).toFixed(2) + "ms"}
           percentage={undefined}
-          icon={<GlobeIcon h={"24px"} w={"24px"} color={iconBoxInside} />}
+          icon={<RiArrowUpDoubleLine color={iconBoxInside} style={{ width: '24px', height: '24px' }} />}
         />
       </SimpleGrid>
       <Grid

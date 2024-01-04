@@ -153,7 +153,7 @@ export default function Dashboard() {
       </Grid>
 
       <Box display="flex" justifyContent="space-between" alignItems="center" height="60px"> {/* Ensure a height is set */}
-        <Heading size="md">Windowed Metrics</Heading>
+        <Heading size="md">Performance Insights</Heading>
         
         <Box display="flex" justifyContent="space-between" gap="15px">
           <Checkbox 

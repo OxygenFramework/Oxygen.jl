@@ -712,8 +712,8 @@ function setupmetrics()
            "errors" => error_distribution(),
            "avg_latency_per_second" =>  avg_latency_per_unit(Second) |> prepare_timeseries_data(),
            "requests_per_second" =>  requests_per_unit(Second) |> prepare_timeseries_data(),
-           "avg_latency_per_minute" => avg_latency_per_unit(Minute)  |> prepare_timeseries_data(Minute(1)),
-           "requests_per_minute" => requests_per_unit(Minute)  |>  prepare_timeseries_data(Minute(1))
+           "avg_latency_per_minute" => avg_latency_per_unit(Minute)  |> prepare_timeseries_data(),
+           "requests_per_minute" => requests_per_unit(Minute)  |>  prepare_timeseries_data()
         )
     end
 end

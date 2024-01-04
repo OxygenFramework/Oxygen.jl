@@ -21,6 +21,11 @@ import PanelContent from '../components/Layout/PanelContent';
 import { setMetrics, globalState } from '../state/index.ts';
 import { useHookstate } from '@hookstate/core';
 
+// if oxygen uuid isn't in the public url, then we use the window.location.origin object instead of localhost
+const BASE_URL = process.env.PUBLIC_URL.includes("df9a0d86-3283-4920-82dc-4555fc0d1d8b")
+	? window.location.origin + "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/data"
+	: "http://127.0.0.1:8080/docs/metrics/data" 
+
 export default function Dashboard(props) {
 	const { ...rest } = props;
 	// states and functions
@@ -93,14 +98,14 @@ export default function Dashboard(props) {
 
 	async function load() {
 		try {
-		  let freshData = await fetch("http://127.0.0.1:8080/docs/metrics/data")
+		  let freshData = await fetch(BASE_URL)
 			.then(response => response.json());
 		  setMetrics(freshData);
 		} catch (error) {
 		  console.error("Failed to load metrics:", error);
 		}
 	  }
-	
+
 	useEffect(() => {
 
 		if(!poll){
@@ -116,7 +121,6 @@ export default function Dashboard(props) {
 		// Clear the interval when the component is unmounted or the intervalDuration changes
 		return () => clearInterval(intervalId);
 	}, [poll, interval]); // Dependency array now includes intervalDuration
-
 
 	// Chakra Color Mode
 	return (

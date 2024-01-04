@@ -122,7 +122,7 @@ function recent_transactions(lower_bound=nothing) :: Vector{HTTPTransaction}
     if isnothing(lower_bound)
         return get_history()
     end
-    current_time = now()
+    current_time = now(UTC)
     return filter(t -> current_time - t.timestamp <= lower_bound, get_history()) 
 end
 
@@ -173,8 +173,13 @@ Helper function used to convert internal data so that it can be viewd by a graph
 """
 function prepare_timeseries_data(unit::Dates.TimePeriod=Second(1))
     function(binned_records::Dict)
+        binned_records |> timeseries |> fill_missing_data(unit, fill_to_current=true, sort=false) |> series_format
+    end
+end
+
+function prepare_timeseries_data()
+    function(binned_records::Dict)
         binned_records |> timeseries |> series_format
-        # binned_records |> timeseries |> fill_missing_data(unit, fill_to_current=true, sort=false) |> series_format
     end
 end
 

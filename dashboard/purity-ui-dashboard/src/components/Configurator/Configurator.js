@@ -85,7 +85,7 @@ export default function Configurator(props) {
 
               <Box display={fixedDisplay} justifyContent="space-between">
                 <Text fontSize="md" fontWeight="600" mb="4px">
-                    Polling Server
+                    Poll Server
                 </Text>
                 <Switch isChecked={isPollingOn} onChange={togglePolling} />
               </Box>

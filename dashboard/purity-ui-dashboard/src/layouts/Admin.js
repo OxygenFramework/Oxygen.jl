@@ -94,13 +94,14 @@ export default function Dashboard(props) {
 	document.documentElement.dir = 'ltr';
 
 	const state = useHookstate(globalState);
+	const window_value = state.dashboard.window.get();
 	const { poll, interval } = state.settings.get();
 
 	async function load() {
 		try {
-		  let freshData = await fetch(BASE_URL)
-			.then(response => response.json());
-		  setMetrics(freshData);
+			let url = BASE_URL + "/" + window_value;
+		  	let freshData = await fetch(url).then(response => response.json());
+		  	setMetrics(freshData);
 		} catch (error) {
 		  console.error("Failed to load metrics:", error);
 		}
@@ -120,7 +121,7 @@ export default function Dashboard(props) {
 	
 		// Clear the interval when the component is unmounted or the intervalDuration changes
 		return () => clearInterval(intervalId);
-	}, [poll, interval]); // Dependency array now includes intervalDuration
+	}, [window_value, poll, interval]); // Dependency array now includes intervalDuration
 
 	// Chakra Color Mode
 	return (

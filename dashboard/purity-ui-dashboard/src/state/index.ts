@@ -43,6 +43,10 @@ interface Metrics {
 
 export interface AppState {
     metrics: Metrics
+    dashboard: {
+        window: string
+        fill_gaps: boolean
+    },
     settings: {
         poll: boolean,
         interval: number
@@ -50,6 +54,10 @@ export interface AppState {
 }
 
 const defaultState: AppState = {
+    dashboard: {
+        window: "15",  // number of minutes for our window
+        fill_gaps: true
+    },
     settings: {
         poll: true,
         interval: 3

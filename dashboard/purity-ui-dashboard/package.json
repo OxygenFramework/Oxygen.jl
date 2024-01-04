@@ -43,10 +43,10 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build && gulp licenses",
+    "build": "react-scripts build",
     "test": "react-scripts test --env=jsdom",
     "eject": "react-scripts eject",
-    "deploy": "rm -rf ../../data/dashboard && cross-env PUBLIC_URL=/df9a0d86-3283-4920-82dc-4555fc0d1d8b/ react-scripts build && gulp licenses && cp -r ./build ../../data/dashboard",
+    "deploy": "rm -rf ../../data/dashboard && cross-env PUBLIC_URL=/df9a0d86-3283-4920-82dc-4555fc0d1d8b/ GENERATE_SOURCEMAP=false react-scripts build && cp -r ./build ../../data/dashboard",
     "lint:check": "eslint . --ext=js,jsx;  exit 0",
     "lint:fix": "eslint . --ext=js,jsx --fix;  exit 0",
     "install:clean": "rm -rf node_modules/ && rm -rf package-lock.json && npm install && npm start"

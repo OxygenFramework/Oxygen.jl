@@ -1,7 +1,7 @@
 {
   "files": {
-    "main.css": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/css/main.ef50dc76.css",
-    "main.js": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/js/main.f834349e.js",
+    "main.css": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/css/main.1e415bb7.css",
+    "main.js": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/js/main.27d2c896.js",
     "static/media/ImageArchitect3.png": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/ImageArchitect3.db5ecbbde9f4af32d7d3.png",
     "static/media/BackgroundCard1.png": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/BackgroundCard1.55c062c0873c8bc288f8.png",
     "static/media/ImageArchitect2.png": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/ImageArchitect2.960c2b9cde21744e7afb.png",
@@ -46,12 +46,10 @@
     "static/media/roboto-greek-ext-500-normal.woff2": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/roboto-greek-ext-500-normal.6fb9cffb1d3e72bf9293.woff2",
     "static/media/roboto-greek-ext-400-normal.woff2": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/roboto-greek-ext-400-normal.169619821ea93019d1bb.woff2",
     "static/media/roboto-greek-ext-700-normal.woff2": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/media/roboto-greek-ext-700-normal.bd9854c751441ccc1a70.woff2",
-    "index.html": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/index.html",
-    "main.ef50dc76.css.map": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/css/main.ef50dc76.css.map",
-    "main.f834349e.js.map": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/static/js/main.f834349e.js.map"
+    "index.html": "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/index.html"
   },
   "entrypoints": [
-    "static/css/main.ef50dc76.css",
-    "static/js/main.f834349e.js"
+    "static/css/main.1e415bb7.css",
+    "static/js/main.27d2c896.js"
   ]
 }

@@ -99,8 +99,8 @@ export default function Configurator(props) {
                   value={state.settings.interval.get()} 
                   size='md' width={140} 
                   >
-                  <option value={3}>3 Seconds</option>
                   <option value={1}>1 Second</option>
+                  <option value={3}>3 Seconds</option>
                   <option value={5}>5 Seconds</option>
                   <option value={10}>10 Seconds</option>
                   <option value={30}>30 Seconds</option>

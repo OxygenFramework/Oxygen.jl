@@ -19,7 +19,7 @@ export const LineChartV2 = (props) => {
         enabled: false,
       },
       stroke: {
-        curve: "smooth",
+        curve: props.curve ? props.curve : "smooth",
       },
       xaxis: {
         type: 'datetime',

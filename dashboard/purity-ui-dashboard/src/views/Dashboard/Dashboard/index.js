@@ -4,6 +4,10 @@ import {
   Grid,
   SimpleGrid,
   useColorModeValue,
+  Box, 
+  Text,
+  Heading,
+  Checkbox,
   Stack,
   HStack,
   Switch,
@@ -32,6 +36,7 @@ export default function Dashboard() {
 
   const iconBoxInside = useColorModeValue("white", "white");
   const state = useHookstate(globalState);
+  const fillDataGaps = state.dashboard.fill_gaps.get();
 
   const server = state.metrics.server.get();
   const {
@@ -43,6 +48,10 @@ export default function Dashboard() {
   
   function fill_data(data, unit=1000){
     return fillMissingData(Array.from(data).map(x => [...x]), unit);
+  }
+
+  function dict_to_array(dict) {
+    return Array.from(dict).map(x => [...x]);
   }
 
   const total_requests = Object.entries(state.metrics.endpoints.get() || {})?.reduce((acc, item) => {
@@ -63,6 +72,9 @@ export default function Dashboard() {
 
   return (
     <Flex flexDirection='column' pt={{ base: "120px", md: "75px" }}>
+
+      <Heading size="md" mb="5">Server Metrics</Heading>
+
       <SimpleGrid columns={{ sm: 1, md: 2, xl: 3 }} spacing='24px'>
         <MiniStatistics
           title={"Total Requests"}
@@ -104,37 +116,18 @@ export default function Dashboard() {
       <Grid
         templateColumns={{ md: "1fr", lg: "1.8fr 1.2fr" }}
         templateRows={{ md: "1fr auto", lg: "1fr" }}
-        my='26px'
-        gap='24px'>
-
+        my='15px'
+        gap='15px'>
       </Grid>
+
       <Grid
         templateColumns={{ sm: "1fr", lg: "1.5fr 1.5fr" }}
         templateRows={{ sm: "repeat(2, 1fr)", lg: "1fr" }}
         gap='24px'
         mb={{ lg: "26px" }}>
-
-        <SalesOverview
-          title={"Requests / Second (15 Minute Window)"}
-          chart={<LineChartV2 data={fill_data(requests_per_second)}/>}
-        /> 
-
-        <SalesOverview
-          title={"Avg Latency / Second (15 Minute Window)"}
-          chart={<LineChartV2 data={fill_data(avg_latency_per_second)}/>}
-        /> 
-
-        <SalesOverview
-          title={"Requests / Minute (15 Minute Window)"}
-          chart={<LineChartV2 data={fill_data(requests_per_minute, 60_000)}/>}
-        /> 
-
-        <SalesOverview
-          title={"Avg Latency / Minute (15 Minute Window)"}
-          chart={<LineChartV2 data={fill_data(avg_latency_per_minute, 60_000)}/>}
-        /> 
-
-        <SalesOverview
+      
+      
+      <SalesOverview
           title={"Requests Distribution"}
           percentage={undefined}
           chart={<DonutChart series={total_requests.values} 
@@ -157,6 +150,62 @@ export default function Dashboard() {
               }
             }}/>}
         />
+      </Grid>
+
+      <Box display="flex" justifyContent="space-between" alignItems="center" height="60px"> {/* Ensure a height is set */}
+        <Heading size="md">Windowed Metrics</Heading>
+        
+        <Box display="flex" justifyContent="space-between" gap="15px">
+          <Checkbox 
+            isChecked={fillDataGaps}
+            onChange={(e) => state.dashboard.fill_gaps.set(p => !p)}
+          >Fill Gaps</Checkbox>
+          <Select
+            onChange={(e) => state.dashboard.window.set(e.target.value)}
+            value={state.dashboard.window.get()} 
+            size='md' width={140} 
+            >
+            <option value={1}>1 minute</option>
+            <option value={5}>5 minute</option>
+            <option value={10}>10 minute</option>
+            <option value={15}>15 minutes</option>
+            <option value={30}>30 minutes</option>
+            <option value={60}>1 hour</option>
+            <option value={60 * 6}>6 hours</option>
+            <option value={60 * 12}>12 hours</option>
+            <option value={60 * 24}>24 hours</option>
+            <option value={"null"}>All</option>
+          </Select>
+        </Box>
+        
+      </Box>
+
+      <Grid
+        templateColumns={{ sm: "1fr", lg: "1.5fr 1.5fr" }}
+        templateRows={{ sm: "repeat(2, 1fr)", lg: "1fr" }}
+        gap='24px'
+        mb={{ lg: "26px" }}>
+
+
+        <SalesOverview
+          title={"Requests / Second"}
+          chart={<LineChartV2 data={fillDataGaps ? fill_data(requests_per_second) : dict_to_array(requests_per_second)} curve="straight"/>}
+        /> 
+
+        <SalesOverview
+          title={"Avg Latency / Second"}
+          chart={<LineChartV2 data={fillDataGaps ? fill_data(avg_latency_per_second) : dict_to_array(avg_latency_per_second)} curve="straight"/>}
+        /> 
+
+        <SalesOverview
+          title={"Requests / Minute"}
+          chart={<LineChartV2 data={fillDataGaps ? fill_data(requests_per_minute, 60_000) : dict_to_array(requests_per_minute)}/>}
+        /> 
+
+        <SalesOverview
+          title={"Avg Latency / Minute"}
+          chart={<LineChartV2 data={fillDataGaps ? fill_data(avg_latency_per_minute, 60_000) : dict_to_array(avg_latency_per_minute)}/>}
+        /> 
 
       </Grid>
 

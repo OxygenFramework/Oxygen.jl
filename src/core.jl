@@ -700,20 +700,27 @@ function setupmetrics()
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath)
         content = file(filepath)
-        return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$docspath/metrics/")
+        # only replace content if it's in a generated file
+        ext = lowercase(last(splitext(filepath)))
+        if ext in [".html", ".css", ".js"]
+            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$docspath/metrics/")
+        else
+            return content
+        end
     end
 
-    staticfiles("$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    @time staticfiles("$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
-    @get "$docspath/metrics/data" function()
+    @get "$docspath/metrics/data/{window}" function(req, window::Union{Int, Nothing})
+        lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
         return Dict(
            "server" => calculate_server_metrics(),
            "endpoints" => calculate_metrics_all_endpoints(),
            "errors" => error_distribution(),
-           "avg_latency_per_second" =>  avg_latency_per_unit(Second) |> prepare_timeseries_data(),
-           "requests_per_second" =>  requests_per_unit(Second) |> prepare_timeseries_data(),
-           "avg_latency_per_minute" => avg_latency_per_unit(Minute)  |> prepare_timeseries_data(),
-           "requests_per_minute" => requests_per_unit(Minute)  |>  prepare_timeseries_data()
+           "avg_latency_per_second" =>  avg_latency_per_unit(Second, lower_bound) |> prepare_timeseries_data(),
+           "requests_per_second" =>  requests_per_unit(Second, lower_bound) |> prepare_timeseries_data(),
+           "avg_latency_per_minute" => avg_latency_per_unit(Minute, lower_bound)  |> prepare_timeseries_data(),
+           "requests_per_minute" => requests_per_unit(Minute, lower_bound)  |>  prepare_timeseries_data()
         )
     end
 end

@@ -6,7 +6,11 @@ using HTTP
 using Dates
 
 get("/data") do
-    Dict("msg" => "hello")
+    Dict("value" => 3)
+end
+
+get("/hello") do
+    Dict("msg" => "hello world")
 end
 
 function logtime()

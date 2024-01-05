@@ -709,7 +709,7 @@ function setupmetrics()
         end
     end
 
-    @time staticfiles("$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    staticfiles("$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
     @get "$docspath/metrics/data/{window}" function(req, window::Union{Int, Nothing})
         lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing

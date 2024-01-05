@@ -714,9 +714,9 @@ function setupmetrics()
     @get "$docspath/metrics/data/{window}" function(req, window::Union{Int, Nothing})
         lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
         return Dict(
-           "server" => calculate_server_metrics(),
-           "endpoints" => calculate_metrics_all_endpoints(),
-           "errors" => error_distribution(),
+           "server" => calculate_server_metrics(nothing),
+           "endpoints" => calculate_metrics_all_endpoints(nothing),
+           "errors" => error_distribution(nothing),
            "avg_latency_per_second" =>  avg_latency_per_unit(Second, lower_bound) |> prepare_timeseries_data(),
            "requests_per_second" =>  requests_per_unit(Second, lower_bound) |> prepare_timeseries_data(),
            "avg_latency_per_minute" => avg_latency_per_unit(Minute, lower_bound)  |> prepare_timeseries_data(),

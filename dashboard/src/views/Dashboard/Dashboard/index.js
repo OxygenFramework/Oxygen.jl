@@ -16,6 +16,9 @@ import {
   FormLabel,
   useDisclosure
 } from "@chakra-ui/react";
+
+import moment from "moment";
+
 // assets
 import { DonutChart } from "components/Charts/DonutChart";
 import { LineChartV2 } from "components/Charts/LineChartV2";
@@ -51,7 +54,10 @@ export default function Dashboard() {
   }
 
   function dict_to_array(dict) {
-    return Array.from(dict).map(x => [...x]);
+    return Array.from(dict).map(item => {
+      // convert utc to local timestamp for graphs
+      return [moment.utc(item[0]).local().format(), item[1]]
+    });
   }
 
   const total_requests = Object.entries(state.metrics.endpoints.get() || {})?.reduce((acc, item) => {

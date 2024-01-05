@@ -83,14 +83,14 @@ export default function Configurator(props) {
           <DrawerBody w="340px" ps="24px" pe="40px">
             <Flex flexDirection="column">
 
-              <Box display={fixedDisplay} justifyContent="space-between">
+              <Box display={fixedDisplay} justifyContent="space-between" alignItems="center">
                 <Text fontSize="md" fontWeight="600" mb="4px">
                     Poll Server
                 </Text>
                 <Switch isChecked={isPollingOn} onChange={togglePolling} />
               </Box>
 
-              <Box display={fixedDisplay} justifyContent="space-between" mt={3}>
+              <Box display={fixedDisplay} justifyContent="space-between" alignItems="center" mt={3}>
                 <Text fontSize="md" fontWeight="600" mb="4px">
                   Interval
                 </Text>

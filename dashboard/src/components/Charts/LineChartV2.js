@@ -4,7 +4,7 @@ import moment from "moment";
 
 export const LineChartV2 = (props) => {
 
-  const [chartOptions, setChartOptions] = useState({
+  const chartOptions = {
     options: {
       stacked: false,
       chart: {
@@ -24,6 +24,7 @@ export const LineChartV2 = (props) => {
       xaxis: {
         type: 'datetime',
         tickAmount: 3,
+        range: props.range,
         labels: {
           formatter: function(value, timestamp) {
             // Format the label as a local time string
@@ -73,7 +74,7 @@ export const LineChartV2 = (props) => {
       },
       colors: ["#0BC5EA", "#2D3748"],
     }
-  });
+  };
 
   const [chartData, setChartData] = useState({
     series: [
@@ -94,6 +95,7 @@ export const LineChartV2 = (props) => {
       ],
     });
   }, [props.data]);
+
 
   return (
     <ReactApexChart

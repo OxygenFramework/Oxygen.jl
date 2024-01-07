@@ -18,7 +18,7 @@ import FixedPlugin from '../components/FixedPlugin/FixedPlugin';
 import MainPanel from '../components/Layout/MainPanel';
 import PanelContainer from '../components/Layout/PanelContainer';
 import PanelContent from '../components/Layout/PanelContent';
-import { setMetrics, globalState } from '../state/index.ts';
+import { setMetrics,appendMetrics, globalState } from '../state/index.ts';
 import { useHookstate } from '@hookstate/core';
 
 // if oxygen uuid isn't in the public url, then we use the window.location.origin object instead of localhost
@@ -94,14 +94,26 @@ export default function Dashboard(props) {
 	document.documentElement.dir = 'ltr';
 
 	const state = useHookstate(globalState);
+
 	const window_value = state.dashboard.window.get();
 	const { poll, interval } = state.settings.get();
 
 	async function load() {
 		try {
-			let url = BASE_URL + "/" + window_value;
+			// figure out what the latest value we got from the server
+			const reqs = state.metrics.requests_per_second.get();
+			const last_value = reqs.length ? reqs[reqs.length - 1][0] : "null";
+
+			if(last_value !== "null"){
+				state.dashboard.latestData.set(last_value)
+			}
+			
+			const stored_last_value = state.dashboard.latestData.get();
+
+			let url = BASE_URL + "/" + window_value + "/" + stored_last_value;
 		  	let freshData = await fetch(url).then(response => response.json());
-		  	setMetrics(freshData);
+			appendMetrics(freshData);
+
 		} catch (error) {
 		  console.error("Failed to load metrics:", error);
 		}

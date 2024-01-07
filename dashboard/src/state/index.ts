@@ -1,7 +1,7 @@
 
 
 import React from 'react';
-import { hookstate, useHookstate, ImmutableObject} from '@hookstate/core';
+import { hookstate } from '@hookstate/core';
 
 
 interface TimedBins {
@@ -35,10 +35,10 @@ interface Metrics {
     server: Stats
     endpoints: Endpoints
     errors: Map<String,Number>
-    avg_latency_per_second: Map<Date, Number>
-    requests_per_second: Map<Date, Number>
-    requests_per_minute: Map<Date, Number>
-    avg_latency_per_minute: Map<Date, Number>
+    avg_latency_per_second: []
+    requests_per_second: []
+    requests_per_minute: []
+    avg_latency_per_minute: []
 }
 
 export interface AppState {
@@ -46,6 +46,7 @@ export interface AppState {
     dashboard: {
         window: string
         fill_gaps: boolean
+        latestData: string
     },
     settings: {
         poll: boolean,
@@ -56,11 +57,12 @@ export interface AppState {
 const defaultState: AppState = {
     dashboard: {
         window: "15",  // number of minutes for our window
-        fill_gaps: true
+        fill_gaps: true,
+        latestData: "null"
     },
     settings: {
         poll: true,
-        interval: 3
+        interval: 3,
     },
     metrics: {
         server: {
@@ -73,10 +75,10 @@ const defaultState: AppState = {
         },
         endpoints: {},
         errors: new Map(),
-        avg_latency_per_second: new Map(),
-        requests_per_second: new Map(),
-        requests_per_minute: new Map(),
-        avg_latency_per_minute:  new Map()
+        avg_latency_per_second: [],
+        requests_per_second: [],
+        requests_per_minute: [],
+        avg_latency_per_minute: []
     }
 }
 
@@ -84,6 +86,28 @@ export const globalState = hookstate(defaultState);
 
 export function setMetrics(metrics: Metrics){
     globalState.metrics.set({...metrics});
+}
+
+
+  
+export function appendMetrics(metrics: Metrics){
+    globalState.metrics.set(prev => {
+        return {
+
+            // overwrite previous metrics instead of append
+            server: metrics.server, 
+            endpoints: metrics.endpoints,
+            errors: metrics.errors,
+
+            // append
+            requests_per_second: [...prev.requests_per_second, ...metrics.requests_per_second],
+            avg_latency_per_second: [...prev.avg_latency_per_second,  ...metrics.avg_latency_per_second],
+            
+            requests_per_minute: [...prev.requests_per_minute, ...metrics.requests_per_minute],
+            avg_latency_per_minute:  [...prev.avg_latency_per_minute, ...metrics.avg_latency_per_minute],
+            
+        }
+    });
 }
 
 export function getMetrics(){

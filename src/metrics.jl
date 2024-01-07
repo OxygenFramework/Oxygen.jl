@@ -117,13 +117,19 @@ end
 
 ### Helper function to group transactions by endpoint
 
-function recent_transactions(lower_bound=nothing) :: Vector{HTTPTransaction}
-    # return everything if no window is passed
-    if isnothing(lower_bound)
-        return get_history()
-    end
+function recent_transactions(lower_bound::Nothing) :: Vector{HTTPTransaction}
+    return get_history()
+end
+
+function recent_transactions(lower_bound::Dates.Period) :: Vector{HTTPTransaction}
     current_time = now(UTC)
-    return filter(t -> current_time - t.timestamp <= lower_bound, get_history()) 
+    adjusted = lower_bound + Second(1)
+    return filter(t -> current_time - t.timestamp <= adjusted, get_history()) 
+end
+
+function recent_transactions(lower_bound::Dates.DateTime) :: Vector{HTTPTransaction}
+    adjusted = lower_bound + Second(1)
+    return filter(t -> t.timestamp >= adjusted, get_history()) 
 end
 
 function group_transactions_by_endpoint()

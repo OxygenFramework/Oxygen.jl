@@ -711,8 +711,13 @@ function setupmetrics()
 
     staticfiles("$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
-    @get "$docspath/metrics/data/{window}" function(req, window::Union{Int, Nothing})
+    @get "$docspath/metrics/data/{window}/{latest}" function(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
         lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
+
+        if !isnothing(latest)
+            lower_bound = latest
+        end
+
         return Dict(
            "server" => calculate_server_metrics(nothing),
            "endpoints" => calculate_metrics_all_endpoints(nothing),

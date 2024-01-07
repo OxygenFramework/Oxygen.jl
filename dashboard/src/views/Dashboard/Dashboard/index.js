@@ -1,3 +1,4 @@
+import React from "react";
 // Chakra imports
 import {
   Flex,
@@ -22,9 +23,9 @@ import moment from "moment";
 // assets
 import { DonutChart } from "components/Charts/DonutChart";
 import { LineChartV2 } from "components/Charts/LineChartV2";
+
 // Custom icons
 import { useHookstate } from '@hookstate/core';
-import React from "react";
 import { globalState } from "../../../state/index.ts";
 import MiniStatistics from "./components/MiniStatistics";
 import SalesOverview from "./components/SalesOverview";
@@ -40,6 +41,8 @@ export default function Dashboard() {
   const iconBoxInside = useColorModeValue("white", "white");
   const state = useHookstate(globalState);
   const fillDataGaps = state.dashboard.fill_gaps.get();
+  const window_value = state.dashboard.window.get();
+  const chart_range = window_value == "null" ? undefined : parseInt(window_value) *  60 * 1000;
 
   const server = state.metrics.server.get();
   const {
@@ -168,7 +171,7 @@ export default function Dashboard() {
           >Fill Gaps</Checkbox>
           <Select
             onChange={(e) => state.dashboard.window.set(e.target.value)}
-            value={state.dashboard.window.get()} 
+            value={window_value} 
             size='md' width={140} 
             >
             <option value={1}>1 minute</option>
@@ -192,25 +195,47 @@ export default function Dashboard() {
         gap='24px'
         mb={{ lg: "26px" }}>
 
-
+ 
         <SalesOverview
           title={"Requests / Second"}
-          chart={<LineChartV2 data={fillDataGaps ? fill_data(requests_per_second) : dict_to_array(requests_per_second)} curve="straight"/>}
-        /> 
+          chart={
+            <LineChartV2 
+              range={chart_range}
+              curve="straight"
+              data={fillDataGaps ? fill_data(requests_per_second) : dict_to_array(requests_per_second)} 
+            />
+          }
+        />  
 
         <SalesOverview
           title={"Avg Latency / Second"}
-          chart={<LineChartV2 data={fillDataGaps ? fill_data(avg_latency_per_second) : dict_to_array(avg_latency_per_second)} curve="straight"/>}
+          chart={
+            <LineChartV2 
+              range={chart_range}
+              curve="straight"
+              data={fillDataGaps ? fill_data(avg_latency_per_second) : dict_to_array(avg_latency_per_second)}
+            />
+          }
         /> 
 
         <SalesOverview
           title={"Requests / Minute"}
-          chart={<LineChartV2 data={fillDataGaps ? fill_data(requests_per_minute, 60_000) : dict_to_array(requests_per_minute)}/>}
+          chart={
+            <LineChartV2 
+              range={chart_range}
+              data={fillDataGaps ? fill_data(requests_per_minute, 60_000) : dict_to_array(requests_per_minute)}
+            />
+          }
         /> 
 
         <SalesOverview
           title={"Avg Latency / Minute"}
-          chart={<LineChartV2 data={fillDataGaps ? fill_data(avg_latency_per_minute, 60_000) : dict_to_array(avg_latency_per_minute)}/>}
+          chart={
+            <LineChartV2 
+              range={chart_range}
+              data={fillDataGaps ? fill_data(avg_latency_per_minute, 60_000) : dict_to_array(avg_latency_per_minute)}
+            />
+          }
         /> 
 
       </Grid>

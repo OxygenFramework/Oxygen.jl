@@ -20,9 +20,10 @@ import {
 
 import moment from "moment";
 
-// assets
+// charts
 import { DonutChart } from "components/Charts/DonutChart";
 import { LineChartV2 } from "components/Charts/LineChartV2";
+import { BrushChart } from "components/Charts/BrushChart";
 
 // Custom icons
 import { useHookstate } from '@hookstate/core';
@@ -51,16 +52,33 @@ export default function Dashboard() {
     avg_latency_per_second,
     requests_per_second
   } = state.metrics.get();
+
+  function removeDuplicates(data) {
+    const seen = new Set();
+    const result = [];
+  
+    for (const item of data) {
+      const key = item[0];
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(item);
+      }
+      else {
+        console.log("match", key)
+      }
+    }
+    return Array.from(result);
+  }
   
   function fill_data(data, unit=1000){
-    return fillMissingData(Array.from(data).map(x => [...x]), unit);
+    return removeDuplicates(fillMissingData(Array.from(data).map(x => [...x]), unit));
   }
 
   function dict_to_array(dict) {
-    return Array.from(dict).map(item => {
+    return removeDuplicates(Array.from(dict).map(item => {
       // convert utc to local timestamp for graphs
       return [moment.utc(item[0]).local().format(), item[1]]
-    });
+    }));
   }
 
   const total_requests = Object.entries(state.metrics.endpoints.get() || {})?.reduce((acc, item) => {
@@ -78,6 +96,25 @@ export default function Dashboard() {
       return acc;
     }, {keys: [], values: []}
   )
+
+  const fakeData = [
+    [
+      "2024-01-07T19:37:39.0",
+      3
+    ],
+    [
+      "2024-01-07T19:37:40.0",
+      1
+    ],
+    [
+      "2024-01-07T19:38:43.0",
+      2
+    ],
+    [
+      "2024-01-07T19:39:07.0",
+      4
+    ]
+  ]
 
   return (
     <Flex flexDirection='column' pt={{ base: "120px", md: "75px" }}>
@@ -195,13 +232,11 @@ export default function Dashboard() {
         gap='24px'
         mb={{ lg: "26px" }}>
 
- 
         <SalesOverview
           title={"Requests / Second"}
           chart={
-            <LineChartV2 
+            <BrushChart 
               range={chart_range}
-              curve="straight"
               data={fillDataGaps ? fill_data(requests_per_second) : dict_to_array(requests_per_second)} 
             />
           }
@@ -210,9 +245,8 @@ export default function Dashboard() {
         <SalesOverview
           title={"Avg Latency / Second"}
           chart={
-            <LineChartV2 
+            <BrushChart 
               range={chart_range}
-              curve="straight"
               data={fillDataGaps ? fill_data(avg_latency_per_second) : dict_to_array(avg_latency_per_second)}
             />
           }

@@ -5,12 +5,27 @@ using .Oxygen
 using HTTP
 using Dates
 
+routerdict = Dict("value" => 0)
+repeat = router("/repeat", interval = 0.5, tags=["repeat"])
+
+@get "/getroutervalue" function(req)
+    println(routerdict)
+    return routerdict["value"]
+end
+
+@get repeat("/increment", tags=["increment"]) function(req)
+    routerdict["value"] += 1
+    return routerdict["value"]
+end
+
 get("/data") do
     Dict("value" => 3)
 end
 
-get("/hello") do
-    Dict("msg" => "hello world")
+get("/hello") do req
+    "hi"
+    # println(req.context[:ip])
+    # Dict("msg" => "hello world")
 end
 
 function logtime()

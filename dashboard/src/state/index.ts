@@ -1,6 +1,4 @@
-
-
-import React from 'react';
+import moment from "moment";
 import { hookstate } from '@hookstate/core';
 
 interface Stats {
@@ -82,8 +80,15 @@ export function setMetrics(metrics: Metrics){
     globalState.metrics.set({...metrics});
 }
 
+function utc_to_local(data) {
+    return data.map(item => {
+      // convert utc to local date for graphs
+      return [moment.utc(item[0]).local().toDate(), item[1]]
+    });
+  }
+
 function mergeTimeseries<T>(prevData: T[], newData: T[]): T[]{
-    return removeDuplicates(prevData.concat(newData))
+    return removeDuplicates([...prevData, ...utc_to_local(newData)])
 }
 
 function removeDuplicates(data) {
@@ -91,7 +96,7 @@ function removeDuplicates(data) {
     const result = [];
     for (let i = 0; i < data.length; i++) {
       const item = data[i];
-      const key = item[0]; // Use only the date-time as the key
+      const key = item[0].getTime() // Use only the date-time as the key
   
       if (seen.has(key)) {
         // If the key is already seen, update the corresponding item in the result

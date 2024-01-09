@@ -9,6 +9,7 @@ using Dates
 include("../src/Oxygen.jl")
 using .Oxygen
 
+include("metricstests.jl")
 include("templatingtests.jl")
 include("routingfunctionstests.jl")
 include("bodyparsertests.jl")
@@ -587,7 +588,7 @@ enabledocs()
 @test isdocsenabled() == true 
 
 disabledocs()
-@async serve(async=false)
+@async serve(async=false, docs=false)
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/docs"))
@@ -599,7 +600,7 @@ r = internalrequest(HTTP.Request("GET", "/docs/schema"))
 terminate()
 
 enabledocs()
-@async serve()
+serve(async=true)
 sleep(3)
 
 ## Router related tests
@@ -643,7 +644,6 @@ r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
 @test r.status == 200
 @test parse(Int64, text(r)) > 0
 
-
 r = internalrequest(HTTP.Request("GET", "/emptyrouter"))
 @test r.status == 200
 @test text(r) == "emptyrouter"
@@ -659,7 +659,7 @@ r = internalrequest(HTTP.Request("POST", "/emptysubpath"))
 # kill any background tasks still running
 stoptasks()
 
-## 
+## internal docs and metrics tests
 
 r = internalrequest(HTTP.Request("GET", "/get"))
 @test r.status == 200
@@ -674,6 +674,12 @@ r = internalrequest(HTTP.Request("GET", "/docs/redoc"))
 @test r.status == 200
 
 r = internalrequest(HTTP.Request("GET", "/docs/schema"))
+@test r.status == 200
+
+r = internalrequest(HTTP.Request("GET", "/docs/metrics"))
+@test r.status == 200
+
+r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"))
 @test r.status == 200
 
 invocation = []

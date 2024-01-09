@@ -30,9 +30,6 @@ export const BrushChart = (props) => {
   // Function to update chart for real-time data
   const updateForRealTimeData = (newData) => {
     if (range) {
-      const newMax = moment(range.max).utc()
-      const newMin = newMax.subtract({ minutes: 1 }) // Set this to the range you want to display
-
       setChartOptions(prevOptions => ({
         ...prevOptions,
         xaxis: {
@@ -74,7 +71,7 @@ export const BrushChart = (props) => {
     },
     xaxis: {
       type: 'datetime',
-      range: 60 * 1000,
+      range: 60_000,
       tickAmount: 3,
       labels: {
         formatter: function (value, timestamp) {
@@ -158,24 +155,10 @@ export const BrushChart = (props) => {
         },
       },
     },
-    // fill: {
-    //   type: "gradient",
-    //   gradient: {
-    //     shade: "light",
-    //     type: "vertical",
-    //     shadeIntensity: 0.5,
-    //     gradientToColors: undefined, // optional, if not defined - uses the shades of same color in series
-    //     inverseColors: true,
-    //     opacityFrom: 0.1,
-    //     opacityTo: 0,
-    //     stops: [],
-    //   },
-    //   colors: ["#0BC5EA", "#2D3748"],
-    // },
     colors: ["#0BC5EA", "#2D3748"],
   })
 
-
+  // resets the selection on both charts and goes back to the realtime view
   function clearSelect() {
 
     setRange(null); // Reset the custom range state
@@ -196,16 +179,19 @@ export const BrushChart = (props) => {
         ...prevOptions.xaxis,
         min: undefined,
         max: undefined,
-        range: 60 * 1000 // 60 seconds
+        range: 60_000 // 60 seconds
       }
     }));
-  }
+  } 
 
+
+  // keep the top chart data up to date
   useEffect(() => {
     setChartData(props.data);
   }, [props.data]);
 
 
+  // Keep the bottom chart range up to date
   useEffect(() => {
     setLineOptions(prevOptions => ({
       ...prevOptions,
@@ -234,7 +220,7 @@ export const BrushChart = (props) => {
         />
       </Box>
       <Box display="flex" justifyContent="flex-end">
-        <Button size='sm' onClick={clearSelect}>clear selection</Button>
+        <Button size='sm' onClick={clearSelect}>reset</Button>
       </Box>
     </Box>
   );

@@ -5,10 +5,12 @@ using Sockets
 using JSON3
 using Base 
 using Dates
+using Suppressor
 using RelocatableFolders
 
 include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
+include("bodyparsers.jl");  using .BodyParsers
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
 include("metrics.jl");      using .Metrics
@@ -328,8 +330,9 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true, catch_errors=true) :: HTTP.Response
-    return req |> setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors) 
+function internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
+    req.context[:ip] = "INTERNAL" # label internal requests
+    return req |> setupmiddleware(middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
 end
 
 
@@ -360,14 +363,14 @@ function DefaultSerializer(catch_errors::Bool)
     return function(handle)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
-                response_body = handle(req)            
+                response_body = handle(req)   
                 # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
                 if isa(response_body, HTTP.Messages.Response)
                     return response_body 
                 # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
                 elseif isa(response_body, String)
                     headers = ["Content-Type" => HTTP.sniff(response_body)]
-                    return HTTP.Response(200, headers , body=response_body)
+                    return HTTP.Response(200, headers; body=response_body)
                 # case 3.) An object of some type was returned and should be serialized into JSON 
                 else 
                     body = JSON3.write(response_body)
@@ -665,7 +668,9 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
         end
     end
 
-    HTTP.register!(router, httpmethod, route, handle)
+    @suppress begin
+        HTTP.register!(router, httpmethod, route, handle)
+    end
 end
 
 
@@ -719,8 +724,8 @@ function setupmetrics()
         end
 
         return Dict(
-           "server" => calculate_server_metrics(nothing),
-           "endpoints" => calculate_metrics_all_endpoints(nothing),
+           "server" => server_metrics(nothing),
+           "endpoints" => all_endpoint_metrics(nothing),
            "errors" => error_distribution(nothing),
            "avg_latency_per_second" =>  avg_latency_per_unit(Second, lower_bound) |> prepare_timeseries_data(),
            "requests_per_second" =>  requests_per_unit(Second, lower_bound) |> prepare_timeseries_data(),
@@ -758,7 +763,7 @@ end
 
 
 """
-    staticfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing;map)
+    staticfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing, loadfile::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point). 
 The `set_headers` callback is passed the route, mime type, and the current headers for the given 
@@ -778,7 +783,7 @@ function staticfiles(
     
     registermountedfolder(mountdir)
     function addroute(currentroute, content_type, derived_headers, filepath, registeredpaths; code=200)
-        body = isnothing(map) ? file(filepath) : loadfile(filepath)
+        body = isnothing(loadfile) ? file(filepath) : loadfile(filepath)
         headers = !isnothing(set_headers) ? set_headers(currentroute, content_type, derived_headers) : derived_headers
         @get "$currentroute" function(req)
             # return 404 for paths that don't match our files
@@ -791,14 +796,19 @@ end
 
 
 """
-    dynamicfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing)
+    dynamicfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing, loadfile::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point), 
 but files are re-read on each request.
 The `set_headers` callback is passed the route, mime type, and the current headers for the given 
 resource and should return a finalized vector of pairs to use as the headers in the outgoing Request.
 """
-function dynamicfiles(folder::String, mountdir::String="static"; set_headers::Union{Function,Nothing}=nothing)
+function dynamicfiles(
+        folder::String, 
+        mountdir::String="static"; 
+        set_headers::Union{Function,Nothing}=nothing,
+        loadfile::Union{Function,Nothing}=nothing
+    )
     # remove the leading slash 
     if first(mountdir) == '/'
         mountdir = mountdir[2:end]
@@ -810,7 +820,8 @@ function dynamicfiles(folder::String, mountdir::String="static"; set_headers::Un
         @get "$currentroute" function(req)   
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)
-            return validpath ?  HTTP.Response(code, headers , body=file(filepath)) : HTTP.Response(404) 
+            body = isnothing(loadfile) ? file(filepath) : loadfile(filepath)
+            return validpath ?  HTTP.Response(code, headers, body=body) : HTTP.Response(404) 
         end
     end
     mountfolder(folder, mountdir, addroute)    

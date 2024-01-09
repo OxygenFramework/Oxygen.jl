@@ -53,15 +53,13 @@ export default function Dashboard() {
     requests_per_second
   } = state.metrics.get();
 
+ 
   function fill_data(data, unit=1000){
-    return fillMissingData(Array.from(data).map(x => [...x]), unit);
+    return fillMissingData(Array.from(data).map(x => [...x]), unit, true, false);
   }
 
   function dict_to_array(dict) {
-    return Array.from(dict).map(item => {
-      // convert utc to local timestamp for graphs
-      return [moment.utc(item[0]).local().format(), item[1]]
-    });
+    return Array.from(dict).map(item => [...item]);
   }
 
   const total_requests = Object.entries(state.metrics.endpoints.get() || {})?.reduce((acc, item) => {
@@ -79,25 +77,6 @@ export default function Dashboard() {
       return acc;
     }, {keys: [], values: []}
   )
-
-  const fakeData = [
-    [
-      "2024-01-07T19:37:39.0",
-      3
-    ],
-    [
-      "2024-01-07T19:37:40.0",
-      1
-    ],
-    [
-      "2024-01-07T19:38:43.0",
-      2
-    ],
-    [
-      "2024-01-07T19:39:07.0",
-      4
-    ]
-  ]
 
   return (
     <Flex flexDirection='column' pt={{ base: "120px", md: "75px" }}>

@@ -18,8 +18,9 @@ import FixedPlugin from '../components/FixedPlugin/FixedPlugin';
 import MainPanel from '../components/Layout/MainPanel';
 import PanelContainer from '../components/Layout/PanelContainer';
 import PanelContent from '../components/Layout/PanelContent';
-import { setMetrics,appendMetrics, globalState } from '../state/index.ts';
+import { appendMetrics, globalState } from '../state/index.ts';
 import { useHookstate } from '@hookstate/core';
+import moment from "moment";
 
 // if oxygen uuid isn't in the public url, then we use the window.location.origin object instead of localhost
 const BASE_URL = process.env.PUBLIC_URL.includes("df9a0d86-3283-4920-82dc-4555fc0d1d8b")
@@ -98,17 +99,28 @@ export default function Dashboard(props) {
 	const window_value = state.dashboard.window.get();
 	const { poll, interval } = state.settings.get();
 
+	function convertLocalToUTC(date){
+		if(!date || date === "null"){
+			return "null"
+		}
+		return moment(date).utc().format('YYYY-MM-DDTHH:mm:ss.0');
+	}
+	  
+
 	async function load() {
 		try {
 			// figure out what the latest value we got from the server
 			const reqs = state.metrics.requests_per_second.get();
 			const last_value = reqs.length ? reqs[reqs.length - 1][0] : "null";
 
+			// only set the value if we have an actual value
 			if(last_value !== "null"){
 				state.dashboard.latestData.set(last_value)
 			}
-			
-			const stored_last_value = state.dashboard.latestData.get();
+
+			// convert the local Datetime to a UTC formatted string before hitting the api
+			let stored_last_value = state.dashboard.latestData.get();
+			stored_last_value = convertLocalToUTC(stored_last_value);
 
 			let url = BASE_URL + "/" + window_value + "/" + stored_last_value;
 		  	let freshData = await fetch(url).then(response => response.json());

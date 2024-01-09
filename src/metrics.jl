@@ -3,7 +3,6 @@ module Metrics
 using HTTP
 using JSON3
 using Dates
-using Profile
 using DataStructures
 using Statistics
 using RelocatableFolders
@@ -13,8 +12,8 @@ include("bodyparsers.jl"); using .BodyParsers
 
 export MetricsMiddleware, get_history, push_history, HTTPTransaction,
     fill_missing_data,
-    calculate_server_metrics,
-    calculate_metrics_all_endpoints, 
+    server_metrics,
+    all_endpoint_metrics, 
     capture_metrics, bin_and_count_transactions,
     bin_transactions, requests_per_unit, avg_latency_per_unit,
     timeseries, series_format, error_distribution,
@@ -40,12 +39,17 @@ end
 
 global const history = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(1_000_000))
 
+
 function push_history(transaction::HTTPTransaction)
     pushfirst!(history[], transaction)
 end
 
 function get_history() :: Vector{HTTPTransaction}
     return collect(history[])
+end
+
+function clear_history()
+    empty!(history[])
 end
 
 # Helper function to calculate percentile
@@ -55,7 +59,7 @@ function percentile(values, p)
 end
 
 # Function to group HTTPTransaction objects by URI prefix with a maximum depth limit
-function group_transactions_by_prefix_depth_limit(transactions::Vector{HTTPTransaction}, max_depth::Int)
+function group_transactions(transactions::Vector{HTTPTransaction}, max_depth::Int)
     # Create a dictionary to store the grouped transactions
     grouped_transactions = Dict{String, Vector{HTTPTransaction}}()
 
@@ -81,7 +85,7 @@ end
 
 
 ### Helper function to calculate metrics for a set of transactions
-function calculate_metrics_for_transactions(transactions::Vector{HTTPTransaction})
+function get_transaction_metrics(transactions::Vector{HTTPTransaction})
     if isempty(transactions)
         return Dict(
             "total_requests" => 0,
@@ -117,7 +121,7 @@ end
 
 ### Helper function to group transactions by endpoint
 
-function recent_transactions(lower_bound::Nothing) :: Vector{HTTPTransaction}
+function recent_transactions(::Nothing) :: Vector{HTTPTransaction}
     return get_history()
 end
 
@@ -145,25 +149,25 @@ end
 """
 Group transactions by URI depth with a maximum depth limit using the function
 """
-function calculate_metrics_all_endpoints(lower_bound=Minute(15); max_depth=4)
+function all_endpoint_metrics(lower_bound=Minute(15); max_depth=4)
     transactions = recent_transactions(lower_bound)    
-    groups = group_transactions_by_prefix_depth_limit(transactions, max_depth)
-    return Dict(k => calculate_metrics_for_transactions(v) for (k,v) in groups)
+    groups = group_transactions(transactions, max_depth)
+    return Dict(k => get_transaction_metrics(v) for (k,v) in groups)
 end
 
 
-function calculate_server_metrics(lower_bound=Minute(15))
+function server_metrics(lower_bound=Minute(15))
     transactions = recent_transactions(lower_bound)
-    calculate_metrics_for_transactions(transactions)
+    get_transaction_metrics(transactions)
 end
 
-function calculate_endpoint_metrics(endpoint_uri::String)
+function endpoint_metrics(endpoint_uri::String)
     endpoint_transactions = filter(t -> t.uri == endpoint_uri, get_history())
-    return calculate_metrics_for_transactions(endpoint_transactions)
+    return get_transaction_metrics(endpoint_transactions)
 end
 
 function error_distribution(lower_bound=Minute(15))
-    metrics = calculate_metrics_all_endpoints(lower_bound)
+    metrics = all_endpoint_metrics(lower_bound)
     failed_counts = Dict{String, Int}()
     for (group_prefix, transaction_metrics) in metrics
         failures = transaction_metrics["total_errors"]

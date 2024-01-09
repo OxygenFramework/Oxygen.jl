@@ -3,12 +3,6 @@
 import React from 'react';
 import { hookstate } from '@hookstate/core';
 
-
-interface TimedBins {
-    timestamp: Date
-    count: number
-}
-
 interface Stats {
     percentile_latency_95th: number
     avg_latency: number
@@ -88,24 +82,44 @@ export function setMetrics(metrics: Metrics){
     globalState.metrics.set({...metrics});
 }
 
+function mergeTimeseries<T>(prevData: T[], newData: T[]): T[]{
+    return removeDuplicates(prevData.concat(newData))
+}
+
+function removeDuplicates(data) {
+    const seen = new Map();
+    const result = [];
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
+      const key = item[0]; // Use only the date-time as the key
+  
+      if (seen.has(key)) {
+        // If the key is already seen, update the corresponding item in the result
+        result[seen.get(key)][1] = item[1];
+      } else {
+        // If it's a new key, add it to the result and mark its index
+        seen.set(key, result.length);
+        result.push(item);
+      }
+    }
+    return result;
+}
 
   
 export function appendMetrics(metrics: Metrics){
     globalState.metrics.set(prev => {
         return {
-
             // overwrite previous metrics instead of append
             server: metrics.server, 
             endpoints: metrics.endpoints,
             errors: metrics.errors,
 
             // append
-            requests_per_second: [...prev.requests_per_second, ...metrics.requests_per_second],
-            avg_latency_per_second: [...prev.avg_latency_per_second,  ...metrics.avg_latency_per_second],
+            requests_per_second: mergeTimeseries(prev.requests_per_second, metrics.requests_per_second),
+            avg_latency_per_second: mergeTimeseries(prev.avg_latency_per_second,  metrics.avg_latency_per_second),
             
-            requests_per_minute: [...prev.requests_per_minute, ...metrics.requests_per_minute],
-            avg_latency_per_minute:  [...prev.avg_latency_per_minute, ...metrics.avg_latency_per_minute],
-            
+            requests_per_minute: mergeTimeseries(prev.requests_per_minute, metrics.requests_per_minute),
+            avg_latency_per_minute: mergeTimeseries(prev.avg_latency_per_minute, metrics.avg_latency_per_minute),
         }
     });
 }

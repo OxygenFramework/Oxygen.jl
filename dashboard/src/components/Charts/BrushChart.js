@@ -8,9 +8,6 @@ export const BrushChart = (props) => {
   const [chartData, setChartData] = useState([])
   const [range, setRange] = useState(null);
 
-
-
-
   const onBrushUpdate = (chartContext, xaxis) => {
 
     setRange({
@@ -78,7 +75,7 @@ export const BrushChart = (props) => {
     xaxis: {
       type: 'datetime',
       range: 60 * 1000,
-      tickAmount: 4,
+      tickAmount: 3,
       labels: {
         formatter: function (value, timestamp) {
           // Format the label as a local time string
@@ -106,15 +103,6 @@ export const BrushChart = (props) => {
         },
       },
     },
-     fill: {
-      type: "gradient",
-      gradient: {
-        shade: "light",
-        type: "vertical",
-       
-      },
-      colors: ["#0BC5EA", "#2D3748"],
-    },
     colors: ["#0BC5EA", "#2D3748"],
   });
 
@@ -141,6 +129,7 @@ export const BrushChart = (props) => {
     },
     xaxis: {
       type: 'datetime',
+      tickAmount: 3,
       labels: {
         formatter: function (value, timestamp) {
           // Format the label as a local time string

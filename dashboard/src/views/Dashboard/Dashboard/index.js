@@ -53,32 +53,15 @@ export default function Dashboard() {
     requests_per_second
   } = state.metrics.get();
 
-  function removeDuplicates(data) {
-    const seen = new Set();
-    const result = [];
-  
-    for (const item of data) {
-      const key = item[0];
-      if (!seen.has(key)) {
-        seen.add(key);
-        result.push(item);
-      }
-      else {
-        console.log("match", key)
-      }
-    }
-    return Array.from(result);
-  }
-  
   function fill_data(data, unit=1000){
-    return removeDuplicates(fillMissingData(Array.from(data).map(x => [...x]), unit));
+    return fillMissingData(Array.from(data).map(x => [...x]), unit);
   }
 
   function dict_to_array(dict) {
-    return removeDuplicates(Array.from(dict).map(item => {
+    return Array.from(dict).map(item => {
       // convert utc to local timestamp for graphs
       return [moment.utc(item[0]).local().format(), item[1]]
-    }));
+    });
   }
 
   const total_requests = Object.entries(state.metrics.endpoints.get() || {})?.reduce((acc, item) => {

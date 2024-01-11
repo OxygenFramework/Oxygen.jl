@@ -5,7 +5,7 @@ using Dates
 include("../src/Oxygen.jl")
 using .Oxygen
 
-include("../src/Metrics.jl")
+include("../src/metrics.jl")
 using .Metrics:
     percentile, HTTPTransaction, TimeseriesRecord, get_history, push_history,
     group_transactions, get_transaction_metrics, recent_transactions,

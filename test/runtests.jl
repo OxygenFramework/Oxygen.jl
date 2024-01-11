@@ -600,7 +600,7 @@ r = internalrequest(HTTP.Request("GET", "/docs/schema"))
 terminate()
 
 enabledocs()
-serve(async=true)
+@async serve()
 sleep(3)
 
 ## Router related tests

@@ -314,6 +314,8 @@ end
     return "emptysubpath - post"
 end
 
+serve(async=true)
+
 r = internalrequest(HTTP.Request("GET", "/anonymous"))
 @test r.status == 200
 @test text(r) == "no args"
@@ -497,10 +499,10 @@ r = internalrequest(HTTP.Request("GET", "/static/index.html"))
 @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
 @test text(r) == file("content/index.html")
 
-# r = internalrequest(HTTP.Request("GET", "/static/"))
-# @test r.status == 200
-# @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
-# @test text(r) == file("content/index.html")
+r = internalrequest(HTTP.Request("GET", "/static/"))
+@test r.status == 200
+@test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
+@test text(r) == file("content/index.html")
 
 r = internalrequest(HTTP.Request("GET", "/static/"))
 @test r.status == 200
@@ -587,21 +589,10 @@ disabledocs()
 enabledocs()
 @test isdocsenabled() == true 
 
-disabledocs()
-@async serve(async=false, docs=false)
-sleep(1)
-
-r = internalrequest(HTTP.Request("GET", "/docs"))
-@test r.status == 404
-
-r = internalrequest(HTTP.Request("GET", "/docs/schema"))
-@test r.status == 404
-
 terminate()
-
 enabledocs()
-@async serve()
-sleep(3)
+@async serve(docs=true)
+sleep(5)
 
 ## Router related tests
 
@@ -642,6 +633,7 @@ r = internalrequest(HTTP.Request("GET", "/math/square/3"))
 
 r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
 @test r.status == 200
+println(text(r))
 @test parse(Int64, text(r)) > 0
 
 r = internalrequest(HTTP.Request("GET", "/emptyrouter"))

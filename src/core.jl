@@ -233,7 +233,7 @@ Internal helper function to launch the server in a consistent way
 function startserver(host, port, docs, metrics, kwargs, async, start)
     try
         serverwelcome(host, port, docs, metrics)
-        setup(docs)
+        setup(docs, metrics)
         server[] = start(preprocesskwargs(kwargs))
         starttasks()
         registercronjobs()
@@ -294,14 +294,20 @@ end
 """
 This function called right before serving the server, which is useful for performing any additional setup
 """
-function setup(docs::Bool)
+function setup(docs::Bool, metrics::Bool)
     if docs
         enabledocs()
     else
         disabledocs()
     end
-    setupswagger()
-    setupmetrics()
+
+    if docs
+        setupswagger()
+    end
+
+    if metrics
+        setupmetrics()
+    end
 end
 
 

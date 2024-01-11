@@ -11,7 +11,6 @@ include("util.jl"); using .Util
 include("bodyparsers.jl"); using .BodyParsers
 
 export MetricsMiddleware, get_history, push_history, HTTPTransaction,
-    fill_missing_data,
     server_metrics,
     all_endpoint_metrics, 
     capture_metrics, bin_and_count_transactions,
@@ -131,20 +130,11 @@ function recent_transactions(lower_bound::Dates.Period) :: Vector{HTTPTransactio
     return filter(t -> current_time - t.timestamp <= adjusted, get_history()) 
 end
 
+# Needs coverage
 function recent_transactions(lower_bound::Dates.DateTime) :: Vector{HTTPTransaction}
     adjusted = lower_bound + Second(1)
     return filter(t -> t.timestamp >= adjusted, get_history()) 
 end
-
-function group_transactions_by_endpoint()
-    grouped_transactions = Dict{String, Vector{HTTPTransaction}}()
-    transactions = recent_transactions(Minute(15))
-    for transaction in transactions
-        push!(get!(grouped_transactions, transaction.uri, []), transaction)
-    end
-    return grouped_transactions
-end
-
 
 """
 Group transactions by URI depth with a maximum depth limit using the function
@@ -161,6 +151,7 @@ function server_metrics(lower_bound=Minute(15))
     get_transaction_metrics(transactions)
 end
 
+# Needs coverage
 function endpoint_metrics(endpoint_uri::String)
     endpoint_transactions = filter(t -> t.uri == endpoint_uri, get_history())
     return get_transaction_metrics(endpoint_transactions)
@@ -178,14 +169,14 @@ function error_distribution(lower_bound=Minute(15))
     return failed_counts
 end
 
-"""
-Helper function used to convert internal data so that it can be viewd by a graph more easily
-"""
-function prepare_timeseries_data(unit::Dates.TimePeriod=Second(1))
-    function(binned_records::Dict)
-        binned_records |> timeseries |> fill_missing_data(unit, fill_to_current=true, sort=false) |> series_format
-    end
-end
+# """
+# Helper function used to convert internal data so that it can be viewd by a graph more easily
+# """
+# function prepare_timeseries_data(unit::Dates.TimePeriod=Second(1))
+#     function(binned_records::Dict)
+#         binned_records |> timeseries |> fill_missing_data(unit, fill_to_current=true, sort=false) |> series_format
+#     end
+# end
 
 function prepare_timeseries_data()
     function(binned_records::Dict)
@@ -193,47 +184,47 @@ function prepare_timeseries_data()
     end
 end
 
-function fill_missing_data(unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
-    return function(records::Vector{TimeseriesRecord})
-        return fill_missing_data(records, unit, fill_to_current=fill_to_current, sort=sort)
-    end
-end
+# function fill_missing_data(unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
+#     return function(records::Vector{TimeseriesRecord})
+#         return fill_missing_data(records, unit, fill_to_current=fill_to_current, sort=sort)
+#     end
+# end
 
-function fill_missing_data(records::Vector{TimeseriesRecord}, unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
-    # Ensure the input is sorted by timestamp
-    if sort 
-        sort!(records, by = x -> x.timestamp)
-    end
+# function fill_missing_data(records::Vector{TimeseriesRecord}, unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
+#     # Ensure the input is sorted by timestamp
+#     if sort 
+#         sort!(records, by = x -> x.timestamp)
+#     end
 
-    filled_records = Vector{TimeseriesRecord}()
-    last_record_time = nothing  # Initialize variable to store the time of the last record
+#     filled_records = Vector{TimeseriesRecord}()
+#     last_record_time = nothing  # Initialize variable to store the time of the last record
 
-    for i in 1:length(records)
-        # Add the current record to the filled_records
-        push!(filled_records, records[i])
-        last_record_time = records[i].timestamp  # Update the time of the last record
+#     for i in 1:length(records)
+#         # Add the current record to the filled_records
+#         push!(filled_records, records[i])
+#         last_record_time = records[i].timestamp  # Update the time of the last record
 
-        # If this is not the last record, check the gap to the next record
-        if i < length(records)
-            next_time = records[i+1].timestamp
-            while last_record_time + unit < next_time
-                last_record_time += unit
-                push!(filled_records, TimeseriesRecord(last_record_time, 0))
-            end
-        end
-    end
+#         # If this is not the last record, check the gap to the next record
+#         if i < length(records)
+#             next_time = records[i+1].timestamp
+#             while last_record_time + unit < next_time
+#                 last_record_time += unit
+#                 push!(filled_records, TimeseriesRecord(last_record_time, 0))
+#             end
+#         end
+#     end
 
-    # If fill_to_current is true, fill in the gap between the last record and the current time
-    if fill_to_current && !isnothing(last_record_time)
-        current_time = now(UTC)
-        while last_record_time + unit < current_time
-            last_record_time += unit
-            push!(filled_records, TimeseriesRecord(last_record_time, 0))
-        end
-    end
+#     # If fill_to_current is true, fill in the gap between the last record and the current time
+#     if fill_to_current && !isnothing(last_record_time)
+#         current_time = now(UTC)
+#         while last_record_time + unit < current_time
+#             last_record_time += unit
+#             push!(filled_records, TimeseriesRecord(last_record_time, 0))
+#         end
+#     end
 
-    return filled_records
-end
+#     return filled_records
+# end
 
 
 """

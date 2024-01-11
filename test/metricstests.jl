@@ -10,8 +10,9 @@ using .Metrics:
     percentile, HTTPTransaction, TimeseriesRecord, get_history, push_history,
     group_transactions, get_transaction_metrics, recent_transactions,
     all_endpoint_metrics, server_metrics, error_distribution,
-    prepare_timeseries_data, fill_missing_data, timeseries, series_format,
-    bin_transactions, requests_per_unit, avg_latency_per_unit, clear_history
+    prepare_timeseries_data, timeseries, series_format,
+    bin_transactions, requests_per_unit, avg_latency_per_unit, clear_history,
+    endpoint_metrics
 
 # Mock Data
 const MOCK_TIMESTAMP = DateTime(2021, 1, 1, 12, 0, 0)
@@ -75,18 +76,6 @@ end
     @test typeof(distribution) == Dict{String, Int}
 end
 
-# # Test for prepare_timeseries_data
-# @testset "Timeseries Data Preparation" begin
-#     prep_func = prepare_timeseries_data()
-#     @test typeof(prep_func) == Function
-# end
-
-# Test for fill_missing_data
-@testset "Fill Missing Data in Timeseries" begin
-    records = [TimeseriesRecord(MOCK_TIMESTAMP, i) for i in 1:5]
-    filled = fill_missing_data(records, Minute(1))
-    @test length(filled) >= 5
-end
 
 # Test for timeseries and series_format
 @testset "Timeseries Conversion and Formatting" begin
@@ -105,9 +94,28 @@ end
     @test typeof(avg_latency) == Dict{Dates.DateTime, Number}
 end
 
-# Run all tests
-@testset "Metrics Module Tests" begin
-    # Include all test sets here
+
+@testset "Recent Transactions with DateTime Lower Bound" begin
+    clear_history()
+    push_history(HTTPTransaction("192.168.1.1", "/test", DateTime(2023, 1, 1, 12), 0.5, true, 200, nothing))
+    push_history(HTTPTransaction("192.168.1.2", "/test", DateTime(2023, 1, 1, 13), 0.5, true, 200, nothing))
+    push_history(HTTPTransaction("192.168.1.3", "/test", DateTime(2023, 1, 1, 14), 0.5, true, 200, nothing))
+
+    transactions = recent_transactions(DateTime(2023, 1, 1, 13))
+    @test length(transactions) == 1
+    @test all(t -> t.timestamp >= DateTime(2023, 1, 1, 13), transactions)
+end
+
+@testset "Endpoint Metrics Calculation" begin
+    clear_history()
+    push_history(HTTPTransaction("192.168.1.1", "/test", now(), 0.5, true, 200, nothing))
+    push_history(HTTPTransaction("192.168.1.2", "/test", now(), 1.0, false, 500, "Error"))
+
+    metrics = endpoint_metrics("/test")
+
+    @test metrics["total_requests"] == 2
+    @test metrics["avg_latency"] == 0.75
+    @test metrics["total_errors"] == 1
 end
 
 

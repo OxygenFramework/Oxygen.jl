@@ -24,7 +24,6 @@ export @get, @post, @put, @patch, @delete, @route, @cron,
         starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs, 
         clearcronjobs
 
-
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
 global const timers = Ref{Vector{Timer}}([])

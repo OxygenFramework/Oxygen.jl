@@ -5,27 +5,8 @@ using .Oxygen
 using HTTP
 using Dates
 
-routerdict = Dict("value" => 0)
-repeat = router("/repeat", interval = 0.5, tags=["repeat"])
-
-@get "/getroutervalue" function(req)
-    println(routerdict)
-    return routerdict["value"]
-end
-
-@get repeat("/increment", tags=["increment"]) function(req)
-    routerdict["value"] += 1
-    return routerdict["value"]
-end
-
 get("/data") do
-    Dict("value" => 3)
-end
-
-get("/hello") do req
-    "hi"
-    # println(req.context[:ip])
-    # Dict("msg" => "hello world")
+    Dict("msg" => "hello")
 end
 
 function logtime()
@@ -33,16 +14,7 @@ function logtime()
 end
 
 # initialize the app with an already running cron job
-# @cron "*" logtime
-
-
-get("/error") do
-    "a" + 3
-end
-
-get("/long") do
-    sleep(0.1)
-end
+@cron "*" logtime
 
 get("/register") do
     @info "registering new job"

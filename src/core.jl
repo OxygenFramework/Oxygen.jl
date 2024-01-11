@@ -402,7 +402,7 @@ function MetricsMiddleware(catch_errors::Bool)
                     # Handle the request
                     response = handler(req)
                     # Log response time
-                    response_time = time() - start_time
+                    response_time = (time() - start_time) * 1000
                     if response.status == 200
                         push_history(HTTPTransaction(
                             string(req.context[:ip]),
@@ -428,7 +428,7 @@ function MetricsMiddleware(catch_errors::Bool)
                     # Return the response
                     return response
                 catch e
-                    response_time = time() - start_time
+                    response_time = (time() - start_time) * 1000
 
                     # Log the error
                     push_history(HTTPTransaction(
@@ -681,7 +681,7 @@ end
 
 # add the swagger and swagger/schema routes 
 function setupswagger()
-    
+
     if isdocsenabled()
 
         @get "$docspath" function()

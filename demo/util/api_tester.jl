@@ -38,12 +38,32 @@ urls = [
     "http://localhost:8080/data",
     "http://localhost:8080/data", 
     "http://localhost:8080/data",  
-    "http://localhost:8080/long", 
-    # "http://localhost:8080/error",
-    # "http://localhost:8080/fake",
-    "http://localhost:8080/hello", 
-    "http://localhost:8080/hello", 
-    "http://localhost:8080/hello", 
+    "http://localhost:8080/data",
+    "http://localhost:8080/data", 
+    "http://localhost:8080/data", 
+    "http://localhost:8080/data",
+    "http://localhost:8080/data", 
+    "http://localhost:8080/data",
+
+    "http://localhost:8080/random/lg", 
+    "http://localhost:8080/random/lg", 
+    "http://localhost:8080/random/lg", 
+
+    "http://localhost:8080/random/md", 
+    "http://localhost:8080/random/md", 
+    "http://localhost:8080/random/md", 
+    "http://localhost:8080/random/md", 
+
+    "http://localhost:8080/random/sm", 
+    "http://localhost:8080/random/sm", 
+    "http://localhost:8080/random/sm", 
+    "http://localhost:8080/random/sm", 
+    "http://localhost:8080/random/sm", 
+    "http://localhost:8080/random/sm", 
+    
+    "http://localhost:8080/fake",
+    "http://localhost:8080/error",
+    "http://localhost:8080/nothing",
 ]
 random_requester(urls, (1, 8))  # Randomly hit endpoints between 1 and 5 requests per second
 

@@ -681,27 +681,26 @@ end
 
 # add the swagger and swagger/schema routes 
 function setupswagger()
-
-    if !isdocsenabled()
-        return
-    end
-
-    @get "$docspath" function()
-        return swaggerhtml()
-    end
-
-    @get "$docspath/swagger" function()
-        return swaggerhtml()
-    end
-
-    @get "$docspath/redoc" function()
-        return redochtml()
-    end
-
-    @get "$(getschemapath())" function()
-        return getschema() 
-    end
     
+    if isdocsenabled()
+
+        @get "$docspath" function()
+            return swaggerhtml()
+        end
+    
+        @get "$docspath/swagger" function()
+            return swaggerhtml()
+        end
+    
+        @get "$docspath/redoc" function()
+            return redochtml()
+        end
+    
+        @get "$(getschemapath())" function()
+            return getschema() 
+        end 
+    end
+
 end
 
 # add the swagger and swagger/schema routes 

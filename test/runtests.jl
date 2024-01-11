@@ -36,7 +36,7 @@ StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 @staticfiles "content"
 
 # mount files under /dynamic
-@dynamicfiles "content" "dynamic"
+@dynamicfiles "content" "/dynamic"
 
 @get "/killserver" function ()
     terminate()
@@ -315,6 +315,10 @@ end
 end
 
 serve(async=true)
+
+# query metrics endpoints
+r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"))
+@test r.status == 200
 
 r = internalrequest(HTTP.Request("GET", "/anonymous"))
 @test r.status == 200

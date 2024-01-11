@@ -10,17 +10,17 @@ get("/data") do
 end
 
 get("/random/sm") do
-    sleep(rand(0.1:0.30))
+    sleep(rand(0.01:0.03))
     "small random"
 end
 
 get("/random/md") do
-    sleep(rand(0.30:0.70))
+    sleep(rand(0.03:0.07))
     "small random"
 end
 
 get("/random/lg") do
-    sleep(rand(0.30:1))
+    sleep(rand(0.07:.1))
     "random"
 end
 

@@ -23,11 +23,12 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 ## Features
 
 - Straightforward routing
+- Real-time Metrics Dashboard
 - Auto-generated swagger documentation
 - Out-of-the-box JSON serialization & deserialization (customizable)
 - Type definition support for path parameters
-- Built-in multithreading support
-- Built-in Cron Scheduling (on endpoints & functions)
+- Multithreading support
+- Cron Scheduling (on endpoints & functions)
 - Middleware chaining (at the application, router, and route levels)
 - Static & Dynamic file hosting
 - Templating Support
@@ -805,10 +806,27 @@ Low-level macro that allows a route to be handle multiple request types
 | :-------- | :------- | :------------------------- |
 | `folder` | `string` | **Required**. The folder to serve files from |
 | `mountdir` | `string` | The root endpoint to mount files under (default is "static")|
+| `set_headers` | `function` | Customize the http response headers when returning these files |
+| `loadfile` | `function` | Customize behavior when loading files |
 
 Serve all static files within a folder. This function recursively searches a directory
 and mounts all files under the mount directory using their relative paths.
 
+#### dynamicfiles
+
+```julia
+  dynamicfiles(folder, mount)
+```
+| Parameter | Type     | Description                |
+| :-------- | :------- | :------------------------- |
+| `folder` | `string` | **Required**. The folder to serve files from |
+| `mountdir` | `string` | The root endpoint to mount files under (default is "static")|
+| `set_headers` | `function` | Customize the http response headers when returning these files |
+| `loadfile` | `function` | Customize behavior when loading files |
+
+Serve all static files within a folder. This function recursively searches a directory
+and mounts all files under the mount directory using their relative paths. The file is loaded
+on each request, potentially picking up any file changes.
 
 ### Request helper functions
 

@@ -4,11 +4,16 @@ using HTTP
 using Sockets 
 using JSON3
 using Base 
+using Dates
+using Suppressor
+using RelocatableFolders
 
 include("util.jl");         using .Util
 include("fileutil.jl");     using .FileUtil
+include("bodyparsers.jl");  using .BodyParsers
 include("streamutil.jl");   using .StreamUtil
 include("autodoc.jl");      using .AutoDoc
+include("metrics.jl");      using .Metrics
 
 export @get, @post, @put, @patch, @delete, @route, @cron, 
         @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
@@ -23,6 +28,10 @@ global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
 global const timers = Ref{Vector{Timer}}([])
 
+# Generate a reliable path to our internal data folder that works when the 
+# package is used with PackageCompiler.jl
+global const DATA_PATH = @path abspath(joinpath(@__DIR__, "..", "data"))
+
 oxygen_title = raw"""
    ____                            
   / __ \_  ____  ______ ____  ____ 
@@ -33,10 +42,11 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(host::String, port::Int)
+function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool)
     printstyled(oxygen_title, color = :blue, bold = true)  
     @info "✅ Started server: http://$host:$port" 
-    @info "📖 Documentation: http://$host:$port$docspath"
+    docs    && @info "📖 Documentation: http://$host:$port$docspath"
+    metrics && @info "📊 Metrics: http://$host:$port$docspath/metrics"
 end
 
 
@@ -126,32 +136,65 @@ function stream_handler(middleware::Function)
 end 
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, metrics=true, kwargs...)
 
 Start the webserver with your own custom request handler
 """
-function serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, kwargs...)
-    # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors)
+function serve(; 
+    middleware::Vector=[], 
+    handler=stream_handler, 
+    host="127.0.0.1", 
+    port=8080, 
+    serialize=true, 
+    async=false, 
+    catch_errors=true, 
+    docs=true,
+    metrics=true, 
+    kwargs...)
 
-    startserver(host, port, kwargs, async, (kwargs) ->  
+    # compose our middleware ahead of time (so it only has to be built up once)
+    configured_middelware = setupmiddleware(
+        middleware=middleware, 
+        serialize=serialize, 
+        catch_errors=catch_errors, 
+        metrics=metrics
+    )
+
+    startserver(host, port, docs, metrics, kwargs, async, (kwargs) ->  
         HTTP.serve!(handler(configured_middelware), host, port; kwargs...)
     )
     server[] # this value is returned if startserver() is ran in async mode
 end
 
 """
-    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
+    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, metrics=true, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, kwargs...)
-    # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors)
+function serveparallel(; 
+    middleware::Vector=[], 
+    handler=stream_handler, 
+    host="127.0.0.1", 
+    port=8080, 
+    queuesize=1024, 
+    serialize=true, 
+    async=false, 
+    catch_errors=true,
+    docs=true,
+    metrics=true, 
+    kwargs...)
 
-    startserver(host, port, kwargs, async, (kwargs) -> 
+    # compose our middleware ahead of time (so it only has to be built up once)
+    configured_middelware = setupmiddleware(
+        middleware=middleware, 
+        serialize=serialize, 
+        catch_errors=catch_errors,
+        metrics=metrics
+    )
+
+    startserver(host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
     server[] # this value is returned if startserver() is ran in async mode
@@ -163,22 +206,33 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(;middleware::Vector = [], serialize::Bool=true, catch_errors::Bool=true) :: Function
+function setupmiddleware(;middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
+
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware() ? [compose(getrouter(), middleware)] : reverse(middleware)
+
     # check if we should use our default serialization middleware function
-    serialized = serialize ? [DefaultSerializer(catch_errors)] : [DefaultHandler(catch_errors)]
+    serializer = serialize ? [DefaultSerializer(catch_errors)] : []
+
+    # check if we need to track metrics
+    collect_metrics = metrics ? [MetricsMiddleware(metrics)] : []
+
     # combine all our middleware functions
-    return reduce(|>, [getrouter(), serialized..., custom_middleware...])    
+    return reduce(|>, [
+        getrouter(),
+        serializer...,
+        custom_middleware...,
+        collect_metrics...
+    ])    
 end
 
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(host, port, kwargs, async, start)
+function startserver(host, port, docs, metrics, kwargs, async, start)
     try
-        serverwelcome(host, port)
-        setup()
+        serverwelcome(host, port, docs, metrics)
+        setup(docs, metrics)
         server[] = start(preprocesskwargs(kwargs))
         starttasks()
         registercronjobs()
@@ -239,8 +293,20 @@ end
 """
 This function called right before serving the server, which is useful for performing any additional setup
 """
-function setup()
-    setupswagger()
+function setup(docs::Bool, metrics::Bool)
+    if docs
+        enabledocs()
+    else
+        disabledocs()
+    end
+
+    if docs
+        setupswagger()
+    end
+
+    if metrics
+        setupmetrics()
+    end
 end
 
 
@@ -269,8 +335,9 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true, catch_errors=true) :: HTTP.Response
-    return req |> setupmiddleware(middleware=middleware, serialize=serialize, catch_errors=catch_errors) 
+function internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
+    req.context[:ip] = "INTERNAL" # label internal requests
+    return req |> setupmiddleware(middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
 end
 
 
@@ -283,18 +350,6 @@ function getrouter()
     return ROUTER[]
 end 
 
-function handlerequest(getresponse::Function, catch_errors::Bool) :: HTTP.Response
-    if !catch_errors
-        return getresponse()
-    else 
-        try 
-            return getresponse()       
-        catch error
-            @error "ERROR: " exception=(error, catch_backtrace())
-            return HTTP.Response(500, "The Server encountered a problem")
-        end  
-    end
-end
 
 """
 Provide an empty handler function, so that our middleware chain isn't broken
@@ -313,20 +368,82 @@ function DefaultSerializer(catch_errors::Bool)
     return function(handle)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
-                response_body = handle(req)            
+                response_body = handle(req)   
                 # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
                 if isa(response_body, HTTP.Messages.Response)
                     return response_body 
                 # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
                 elseif isa(response_body, String)
                     headers = ["Content-Type" => HTTP.sniff(response_body)]
-                    return HTTP.Response(200, headers , body=response_body)
+                    return HTTP.Response(200, headers; body=response_body)
                 # case 3.) An object of some type was returned and should be serialized into JSON 
                 else 
                     body = JSON3.write(response_body)
                     headers = ["Content-Type" => "application/json; charset=utf-8"]
                     return HTTP.Response(200, headers , body=body)
                 end 
+            end
+        end
+    end
+end
+
+function MetricsMiddleware(catch_errors::Bool)
+    return function(handler)
+        return function(req::HTTP.Request)
+            return handlerequest(catch_errors) do 
+                
+                # Don't capture metrics on the documenation internals
+                if contains(req.target, docspath)
+                    return handler(req)
+                end
+
+                start_time = time()
+                try
+                    # Handle the request
+                    response = handler(req)
+                    # Log response time
+                    response_time = (time() - start_time) * 1000
+                    if response.status == 200
+                        push_history(HTTPTransaction(
+                            string(req.context[:ip]),
+                            string(req.target),
+                            now(UTC),
+                            response_time,
+                            true,
+                            response.status,
+                            nothing
+                        ))
+                    else 
+                        push_history(HTTPTransaction(
+                            string(req.context[:ip]),
+                            string(req.target),
+                            now(UTC),
+                            response_time,
+                            false,
+                            response.status,
+                            text(response)
+                        ))
+                    end
+
+                    # Return the response
+                    return response
+                catch e
+                    response_time = (time() - start_time) * 1000
+
+                    # Log the error
+                    push_history(HTTPTransaction(
+                        string(req.context[:ip]),
+                        string(req.target),
+                        now(UTC),
+                        response_time,
+                        false,
+                        500,
+                        string(typeof(e))
+                    ))
+
+                    # let our caller figure out if they want to handle the error or not
+                    rethrow(e)
+                end
             end
         end
     end
@@ -556,35 +673,71 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
         end
     end
 
-    HTTP.register!(router, httpmethod, route, handle)
+    @suppress begin
+        HTTP.register!(router, httpmethod, route, handle)
+    end
 end
 
 
 # add the swagger and swagger/schema routes 
 function setupswagger()
 
-    if !isdocsenabled()
-        return
-    end
+    if isdocsenabled()
 
-    @get "$docspath" function()
-        return swaggerhtml()
-    end
-
-    @get "$docspath/swagger" function()
-        return swaggerhtml()
-    end
-
-    @get "$docspath/redoc" function()
-        return redochtml()
-    end
-
-    @get "$(getschemapath())" function()
-        return getschema() 
-    end
+        @get "$docspath" function()
+            return swaggerhtml()
+        end
     
+        @get "$docspath/swagger" function()
+            return swaggerhtml()
+        end
+    
+        @get "$docspath/redoc" function()
+            return redochtml()
+        end
+    
+        @get "$(getschemapath())" function()
+            return getschema() 
+        end 
+    end
+
 end
 
+# add the swagger and swagger/schema routes 
+function setupmetrics()
+
+    # This allows us to customize the path to the metrics dashboard
+    function loadfile(filepath)
+        content = file(filepath)
+        # only replace content if it's in a generated file
+        ext = lowercase(last(splitext(filepath)))
+        if ext in [".html", ".css", ".js"]
+            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$docspath/metrics/")
+        else
+            return content
+        end
+    end
+
+    staticfiles("$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    
+    @get "$docspath/metrics/data/{window}/{latest}" function(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
+        lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
+
+        if !isnothing(latest)
+            lower_bound = latest
+        end
+
+        return Dict(
+           "server" => server_metrics(nothing),
+           "endpoints" => all_endpoint_metrics(nothing),
+           "errors" => error_distribution(nothing),
+           "avg_latency_per_second" =>  avg_latency_per_unit(Second, lower_bound) |> prepare_timeseries_data(),
+           "requests_per_second" =>  requests_per_unit(Second, lower_bound) |> prepare_timeseries_data(),
+           "avg_latency_per_minute" => avg_latency_per_unit(Minute, lower_bound)  |> prepare_timeseries_data(),
+           "requests_per_minute" => requests_per_unit(Minute, lower_bound)  |>  prepare_timeseries_data()
+        )
+    end
+end
 
 """
     @staticfiles(folder::String, mountdir::String, set_headers::Union{Function,Nothing}=nothing)
@@ -614,16 +767,27 @@ end
 
 
 """
-    staticfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing)
+    staticfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing, loadfile::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point). 
 The `set_headers` callback is passed the route, mime type, and the current headers for the given 
 resource and should return a finalized vector of pairs to use as the headers in the outgoing Request
 """
-function staticfiles(folder::String, mountdir::String="static"; set_headers::Union{Function,Nothing}=nothing)
+function staticfiles(
+        folder::String, 
+        mountdir::String="static"; 
+        set_headers::Union{Function,Nothing}=nothing, 
+        loadfile::Union{Function,Nothing}=nothing
+    )
+
+    # remove the leading slash 
+    if first(mountdir) == '/'
+        mountdir = mountdir[2:end]
+    end
+    
     registermountedfolder(mountdir)
     function addroute(currentroute, content_type, derived_headers, filepath, registeredpaths; code=200)
-        body = file(filepath)
+        body = isnothing(loadfile) ? file(filepath) : loadfile(filepath)
         headers = !isnothing(set_headers) ? set_headers(currentroute, content_type, derived_headers) : derived_headers
         @get "$currentroute" function(req)
             # return 404 for paths that don't match our files
@@ -636,14 +800,23 @@ end
 
 
 """
-    dynamicfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing)
+    dynamicfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing, loadfile::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point), 
 but files are re-read on each request.
 The `set_headers` callback is passed the route, mime type, and the current headers for the given 
 resource and should return a finalized vector of pairs to use as the headers in the outgoing Request.
 """
-function dynamicfiles(folder::String, mountdir::String="static"; set_headers::Union{Function,Nothing}=nothing)
+function dynamicfiles(
+        folder::String, 
+        mountdir::String="static"; 
+        set_headers::Union{Function,Nothing}=nothing,
+        loadfile::Union{Function,Nothing}=nothing
+    )
+    # remove the leading slash 
+    if first(mountdir) == '/'
+        mountdir = mountdir[2:end]
+    end
     registermountedfolder(mountdir)
     function addroute(currentroute, content_type, derived_headers, filepath, registeredpaths; code = 200)
         # We can precompute the headers ahead of time because while the file can change - the name and exstension shouldn't
@@ -651,7 +824,8 @@ function dynamicfiles(folder::String, mountdir::String="static"; set_headers::Un
         @get "$currentroute" function(req)   
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)
-            return validpath ?  HTTP.Response(code, headers , body=file(filepath)) : HTTP.Response(404) 
+            body = isnothing(loadfile) ? file(filepath) : loadfile(filepath)
+            return validpath ?  HTTP.Response(code, headers, body=body) : HTTP.Response(404) 
         end
     end
     mountfolder(folder, mountdir, addroute)    

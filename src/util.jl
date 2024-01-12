@@ -1,9 +1,10 @@
-module Util 
+module Util
 using HTTP 
 using JSON3
 using Dates
 
-export countargs, recursive_merge, parseparam, queryparams, html, redirect
+export countargs, recursive_merge, parseparam, 
+    queryparams, html, redirect, handlerequest
 
 """
 countargs(func)
@@ -114,6 +115,21 @@ return a redirect response
 """
 function redirect(path::String; code = 307) :: HTTP.Response
     return HTTP.Response(code, ["Location" => path])
+end
+
+
+
+function handlerequest(getresponse::Function, catch_errors::Bool)
+    if !catch_errors
+        return getresponse()
+    else 
+        try 
+            return getresponse()       
+        catch error
+            @error "ERROR: " exception=(error, catch_backtrace())
+            return HTTP.Response(500, "The Server encountered a problem")
+        end  
+    end
 end
 
 

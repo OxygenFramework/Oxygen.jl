@@ -20,13 +20,11 @@ function middleware(handle)
     end
 end
 
-greet_router = router("greet", middleware=[middleware])
 
-@get greet_router("/hello") function (req::HTTP.Request)
+@get "/hello" function (req::HTTP.Request)
     return "hello"
 end
 
 # disable default serializaiton
-serve(serialize=false)
-
+serve(serialize=false, middleware=[middleware])
 end

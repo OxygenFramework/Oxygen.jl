@@ -10,7 +10,8 @@ using RelocatableFolders
 include("util.jl"); using .Util
 include("bodyparsers.jl"); using .BodyParsers
 
-export MetricsMiddleware, get_history, push_history, HTTPTransaction,
+export MetricsMiddleware, get_history, clear_history, push_history, 
+    HTTPTransaction,
     server_metrics,
     all_endpoint_metrics, 
     capture_metrics, bin_and_count_transactions,

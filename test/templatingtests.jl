@@ -11,7 +11,6 @@ using .Oxygen
 # ensure the init is called so we can load the extensions
 Oxygen.__init__()
 
-
 function clean_output(result::String)
     # Replace carriage returns followed by line feeds (\r\n) with a single newline (\n)
     tmp = replace(result, "\r\n" => "\n")

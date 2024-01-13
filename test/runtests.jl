@@ -6,6 +6,8 @@ using StructTypes
 using Sockets
 using Dates 
 
+ENV["OXYGEN_TESTING_MODE"] = "true"
+
 include("../src/Oxygen.jl")
 using .Oxygen
 
@@ -637,7 +639,6 @@ r = internalrequest(HTTP.Request("GET", "/math/square/3"))
 
 r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
 @test r.status == 200
-println(text(r))
 @test parse(Int64, text(r)) > 0
 
 r = internalrequest(HTTP.Request("GET", "/emptyrouter"))

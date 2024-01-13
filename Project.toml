@@ -21,9 +21,23 @@ Dates = "^1"
 HTTP = "^1"
 JSON3 = "^1.9"
 MIMEs = "^0.1.4"
+Mustache = "^1"
+OteraEngine = "^0"
+Pkg = "^1"
 RelocatableFolders = "^1"
 Requires = "^1"
 Sockets = "^1"
 Statistics = "^1"
+StructTypes = "^1"
 Suppressor = "^0"
 julia = "^1.6"
+
+[extras]
+Mustache = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
+OteraEngine = "b2d7f28f-acd6-4007-8b26-bc27716e5513"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Mustache", "OteraEngine", "Pkg", "StructTypes", "Test"]

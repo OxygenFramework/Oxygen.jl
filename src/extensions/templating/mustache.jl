@@ -1,6 +1,14 @@
 module MustacheTemplating
 using MIMEs
-using Mustache
+
+# Prevents a warning about Mustache not being in dependencies
+const test_mode = get(ENV, "OXYGEN_TESTING_MODE", "false")
+if test_mode == "true"
+    using Mustache
+else
+    using .Mustache
+end
+
 include("util.jl"); using .TemplatingUtil
 
 export mustache

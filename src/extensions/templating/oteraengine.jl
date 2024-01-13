@@ -1,6 +1,15 @@
 module OteraEngineTemplating
 using MIMEs
-using OteraEngine
+
+# Prevents a warning about OteraEngine not being in dependencies
+const test_mode = get(ENV, "OXYGEN_TESTING_MODE", "false")
+
+if test_mode == "true"
+    using OteraEngine
+else
+    using .OteraEngine
+end
+
 include("util.jl"); using .TemplatingUtil
 
 export otera

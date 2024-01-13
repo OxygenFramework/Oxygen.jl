@@ -268,6 +268,8 @@ function resetstate()
     resetstatevariables()
     # reset cron module state
     resetcronstate()
+    # clear metrics
+    clear_history()
 end
 
 

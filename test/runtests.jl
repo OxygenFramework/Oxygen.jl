@@ -6,8 +6,6 @@ using StructTypes
 using Sockets
 using Dates 
 
-ENV["OXYGEN_TESTING_MODE"] = "true"
-
 include("../src/Oxygen.jl")
 using .Oxygen
 

@@ -1,10 +1,6 @@
 module Oxygen
-using HTTP
-using JSON3
-using Sockets
-using Reexport
 
-include("core.jl"); @reexport using .Core
+include("core.jl"); using .Core
 
 # Load any optional extensions
 include("extensions/load.jl");

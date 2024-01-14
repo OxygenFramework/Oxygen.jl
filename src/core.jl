@@ -6,23 +6,21 @@ using JSON3
 using Base 
 using Dates
 using Suppressor
+using Reexport
 using RelocatableFolders
 
-include("util.jl");         using .Util
-include("fileutil.jl");     using .FileUtil
-include("bodyparsers.jl");  using .BodyParsers
-include("streamutil.jl");   using .StreamUtil
-include("autodoc.jl");      using .AutoDoc
-include("metrics.jl");      using .Metrics
+include("util.jl");         @reexport using .Util
+include("fileutil.jl");     @reexport using .FileUtil
+include("bodyparsers.jl");  @reexport using .BodyParsers
+include("streamutil.jl");   @reexport using .StreamUtil
+include("autodoc.jl");      @reexport using .AutoDoc
+include("metrics.jl");      @reexport using .Metrics
 
 export @get, @post, @put, @patch, @delete, @route, @cron, 
         @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
         get, post, put, patch, delete, route,
-        start, serve, serveparallel, terminate, internalrequest, file,
-        configdocs, mergeschema, setschema, getschema, router,
-        enabledocs, disabledocs, isdocsenabled, registermountedfolder,
-        starttasks, stoptasks, resetstate, startcronjobs, stopcronjobs, 
-        clearcronjobs
+        start, serve, serveparallel, terminate, internalrequest,
+        resetstate, starttasks, stoptasks
 
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
@@ -43,7 +41,8 @@ oxygen_title = raw"""
 """
 
 function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool)
-    printstyled(oxygen_title, color = :blue, bold = true)  
+    printstyled(oxygen_title, color = :blue, bold = true)
+    @info "📦 Version 1.4.0 (2024-01-12)"
     @info "✅ Started server: http://$host:$port" 
     docs    && @info "📖 Documentation: http://$host:$port$docspath"
     metrics && @info "📊 Metrics: http://$host:$port$docspath/metrics"
@@ -423,7 +422,7 @@ function MetricsMiddleware(catch_errors::Bool)
                             response_time,
                             false,
                             response.status,
-                            text(response)
+                            BodyParsers.text(response)
                         ))
                     end
 

@@ -2,10 +2,9 @@ module Oxygen
 using HTTP
 using JSON3
 using Sockets
+using Reexport
 
-include("util.jl" );        using .Util
-include("bodyparsers.jl");  using .BodyParsers
-include("core.jl");         using .Core
+include("core.jl"); @reexport using .Core
 
 # Load any optional extensions
 include("extensions/load.jl");

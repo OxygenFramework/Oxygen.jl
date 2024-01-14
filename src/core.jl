@@ -422,7 +422,7 @@ function MetricsMiddleware(catch_errors::Bool)
                             response_time,
                             false,
                             response.status,
-                            BodyParsers.text(response)
+                            text(response)
                         ))
                     end
 

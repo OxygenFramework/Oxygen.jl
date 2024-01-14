@@ -100,13 +100,15 @@ function get_transaction_metrics(transactions::Vector{HTTPTransaction})
     total_requests = length(transactions)
     latencies = [t.duration for t in transactions if t.duration != 0.0]
     successes = [t.success for t in transactions]
+    has_records = !isempty(latencies)
+    has_successes = !isempty(successes)
 
-    avg_latency = mean(latencies)
-    min_latency = minimum(latencies)
-    max_latency = maximum(latencies)
-    percentile_95_latency = percentile(latencies, 95)
-    total_errors = count(!, successes)
-    error_rate = total_errors / total_requests
+    avg_latency = has_records ? mean(latencies) : 0
+    min_latency = has_records ? minimum(latencies) : 0
+    max_latency = has_records ? maximum(latencies) : 0
+    percentile_95_latency = has_records ? percentile(latencies, 95) : 0
+    total_errors = has_successes ? count(!, successes) : 0
+    error_rate = total_requests > 0 ? total_errors / total_requests : 0
 
     return Dict(
         "total_requests" => total_requests,

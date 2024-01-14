@@ -385,6 +385,7 @@ Please take a look at the [Mustache.jl](https://jverzani.github.io/Mustache.jl/d
 Example 1: Rendering a Mustache Template from a File
 
 ```julia
+using Mustache
 using Oxygen
 
 # Load the Mustache template from a file and create a render function
@@ -398,6 +399,7 @@ end
 
 Example 2: Specifying MIME Type for a plain string Mustache Template
 ```julia
+using Mustache
 using Oxygen
 
 # Define a Mustache template (both plain strings and mustache templates are supported)
@@ -418,6 +420,7 @@ Please take a look at the [OteraEngine.jl](https://mommawatasu.github.io/OteraEn
 Example 1: Rendering an Otera Template with Logic and Loops
 
 ```julia
+using OteraEngine
 using Oxygen
 
 # Define an Otera template
@@ -445,6 +448,7 @@ In this example, an Otera template is defined with a for-loop that iterates over
 
 Example 2: Running Julia Code in Otera Template
 ```julia
+using OteraEngine
 using Oxygen
 
 # Define an Otera template with embedded Julia code

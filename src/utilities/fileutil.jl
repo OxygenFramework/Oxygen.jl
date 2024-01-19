@@ -1,4 +1,3 @@
-module FileUtil
 
 using HTTP
 using MIMEs
@@ -103,4 +102,3 @@ function mountfolder(folder::String, mountdir::String, addroute)
     
 end
 
-end

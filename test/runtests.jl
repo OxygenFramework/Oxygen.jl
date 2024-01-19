@@ -12,6 +12,7 @@ using .Oxygen
 include("metricstests.jl")
 include("templatingtests.jl")
 include("routingfunctionstests.jl")
+include("rendertests.jl")
 include("bodyparsertests.jl")
 include("crontests.jl")
 

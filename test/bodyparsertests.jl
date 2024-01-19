@@ -18,154 +18,159 @@ StructTypes.StructType(::Type{rank}) = StructTypes.Struct()
 req = HTTP.Request("GET", "/json", [], """{"message":["hello",1.0]}""")
 json(req)
 
-@testset "json() Request struct keyword tests" begin 
 
-    req = HTTP.Request("GET", "/json", [], "{\"message\":[NaN,1.0]}")
-    @test isnan(json(req, allow_inf = true)["message"][1])
-    @test !isnan(json(req, allow_inf = true)["message"][2])
+@testset "BodyParser Module Tests" begin
 
-    req = HTTP.Request("GET", "/json", [], "{\"message\":[Inf,1.0]}")
-    @test isinf(json(req, allow_inf = true)["message"][1])
+    @testset "json() Request struct keyword tests" begin 
 
-    req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
-    @test isnothing(json(req, allow_inf = false)["message"][1])
+        req = HTTP.Request("GET", "/json", [], "{\"message\":[NaN,1.0]}")
+        @test isnan(json(req, allow_inf = true)["message"][1])
+        @test !isnan(json(req, allow_inf = true)["message"][2])
 
-end
+        req = HTTP.Request("GET", "/json", [], "{\"message\":[Inf,1.0]}")
+        @test isinf(json(req, allow_inf = true)["message"][1])
 
+        req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
+        @test isnothing(json(req, allow_inf = false)["message"][1])
 
-@testset "json() Request stuct keyword with classtype" begin 
-
-    req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": NaN}""")
-    myjson = json(req, rank, allow_inf = true)
-    @test isnan(myjson.power)
-
-    req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": 9000.1}""")
-    myjson = json(req, rank, allow_inf = false)
-    @test myjson.power == 9000.1
-
-end
+    end
 
 
-@testset "regular Request json() tests" begin 
+    @testset "json() Request stuct keyword with classtype" begin 
 
-    req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
-    @test isnothing(json(req)["message"][1])
-    @test json(req)["message"][2] == 1
+        req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": NaN}""")
+        myjson = json(req, rank, allow_inf = true)
+        @test isnan(myjson.power)
 
-    req = HTTP.Request("GET", "/json", [], """{"message":["hello",1.0]}""")
-    @test json(req)["message"][1] == "hello"
-    @test json(req)["message"][2] == 1
+        req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": 9000.1}""")
+        myjson = json(req, rank, allow_inf = false)
+        @test myjson.power == 9000.1
 
-    req = HTTP.Request("GET", "/json", [], "{\"message\":[3.4,4.0]}")
-    @test json(req)["message"][1] == 3.4
-    @test json(req)["message"][2] == 4
-
-    req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
-    @test isnothing(json(req)["message"][1])
-end
+    end
 
 
-@testset "json() Request with classtype" begin 
+    @testset "regular Request json() tests" begin 
 
-    req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": NaN}""")
-    myjson = json(req, rank)
-    @test isnan(myjson.power)
+        req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
+        @test isnothing(json(req)["message"][1])
+        @test json(req)["message"][2] == 1
 
-    req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": 9000.1}""")
-    myjson = json(req, rank)
-    @test myjson.power == 9000.1
+        req = HTTP.Request("GET", "/json", [], """{"message":["hello",1.0]}""")
+        @test json(req)["message"][1] == "hello"
+        @test json(req)["message"][2] == 1
 
-    # test invalid json
-    req = HTTP.Request("GET","/", [],"""{}""")
-    @test_throws MethodError json(req, rank) 
+        req = HTTP.Request("GET", "/json", [], "{\"message\":[3.4,4.0]}")
+        @test json(req)["message"][1] == 3.4
+        @test json(req)["message"][2] == 4
 
-    # test extra key
-    req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")
-    myjson = json(req, rank)
-    @test myjson.power == 9000.1
-
-end
+        req = HTTP.Request("GET", "/json", [], "{\"message\":[null,1.0]}")
+        @test isnothing(json(req)["message"][1])
+    end
 
 
-@testset "json() Response" begin 
+    @testset "json() Request with classtype" begin 
 
-    res = HTTP.Response("""{"title": "viscount", "power": 9000.1}""")
-    myjson = json(res)
-    @test myjson["power"] == 9000.1
+        req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": NaN}""")
+        myjson = json(req, rank)
+        @test isnan(myjson.power)
 
-    res = HTTP.Response("""{"title": "viscount", "power": 9000.1}""")
-    myjson = json(res, rank)
-    @test myjson.power == 9000.1
+        req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": 9000.1}""")
+        myjson = json(req, rank)
+        @test myjson.power == 9000.1
 
-end
+        # test invalid json
+        req = HTTP.Request("GET","/", [],"""{}""")
+        @test_throws MethodError json(req, rank) 
 
-@testset "json() Response struct keyword tests" begin 
+        # test extra key
+        req = HTTP.Request("GET","/", [],"""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")
+        myjson = json(req, rank)
+        @test myjson.power == 9000.1
 
-    req = HTTP.Response("{\"message\":[NaN,1.0]}")
-    @test isnan(json(req, allow_inf = true)["message"][1])
-    @test !isnan(json(req, allow_inf = true)["message"][2])
-
-    req = HTTP.Response("{\"message\":[Inf,1.0]}")
-    @test isinf(json(req, allow_inf = true)["message"][1])
-
-    req = HTTP.Response("{\"message\":[null,1.0]}")
-    @test isnothing(json(req, allow_inf = false)["message"][1])
-
-end
+    end
 
 
-@testset "json() Response stuct keyword with classtype" begin 
+    @testset "json() Response" begin 
 
-    req = HTTP.Response("""{"title": "viscount", "power": NaN}""")
-    myjson = json(req, rank, allow_inf = true)
-    @test isnan(myjson.power)
+        res = HTTP.Response("""{"title": "viscount", "power": 9000.1}""")
+        myjson = json(res)
+        @test myjson["power"] == 9000.1
 
-    req = HTTP.Response("""{"title": "viscount", "power": 9000.1}""")
-    myjson = json(req, rank, allow_inf = false)
-    @test myjson.power == 9000.1
+        res = HTTP.Response("""{"title": "viscount", "power": 9000.1}""")
+        myjson = json(res, rank)
+        @test myjson.power == 9000.1
 
-end
+    end
 
+    @testset "json() Response struct keyword tests" begin 
 
-@testset "regular json() Response tests" begin 
+        req = HTTP.Response("{\"message\":[NaN,1.0]}")
+        @test isnan(json(req, allow_inf = true)["message"][1])
+        @test !isnan(json(req, allow_inf = true)["message"][2])
 
-    req = HTTP.Response("{\"message\":[null,1.0]}")
-    @test isnothing(json(req)["message"][1])
-    @test json(req)["message"][2] == 1
+        req = HTTP.Response("{\"message\":[Inf,1.0]}")
+        @test isinf(json(req, allow_inf = true)["message"][1])
 
-    req = HTTP.Response("""{"message":["hello",1.0]}""")
-    @test json(req)["message"][1] == "hello"
-    @test json(req)["message"][2] == 1
+        req = HTTP.Response("{\"message\":[null,1.0]}")
+        @test isnothing(json(req, allow_inf = false)["message"][1])
 
-    req = HTTP.Response("{\"message\":[3.4,4.0]}")
-    @test json(req)["message"][1] == 3.4
-    @test json(req)["message"][2] == 4
-
-    req = HTTP.Response("{\"message\":[null,1.0]}")
-    @test isnothing(json(req)["message"][1])
-end
+    end
 
 
-@testset "json() Response with classtype" begin 
+    @testset "json() Response stuct keyword with classtype" begin 
 
-    req = HTTP.Response("""{"title": "viscount", "power": NaN}""")
-    myjson = json(req, rank)
-    @test isnan(myjson.power)
+        req = HTTP.Response("""{"title": "viscount", "power": NaN}""")
+        myjson = json(req, rank, allow_inf = true)
+        @test isnan(myjson.power)
 
-    req = HTTP.Response("""{"title": "viscount", "power": 9000.1}""")
-    myjson = json(req, rank)
-    @test myjson.power == 9000.1
+        req = HTTP.Response("""{"title": "viscount", "power": 9000.1}""")
+        myjson = json(req, rank, allow_inf = false)
+        @test myjson.power == 9000.1
 
-    # test invalid json
-    req = HTTP.Response("""{}""")
-    @test_throws MethodError json(req, rank) 
+    end
 
-    # test extra key
-    req = HTTP.Response("""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")
-    myjson = json(req, rank)
-    @test myjson.power == 9000.1
 
-end
+    @testset "regular json() Response tests" begin 
 
+        req = HTTP.Response("{\"message\":[null,1.0]}")
+        @test isnothing(json(req)["message"][1])
+        @test json(req)["message"][2] == 1
+
+        req = HTTP.Response("""{"message":["hello",1.0]}""")
+        @test json(req)["message"][1] == "hello"
+        @test json(req)["message"][2] == 1
+
+        req = HTTP.Response("{\"message\":[3.4,4.0]}")
+        @test json(req)["message"][1] == 3.4
+        @test json(req)["message"][2] == 4
+
+        req = HTTP.Response("{\"message\":[null,1.0]}")
+        @test isnothing(json(req)["message"][1])
+    end
+
+
+    @testset "json() Response with classtype" begin 
+
+        req = HTTP.Response("""{"title": "viscount", "power": NaN}""")
+        myjson = json(req, rank)
+        @test isnan(myjson.power)
+
+        req = HTTP.Response("""{"title": "viscount", "power": 9000.1}""")
+        myjson = json(req, rank)
+        @test myjson.power == 9000.1
+
+        # test invalid json
+        req = HTTP.Response("""{}""")
+        @test_throws MethodError json(req, rank) 
+
+        # test extra key
+        req = HTTP.Response("""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")
+        myjson = json(req, rank)
+        @test myjson.power == 9000.1
+
+    end
+
+
+    end
 
 end

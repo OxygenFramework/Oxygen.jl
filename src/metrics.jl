@@ -8,7 +8,6 @@ using Statistics
 using RelocatableFolders
 
 include("util.jl"); using .Util
-include("bodyparsers.jl"); using .BodyParsers
 
 export MetricsMiddleware, get_history, clear_history, push_history, 
     HTTPTransaction,

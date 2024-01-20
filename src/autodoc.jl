@@ -25,14 +25,16 @@ struct TaggedRoute
     tags::Vector{String}
 end
 
-const defaultSchema = Dict(
-    "openapi" => "3.0.0",
-    "info" => Dict(
-        "title" => "API Overview",
-        "version" => "1.0.0"
-    ),
-    "paths" => Dict()
-)
+function defaultSchema()
+    Dict(
+        "openapi" => "3.0.0",
+        "info" => Dict(
+            "title" => "API Overview",
+            "version" => "1.0.0"
+        ),
+        "paths" => Dict()
+    )
+end
 
 global enable_auto_docs = true 
 global docspath = "/docs"
@@ -41,7 +43,7 @@ global mountedfolders = Set{String}()
 global taggedroutes = Dict{String, TaggedRoute}()
 global repeattasks = []
 global cronjobs = []
-global schema = defaultSchema
+global schema = defaultSchema()
 global const custommiddlware = Ref{Dict{String, Tuple}}(Dict())
 
 function getschemapath()::String
@@ -64,7 +66,7 @@ function resetstatevariables()
     global taggedroutes = Dict{String, TaggedRoute}()
     global repeattasks = []
     global cronjobs = []
-    global schema = defaultSchema
+    global schema = defaultSchema()
     custommiddlware[] = Dict()
     return
 end

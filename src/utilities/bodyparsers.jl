@@ -1,7 +1,8 @@
 
 using HTTP 
 using JSON3
-export text, binary, json
+
+export text, binary, json, formdata
 
 ### Helper functions used to parse the body of a HTTP.Request object
 
@@ -14,6 +15,17 @@ function text(req::HTTP.Request) :: String
     body = IOBuffer(HTTP.payload(req))
     return eof(body) ? nothing : read(seekstart(body), String)
 end
+
+
+"""
+    formdata(request::HTTP.Request)
+
+Read the html form data from the body of a HTTP.Request
+"""
+function formdata(req::HTTP.Request) :: Dict
+    return HTTP.URIs.queryparams(text(req))
+end
+
 
 """
     binary(request::HTTP.Request)
@@ -57,6 +69,15 @@ Read the body of a HTTP.Messages.Response as a String
 """
 function text(response::HTTP.Messages.Response) :: String
     return String(response.body)
+end
+
+"""
+    formdata(request::HTTP.Response)
+
+Read the html form data from the body of a HTTP.Response
+"""
+function formdata(response::HTTP.Response) :: Dict
+    return HTTP.URIs.queryparams(text(response))
 end
 
 

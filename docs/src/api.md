@@ -52,9 +52,13 @@ isdocsenabled
 ## Helper functions 
 ```@docs 
 queryparams
+formdata
 html
 text
 json
+xml
+js
+css
 binary
 ```
 
@@ -65,6 +69,7 @@ starttasks
 stoptasks
 startcronjobs
 stopcronjobs
+clearcronjobs
 ```
 
 ## Extra's

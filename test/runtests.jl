@@ -55,6 +55,17 @@ end
     return redirect("/test")
 end
 
+function errormiddleware(handler)
+    return function(req::HTTP.Request)
+        throw("an random error")
+        handler(req)
+    end
+end
+
+@get router("/middleware-error", middleware=[errormiddleware]) function ()
+    return "shouldn't get here"
+end
+
 @get "/customerror" function ()
     function processtring(input::String)
         "<$input>"
@@ -237,6 +248,7 @@ end
     routerdict["value"] += 1
     return routerdict["value"]
 end
+
 
 function middleware1(handler)
     return function(req::HTTP.Request)
@@ -570,6 +582,9 @@ r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"))
 @test r.status == 404
 
 r = internalrequest(HTTP.Request("GET", "/customerror"))
+@test r.status == 500
+
+r = internalrequest(HTTP.Request("GET", "/middleware-error"))
 @test r.status == 500
 
 r = internalrequest(HTTP.Request("GET", "/undefinederror"))

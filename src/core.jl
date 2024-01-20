@@ -293,11 +293,8 @@ end
 This function called right before serving the server, which is useful for performing any additional setup
 """
 function setup(docs::Bool, metrics::Bool)
-    if docs
-        enabledocs()
-    else
-        disabledocs()
-    end
+    
+    docs ? enabledocs() : disabledocs()
 
     if docs
         setupswagger()
@@ -457,7 +454,7 @@ function MetricsMiddleware(catch_errors::Bool)
 
                     # Return the response
                     return response
-                catch e
+                catch e          
                     response_time = (time() - start_time) * 1000
 
                     # Log the error

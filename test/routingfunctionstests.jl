@@ -57,66 +57,69 @@ end
 
 ##### Begin tests #####
 
+@testset "Routing Function Tests" begin
 
-@testset "GET routing functions" begin 
-    r = internalrequest(HTTP.Request("GET", "/inline/add/5/4"))
-    @test r.status == 200
-    @test text(r) == "9"
 
-    r = internalrequest(HTTP.Request("GET", "/add/5/4"))
-    @test r.status == 200
-    @test text(r) == "9"
+    @testset "GET routing functions" begin 
+        r = internalrequest(HTTP.Request("GET", "/inline/add/5/4"))
+        @test r.status == 200
+        @test text(r) == "9"
 
-    r = internalrequest(HTTP.Request("GET", "/inline/route/add/5/4"))
-    @test r.status == 200
-    @test text(r) == "9"
+        r = internalrequest(HTTP.Request("GET", "/add/5/4"))
+        @test r.status == 200
+        @test text(r) == "9"
 
-    r = internalrequest(HTTP.Request("GET", "/route/add/5/4"))
-    @test r.status == 200
-    @test text(r) == "9"
-end
+        r = internalrequest(HTTP.Request("GET", "/inline/route/add/5/4"))
+        @test r.status == 200
+        @test text(r) == "9"
 
-@testset "POST routing functions" begin 
-    r = internalrequest(HTTP.Request("POST", "/inline/sub/5/4"))
-    @test r.status == 200
-    @test text(r) == "1"
+        r = internalrequest(HTTP.Request("GET", "/route/add/5/4"))
+        @test r.status == 200
+        @test text(r) == "9"
+    end
 
-    r = internalrequest(HTTP.Request("POST", "/sub/5/4"))
-    @test r.status == 200
-    @test text(r) == "1"
-end
+    @testset "POST routing functions" begin 
+        r = internalrequest(HTTP.Request("POST", "/inline/sub/5/4"))
+        @test r.status == 200
+        @test text(r) == "1"
 
-@testset "PUT routing functions" begin 
-    r = internalrequest(HTTP.Request("PUT", "/inline/power/5/4"))
-    @test r.status == 200
-    @test text(r) == "625"
+        r = internalrequest(HTTP.Request("POST", "/sub/5/4"))
+        @test r.status == 200
+        @test text(r) == "1"
+    end
 
-    r = internalrequest(HTTP.Request("PUT", "/power/5/4"))
-    @test r.status == 200
-    @test text(r) == "625"
-end
+    @testset "PUT routing functions" begin 
+        r = internalrequest(HTTP.Request("PUT", "/inline/power/5/4"))
+        @test r.status == 200
+        @test text(r) == "625"
 
-@testset "PATCH routing functions" begin 
-    r = internalrequest(HTTP.Request("PATCH", "/inline/mulitply/5/4"))
-    @test r.status == 200
-    @test text(r) == "20"
+        r = internalrequest(HTTP.Request("PUT", "/power/5/4"))
+        @test r.status == 200
+        @test text(r) == "625"
+    end
 
-    r = internalrequest(HTTP.Request("PATCH", "/mulitply/5/4"))
-    @test r.status == 200
-    @test text(r) == "20"
-end
+    @testset "PATCH routing functions" begin 
+        r = internalrequest(HTTP.Request("PATCH", "/inline/mulitply/5/4"))
+        @test r.status == 200
+        @test text(r) == "20"
 
-@testset "DELETE routing functions" begin 
-    r = internalrequest(HTTP.Request("DELETE", "/inline/divide/5/4"))
-    @test r.status == 200
-    @test text(r) == "1.25"
+        r = internalrequest(HTTP.Request("PATCH", "/mulitply/5/4"))
+        @test r.status == 200
+        @test text(r) == "20"
+    end
 
-    r = internalrequest(HTTP.Request("DELETE", "/divide/5/4"))
-    @test r.status == 200
-    @test text(r) == "1.25"
-end
+    @testset "DELETE routing functions" begin 
+        r = internalrequest(HTTP.Request("DELETE", "/inline/divide/5/4"))
+        @test r.status == 200
+        @test text(r) == "1.25"
 
-# clear any routes setup in this file
-resetstate()
+        r = internalrequest(HTTP.Request("DELETE", "/divide/5/4"))
+        @test r.status == 200
+        @test text(r) == "1.25"
+    end
 
+    # clear any routes setup in this file
+    resetstate()
+
+    end
 end

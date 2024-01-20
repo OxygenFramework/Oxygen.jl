@@ -10,8 +10,6 @@ using Reexport
 using RelocatableFolders
 
 include("util.jl");         @reexport using .Util
-include("fileutil.jl");     @reexport using .FileUtil
-include("bodyparsers.jl");  @reexport using .BodyParsers
 include("streamutil.jl");   @reexport using .StreamUtil
 include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
@@ -295,11 +293,8 @@ end
 This function called right before serving the server, which is useful for performing any additional setup
 """
 function setup(docs::Bool, metrics::Bool)
-    if docs
-        enabledocs()
-    else
-        disabledocs()
-    end
+    
+    docs ? enabledocs() : disabledocs()
 
     if docs
         setupswagger()
@@ -353,36 +348,15 @@ end
 
 
 """
-Provide an empty handler function, so that our middleware chain isn't broken
+Create a default serializer function that handles HTTP requests and formats the responses.
 """
-function DefaultHandler(catch_errors::Bool)
-    return function(handle)
-        return function(req::HTTP.Request)
-            return handlerequest(catch_errors) do 
-                handle(req)
-            end
-        end
-    end
-end
-
 function DefaultSerializer(catch_errors::Bool)
     return function(handle)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
-                response_body = handle(req)   
-                # case 1.) if a raw HTTP.Response object is returned, then don't do any extra processing on it
-                if isa(response_body, HTTP.Messages.Response)
-                    return response_body 
-                # case 2.) a string is returned, so try to lookup the content type to see if it's a special data type
-                elseif isa(response_body, String)
-                    headers = ["Content-Type" => HTTP.sniff(response_body)]
-                    return HTTP.Response(200, headers; body=response_body)
-                # case 3.) An object of some type was returned and should be serialized into JSON 
-                else 
-                    body = JSON3.write(response_body)
-                    headers = ["Content-Type" => "application/json; charset=utf-8"]
-                    return HTTP.Response(200, headers , body=body)
-                end 
+                response = handle(req)
+                format_response!(req, response)
+                return req.response
             end
         end
     end
@@ -428,7 +402,7 @@ function MetricsMiddleware(catch_errors::Bool)
 
                     # Return the response
                     return response
-                catch e
+                catch e          
                     response_time = (time() - start_time) * 1000
 
                     # Log the error
@@ -458,9 +432,7 @@ end
 Used to register a function to a specific endpoint to handle GET requests  
 """
 macro get(path, func)
-    quote 
-        @route ["GET"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["GET"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -469,9 +441,7 @@ end
 Used to register a function to a specific endpoint to handle POST requests
 """
 macro post(path, func)
-    quote 
-        @route ["POST"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["POST"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -480,9 +450,7 @@ end
 Used to register a function to a specific endpoint to handle PUT requests
 """
 macro put(path, func)
-    quote 
-        @route ["PUT"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["PUT"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -491,9 +459,7 @@ end
 Used to register a function to a specific endpoint to handle PATCH requests
 """
 macro patch(path, func)
-    quote 
-        @route ["PATCH"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["PATCH"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -502,9 +468,7 @@ end
 Used to register a function to a specific endpoint to handle DELETE requests
 """
 macro delete(path, func)
-    quote 
-        @route ["DELETE"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["DELETE"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -513,9 +477,7 @@ end
 Used to register a function to a specific endpoint to handle mulitiple request types
 """
 macro route(methods, path, func)
-    quote 
-        route($(esc(methods)), $(esc(path)), $(esc(func)))
-    end  
+    :(route($(esc(methods)), $(esc(path)), $(esc(func))))
 end
 
 ### Core Routing Functions ###
@@ -708,7 +670,7 @@ end
 function setupmetrics()
 
     # This allows us to customize the path to the metrics dashboard
-    function loadfile(filepath)
+    function loadfile(filepath) :: String
         content = file(filepath)
         # only replace content if it's in a generated file
         ext = lowercase(last(splitext(filepath)))
@@ -766,7 +728,6 @@ macro dynamicfiles(folder, mountdir="static", set_headers=nothing)
     end      
 end
 
-
 """
     staticfiles(folder::String, mountdir::String; set_headers::Union{Function,Nothing}=nothing, loadfile::Union{Function,Nothing}=nothing)
 
@@ -793,7 +754,7 @@ function staticfiles(
         @get "$currentroute" function(req)
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)
-            return validpath ? HTTP.Response(code, headers , body=body) : HTTP.Response(404)
+            return validpath ? HTTP.Response(code, headers, body=body) : HTTP.Response(404)
         end
     end
     mountfolder(folder, mountdir, addroute)
@@ -826,7 +787,7 @@ function dynamicfiles(
             # return 404 for paths that don't match our files
             validpath::Bool = get(registeredpaths, req.target, false)
             body = isnothing(loadfile) ? file(filepath) : loadfile(filepath)
-            return validpath ?  HTTP.Response(code, headers, body=body) : HTTP.Response(404) 
+            return validpath ? HTTP.Response(code, headers, body=body) : HTTP.Response(404) 
         end
     end
     mountfolder(folder, mountdir, addroute)    

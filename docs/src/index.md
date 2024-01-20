@@ -120,6 +120,40 @@ get("/add/{x}/{y}") do request::HTTP.Request, x::Int, y::Int
 end
 ```
 
+## Render Functions
+
+Oxygen, by default, automatically identifies the Content-Type of the return value from a request handler when building a Response.
+This default functionality is quite useful, but it does have an impact on performance. In situations where the return type is known,
+It's recommended to use one of the pre-existing render functions to speed things up.
+
+Here's a list of the currently supported render functions:
+`html`, `text`, `json`, `xml`, `js`, `css`, `binary`
+
+Below is an example of how to use these functions:
+
+```julia
+using Oxygen 
+
+get("/html") do 
+    html("<h1>Hello World</h1>")
+end
+
+get("/text") do 
+    text("Hello World")
+end
+
+get("/json") do 
+    json(Dict("message" => "Hello World"))
+end
+
+serve()
+```
+
+In most cases, these functions accept plain strings as inputs. The only exceptions are the `binary` function, which accepts a `Vector{UInt8}`, and the `json` function which accepts any serializable type. 
+- Each render function accepts a status and custom headers.
+- The Content-Type and Content-Length headers are automatically set by these render functions
+
+
 ## Path parameters
 
 Path parameters are declared with braces and are passed directly to your request handler. 

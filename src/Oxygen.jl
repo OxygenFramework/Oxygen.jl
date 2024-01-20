@@ -9,7 +9,7 @@ export @get, @post, @put, @patch, @delete, @route, @cron,
         @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
         get, post, put, patch, delete, route,
         serve, serveparallel, terminate, internalrequest, 
-        redirect, queryparams, binary, text, json, html, file, 
+        redirect, queryparams, binary, text, json, formdata, html, file, 
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, starttasks, stoptasks,
         resetstate, startcronjobs, stopcronjobs, clearcronjobs

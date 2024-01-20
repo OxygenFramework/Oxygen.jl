@@ -18,6 +18,21 @@ StructTypes.StructType(::Type{rank}) = StructTypes.Struct()
 req = HTTP.Request("GET", "/json", [], """{"message":["hello",1.0]}""")
 json(req)
 
+@testset "formdata() Request struct keyword tests" begin 
+    req = HTTP.Request("POST", "/", [], "message=hello world&value=3")
+    data = formdata(req)
+    @test data["message"] == "hello world"
+    @test data["value"] == "3"
+end
+
+@testset "formdata() Response struct keyword tests" begin 
+    req = HTTP.Response("message=hello world&value=3")
+    data = formdata(req)
+    @test data["message"] == "hello world"
+    @test data["value"] == "3"
+end
+
+
 @testset "json() Request struct keyword tests" begin 
 
     req = HTTP.Request("GET", "/json", [], "{\"message\":[NaN,1.0]}")

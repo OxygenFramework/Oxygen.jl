@@ -3,7 +3,8 @@ using JSON3
 using Dates
 
 export countargs, recursive_merge, parseparam, 
-    queryparams, redirect, handlerequest
+    queryparams, redirect, handlerequest,
+    format_response!, set_content_size!
 
 """
 countargs(func)
@@ -116,4 +117,58 @@ function handlerequest(getresponse::Function, catch_errors::Bool)
             return HTTP.Response(500, "The Server encountered a problem")
         end  
     end
+end
+
+
+"""
+    set_content_size!(body::Base.CodeUnits{UInt8, String}, headers::Vector; add::Bool, replace::Bool)
+
+Set the "Content-Length" header in the `headers` vector based on the length of the `body`.
+
+# Arguments
+- `body`: The body of the HTTP response. This should be a `Base.CodeUnits{UInt8, String}`.
+- `headers`: A vector of headers for the HTTP response.
+- `add`: A boolean flag indicating whether to add the "Content-Length" header if it doesn't exist. Default is `false`.
+- `replace`: A boolean flag indicating whether to replace the "Content-Length" header if it exists. Default is `false`.
+"""
+function set_content_size!(body::Union{Base.CodeUnits{UInt8, String}, Vector{UInt8}}, headers::Vector; add::Bool, replace::Bool)
+    content_length_found = false
+    for i in 1:length(headers)
+        if headers[i].first == "Content-Length"
+            if replace 
+                headers[i] = "Content-Length" => string(length(body))
+            end
+            content_length_found = true
+            break
+        end
+    end
+    if add && !content_length_found
+        push!(headers, "Content-Length" => string(length(body)))
+    end
+end
+
+function format_response!(req::HTTP.Request, render::Renderer)
+    # Return Renderer's directly because they already content-length & content-type headers
+    req.response = render.response
+end
+
+function format_response!(req::HTTP.Request, resp::HTTP.Response)
+    # Ensure that all HTTP responses have a "Content-Length" header
+    set_content_size!(resp.body, resp.headers, add=true, replace=false)
+    req.response = resp
+end
+
+function format_response!(req::HTTP.Request, content::String)
+    # dynamically determine the content type
+    push!(req.response.headers, "Content-Type" => HTTP.sniff(content), "Content-Length" => string(length(content)))
+    req.response.status = 200
+    req.response.body = content
+end
+
+function format_response!(req::HTTP.Request, content::Any)
+    # convert anthything else to a JSON string
+    body = JSON3.write(content)
+    push!(req.response.headers, "Content-Type" => "application/json; charset=utf-8", "Content-Length" => string(length(body)))    
+    req.response.status = 200
+    req.response.body = body    
 end

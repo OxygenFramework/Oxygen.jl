@@ -346,58 +346,6 @@ function getrouter()
     return ROUTER[]
 end 
 
-"""
-    set_content_size!(body::Base.CodeUnits{UInt8, String}, headers::Vector; add::Bool, replace::Bool)
-
-Set the "Content-Length" header in the `headers` vector based on the length of the `body`.
-
-# Arguments
-- `body`: The body of the HTTP response. This should be a `Base.CodeUnits{UInt8, String}`.
-- `headers`: A vector of headers for the HTTP response.
-- `add`: A boolean flag indicating whether to add the "Content-Length" header if it doesn't exist. Default is `false`.
-- `replace`: A boolean flag indicating whether to replace the "Content-Length" header if it exists. Default is `false`.
-"""
-function set_content_size!(body::Union{Base.CodeUnits{UInt8, String}, Vector{UInt8}}, headers::Vector; add::Bool, replace::Bool)
-    content_length_found = false
-    for i in 1:length(headers)
-        if headers[i].first == "Content-Length"
-            if replace 
-                headers[i] = "Content-Length" => string(length(body))
-            end
-            content_length_found = true
-            break
-        end
-    end
-    if add && !content_length_found
-        push!(headers, "Content-Length" => string(length(body)))
-    end
-end
-
-function format_response!(req::HTTP.Request, render::Renderer)
-    # Return Renderer's directly because they already content-length & content-type headers
-    req.response = render.response
-end
-
-function format_response!(req::HTTP.Request, resp::HTTP.Response)
-    # Ensure that all HTTP responses have a "Content-Length" header
-    set_content_size!(resp.body, resp.headers, add=true, replace=false)
-    req.response = resp
-end
-
-function format_response!(req::HTTP.Request, content::String)
-    # dynamically determine the content type
-    push!(req.response.headers, "Content-Type" => HTTP.sniff(content), "Content-Length" => string(length(content)))
-    req.response.status = 200
-    req.response.body = content
-end
-
-function format_response!(req::HTTP.Request, content::Any)
-    # convert anthything else to a JSON string
-    body = JSON3.write(content)
-    push!(req.response.headers, "Content-Type" => "application/json; charset=utf-8", "Content-Length" => string(length(body)))    
-    req.response.status = 200
-    req.response.body = body    
-end
 
 """
 Create a default serializer function that handles HTTP requests and formats the responses.
@@ -484,9 +432,7 @@ end
 Used to register a function to a specific endpoint to handle GET requests  
 """
 macro get(path, func)
-    quote 
-        @route ["GET"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["GET"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -495,9 +441,7 @@ end
 Used to register a function to a specific endpoint to handle POST requests
 """
 macro post(path, func)
-    quote 
-        @route ["POST"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["POST"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -506,9 +450,7 @@ end
 Used to register a function to a specific endpoint to handle PUT requests
 """
 macro put(path, func)
-    quote 
-        @route ["PUT"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["PUT"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -517,9 +459,7 @@ end
 Used to register a function to a specific endpoint to handle PATCH requests
 """
 macro patch(path, func)
-    quote 
-        @route ["PATCH"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["PATCH"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -528,9 +468,7 @@ end
 Used to register a function to a specific endpoint to handle DELETE requests
 """
 macro delete(path, func)
-    quote 
-        @route ["DELETE"] $(esc(path)) $(esc(func))
-    end
+    :(@route ["DELETE"] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -539,9 +477,7 @@ end
 Used to register a function to a specific endpoint to handle mulitiple request types
 """
 macro route(methods, path, func)
-    quote 
-        route($(esc(methods)), $(esc(path)), $(esc(func)))
-    end  
+    :(route($(esc(methods)), $(esc(path)), $(esc(func))))
 end
 
 ### Core Routing Functions ###

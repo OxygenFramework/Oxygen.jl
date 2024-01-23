@@ -127,7 +127,7 @@ This default functionality is quite useful, but it does have an impact on perfor
 It's recommended to use one of the pre-existing render functions to speed things up.
 
 Here's a list of the currently supported render functions:
-`html`, `text`, `json`, `xml`, `js`, `css`, `binary`
+`html`, `text`, `json`, `file`, `xml`, `js`, `css`, `binary`
 
 Below is an example of how to use these functions:
 

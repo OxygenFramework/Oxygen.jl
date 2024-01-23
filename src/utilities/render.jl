@@ -99,9 +99,6 @@ an ArgumentError is thrown. The MIME type and the size of the file are added to 
 - A Renderer object containing the HTTP response.
 """
 function file(filepath::String; loadfile = nothing, status = 200, headers = []) :: Renderer
-    if !isfile(filepath)
-        throw(ArgumentError("File not found: $filepath"))
-    end
     has_loadfile    = !isnothing(loadfile)
     content         = has_loadfile ? loadfile(filepath) : read(open(filepath), String)
     content_length  = has_loadfile ? string(length(content)) : string(filesize(filepath))

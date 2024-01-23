@@ -84,14 +84,6 @@ end
 
 
 """
-Converts a string or a vector of UInt8 to a vector of UInt8. If the input is a string, 
-it is converted to a vector of UInt8. If the input is already a vector of UInt8, it is returned as is.
-"""
-function tobinary(input::Union{String, Vector{UInt8}}) :: Vector{UInt8}
-    return input isa String ? Vector{UInt8}(input) : input
-end
-
-"""
     file(filepath::String; loadfile=nothing, status = 200, headers = []) :: Renderer
 
 Reads a file and returns a Renderer object. The file is read as binary. If the file does not exist, 
@@ -106,12 +98,12 @@ an ArgumentError is thrown. The MIME type and the size of the file are added to 
 # Returns
 - A Renderer object containing the HTTP response.
 """
-function file(filepath::String; loadfile=nothing, status = 200, headers = []) :: Renderer
+function file(filepath::String; loadfile = nothing, status = 200, headers = []) :: Renderer
     if !isfile(filepath)
         throw(ArgumentError("File not found: $filepath"))
     end
     has_loadfile    = !isnothing(loadfile)
-    content         = has_loadfile ? tobinary(loadfile(filepath)) : read(open(filepath)) 
+    content         = has_loadfile ? loadfile(filepath) : read(open(filepath), String)
     content_length  = has_loadfile ? string(length(content)) : string(filesize(filepath))
     content_type    = mime_from_path(filepath, MIME"application/octet-stream"()) |> contenttype_from_mime
     combined_headers = [headers..., "Content-Type" => content_type, "Content-Length" => content_length]

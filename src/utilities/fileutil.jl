@@ -1,16 +1,15 @@
 
 using HTTP
-using MIMEs
 using Suppressor
 
-export file, mountedfolders, mountfolder
+export readfile, mountedfolders, mountfolder
 
 """
-    file(filepath::String)
+    readfile(filepath::String)
 
 Reads a file as a String
 """
-function file(filepath::String)
+function readfile(filepath::String)
     return read(open(filepath), String)
 end
 
@@ -74,13 +73,9 @@ function mountfolder(folder::String, mountdir::String, addroute)
         # generate the path to mount the file to
         mountpath = mountdir == "/" || isnothing(mountdir) || isempty(mountdir) || all(isspace, mountdir) ? "/$cleanedmountpath" : "/$mountdir/$cleanedmountpath"
 
-        # precalculate content type 
-        content_type = mime_from_path(filepath, MIME"application/octet-stream"()) |> contenttype_from_mime
-        headers = ["Content-Type" => content_type]
-
         paths[mountpath] = true 
         # register the file route
-        addroute(mountpath, content_type, headers, filepath, paths)
+        addroute(mountpath, filepath)
 
         # also register file to the root of each subpath if this file is an index.html
         if endswith(mountpath, "/index.html")
@@ -89,13 +84,12 @@ function mountfolder(folder::String, mountdir::String, addroute)
                 # add the route with the trailing "/" character
                 trimmedpath = getbefore(mountpath, "index.html")
                 paths[trimmedpath] = true
-                addroute(trimmedpath, content_type, headers, filepath, paths)
+                addroute(trimmedpath, filepath)
 
                 # add the route without the trailing "/" character
                 bare_path = getbefore(mountpath, "/index.html")
                 paths[bare_path] = true
-                addroute(bare_path, content_type, headers, filepath, paths)
-
+                addroute(bare_path, filepath)
             end
         end
     end

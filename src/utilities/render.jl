@@ -1,8 +1,9 @@
 
 using HTTP
 using JSON3
+using MIMEs
 
-export Renderer, html, text, json, xml, js, css, binary
+export Renderer, html, text, json, xml, js, css, binary, file
 
 struct Renderer 
     response::HTTP.Response
@@ -79,4 +80,40 @@ A convenience function to return a Vector of UInt8 that should be interpreted as
 function binary(content::Vector{UInt8}; status = 200, headers = ["Content-Type" => "application/octet-stream"]) :: Renderer
     push!(headers, "Content-Length" => string(length(content)))
     return HTTP.Response(status, headers, body = content) |> Renderer
+end
+
+
+"""
+Converts a string or a vector of UInt8 to a vector of UInt8. If the input is a string, 
+it is converted to a vector of UInt8. If the input is already a vector of UInt8, it is returned as is.
+"""
+function tobinary(input::Union{String, Vector{UInt8}}) :: Vector{UInt8}
+    return input isa String ? Vector{UInt8}(input) : input
+end
+
+"""
+    file(filepath::String; loadfile=nothing, status = 200, headers = []) :: Renderer
+
+Reads a file and returns a Renderer object. The file is read as binary. If the file does not exist, 
+an ArgumentError is thrown. The MIME type and the size of the file are added to the headers.
+
+# Arguments
+- `filepath`: The path to the file to be read.
+- `loadfile`: An optional function to load the file. If not provided, the file is read using the `open` function.
+- `status`: The HTTP status code to be used in the response. Defaults to 200.
+- `headers`: Any additional headers to be included in the response. Defaults to an empty array.
+
+# Returns
+- A Renderer object containing the HTTP response.
+"""
+function file(filepath::String; loadfile=nothing, status = 200, headers = []) :: Renderer
+    if !isfile(filepath)
+        throw(ArgumentError("File not found: $filepath"))
+    end
+    has_loadfile    = !isnothing(loadfile)
+    content         = has_loadfile ? tobinary(loadfile(filepath)) : read(open(filepath)) 
+    content_length  = has_loadfile ? string(length(content)) : string(filesize(filepath))
+    content_type    = mime_from_path(filepath, MIME"application/octet-stream"()) |> contenttype_from_mime
+    combined_headers = [headers..., "Content-Type" => content_type, "Content-Length" => content_length]
+    return HTTP.Response(status, combined_headers, body = content) |> Renderer
 end

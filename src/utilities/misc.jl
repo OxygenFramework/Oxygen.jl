@@ -136,14 +136,14 @@ function set_content_size!(body::Union{Base.CodeUnits{UInt8, String}, Vector{UIn
     for i in 1:length(headers)
         if headers[i].first == "Content-Length"
             if replace 
-                headers[i] = "Content-Length" => string(length(body))
+                headers[i] = "Content-Length" => string(sizeof(body))
             end
             content_length_found = true
             break
         end
     end
     if add && !content_length_found
-        push!(headers, "Content-Length" => string(length(body)))
+        push!(headers, "Content-Length" => string(sizeof(body)))
     end
 end
 
@@ -160,7 +160,7 @@ end
 
 function format_response!(req::HTTP.Request, content::String)
     # dynamically determine the content type
-    push!(req.response.headers, "Content-Type" => HTTP.sniff(content), "Content-Length" => string(length(content)))
+    push!(req.response.headers, "Content-Type" => HTTP.sniff(content), "Content-Length" => string(sizeof(content)))
     req.response.status = 200
     req.response.body = content
 end
@@ -168,7 +168,7 @@ end
 function format_response!(req::HTTP.Request, content::Any)
     # convert anthything else to a JSON string
     body = JSON3.write(content)
-    push!(req.response.headers, "Content-Type" => "application/json; charset=utf-8", "Content-Length" => string(length(body)))    
+    push!(req.response.headers, "Content-Type" => "application/json; charset=utf-8", "Content-Length" => string(sizeof(body)))    
     req.response.status = 200
     req.response.body = body    
 end

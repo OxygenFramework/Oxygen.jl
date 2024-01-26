@@ -6,7 +6,7 @@ using HTTP
 using Dates
 
 get("/data") do
-    Dict("msg" => "hello", "😎" =>  "🚀")
+    Dict("msg" => "hello")
 end
 
 get("/random/sm") do

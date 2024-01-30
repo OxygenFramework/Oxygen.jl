@@ -462,9 +462,9 @@ function redochtml() :: HTTP.Response
         </body>
     
     </html>
-    
     """
-    return HTTP.Response(200, ["Content-Type" => "text/html; charset=utf-8"]; body=body)
+    headers = ["Content-Type" => "text/html; charset=utf-8", "Content-Length" => string(sizeof(body))]
+    return HTTP.Response(200, headers; body=body)
 end
 
 """
@@ -503,7 +503,8 @@ function swaggerhtml() :: HTTP.Response
         
         </html>
     """
-    return HTTP.Response(200, ["Content-Type" => "text/html; charset=utf-8"]; body=body)
+    headers = ["Content-Type" => "text/html; charset=utf-8", "Content-Length" => string(sizeof(body))]
+    return HTTP.Response(200, headers; body=body)
 end
 
 end

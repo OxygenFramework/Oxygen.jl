@@ -332,555 +332,607 @@ end
 
 serve(async=true)
 
-# query metrics endpoints
-r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"))
-@test r.status == 200
+@testset "Misc Tests" begin
 
-r = internalrequest(HTTP.Request("GET", "/anonymous"))
-@test r.status == 200
-@test text(r) == "no args"
+    # query metrics endpoints
+    r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"))
+    @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/fake-endpoint"))
-@test r.status == 404
+    r = internalrequest(HTTP.Request("GET", "/anonymous"))
+    @test r.status == 200
+    @test text(r) == "no args"
 
-r = internalrequest(HTTP.Request("GET", "/test"))
-@test r.status == 200
-@test text(r) == "hello world!"
+    r = internalrequest(HTTP.Request("GET", "/fake-endpoint"))
+    @test r.status == 404
 
-r = internalrequest(HTTP.Request("GET", "/testredirect"))
-@test r.status == 307
-@test Dict(r.headers)["Location"] == "/test"
+    r = internalrequest(HTTP.Request("GET", "/test"))
+    @test r.status == 200
+    @test text(r) == "hello world!"
 
-r = internalrequest(HTTP.Request("GET", "/multiply/5/8"))
-@test r.status == 200
-@test text(r) == "40.0"
+    r = internalrequest(HTTP.Request("GET", "/testredirect"))
+    @test r.status == 307
+    @test Dict(r.headers)["Location"] == "/test"
 
-r = internalrequest(HTTP.Request("GET", "/person"))
-@test r.status == 200
-@test json(r, Person) == Person("joe", 20)
+    r = internalrequest(HTTP.Request("GET", "/multiply/5/8"))
+    @test r.status == 200
+    @test text(r) == "40.0"
 
-r = internalrequest(HTTP.Request("GET", "/html"))
-@test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
+    r = internalrequest(HTTP.Request("GET", "/person"))
+    @test r.status == 200
+    @test json(r, Person) == Person("joe", 20)
 
+    r = internalrequest(HTTP.Request("GET", "/html"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
 
-
-# path param tests 
-
-# boolean
-r = internalrequest(HTTP.Request("GET", "/boolean/true"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/boolean/false"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/boolean/asdf"))
-@test r.status == 500
-
-
-# enums
-r = internalrequest(HTTP.Request("GET", "/fruit/1"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/fruit/4"))
-@test r.status == 500
-
-r = internalrequest(HTTP.Request("GET", "/fruit/-3"))
-@test r.status == 500
-
-# date
-r = internalrequest(HTTP.Request("GET", "/date/2022"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/date/2022-01-01"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/date/-3"))
-@test r.status == 500
-
-# datetime
-
-r = internalrequest(HTTP.Request("GET", "/datetime/2022-01-01"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/datetime/2022"))
-@test r.status == 500
-
-r = internalrequest(HTTP.Request("GET", "/datetime/-3"))
-@test r.status == 500
-
-
-# complex
-r = internalrequest(HTTP.Request("GET", "/complex/3.2e-1"))
-@test r.status == 200
-
-# list 
-r = internalrequest(HTTP.Request("GET", "/list/[1,2,3]"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/list/[]"))
-@test r.status == 200
-
-# dictionary 
-r = internalrequest(HTTP.Request("GET", """/dict/{"msg": "hello world"}"""))
-@test r.status == 200
-@test json(r)["msg"] == "hello world"
-
-r = internalrequest(HTTP.Request("GET", "/dict/{}"))
-@test r.status == 200
-
-# tuple 
-r = internalrequest(HTTP.Request("GET", """/tuple/["a","b"]"""))
-@test r.status == 200
-@test text(r) == """["a","b"]"""
-
-r = internalrequest(HTTP.Request("GET", """/tuple/["a","b","c"]"""))
-@test r.status == 200
-@test text(r) == """["a","b"]"""
-
-# union 
-r = internalrequest(HTTP.Request("GET", "/union/true"))
-@test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
-
-r = internalrequest(HTTP.Request("GET", "/union/false"))
-@test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
-
-r = internalrequest(HTTP.Request("GET", "/union/asdfasd"))
-@test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/plain; charset=utf-8"
-
-# struct 
-r = internalrequest(HTTP.Request("GET", """/struct/{"name": "jim", "age": 20}"""))
-@test r.status == 200
-@test json(r, Student) == Student("jim", 20)
-
-r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
-@test r.status == 500
-
-r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
-@test r.status == 500
-
-# float 
-r = internalrequest(HTTP.Request("GET", "/float/3.5"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/float/3"))
-@test r.status == 200
-
-# GET, PUT, POST, PATCH, DELETE, route macro tests 
-
-r = internalrequest(HTTP.Request("GET", "/get"))
-@test r.status == 200
-@test text(r) == "get"
-
-r = internalrequest(HTTP.Request("POST", "/post", [], "this is some data"))
-@test r.status == 200
-@test text(r) == "this is some data"
-
-r = internalrequest(HTTP.Request("PUT", "/put"))
-@test r.status == 200
-@test text(r) == "put"
-
-r = internalrequest(HTTP.Request("PATCH", "/patch"))
-@test r.status == 200
-@test text(r) == "patch"
-
-
-# Query params tests 
-
-r = internalrequest(HTTP.Request("GET", "/query?message=hello"))
-@test r.status == 200
-@test json(r)["message"] == "hello"
-
-r = internalrequest(HTTP.Request("GET", "/query?message=hello&value=5"))
-data = json(r)
-@test r.status == 200
-@test data["message"] == "hello"
-@test data["value"] == "5"
-
-# Get mounted static files
-
-r = internalrequest(HTTP.Request("GET", "/static/test.txt"))
-body = text(r)
-@test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/plain; charset=utf-8"
-@test body == file("content/test.txt") |> unwrap
-@test body == "this is a sample text file"
-
-r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
-@test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
-@test text(r) == file("content/sample.html") |> unwrap
-
-r = internalrequest(HTTP.Request("GET", "/static/index.html"))
-@test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
-@test text(r) == file("content/index.html") |> unwrap
-
-r = internalrequest(HTTP.Request("GET", "/static/"))
-@test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
-@test text(r) == file("content/index.html") |> unwrap
-
-
-# Body transformation tests
-
-r = internalrequest(HTTP.Request("GET", "/text", [], "hello there!"))
-@test r.status == 200
-@test text(r) == "hello there!"
-
-r = internalrequest(HTTP.Request("GET", "/binary", [], "hello there!"))
-@test r.status == 200
-@test String(r.body) == "[104,101,108,108,111,32,116,104,101,114,101,33]"
-
-r = internalrequest(HTTP.Request("GET", "/json", [], "{\"message\": \"hi\"}"))
-@test r.status == 200
-@test json(r)["message"] == "hi"
-
-r = internalrequest(HTTP.Request("GET", "/person"))
-person = json(r, Person)
-@test r.status == 200
-@test person.name == "joe"
-@test person.age == 20
-
-r = internalrequest(HTTP.Request("GET", "/person-json", [], "{\"name\":\"jim\",\"age\":25}"))
-person = json(r, Person)
-@test r.status == 200
-@test person.name == "jim"
-@test person.age == 25
-
-r = internalrequest(HTTP.Request("GET", "/file"))
-@test r.status == 200
-@test text(r) == file("content/sample.html") |> unwrap
-
-r = internalrequest(HTTP.Request("GET", "/dynamic/sample.html"))
-@test r.status == 200
-@test text(r) == file("content/sample.html") |> unwrap
-
-r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
-@test r.status == 200
-@test text(r) == file("content/sample.html") |> unwrap
-
-r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
-@test r.status == 500
-
-# don't suppress error reporting for this test
-r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
-@test r.status == 500
-
-# hit endpoint that doesn't exist
-r = internalrequest(HTTP.Request("GET", "asdfasdf"))
-@test r.status == 404
-
-r = internalrequest(HTTP.Request("GET", "asdfasdf"))
-@test r.status == 404
-
-r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"))
-@test r.status == 404
-
-r = internalrequest(HTTP.Request("GET", "/customerror"))
-@test r.status == 500
-
-r = internalrequest(HTTP.Request("GET", "/middleware-error"))
-@test r.status == 500
-
-r = internalrequest(HTTP.Request("GET", "/undefinederror"))
-@test r.status == 500    
-
-
-try 
-    # apparently you don't need to have StructTypes setup on a custom type with the latest JSON3 library
-    r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
-catch e 
-    @test e isa ArgumentError
 end
 
-## docs related tests 
+@testset "Path Param Parsing Tests" begin
 
-# should be set to true by default
-@test isdocsenabled() == true 
+    # path param tests 
 
-disabledocs()
-@test isdocsenabled() == false 
+    # boolean
+    r = internalrequest(HTTP.Request("GET", "/boolean/true"))
+    @test r.status == 200
 
-enabledocs()
-@test isdocsenabled() == true 
+    r = internalrequest(HTTP.Request("GET", "/boolean/false"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/boolean/asdf"))
+    @test r.status == 500
+
+    # enums
+    r = internalrequest(HTTP.Request("GET", "/fruit/1"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/fruit/4"))
+    @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", "/fruit/-3"))
+    @test r.status == 500
+
+    # date
+    r = internalrequest(HTTP.Request("GET", "/date/2022"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/date/2022-01-01"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/date/-3"))
+    @test r.status == 500
+
+    # datetime
+
+    r = internalrequest(HTTP.Request("GET", "/datetime/2022-01-01"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/datetime/2022"))
+    @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", "/datetime/-3"))
+    @test r.status == 500
+
+
+
+    # complex
+    r = internalrequest(HTTP.Request("GET", "/complex/3.2e-1"))
+    @test r.status == 200
+
+    # list 
+    r = internalrequest(HTTP.Request("GET", "/list/[1,2,3]"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/list/[]"))
+    @test r.status == 200
+
+    # dictionary 
+    r = internalrequest(HTTP.Request("GET", """/dict/{"msg": "hello world"}"""))
+    @test r.status == 200
+    @test json(r)["msg"] == "hello world"
+
+    r = internalrequest(HTTP.Request("GET", "/dict/{}"))
+    @test r.status == 200
+
+    # tuple 
+    r = internalrequest(HTTP.Request("GET", """/tuple/["a","b"]"""))
+    @test r.status == 200
+    @test text(r) == """["a","b"]"""
+
+    r = internalrequest(HTTP.Request("GET", """/tuple/["a","b","c"]"""))
+    @test r.status == 200
+    @test text(r) == """["a","b"]"""
+
+    # union 
+    r = internalrequest(HTTP.Request("GET", "/union/true"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
+
+    r = internalrequest(HTTP.Request("GET", "/union/false"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
+
+    r = internalrequest(HTTP.Request("GET", "/union/asdfasd"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "text/plain; charset=utf-8"
+
+    # struct 
+    r = internalrequest(HTTP.Request("GET", """/struct/{"name": "jim", "age": 20}"""))
+    @test r.status == 200
+    @test json(r, Student) == Student("jim", 20)
+
+    r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
+    @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
+    @test r.status == 500
+
+    # float 
+    r = internalrequest(HTTP.Request("GET", "/float/3.5"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/float/3"))
+    @test r.status == 200
+
+end
+
+@testset "Route Macro Tests" begin
+
+    # GET, PUT, POST, PATCH, DELETE, route macro tests 
+
+    r = internalrequest(HTTP.Request("GET", "/get"))
+    @test r.status == 200
+    @test text(r) == "get"
+
+    r = internalrequest(HTTP.Request("POST", "/post", [], "this is some data"))
+    @test r.status == 200
+    @test text(r) == "this is some data"
+
+    r = internalrequest(HTTP.Request("PUT", "/put"))
+    @test r.status == 200
+    @test text(r) == "put"
+
+    r = internalrequest(HTTP.Request("PATCH", "/patch"))
+    @test r.status == 200
+    @test text(r) == "patch"
+
+end
+
+@testset "Query Param Tests" begin
+
+    # Query params tests 
+
+    r = internalrequest(HTTP.Request("GET", "/query?message=hello"))
+    @test r.status == 200
+    @test json(r)["message"] == "hello"
+
+    r = internalrequest(HTTP.Request("GET", "/query?message=hello&value=5"))
+    data = json(r)
+    @test r.status == 200
+    @test data["message"] == "hello"
+    @test data["value"] == "5"
+
+end
+
+@testset "Static Files Tests" begin
+
+    # Get mounted static files
+
+    r = internalrequest(HTTP.Request("GET", "/static/test.txt"))
+    body = text(r)
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "text/plain; charset=utf-8"
+    @test body == file("content/test.txt") |> unwrap
+    @test body == "this is a sample text file"
+
+    r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
+    @test text(r) == file("content/sample.html") |> unwrap
+
+    r = internalrequest(HTTP.Request("GET", "/static/index.html"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
+    @test text(r) == file("content/index.html") |> unwrap
+
+    r = internalrequest(HTTP.Request("GET", "/static/"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
+    @test text(r) == file("content/index.html") |> unwrap
+
+end
+
+
+@testset "Body Parsing Tests" begin
+
+    # Body transformation tests
+
+    r = internalrequest(HTTP.Request("GET", "/text", [], "hello there!"))
+    @test r.status == 200
+    @test text(r) == "hello there!"
+
+    r = internalrequest(HTTP.Request("GET", "/binary", [], "hello there!"))
+    @test r.status == 200
+    @test String(r.body) == "[104,101,108,108,111,32,116,104,101,114,101,33]"
+
+    r = internalrequest(HTTP.Request("GET", "/json", [], "{\"message\": \"hi\"}"))
+    @test r.status == 200
+    @test json(r)["message"] == "hi"
+
+    r = internalrequest(HTTP.Request("GET", "/person"))
+    person = json(r, Person)
+    @test r.status == 200
+    @test person.name == "joe"
+    @test person.age == 20
+
+    r = internalrequest(HTTP.Request("GET", "/person-json", [], "{\"name\":\"jim\",\"age\":25}"))
+    person = json(r, Person)
+    @test r.status == 200
+    @test person.name == "jim"
+    @test person.age == 25
+
+    r = internalrequest(HTTP.Request("GET", "/file"))
+    @test r.status == 200
+    @test text(r) == file("content/sample.html") |> unwrap
+
+    r = internalrequest(HTTP.Request("GET", "/dynamic/sample.html"))
+    @test r.status == 200
+    @test text(r) == file("content/sample.html") |> unwrap
+
+    r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
+    @test r.status == 200
+    @test text(r) == file("content/sample.html") |> unwrap
+
+    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
+    @test r.status == 500
+
+    # don't suppress error reporting for this test
+    r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
+    @test r.status == 500
+
+    # hit endpoint that doesn't exist
+    r = internalrequest(HTTP.Request("GET", "asdfasdf"))
+    @test r.status == 404
+
+    r = internalrequest(HTTP.Request("GET", "asdfasdf"))
+    @test r.status == 404
+
+    r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"))
+    @test r.status == 404
+
+    r = internalrequest(HTTP.Request("GET", "/customerror"))
+    @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", "/middleware-error"))
+    @test r.status == 500
+
+    r = internalrequest(HTTP.Request("GET", "/undefinederror"))
+    @test r.status == 500    
+
+
+    try 
+        # apparently you don't need to have StructTypes setup on a custom type with the latest JSON3 library
+        r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
+    catch e 
+        @test e isa ArgumentError
+    end
+
+end
+
+@testset "Docs Related tests" begin
+
+    ## docs related tests 
+
+    # should be set to true by default
+    @test isdocsenabled() == true 
+
+    disabledocs()
+    @test isdocsenabled() == false 
+
+    enabledocs()
+    @test isdocsenabled() == true 
+
+end
 
 terminate()
 enabledocs()
 @async serve(docs=true)
 sleep(5)
 
-## Router related tests
+@testset "Router Related tests" begin
 
-# case 1
-r = internalrequest(HTTP.Request("GET", "/math/add/6/5"))
-@test r.status == 200
-@test text(r) == "11.0"
+    ## Router related tests
 
-# case 1
-r = internalrequest(HTTP.Request("GET", "/math/power/6/5"))
-@test r.status == 200
-@test text(r) == "7776.0"
+    # case 1
+    r = internalrequest(HTTP.Request("GET", "/math/add/6/5"))
+    @test r.status == 200
+    @test text(r) == "11.0"
 
-# case 2
-r = internalrequest(HTTP.Request("GET", "/math/cube/3"))
-@test r.status == 200
-@test text(r) == "27.0"
+    # case 1
+    r = internalrequest(HTTP.Request("GET", "/math/power/6/5"))
+    @test r.status == 200
+    @test text(r) == "7776.0"
 
-# case 3
-r = internalrequest(HTTP.Request("GET", "/math/multiply/3/5"))
-@test r.status == 200
-@test text(r) == "15.0"
+    # case 2
+    r = internalrequest(HTTP.Request("GET", "/math/cube/3"))
+    @test r.status == 200
+    @test text(r) == "27.0"
 
-# case 4
-r = internalrequest(HTTP.Request("GET", "/math/divide/3/5"))
-@test r.status == 200
-@test text(r) == "0.6"
+    # case 3
+    r = internalrequest(HTTP.Request("GET", "/math/multiply/3/5"))
+    @test r.status == 200
+    @test text(r) == "15.0"
 
-# case 5
-r = internalrequest(HTTP.Request("GET", "/math/subtract/3/5"))
-@test r.status == 200
-@test text(r) == "-2.0"
+    # case 4
+    r = internalrequest(HTTP.Request("GET", "/math/divide/3/5"))
+    @test r.status == 200
+    @test text(r) == "0.6"
 
-# case 6
-r = internalrequest(HTTP.Request("GET", "/math/square/3"))
-@test r.status == 200
-@test text(r) == "9.0"
+    # case 5
+    r = internalrequest(HTTP.Request("GET", "/math/subtract/3/5"))
+    @test r.status == 200
+    @test text(r) == "-2.0"
 
-r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
-@test r.status == 200
-@test parse(Int64, text(r)) > 0
+    # case 6
+    r = internalrequest(HTTP.Request("GET", "/math/square/3"))
+    @test r.status == 200
+    @test text(r) == "9.0"
 
-r = internalrequest(HTTP.Request("GET", "/emptyrouter"))
-@test r.status == 200
-@test text(r) == "emptyrouter"
+    r = internalrequest(HTTP.Request("GET", "/getroutervalue"))
+    @test r.status == 200
+    @test parse(Int64, text(r)) > 0
 
-r = internalrequest(HTTP.Request("GET", "/emptysubpath"))
-@test r.status == 200
-@test text(r) == "emptysubpath"
+    r = internalrequest(HTTP.Request("GET", "/emptyrouter"))
+    @test r.status == 200
+    @test text(r) == "emptyrouter"
 
-r = internalrequest(HTTP.Request("POST", "/emptysubpath"))
-@test r.status == 200
-@test text(r) == "emptysubpath - post"
+    r = internalrequest(HTTP.Request("GET", "/emptysubpath"))
+    @test r.status == 200
+    @test text(r) == "emptysubpath"
 
-# kill any background tasks still running
-stoptasks()
+    r = internalrequest(HTTP.Request("POST", "/emptysubpath"))
+    @test r.status == 200
+    @test text(r) == "emptysubpath - post"
 
-## internal docs and metrics tests
+    # kill any background tasks still running
+    stoptasks()
 
-r = internalrequest(HTTP.Request("GET", "/get"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/docs"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/docs/swagger"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/docs/redoc"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/docs/schema"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/docs/metrics"))
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"))
-@test r.status == 200
-
-invocation = []
-
-function handler1(handler)
-    return function(req::HTTP.Request)
-        push!(invocation, 1)
-        handler(req)
-    end
 end
 
-function handler2(handler)
-    return function(req::HTTP.Request)
-        push!(invocation, 2)
-        handler(req)
-    end
+
+@testset "Internal Docs & Metrics tests" begin
+
+    ## internal docs and metrics tests
+
+    r = internalrequest(HTTP.Request("GET", "/get"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/docs"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/docs/swagger"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/docs/redoc"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/docs/schema"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/docs/metrics"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"))
+    @test r.status == 200
+
+    r = internalrequest(HTTP.Request("GET", "/docs/schema"))
+    @test r.status == 200
+    @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
+
 end
 
-function handler3(handler)
-    return function(req::HTTP.Request)
-        push!(invocation, 3)
-        handler(req)
-    end
-end
+@testset "Middleware Related tests" begin
 
-r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), middleware=[handler1, handler2, handler3])
-@test r.status == 200
-@test invocation == [1,2,3] # enusre the handlers are called in the correct order
-@test text(r) == "18.0" 
+    invocation = []
 
-r = internalrequest(HTTP.Request("GET", "/docs"), middleware=[handler1])
-@test r.status == 200
-
-r = internalrequest(HTTP.Request("GET", "/docs/schema"))
-@test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
-
-# test emtpy dict (which should be skipped)
-mergeschema(Dict(
-    "paths" => Dict(
-        "/multiply/{a}/{b}" => Dict(
-            "get" => Dict(
-                "description" => "returns the result of a * b",
-                "parameters" => [
-                    Dict()
-                ]
-            )
-        )
-    )
-))
-
-
-mergeschema(Dict(
-    "paths" => Dict(
-        "/multiply/{a}/{b}" => Dict(
-            "get" => Dict(
-                "description" => "returns the result of a * b",
-                "parameters" => [
-                    Dict(
-                        "name" => "a",
-                        "in" => "path",
-                        "required" => "true",
-                        "schema" => Dict(
-                            "type" => "number"
-                        )
-                    ),
-                    Dict(
-                        "name" => "b",
-                        "in" => "path",
-                        "required" => "true",
-                        "schema" => Dict(
-                            "type" => "number"
-                        )
-                    )
-                ]
-            )
-        )
-    )
-))
-
-@assert getschema()["paths"]["/multiply/{a}/{b}"]["get"]["description"] == "returns the result of a * b"
-
-mergeschema("/put", 
-    Dict(
-        "put" => Dict(
-            "description" => "returns a string on PUT",
-            "parameters" => []
-        )
-    )
-)
-
-@assert getschema()["paths"]["/put"]["put"]["description"] == "returns a string on PUT"
-
-data = Dict("msg" => "this is not a valid schema dictionary")
-setschema(data)
-
-@assert getschema() === data
-
-terminate()
-
-@async serve(middleware=[handler1, handler2, handler3])
-sleep(1)
-
-r = internalrequest(HTTP.Request("GET", "/get"))
-@test r.status == 200
-
-# redundant terminate() calls should have no affect
-terminate()
-terminate()
-terminate()
-
-function errorcatcher(handle)
-    function(req)
-        try 
-            response = handle(req)
-            return response
-        catch e 
-            return HTTP.Response(500, "here's a custom error response")
+    function handler1(handler)
+        return function(req::HTTP.Request)
+            push!(invocation, 1)
+            handler(req)
         end
     end
-end
 
-# Test default handler by turning off serializaiton
-@async serve(serialize=false, middleware=[error_catcher], catch_errors=false)
-sleep(3)
-r = internalrequest(HTTP.Request("GET", "/get"), catch_errors=false)
-@test r.status == 200
+    function handler2(handler)
+        return function(req::HTTP.Request)
+            push!(invocation, 2)
+            handler(req)
+        end
+    end
 
-try 
-    # test the error handler inside the default handler
-    r = HTTP.get("$localhost/undefinederror"; readtimeout=1)
-catch e
-    @test true
-end
+    function handler3(handler)
+        return function(req::HTTP.Request)
+            push!(invocation, 3)
+            handler(req)
+        end
+    end
 
-try 
-    # service should not have started and get requests should throw some error
-    r = HTTP.get("$localhost/data"; readtimeout=1)
-catch e
-    @test true
-finally
-    terminate()
-end
+  
 
-try 
-    # service should not have started and get requests should throw some error
-    @async serveparallel()
-    sleep(3)
-    r = HTTP.get("$localhost/get"; readtimeout=1)
-catch e
-    @test true
-finally
-    terminate()
-end
+    r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), middleware=[handler1, handler2, handler3])
+    @test r.status == 200
+    @test invocation == [1,2,3] # enusre the handlers are called in the correct order
+    @test text(r) == "18.0" 
 
-# only run these tests if we have more than one thread to work with
-if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
-
-    @async serveparallel()
-    sleep(3)
-
-    r = HTTP.get("$localhost/get")
+    r = internalrequest(HTTP.Request("GET", "/docs"), middleware=[handler1])
     @test r.status == 200
 
-    r = HTTP.post("$localhost/post", body="some demo content")
-    @test text(r) == "some demo content"
+end
 
-    try
-        r = HTTP.get("$localhost/customerror", connect_timeout=3)
-    catch e 
-        @test e isa MethodError || e isa HTTP.ExceptionRequest.StatusError
-    end
-    
+
+@testset "Doc Schema Related tests" begin
+
+    # test emtpy dict (which should be skipped)
+    mergeschema(Dict(
+        "paths" => Dict(
+            "/multiply/{a}/{b}" => Dict(
+                "get" => Dict(
+                    "description" => "returns the result of a * b",
+                    "parameters" => [
+                        Dict()
+                    ]
+                )
+            )
+        )
+    ))
+
+
+    mergeschema(Dict(
+        "paths" => Dict(
+            "/multiply/{a}/{b}" => Dict(
+                "get" => Dict(
+                    "description" => "returns the result of a * b",
+                    "parameters" => [
+                        Dict(
+                            "name" => "a",
+                            "in" => "path",
+                            "required" => "true",
+                            "schema" => Dict(
+                                "type" => "number"
+                            )
+                        ),
+                        Dict(
+                            "name" => "b",
+                            "in" => "path",
+                            "required" => "true",
+                            "schema" => Dict(
+                                "type" => "number"
+                            )
+                        )
+                    ]
+                )
+            )
+        )
+    ))
+
+    @assert getschema()["paths"]["/multiply/{a}/{b}"]["get"]["description"] == "returns the result of a * b"
+
+    mergeschema("/put", 
+        Dict(
+            "put" => Dict(
+                "description" => "returns a string on PUT",
+                "parameters" => []
+            )
+        )
+    )
+
+    @assert getschema()["paths"]["/put"]["put"]["description"] == "returns a string on PUT"
+
+    data = Dict("msg" => "this is not a valid schema dictionary")
+    setschema(data)
+
+    @assert getschema() === data
+
+end
+
+@testset "Error tests" begin
+
     terminate()
 
-    @async serveparallel(middleware=[handler1, handler2, handler3])
+    @async serve(middleware=[handler1, handler2, handler3])
     sleep(1)
 
-    r = HTTP.get("$localhost/get")
+    r = internalrequest(HTTP.Request("GET", "/get"))
     @test r.status == 200
 
+    # redundant terminate() calls should have no affect
+    terminate()
+    terminate()
     terminate()
 
+    function errorcatcher(handle)
+        function(req)
+            try 
+                response = handle(req)
+                return response
+            catch e 
+                return HTTP.Response(500, "here's a custom error response")
+            end
+        end
+    end
+
+    # Test default handler by turning off serializaiton
+    @async serve(serialize=false, middleware=[error_catcher], catch_errors=false)
+    sleep(3)
+    r = internalrequest(HTTP.Request("GET", "/get"), catch_errors=false)
+    @test r.status == 200
+
     try 
-        @async serveparallel(queuesize=0)
-        sleep(1)
-        r = HTTP.get("$localhost/get")
+        # test the error handler inside the default handler
+        r = HTTP.get("$localhost/undefinederror"; readtimeout=1)
     catch e
-        @test e isa HTTP.ExceptionRequest.StatusError
+        @test true
+    end
+
+    try 
+        # service should not have started and get requests should throw some error
+        r = HTTP.get("$localhost/data"; readtimeout=1)
+    catch e
+        @test true
     finally
         terminate()
+    end
+
+    try 
+        # service should not have started and get requests should throw some error
+        @async serveparallel()
+        sleep(3)
+        r = HTTP.get("$localhost/get"; readtimeout=1)
+    catch e
+        @test true
+    finally
+        terminate()
+    end
+
+end
+
+@testset "Multithreaded tests" begin
+
+    # only run these tests if we have more than one thread to work with
+    if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
+
+        @async serveparallel()
+        sleep(3)
+
+        r = HTTP.get("$localhost/get")
+        @test r.status == 200
+
+        r = HTTP.post("$localhost/post", body="some demo content")
+        @test text(r) == "some demo content"
+
+        try
+            r = HTTP.get("$localhost/customerror", connect_timeout=3)
+        catch e 
+            @test e isa MethodError || e isa HTTP.ExceptionRequest.StatusError
+        end
+        
+        terminate()
+
+        @async serveparallel(middleware=[handler1, handler2, handler3])
+        sleep(1)
+
+        r = HTTP.get("$localhost/get")
+        @test r.status == 200
+
+        terminate()
+
+        try 
+            @async serveparallel(queuesize=0)
+            sleep(1)
+            r = HTTP.get("$localhost/get")
+        catch e
+            @test e isa HTTP.ExceptionRequest.StatusError
+        finally
+            terminate()
+        end
     end
 end
 

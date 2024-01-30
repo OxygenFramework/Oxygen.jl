@@ -153,8 +153,7 @@ function format_response!(req::HTTP.Request, render::Renderer)
 end
 
 function format_response!(req::HTTP.Request, resp::HTTP.Response)
-    # Ensure that all HTTP responses have a "Content-Length" header
-    set_content_size!(resp.body, resp.headers, add=true, replace=false)
+    # Return Response's as is without any modifications
     req.response = resp
 end
 

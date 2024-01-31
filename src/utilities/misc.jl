@@ -147,11 +147,6 @@ function set_content_size!(body::Union{Base.CodeUnits{UInt8, String}, Vector{UIn
     end
 end
 
-function format_response!(req::HTTP.Request, render::Renderer)
-    # Return Renderer's directly because they already content-length & content-type headers
-    req.response = render.response
-end
-
 function format_response!(req::HTTP.Request, resp::HTTP.Response)
     # Return Response's as is without any modifications
     req.response = resp

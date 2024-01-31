@@ -133,7 +133,7 @@ function stream_handler(middleware::Function)
 end 
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, metrics=true, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -164,7 +164,7 @@ function serve(;
 end
 
 """
-    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, metrics=true, kwargs...)
+    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 

@@ -444,7 +444,7 @@ end
 function redochtml() :: HTTP.Response
     redocjs = readstaticfile("$REDOC_VERSION/redoc.standalone.js")
 
-    body = """
+    html("""
     <!DOCTYPE html>
     <html lang="en">
     
@@ -462,9 +462,7 @@ function redochtml() :: HTTP.Response
         </body>
     
     </html>
-    """
-    headers = ["Content-Type" => "text/html; charset=utf-8", "Content-Length" => string(sizeof(body))]
-    return HTTP.Response(200, headers; body=body)
+    """)
 end
 
 """
@@ -476,7 +474,7 @@ function swaggerhtml() :: HTTP.Response
     swaggerjs = readstaticfile("$SWAGGER_VERSION/swagger-ui-bundle.js")
     swaggerstyles = readstaticfile("$SWAGGER_VERSION/swagger-ui.css")
 
-    body = """
+    html("""
         <!DOCTYPE html>
         <html lang="en">
         
@@ -502,9 +500,7 @@ function swaggerhtml() :: HTTP.Response
         </body>
         
         </html>
-    """
-    headers = ["Content-Type" => "text/html; charset=utf-8", "Content-Length" => string(sizeof(body))]
-    return HTTP.Response(200, headers; body=body)
+    """)
 end
 
 end

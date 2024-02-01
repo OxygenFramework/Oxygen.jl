@@ -27,9 +27,6 @@ struct Book
     author::String
 end
 
-function unwrap(renderer::Oxygen.Util.Renderer) :: String
-    return String(renderer.response.body)
-end
     
 localhost = "http://127.0.0.1:8080"
 
@@ -506,23 +503,23 @@ r = internalrequest(HTTP.Request("GET", "/static/test.txt"))
 body = text(r)
 @test r.status == 200
 @test Dict(r.headers)["Content-Type"] == "text/plain; charset=utf-8"
-@test body == file("content/test.txt") |> unwrap
+@test body == file("content/test.txt") |> text
 @test body == "this is a sample text file"
 
 r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
 @test r.status == 200
 @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
-@test text(r) == file("content/sample.html") |> unwrap
+@test text(r) == file("content/sample.html") |> text
 
 r = internalrequest(HTTP.Request("GET", "/static/index.html"))
 @test r.status == 200
 @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
-@test text(r) == file("content/index.html") |> unwrap
+@test text(r) == file("content/index.html") |> text
 
 r = internalrequest(HTTP.Request("GET", "/static/"))
 @test r.status == 200
 @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
-@test text(r) == file("content/index.html") |> unwrap
+@test text(r) == file("content/index.html") |> text
 
 
 # Body transformation tests
@@ -553,15 +550,15 @@ person = json(r, Person)
 
 r = internalrequest(HTTP.Request("GET", "/file"))
 @test r.status == 200
-@test text(r) == file("content/sample.html") |> unwrap
+@test text(r) == file("content/sample.html") |> text
 
 r = internalrequest(HTTP.Request("GET", "/dynamic/sample.html"))
 @test r.status == 200
-@test text(r) == file("content/sample.html") |> unwrap
+@test text(r) == file("content/sample.html") |> text
 
 r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
 @test r.status == 200
-@test text(r) == file("content/sample.html") |> unwrap
+@test text(r) == file("content/sample.html") |> text
 
 r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
 @test r.status == 500

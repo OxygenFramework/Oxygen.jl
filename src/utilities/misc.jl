@@ -114,7 +114,7 @@ function handlerequest(getresponse::Function, catch_errors::Bool)
             return getresponse()       
         catch error
             @error "ERROR: " exception=(error, catch_backtrace())
-            return HTTP.Response(500, "The Server encountered a problem")
+            return json(("message" => "The Server encountered a problem"), status = 500)    
         end  
     end
 end
@@ -145,11 +145,6 @@ function set_content_size!(body::Union{Base.CodeUnits{UInt8, String}, Vector{UIn
     if add && !content_length_found
         push!(headers, "Content-Length" => string(sizeof(body)))
     end
-end
-
-function format_response!(req::HTTP.Request, render::Renderer)
-    # Return Renderer's directly because they already content-length & content-type headers
-    req.response = render.response
 end
 
 function format_response!(req::HTTP.Request, resp::HTTP.Response)

@@ -114,7 +114,7 @@ function handlerequest(getresponse::Function, catch_errors::Bool)
             return getresponse()       
         catch error
             @error "ERROR: " exception=(error, catch_backtrace())
-            return HTTP.Response(500, "The Server encountered a problem")
+            return json(("message" => "The Server encountered a problem"), status = 500)    
         end  
     end
 end

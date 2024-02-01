@@ -33,10 +33,6 @@ function respond(h::Handler, handle_stream::Function)
         @async begin
             try
                 handle_stream(task.http)
-            catch error 
-                @error "ERROR: " exception=(error, catch_backtrace())
-                HTTP.setstatus(task.http, 500)
-                write(task.http, "The Server encountered a problem")
             finally
                 notify(task.done)
             end
@@ -76,21 +72,15 @@ function start(handle_stream::Function; host="127.0.0.1", port=8080, queuesize =
     end
 
     function streamhandler(stream::HTTP.Stream)
-        try
-            if handler.count[] < queuesize
-                Threads.atomic_add!(handler.count, 1)
-                local request = WebRequest(stream, Threads.Event())
-                put!(handler.queue, request)
-                wait(request.done)
-            else
-                @warn "Dropping connection..."
-                HTTP.setstatus(stream, 500)
-                write(stream, "Server overloaded.")
-            end 
-        catch e
-            @error "ERROR: " exception=(e, catch_backtrace())
+        if handler.count[] < queuesize
+            Threads.atomic_add!(handler.count, 1)
+            local request = WebRequest(stream, Threads.Event())
+            put!(handler.queue, request)
+            wait(request.done)
+        else
+            @warn "Dropping connection..."
             HTTP.setstatus(stream, 500)
-            write(stream, "The Server encountered a problem")
+            write(stream, "Server overloaded.")
         end
     end
 

@@ -6,96 +6,90 @@ using MIMEs
 export html, text, json, xml, js, css, binary, file
 
 """
-    html(content::String; status::Int, headers::Vector{Pair})
+    html(content::String; status::Int, headers::Vector{Pair}) :: HTTP.Response
 
 A convenience function to return a String that should be interpreted as HTML
 """
 function html(content::String; status = 200, headers = []) :: HTTP.Response
-    push!(headers, 
-        "Content-Type" => "text/html; charset=utf-8",
-        "Content-Length" => string(sizeof(content))
-    )
-    return HTTP.Response(status, headers, body = content)
+    response = HTTP.Response(status, headers, body = content)
+    HTTP.setheader(response, "Content-Type" => "text/html; charset=utf-8")
+    HTTP.setheader(response, "Content-Length" => string(sizeof(content)))
+    return response
 end
 
+
 """
-    text(content::String; status::Int, headers::Vector{Pair})
+    text(content::String; status::Int, headers::Vector{Pair}) :: HTTP.Response
 
 A convenience function to return a String that should be interpreted as plain text
 """
 function text(content::String; status = 200, headers = []) :: HTTP.Response
-    push!(headers, 
-        "Content-Type" => "text/plain; charset=utf-8",
-        "Content-Length" => string(sizeof(content))
-    )
-    return HTTP.Response(status, headers, body = content)
+    response = HTTP.Response(status, headers, body = content)
+    HTTP.setheader(response, "Content-Type" => "text/plain; charset=utf-8")
+    HTTP.setheader(response, "Content-Length" => string(sizeof(content)))
+    return response
 end
 
 """
-    json(content::Any; status::Int, headers::Vector{Pair})
+    json(content::Any; status::Int, headers::Vector{Pair}) :: HTTP.Response
 
 A convenience function to return a String that should be interpreted as JSON
 """
 function json(content::Any; status = 200, headers = []) :: HTTP.Response
     body = JSON3.write(content)
-    push!(headers, 
-        "Content-Type" => "application/json; charset=utf-8",
-        "Content-Length" => string(sizeof(body))
-    )
-    return HTTP.Response(status, headers, body = body)
+    response = HTTP.Response(status, headers, body = body)
+    HTTP.setheader(response, "Content-Type" => "application/json; charset=utf-8")
+    HTTP.setheader(response, "Content-Length" => string(sizeof(body)))
+    return response
 end
 
 """
-    xml(content::String; status::Int, headers::Vector{Pair})
+    xml(content::String; status::Int, headers::Vector{Pair}) :: HTTP.Response
 
 A convenience function to return a String that should be interpreted as XML
 """
 function xml(content::String; status = 200, headers = []) :: HTTP.Response
-    push!(headers, 
-        "Content-Type" => "application/xml; charset=utf-8",
-        "Content-Length" => string(sizeof(content))
-    )
-    return HTTP.Response(status, headers, body = content)
+    response = HTTP.Response(status, headers, body = content)
+    HTTP.setheader(response, "Content-Type" => "application/xml; charset=utf-8")
+    HTTP.setheader(response, "Content-Length" => string(sizeof(content)))
+    return response
 end
 
 """
-    js(content::String; status::Int, headers::Vector{Pair})
+    js(content::String; status::Int, headers::Vector{Pair}) :: HTTP.Response
 
 A convenience function to return a String that should be interpreted as JavaScript
 """
 function js(content::String; status = 200, headers = []) :: HTTP.Response
-    push!(headers, 
-        "Content-Type" => "application/javascript; charset=utf-8",
-        "Content-Length" => string(sizeof(content))
-    )
-    return HTTP.Response(status, headers, body = content)
+    response = HTTP.Response(status, headers, body = content)
+    HTTP.setheader(response, "Content-Type" => "application/javascript; charset=utf-8")
+    HTTP.setheader(response, "Content-Length" => string(sizeof(content)))
+    return response
 end
 
 
 """
-    css(content::String; status::Int, headers::Vector{Pair})
+    css(content::String; status::Int, headers::Vector{Pair}) :: HTTP.Response
 
 A convenience function to return a String that should be interpreted as CSS
 """
 function css(content::String; status = 200, headers = []) :: HTTP.Response
-    push!(headers, 
-        "Content-Type" => "text/css; charset=utf-8",
-        "Content-Length" => string(sizeof(content)), 
-    )
-    return HTTP.Response(status, headers, body = content)
+    response = HTTP.Response(status, headers, body = content)
+    HTTP.setheader(response, "Content-Type" => "text/css; charset=utf-8")
+    HTTP.setheader(response, "Content-Length" => string(sizeof(content)))
+    return response
 end
 
 """
-    binary(content::Vector{UInt8}; status::Int, headers::Vector{Pair})
+    binary(content::Vector{UInt8}; status::Int, headers::Vector{Pair}) :: HTTP.Response
 
 A convenience function to return a Vector of UInt8 that should be interpreted as binary data
 """
 function binary(content::Vector{UInt8}; status = 200, headers = []) :: HTTP.Response
-    push!(headers, 
-        "Content-Type" => "application/octet-stream",
-        "Content-Length" => string(sizeof(content))
-    )
-    return HTTP.Response(status, headers, body = content)
+    response = HTTP.Response(status, headers, body = content)
+    HTTP.setheader(response, "Content-Type" => "application/octet-stream")
+    HTTP.setheader(response, "Content-Length" => string(sizeof(content)))
+    return response
 end
 
 
@@ -119,6 +113,9 @@ function file(filepath::String; loadfile = nothing, status = 200, headers = []) 
     content         = has_loadfile ? loadfile(filepath) : read(open(filepath), String)
     content_length  = has_loadfile ? string(sizeof(content)) : string(filesize(filepath))
     content_type    = mime_from_path(filepath, MIME"application/octet-stream"()) |> contenttype_from_mime
-    push!(headers, "Content-Type" => content_type, "Content-Length" => content_length)
-    return HTTP.Response(status, headers, body = content)
+    response = HTTP.Response(status, headers, body = content)
+    HTTP.setheader(response, "Content-Type" => content_type)
+    HTTP.setheader(response, "Content-Length" => content_length)
+    return response
 end
+

@@ -57,4 +57,31 @@ using .Oxygen
     end
 end
 
+@testset "Repeated calls do not duplicate headers" begin
+    response1 = css("body { background-color: #f0f0f0; }")
+    response2 = css("body { background-color: #f0f0f0; }")
+    @test Dict(response1.headers)["Content-Type"] == "text/css; charset=utf-8"
+    @test Dict(response2.headers)["Content-Type"] == "text/css; charset=utf-8"
+    @test length(response1.headers) == length(response2.headers)
+
+    response1 = binary(UInt8[72, 101, 108, 108, 111])  # "Hello" in ASCII
+    response2 = binary(UInt8[72, 101, 108, 108, 111])  # "Hello" in ASCII
+    @test Dict(response1.headers)["Content-Type"] == "application/octet-stream"
+    @test Dict(response2.headers)["Content-Type"] == "application/octet-stream"
+    @test length(response1.headers) == length(response2.headers) == 2
+end
+
+@testset "Repeated calls do not duplicate headers for file renderer" begin
+    response1 = file("content/index.html")
+    response2 = file("content/index.html")
+
+    @test findfirst(x -> x == ("Content-Type" => "text/html; charset=utf-8"), response1.headers) !== nothing
+    @test findfirst(x -> x == ("Content-Type" => "text/html; charset=utf-8"), response2.headers) !== nothing
+
+    count1 = length(response1.headers)
+    count2 = length(response2.headers)
+
+    @test count1 == count2 == 2
+end
+
 end

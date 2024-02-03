@@ -9,8 +9,8 @@
   </p>
   <p align="center">
     <a href='https://juliahub.com/ui/Packages/Oxygen/JtS3f'><img src='https://juliahub.com/docs/Oxygen/version.svg?token=7GV8X1C98M' alt='Version' /></a>
-    <a href='https://ndortega.github.io/Oxygen.jl/stable/'><img src='https://img.shields.io/badge/docs-stable-blue.svg' alt='documentation stable' /></a>
-    <a href='https://github.com/ndortega/Oxygen.jl/actions/workflows/ci.yml'><img src='https://github.com/ndortega/Oxygen.jl/actions/workflows/ci.yml/badge.svg' alt='Build Status' /></a>
+    <a href='https://oxygenframework.github.io/Oxygen.jl/stable/'><img src='https://img.shields.io/badge/docs-stable-blue.svg' alt='documentation stable' /></a>
+    <a href='https://github.com/ndortega/Oxygen.jl/actions/workflows/ci.yml'><img src='https://github.com/oxy/Oxygen.jl/actions/workflows/ci.yml/badge.svg' alt='Build Status' /></a>
     <a href='https://codecov.io/gh/ndortega/Oxygen.jl'><img src='https://codecov.io/gh/ndortega/Oxygen.jl/branch/master/graph/badge.svg?token=7GV8X1C98M' alt='Coverage Status' /></a>
   </p>
 </div>

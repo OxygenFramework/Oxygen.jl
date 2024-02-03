@@ -10,7 +10,7 @@
   <p align="center">
     <a href='https://juliahub.com/ui/Packages/Oxygen/JtS3f'><img src='https://juliahub.com/docs/Oxygen/version.svg?token=7GV8X1C98M' alt='Version' /></a>
     <a href='https://oxygenframework.github.io/Oxygen.jl/stable/'><img src='https://img.shields.io/badge/docs-stable-blue.svg' alt='documentation stable' /></a>
-    <a href='https://github.com/OxygenFramework/Oxygen.jl/actions/workflows/ci.yml'><img src='https://github.com/oxygenframework/Oxygen.jl/actions/workflows/ci.yml/badge.svg' alt='Build Status' /></a>
+    <a href='https://github.com/OxygenFramework/Oxygen.jl/actions/workflows/ci.yml'><img src='https://github.com/OxygenFramework/Oxygen.jl/actions/workflows/ci.yml/badge.svg' alt='Build Status' /></a>
     <a href='https://codecov.io/gh/OxygenFramework/Oxygen.jl'><img src='https://codecov.io/gh/OxygenFramework/Oxygen.jl/branch/master/graph/badge.svg' alt='Coverage Status' /></a>
   </p>
 </div>

@@ -21,6 +21,7 @@ include("metrics.jl");      @reexport using .Metrics
 
 using .Metrics: HTTPTransaction
 using .StreamUtil: Handler
+using .AutoDoc: TaggedRoute
 
 export  @cron, 
         staticfiles, dynamicfiles,
@@ -152,7 +153,7 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}; 
+function serve(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -169,7 +170,7 @@ function serve(router::Router, history::CircularDeque{HTTPTransaction}, mountedf
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
 
-    return startserver((; router, history, mountedfolders), host, port, docs, metrics, kwargs, async, (kwargs) ->  
+    return startserver((; router, history, mountedfolders, taggedroutes), host, port, docs, metrics, kwargs, async, (kwargs) ->  
             HTTP.serve!(handler(configured_middelware), host, port; kwargs...))
 end
 
@@ -182,7 +183,7 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, _handler::Handler, mountedfolders::Set{String}; 
+function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, _handler::Handler, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -198,7 +199,7 @@ function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, 
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(router, history; middleware, serialize, catch_errors, metrics)
 
-    server = startserver((; router, history, mountedfolders), host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    server = startserver((; router, history, mountedfolders, taggedroutes), host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
     return server # this value is returned if startserver() is ran in async mode
@@ -237,10 +238,10 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver((; router, history, mountedfolders), host, port, docs, metrics, kwargs, async, start)
+function startserver((; router, history, mountedfolders, taggedroutes), host, port, docs, metrics, kwargs, async, start)
 
     serverwelcome(host, port, docs, metrics)
-    setup(router, history, mountedfolders; docs, metrics)
+    setup(router, history, mountedfolders, taggedroutes; docs, metrics)
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     starttasks()
     registercronjobs()
@@ -280,16 +281,16 @@ end
 """
 This function called right before serving the server, which is useful for performing any additional setup
 """
-function setup(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}; docs::Bool, metrics::Bool)
+function setup(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}; docs::Bool, metrics::Bool)
     
     docs ? enabledocs() : disabledocs()
 
     if docs
-        setupswagger((;router, mountedfolders))
+        setupswagger((;router, mountedfolders, taggedroutes))
     end
 
     if metrics
-        setupmetrics(router, history, mountedfolders)
+        setupmetrics(router, history, mountedfolders, taggedroutes)
     end
 end
 
@@ -389,7 +390,7 @@ end
 
 Register a request handler function with a path to the ROUTER
 """
-function register((; router, mountedfolders), httpmethod::String, route::Union{String,Function}, func::Function)
+function register((; router, mountedfolders, taggedroutes), httpmethod::String, route::Union{String,Function}, func::Function)
 
     # check if path is a callable function (that means it's a router higher-order-function)
     if isa(route, Function)
@@ -479,7 +480,7 @@ function register((; router, mountedfolders), httpmethod::String, route::Union{S
     end
 
     # strip off any regex patterns attached to our path parameters
-    registerschema((; mountedfolders),
+    registerschema((; mountedfolders, taggedroutes),
         route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
 
     # case 1.) The request handler is an anonymous function (don't parse out path params)
@@ -529,7 +530,7 @@ function setupswagger(ctx)
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String})
+function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute})
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath) :: String
@@ -543,7 +544,7 @@ function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction}, m
         end
     end
 
-    staticfiles((;router, mountedfolders), "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    staticfiles((;router, mountedfolders, taggedroutes), "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
 
     function metrics(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
@@ -565,7 +566,7 @@ function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction}, m
     end
 
 
-    register((;router, mountedfolders), "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
+    register((;router, mountedfolders, taggedroutes), "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
 end
 
 

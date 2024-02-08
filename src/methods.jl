@@ -20,6 +20,7 @@ function resetstate()
     # reset autodocs state variables
 
     global MOUNTED_FOLDERS = Set{String}()
+    global TAGGED_ROUTES = Dict{String, TaggedRoute}()
     Core.resetstatevariables()
     # reset cron module state
     Core.resetcronstate()
@@ -63,7 +64,7 @@ function serve(;
     
     try
 
-        SERVER[] = Core.serve(ROUTER[], HISTORY[], MOUNTED_DIRS; 
+        SERVER[] = Core.serve(ROUTER[], HISTORY[], MOUNTED_FOLDERS, TAGGED_ROUTES; 
                  middleware, handler, port, serialize, 
                  async, catch_errors, docs, metrics, kwargs...)
 
@@ -104,7 +105,7 @@ function serveparallel(;
 
     try
 
-        SERVER[] = Core.serveparallel(ROUTER[], HISTORY[], HANDLER[], MOUNTED_FOLDERS;                  
+        SERVER[] = Core.serveparallel(ROUTER[], HISTORY[], HANDLER[], MOUNTED_FOLDERS, TAGGED_ROUTES;                  
                          middleware, handler, port, queuesize, serialize, 
                          async, catch_errors, docs, metrics, kwargs...)
 
@@ -188,7 +189,7 @@ end
 
 function route(methods::Vector{String}, path::Union{String,Function}, func::Function)
     for method in methods
-        Core.register((;router=ROUTER[], mountedfolders=MOUNTED_FOLDERS), method, path, func)
+        Core.register((;router=ROUTER[], mountedfolders=MOUNTED_FOLDERS, taggedroutes=TAGGED_ROUTES), method, path, func)
     end
 end
 
@@ -269,3 +270,14 @@ dynamicfiles(
 
 
 internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(ROUTER[], HISTORY[], req; middleware, metrics, serialize, catch_errors)
+
+
+function router(prefix::String = ""; 
+                tags::Vector{String} = Vector{String}(), 
+                middleware::Union{Nothing, Vector} = nothing, 
+                interval::Union{Real, Nothing} = nothing,
+                cron::Union{String, Nothing} = nothing)
+
+
+    return Core.AutoDoc.router(TAGGED_ROUTES, prefix; tags, middleware, interval, cron)
+end

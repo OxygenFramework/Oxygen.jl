@@ -15,7 +15,10 @@ const HISTORY = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransactio
 using .Core.StreamUtil: Handler
 const HANDLER = Ref{Handler}(Handler())
 
+using .Core.AutoDoc: TaggedRoute
 MOUNTED_FOLDERS = Set{String}()
+TAGGED_ROUTES = Dict{String, TaggedRoute}()
+
 
 include("methods.jl")
 

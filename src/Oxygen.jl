@@ -6,6 +6,8 @@ include("core.jl"); using .Core
 
 import HTTP
 global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
+global const SERVER = Ref{Union{HTTP.Server, Nothing}}(nothing) 
+
 
 include("methods.jl")
 

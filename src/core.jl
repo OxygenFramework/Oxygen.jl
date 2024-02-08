@@ -23,8 +23,7 @@ export  @cron,
 
 
 global const timers = Ref{Vector{Timer}}([]) # CRON STATE
-global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
-#
+
 
 # Generate a reliable path to our internal data folder that works when the 
 # package is used with PackageCompiler.jl
@@ -49,25 +48,6 @@ function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool)
 end
 
 
-"""
-Reset all the internal state variables
-"""
-function resetstate(ctx)
-    # reset this modules state variables 
-    timers[] = []         
-
-    # This no longer is done at this level
-    # perhaps it should be done at the topmost level
-    #ROUTER[] = HTTP.Router()
-
-    server[] = nothing
-    # reset autodocs state variables
-    resetstatevariables()
-    # reset cron module state
-    resetcronstate()
-    # clear metrics
-    clear_history()
-end
 
 
 # CRON STATE
@@ -182,29 +162,10 @@ function serve(router::Router;
     )
 
 
-    # The cleanup of resources may best be put at the topmost level in `methods.jl`
+    # The cleanup of resources are put at the topmost level in `methods.jl`
 
-    try 
-        startserver((; router), host, port, docs, metrics, kwargs, async, (kwargs) ->  
+    return startserver((; router), host, port, docs, metrics, kwargs, async, (kwargs) ->  
             HTTP.serve!(handler(configured_middelware), host, port; kwargs...))
-
-
-
-    finally
-
-        # close server on exit if we aren't running asynchronously
-        if !async 
-            terminate((;))
-        end
-
-        # only reset state on exit if we aren't running asynchronously & are running it interactively 
-        if !async && isinteractive()
-            resetstate((;))
-        end
-
-    end
-
-    server[] # this value is returned if startserver() is ran in async mode
 end
 
 
@@ -237,10 +198,10 @@ function serveparallel(router::Router;
         metrics=metrics
     )
 
-    startserver(host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    server = startserver(host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
-    server[] # this value is returned if startserver() is ran in async mode
+    return server # this value is returned if startserver() is ran in async mode
 end
 
 
@@ -280,18 +241,19 @@ function startserver((; router), host, port, docs, metrics, kwargs, async, start
 
     serverwelcome(host, port, docs, metrics)
     setup(router; docs, metrics)
-    server[] = start(preprocesskwargs(kwargs)) # How does this one work!
+    server = start(preprocesskwargs(kwargs)) # How does this one work!
     starttasks()
     registercronjobs()
     startcronjobs()
     if !async     
         try 
-            wait(server[])
+            wait(server)
         catch 
             println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end
     end
 
+    return server
 end
 
 
@@ -328,27 +290,6 @@ function setup(router::Router; docs::Bool, metrics::Bool)
 
     if metrics
         setupmetrics(router)
-    end
-end
-
-
-# OUTSIDE
-# Nothing to do for the router
-"""
-    terminate(ctx)
-
-stops the webserver immediately
-"""
-function terminate(ctx)
-    if !isnothing(server[]) && isopen(server[])
-        # stop background cron jobs
-        stopcronjobs()
-        # stop background tasks
-        stoptasks()
-        # stop any background worker threads
-        StreamUtil.stop()
-        # stop server
-        close(server[])
     end
 end
 

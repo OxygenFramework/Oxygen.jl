@@ -4,8 +4,44 @@
 #@infiltrate
 # Check if I can get this running 
 
+
+"""
+Reset all the internal state variables
+"""
 function resetstate()
-    Core.resetstate((; ROUTER))
+    # reset this modules state variables 
+    Core.timers[] = []         
+
+    # This no longer is done at this level
+    # perhaps it should be done at the topmost level
+    ROUTER[] = HTTP.Router()
+
+    SERVER[] = nothing
+    # reset autodocs state variables
+    Core.resetstatevariables()
+    # reset cron module state
+    Core.resetcronstate()
+    # clear metrics
+    Core.clear_history()
+end
+
+# Nothing to do for the router
+"""
+    terminate(ctx)
+
+stops the webserver immediately
+"""
+function terminate()
+    if !isnothing(SERVER[]) && isopen(SERVER[])
+        # stop background cron jobs
+        Core.stopcronjobs()
+        # stop background tasks
+        Core.stoptasks()
+        # stop any background worker threads
+        Core.StreamUtil.stop()
+        # stop server
+        close(SERVER[])
+    end
 end
 
 
@@ -20,12 +56,33 @@ function serve(;
       docs=true,
       metrics=true, 
       kwargs...) 
-    return Core.serve(ROUTER[]; 
+
+    
+    try
+
+        SERVER[] = Core.serve(ROUTER[]; 
                  middleware, handler, port, serialize, 
                  async, catch_errors, docs, metrics, kwargs...)
+
+        return SERVER[]
+
+    finally
+        
+        # close server on exit if we aren't running asynchronously
+        if !async 
+            terminate()
+        end
+
+        # only reset state on exit if we aren't running asynchronously & are running it interactively 
+        if !async && isinteractive()
+            resetstate()
+        end
+
+    end
 end
 
 
+# TODO: add try ... finally block
 function serveparallel(; 
                        middleware::Vector=[], 
                        handler=Core.stream_handler, 
@@ -39,9 +96,11 @@ function serveparallel(;
                        metrics=true, 
                        kwargs...)
 
-    return serveparallel(ROUTER[],                  
+    SERVER[] = serveparallel(ROUTER[],                  
                          middleware, handler, port, queuesize, serialize, 
                          async, catch_errors, docs, metrics, kwargs...)
+
+    return SERVER[]
 end
 
 

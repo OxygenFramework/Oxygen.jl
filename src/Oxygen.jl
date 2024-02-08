@@ -18,7 +18,7 @@ const HANDLER = Ref{Handler}(Handler())
 using .Core.AutoDoc: TaggedRoute
 MOUNTED_FOLDERS = Set{String}()
 TAGGED_ROUTES = Dict{String, TaggedRoute}()
-
+const CUSTOM_MIDDLEWARE = Ref{Dict{String, Tuple}}(Dict())
 
 include("methods.jl")
 

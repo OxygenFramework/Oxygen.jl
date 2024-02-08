@@ -21,6 +21,7 @@ function resetstate()
 
     global MOUNTED_FOLDERS = Set{String}()
     global TAGGED_ROUTES = Dict{String, TaggedRoute}()
+    CUSTOM_MIDDLEWARE[] = Dict()
     Core.resetstatevariables()
     # reset cron module state
     Core.resetcronstate()
@@ -64,7 +65,7 @@ function serve(;
     
     try
 
-        SERVER[] = Core.serve(ROUTER[], HISTORY[], MOUNTED_FOLDERS, TAGGED_ROUTES; 
+        SERVER[] = Core.serve(ROUTER[], HISTORY[], MOUNTED_FOLDERS, TAGGED_ROUTES, CUSTOM_MIDDLEWARE[]; 
                  middleware, handler, port, serialize, 
                  async, catch_errors, docs, metrics, kwargs...)
 
@@ -105,7 +106,7 @@ function serveparallel(;
 
     try
 
-        SERVER[] = Core.serveparallel(ROUTER[], HISTORY[], HANDLER[], MOUNTED_FOLDERS, TAGGED_ROUTES;                  
+        SERVER[] = Core.serveparallel(ROUTER[], HISTORY[], HANDLER[], MOUNTED_FOLDERS, TAGGED_ROUTES, CUSTOM_MIDDLEWARE[];                  
                          middleware, handler, port, queuesize, serialize, 
                          async, catch_errors, docs, metrics, kwargs...)
 
@@ -269,7 +270,7 @@ dynamicfiles(
 ) = Core.dynamicfiles((router=ROUTER[], mountedfolders=MOUNTED_FOLDERS), folder, mountdir, headers, laodfile)
 
 
-internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(ROUTER[], HISTORY[], req; middleware, metrics, serialize, catch_errors)
+internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(ROUTER[], HISTORY[], CUSTOM_MIDDLEWARE[], req; middleware, metrics, serialize, catch_errors)
 
 
 function router(prefix::String = ""; 
@@ -279,5 +280,5 @@ function router(prefix::String = "";
                 cron::Union{String, Nothing} = nothing)
 
 
-    return Core.AutoDoc.router(TAGGED_ROUTES, prefix; tags, middleware, interval, cron)
+    return Core.AutoDoc.router(TAGGED_ROUTES, CUSTOM_MIDDLEWARE[], prefix; tags, middleware, interval, cron)
 end

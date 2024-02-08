@@ -153,7 +153,7 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}; 
+function serve(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}, custommiddleware::Dict{String, Tuple}; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -166,7 +166,7 @@ function serve(router::Router, history::CircularDeque{HTTPTransaction}, mountedf
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(router, history; middleware, serialize, catch_errors, metrics)
+    configured_middelware = setupmiddleware(router, history, custommiddleware; middleware, serialize, catch_errors, metrics)
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
 
@@ -183,7 +183,7 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, _handler::Handler, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}; 
+function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, _handler::Handler, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}, custommiddleware::Dict{String, Tuple}; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -197,7 +197,7 @@ function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, 
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(router, history; middleware, serialize, catch_errors, metrics)
+    configured_middelware = setupmiddleware(router, history, custommiddleware; middleware, serialize, catch_errors, metrics)
 
     server = startserver((; router, history, mountedfolders, taggedroutes), host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
@@ -212,10 +212,10 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(router::Router, history::CircularDeque{HTTPTransaction}; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
+function setupmiddleware(router::Router, history::CircularDeque{HTTPTransaction}, custommiddleware::Dict{String, Tuple}; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
 
     # determine if we have any special router or route-specific middleware
-    custom_middleware = hasmiddleware() ? [compose(router, middleware)] : reverse(middleware)
+    custom_middleware = hasmiddleware(custommiddleware) ? [compose(router, middleware, custommiddleware)] : reverse(middleware)
 
     # check if we should use our default serialization middleware function
     serializer = serialize ? [DefaultSerializer(catch_errors)] : []
@@ -301,9 +301,9 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(router::Router, history::CircularDeque{HTTPTransaction}, req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
+function internalrequest(router::Router, history::CircularDeque{HTTPTransaction}, custommiddleware::Dict{String, Tuple}, req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
     req.context[:ip] = "INTERNAL" # label internal requests
-    return req |> setupmiddleware(router, history, middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
+    return req |> setupmiddleware(router, history, custommiddleware, middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
 end
 
 

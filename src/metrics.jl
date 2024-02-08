@@ -36,20 +36,20 @@ struct HTTPTransaction
     error_message::Union{String,Nothing}
 end
 
-global const history = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(1_000_000))
+#global const history = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(1_000_000))
 
 
-function push_history(transaction::HTTPTransaction)
-    pushfirst!(history[], transaction)
+function push_history(history::CircularDeque{HTTPTransaction}, transaction::HTTPTransaction)
+    pushfirst!(history, transaction)
 end
 
-function get_history() :: Vector{HTTPTransaction}
-    return collect(history[])
+function get_history(history::CircularDeque{HTTPTransaction}) :: Vector{HTTPTransaction}
+    return collect(history)
 end
 
-function clear_history()
-    empty!(history[])
-end
+# function clear_history()
+#     empty!(history[])
+# end
 
 # Helper function to calculate percentile
 function percentile(values, p)
@@ -122,45 +122,45 @@ end
 
 ### Helper function to group transactions by endpoint
 
-function recent_transactions(::Nothing) :: Vector{HTTPTransaction}
-    return get_history()
+function recent_transactions(history::CircularDeque{HTTPTransaction}, ::Nothing) :: Vector{HTTPTransaction}
+    return get_history(history)
 end
 
-function recent_transactions(lower_bound::Dates.Period) :: Vector{HTTPTransaction}
+function recent_transactions(history::CircularDeque{HTTPTransaction}, lower_bound::Dates.Period) :: Vector{HTTPTransaction}
     current_time = now(UTC)
     adjusted = lower_bound + Second(1)
-    return filter(t -> current_time - t.timestamp <= adjusted, get_history()) 
+    return filter(t -> current_time - t.timestamp <= adjusted, get_history(history)) 
 end
 
 # Needs coverage
-function recent_transactions(lower_bound::Dates.DateTime) :: Vector{HTTPTransaction}
+function recent_transactions(history::CircularDeque{HTTPTransaction}, lower_bound::Dates.DateTime) :: Vector{HTTPTransaction}
     adjusted = lower_bound + Second(1)
-    return filter(t -> t.timestamp >= adjusted, get_history()) 
+    return filter(t -> t.timestamp >= adjusted, get_history(history)) 
 end
 
 """
 Group transactions by URI depth with a maximum depth limit using the function
 """
-function all_endpoint_metrics(lower_bound=Minute(15); max_depth=4)
-    transactions = recent_transactions(lower_bound)    
+function all_endpoint_metrics(history::CircularDeque{HTTPTransaction}, lower_bound=Minute(15); max_depth=4)
+    transactions = recent_transactions(history, lower_bound)    
     groups = group_transactions(transactions, max_depth)
     return Dict(k => get_transaction_metrics(v) for (k,v) in groups)
 end
 
 
-function server_metrics(lower_bound=Minute(15))
-    transactions = recent_transactions(lower_bound)
+function server_metrics(history::CircularDeque{HTTPTransaction}, lower_bound=Minute(15))
+    transactions = recent_transactions(history, lower_bound)
     get_transaction_metrics(transactions)
 end
 
 # Needs coverage
-function endpoint_metrics(endpoint_uri::String)
-    endpoint_transactions = filter(t -> t.uri == endpoint_uri, get_history())
+function endpoint_metrics(history::CircularDeque{HTTPTransaction}, endpoint_uri::String)
+    endpoint_transactions = filter(t -> t.uri == endpoint_uri, get_history(history))
     return get_transaction_metrics(endpoint_transactions)
 end
 
-function error_distribution(lower_bound=Minute(15))
-    metrics = all_endpoint_metrics(lower_bound)
+function error_distribution(history::CircularDeque{HTTPTransaction}, lower_bound=Minute(15))
+    metrics = all_endpoint_metrics(history, lower_bound)
     failed_counts = Dict{String, Int}()
     for (group_prefix, transaction_metrics) in metrics
         failures = transaction_metrics["total_errors"]
@@ -250,8 +250,8 @@ end
 """
 Helper function to group transactions within a given timeframe
 """
-function bin_transactions(lower_bound=Minute(15), unit=Minute, strategy=nothing) :: Dict{DateTime,Vector{HTTPTransaction}}
-    transactions = recent_transactions(lower_bound)
+function bin_transactions(history::CircularDeque{HTTPTransaction}, lower_bound=Minute(15), unit=Minute, strategy=nothing) :: Dict{DateTime,Vector{HTTPTransaction}}
+    transactions = recent_transactions(history, lower_bound)
     binned = Dict{DateTime, Vector{HTTPTransaction}}()
     for t in transactions
         # create bin's based on the given unit
@@ -269,19 +269,19 @@ function bin_transactions(lower_bound=Minute(15), unit=Minute, strategy=nothing)
     return binned
 end
 
-function requests_per_unit(unit, lower_bound=Minute(15))
+function requests_per_unit(history::CircularDeque{HTTPTransaction}, unit, lower_bound=Minute(15))
     bin_counts = Dict{DateTime, Int}()
     function count_transactions(bin, transaction) 
         bin_counts[bin] = get(bin_counts, bin, 0) + 1
     end
-    bin_transactions(lower_bound, unit, count_transactions)
+    bin_transactions(history, lower_bound, unit, count_transactions)
     return bin_counts
 end
 
 """
 Return the average latency per minute for the server
 """
-function avg_latency_per_unit(unit, lower_bound=Minute(15))
+function avg_latency_per_unit(history::CircularDeque{HTTPTransaction}, unit, lower_bound=Minute(15))
     bin_counts = Dict{DateTime, Vector{Number}}()
     function strategy(bin, transaction) 
         if haskey(bin_counts, bin)
@@ -290,14 +290,13 @@ function avg_latency_per_unit(unit, lower_bound=Minute(15))
             bin_counts[bin] = [transaction.duration]
         end
     end
-    bin_transactions(lower_bound, unit, strategy)
+    bin_transactions(history, lower_bound, unit, strategy)
     averages = Dict{DateTime, Number}()
     for (k,v) in bin_counts
         averages[k] = mean(v)
     end
     return averages
 end
-
 
 
 end

@@ -5,9 +5,12 @@ include("core.jl"); using .Core
 #include("extensions/load.jl");
 
 import HTTP
-global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
-global const SERVER = Ref{Union{HTTP.Server, Nothing}}(nothing) 
+const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
+const SERVER = Ref{Union{HTTP.Server, Nothing}}(nothing) 
 
+using DataStructures: CircularDeque
+using .Core.Metrics: HTTPTransaction
+const HISTORY = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(1_000_000))
 
 include("methods.jl")
 

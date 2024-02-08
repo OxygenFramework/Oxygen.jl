@@ -22,7 +22,8 @@ function resetstate()
     # reset cron module state
     Core.resetcronstate()
     # clear metrics
-    Core.clear_history()
+    #Core.clear_history()
+    empty!(HISTORY[])
 end
 
 # Nothing to do for the router
@@ -60,7 +61,7 @@ function serve(;
     
     try
 
-        SERVER[] = Core.serve(ROUTER[]; 
+        SERVER[] = Core.serve(ROUTER[], HISTORY[]; 
                  middleware, handler, port, serialize, 
                  async, catch_errors, docs, metrics, kwargs...)
 
@@ -96,7 +97,7 @@ function serveparallel(;
                        metrics=true, 
                        kwargs...)
 
-    SERVER[] = serveparallel(ROUTER[],                  
+    SERVER[] = serveparallel(ROUTER[], HISTORY[],                  
                          middleware, handler, port, queuesize, serialize, 
                          async, catch_errors, docs, metrics, kwargs...)
 
@@ -246,4 +247,4 @@ dynamicfiles(
 ) = Core.dynamicfiles(ROUTER[], folder, mountdir, headers, laodfile)
 
 
-internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(ROUTER[], req; middleware, metrics, serialize, catch_errors)
+internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(ROUTER[], HISTORY[], req; middleware, metrics, serialize, catch_errors)

@@ -39,7 +39,7 @@ function terminate()
         # stop background tasks
         Core.stoptasks()
         # stop any background worker threads
-        Core.StreamUtil.stop()
+        Core.StreamUtil.stop(HANDLER[])
         # stop server
         close(SERVER[])
     end
@@ -83,7 +83,7 @@ function serve(;
 end
 
 
-# TODO: add try ... finally block
+
 function serveparallel(; 
                        middleware::Vector=[], 
                        handler=Core.stream_handler, 
@@ -97,11 +97,30 @@ function serveparallel(;
                        metrics=true, 
                        kwargs...)
 
-    SERVER[] = serveparallel(ROUTER[], HISTORY[],                  
+    # Moved from `streamutil.jl` start method
+    HANDLER[] = Handler()
+
+    try
+
+        SERVER[] = Core.serveparallel(ROUTER[], HISTORY[], HANDLER[];                  
                          middleware, handler, port, queuesize, serialize, 
                          async, catch_errors, docs, metrics, kwargs...)
 
-    return SERVER[]
+        return SERVER[]
+
+    finally 
+
+        # close server on exit if we aren't running asynchronously
+        if !async 
+            terminate()
+        end
+
+        # only reset state on exit if we aren't running asynchronously & are running it interactively 
+        if !async && isinteractive()
+            resetstate()
+        end
+
+    end
 end
 
 

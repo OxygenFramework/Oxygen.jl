@@ -12,6 +12,9 @@ using DataStructures: CircularDeque
 using .Core.Metrics: HTTPTransaction
 const HISTORY = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(1_000_000))
 
+using .Core.StreamUtil: Handler
+const HANDLER = Ref{Handler}(Handler())
+
 include("methods.jl")
 
 export @get, @post, @put, @patch, @delete, @route, @cron, 

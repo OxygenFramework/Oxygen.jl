@@ -20,6 +20,7 @@ include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 
 using .Metrics: HTTPTransaction
+using .StreamUtil: Handler
 
 export  @cron, 
         staticfiles, dynamicfiles,
@@ -159,13 +160,7 @@ function serve(router::Router, history::CircularDeque{HTTPTransaction};
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(router, history,
-        middleware=middleware, 
-        serialize=serialize, 
-        catch_errors=catch_errors, 
-        metrics=metrics
-    )
-
+    configured_middelware = setupmiddleware(router, history; middleware, serialize, catch_errors, metrics)
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
 
@@ -182,7 +177,7 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}; 
+function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, _handler::Handler; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -196,15 +191,10 @@ function serveparallel(router::Router, history::CircularDeque{HTTPTransaction};
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(router,
-        middleware=middleware, 
-        serialize=serialize, 
-        catch_errors=catch_errors,
-        metrics=metrics
-    )
+    configured_middelware = setupmiddleware(router, history; middleware, serialize, catch_errors, metrics)
 
     server = startserver((; router, history), host, port, docs, metrics, kwargs, async, (kwargs) -> 
-        StreamUtil.start(handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
+        StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
     return server # this value is returned if startserver() is ran in async mode
 end

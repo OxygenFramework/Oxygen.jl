@@ -1,6 +1,7 @@
 module AutoDoc 
 using HTTP
 using Dates
+using DataStructures
 using Reexport
 using RelocatableFolders
 
@@ -427,6 +428,42 @@ function registerschema(path::String, httpmethod::String, parameters, returntype
             )
         )
     )
+
+    # Add a request body to the route if it's a POST, PUT, or PATCH request
+    if httpmethod in ["POST", "PUT", "PATCH"]
+        route[lowercase(httpmethod)]["requestBody"] = Dict(
+            "required" => false,
+            "content" => OrderedDict(
+                "application/json" => Dict(
+                    "schema" => Dict(
+                        "type" => "object"
+                    )
+                ),
+                "application/xml" => Dict(
+                    "schema" => Dict(
+                        "type" => "object"
+                    )
+                ),
+                "text/plain" => Dict(
+                    "schema" => Dict(
+                        "type" => "string"
+                    )
+                ),
+                "multipart/form-data" => Dict(
+                    "schema" => Dict(
+                        "type" => "object",
+                        "properties" => Dict(
+                            "file" => Dict(
+                                "type" => "string",
+                                "format" => "binary"
+                            )
+                        ),
+                        "required" => ["file"]
+                    )
+                )
+            )
+        )
+    end
 
     # remove any special regex patterns from the path before adding this path to the schema
     cleanedpath = replace(path, r"(?=:)(.*?)(?=}/)" => "")

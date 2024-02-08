@@ -18,6 +18,8 @@ function resetstate()
 
     SERVER[] = nothing
     # reset autodocs state variables
+
+    global MOUNTED_FOLDERS = Set{String}()
     Core.resetstatevariables()
     # reset cron module state
     Core.resetcronstate()
@@ -61,7 +63,7 @@ function serve(;
     
     try
 
-        SERVER[] = Core.serve(ROUTER[], HISTORY[]; 
+        SERVER[] = Core.serve(ROUTER[], HISTORY[], MOUNTED_DIRS; 
                  middleware, handler, port, serialize, 
                  async, catch_errors, docs, metrics, kwargs...)
 
@@ -102,7 +104,7 @@ function serveparallel(;
 
     try
 
-        SERVER[] = Core.serveparallel(ROUTER[], HISTORY[], HANDLER[];                  
+        SERVER[] = Core.serveparallel(ROUTER[], HISTORY[], HANDLER[], MOUNTED_FOLDERS;                  
                          middleware, handler, port, queuesize, serialize, 
                          async, catch_errors, docs, metrics, kwargs...)
 
@@ -186,7 +188,7 @@ end
 
 function route(methods::Vector{String}, path::Union{String,Function}, func::Function)
     for method in methods
-        Core.register(ROUTER[], method, path, func)
+        Core.register((;router=ROUTER[], mountedfolders=MOUNTED_FOLDERS), method, path, func)
     end
 end
 
@@ -255,7 +257,7 @@ staticfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Core.staticfiles(ROUTER[], folder, mountdir, headers, laodfile)
+) = Core.staticfiles((router=ROUTER[], mountedfolders=MOUNTED_FOLDERS), folder, mountdir, headers, laodfile)
 
 
 dynamicfiles(
@@ -263,7 +265,7 @@ dynamicfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Core.dynamicfiles(ROUTER[], folder, mountdir, headers, laodfile)
+) = Core.dynamicfiles((router=ROUTER[], mountedfolders=MOUNTED_FOLDERS), folder, mountdir, headers, laodfile)
 
 
 internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(ROUTER[], HISTORY[], req; middleware, metrics, serialize, catch_errors)

@@ -15,6 +15,8 @@ const HISTORY = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransactio
 using .Core.StreamUtil: Handler
 const HANDLER = Ref{Handler}(Handler())
 
+MOUNTED_FOLDERS = Set{String}()
+
 include("methods.jl")
 
 export @get, @post, @put, @patch, @delete, @route, @cron, 

@@ -40,7 +40,7 @@ end
 global enable_auto_docs = true 
 global docspath = "/docs"
 global schemapath = "/schema"
-global mountedfolders = Set{String}()
+#global mountedfolders = Set{String}()
 global taggedroutes = Dict{String, TaggedRoute}()
 global repeattasks = []
 global cronjobs = []
@@ -63,7 +63,7 @@ function resetstatevariables()
     global enable_auto_docs = true 
     global docspath = "/docs"
     global schemapath = "/schema"
-    global mountedfolders = Set{String}()
+    #global mountedfolders = Set{String}()
     global taggedroutes = Dict{String, TaggedRoute}()
     global repeattasks = []
     global cronjobs = []
@@ -75,7 +75,7 @@ end
 """
 Registers the folder as a source for mounting static files
 """
-function registermountedfolder(folder::String)
+function registermountedfolder(mountedfolders::Set{String}, folder::String)
     push!(mountedfolders, "/$folder")
 end
 
@@ -375,7 +375,7 @@ end
 """
 Used to generate & register schema related for a specific endpoint 
 """
-function registerschema(path::String, httpmethod::String, parameters, returntype::Array)
+function registerschema((; mountedfolders), path::String, httpmethod::String, parameters, returntype::Array)
 
     # skip any doc related endpoints
     if startswith(path, docspath)

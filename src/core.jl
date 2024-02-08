@@ -55,8 +55,10 @@ end
 
 
 
+# TODO
 
 # CRON STATE
+# Depends on internalrequest and thus needs a full context to be passed in
 """
     starttasks()
 
@@ -84,6 +86,9 @@ function starttasks()
         push!(timers[], timer)   
     end
 end 
+
+
+# TODO
 
 # CRON STATE
 """
@@ -147,7 +152,7 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(router::Router, history::CircularDeque{HTTPTransaction}; 
+function serve(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -164,7 +169,7 @@ function serve(router::Router, history::CircularDeque{HTTPTransaction};
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
 
-    return startserver((; router, history), host, port, docs, metrics, kwargs, async, (kwargs) ->  
+    return startserver((; router, history, mountedfolders), host, port, docs, metrics, kwargs, async, (kwargs) ->  
             HTTP.serve!(handler(configured_middelware), host, port; kwargs...))
 end
 
@@ -177,7 +182,7 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, _handler::Handler; 
+function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, _handler::Handler, mountedfolders::Set{String}; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -193,7 +198,7 @@ function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, 
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(router, history; middleware, serialize, catch_errors, metrics)
 
-    server = startserver((; router, history), host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    server = startserver((; router, history, mountedfolders), host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
     return server # this value is returned if startserver() is ran in async mode
@@ -232,10 +237,10 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver((; router, history), host, port, docs, metrics, kwargs, async, start)
+function startserver((; router, history, mountedfolders), host, port, docs, metrics, kwargs, async, start)
 
     serverwelcome(host, port, docs, metrics)
-    setup(router, history; docs, metrics)
+    setup(router, history, mountedfolders; docs, metrics)
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     starttasks()
     registercronjobs()
@@ -275,16 +280,16 @@ end
 """
 This function called right before serving the server, which is useful for performing any additional setup
 """
-function setup(router::Router, history::CircularDeque{HTTPTransaction}; docs::Bool, metrics::Bool)
+function setup(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}; docs::Bool, metrics::Bool)
     
     docs ? enabledocs() : disabledocs()
 
     if docs
-        setupswagger(router)
+        setupswagger((;router, mountedfolders))
     end
 
     if metrics
-        setupmetrics(router, history)
+        setupmetrics(router, history, mountedfolders)
     end
 end
 
@@ -384,7 +389,7 @@ end
 
 Register a request handler function with a path to the ROUTER
 """
-function register(router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
+function register((; router, mountedfolders), httpmethod::String, route::Union{String,Function}, func::Function)
 
     # check if path is a callable function (that means it's a router higher-order-function)
     if isa(route, Function)
@@ -474,7 +479,8 @@ function register(router::Router, httpmethod::String, route::Union{String,Functi
     end
 
     # strip off any regex patterns attached to our path parameters
-    registerschema(route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
+    registerschema((; mountedfolders),
+        route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
 
     # case 1.) The request handler is an anonymous function (don't parse out path params)
     if numfields <= 1
@@ -506,24 +512,24 @@ end
 # CHANGE: setupswagger needs to use register manually. Needs to accept router as an argument
 
 # add the swagger and swagger/schema routes 
-function setupswagger(router::Router)
+function setupswagger(ctx)
 
     if isdocsenabled()
 
-        register(router, "GET", "$docspath", req -> swaggerhtml())
+        register(ctx, "GET", "$docspath", req -> swaggerhtml())
 
-        register(router, "GET", "$docspath/swagger", req -> swaggerhtml())
+        register(ctx, "GET", "$docspath/swagger", req -> swaggerhtml())
     
-        register(router, "GET", "$docspath/redoc", req -> redochtml())
+        register(ctx, "GET", "$docspath/redoc", req -> redochtml())
 
-        register(router, "GET", getschemapath(), req -> getschema())
+        register(ctx, "GET", getschemapath(), req -> getschema())
     
     end
 
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction})
+function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String})
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath) :: String
@@ -537,7 +543,7 @@ function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction})
         end
     end
 
-    staticfiles(router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    staticfiles((;router, mountedfolders), "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
 
     function metrics(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
@@ -559,7 +565,7 @@ function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction})
     end
 
 
-    register(router, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
+    register((;router, mountedfolders), "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
 end
 
 
@@ -571,7 +577,7 @@ end
 Mount all files inside the /static folder (or user defined mount point). 
 The `headers` array will get applied to all mounted files
 """
-function staticfiles(router::Router,
+function staticfiles(ctx,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
@@ -582,13 +588,13 @@ function staticfiles(router::Router,
     if first(mountdir) == '/'
         mountdir = mountdir[2:end]
     end
-    
-    registermountedfolder(mountdir)
+
+    registermountedfolder(ctx.mountedfolders, mountdir)
     function addroute(currentroute, filepath)
         # calculate the entire response once on load
         resp = file(filepath; loadfile=loadfile, headers=headers)
 
-        register(router, "GET", currentroute, req -> resp)
+        register(ctx, "GET", currentroute, req -> resp)
 
         #@get "$currentroute" function(req)
         #   return resp
@@ -605,7 +611,7 @@ end
 Mount all files inside the /static folder (or user defined mount point), 
 but files are re-read on each request. The `headers` array will get applied to all mounted files
 """
-function dynamicfiles(router::Router,
+function dynamicfiles(ctx,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
@@ -618,7 +624,7 @@ function dynamicfiles(router::Router,
     registermountedfolder(mountdir)
     function addroute(currentroute, filepath)
 
-        register(router, "GET", currentroute, req -> file(filepath; loadfile=loadfile, headers=headers))
+        register(ctx, "GET", currentroute, req -> file(filepath; loadfile=loadfile, headers=headers))
 
         # @get "$currentroute" function(req)   
         #     # calculate the entire response on each request

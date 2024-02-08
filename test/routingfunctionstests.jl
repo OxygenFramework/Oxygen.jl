@@ -6,8 +6,7 @@ using StructTypes
 using Sockets
 using Dates 
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 
 ##### Setup Routes #####
 

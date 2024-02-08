@@ -2,11 +2,9 @@ module MetricsTests
 using Test
 using Dates 
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 
-include("../src/metrics.jl")
-using .Metrics:
+using Oxygen.Core.Metrics:
     percentile, HTTPTransaction, TimeseriesRecord, get_history, push_history,
     group_transactions, get_transaction_metrics, recent_transactions,
     all_endpoint_metrics, server_metrics, error_distribution,

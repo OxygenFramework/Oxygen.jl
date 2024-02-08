@@ -1,9 +1,13 @@
 module Oxygen
 
 include("core.jl"); using .Core
-
 # Load any optional extensions
-include("extensions/load.jl");
+#include("extensions/load.jl");
+
+import HTTP
+global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
+
+include("methods.jl")
 
 export @get, @post, @put, @patch, @delete, @route, @cron, 
         @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,

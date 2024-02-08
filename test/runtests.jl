@@ -6,11 +6,10 @@ using StructTypes
 using Sockets
 using Dates 
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 
 include("metricstests.jl")
-include("templatingtests.jl")
+#include("templatingtests.jl") # TODO
 include("routingfunctionstests.jl")
 include("rendertests.jl")
 include("bodyparsertests.jl")

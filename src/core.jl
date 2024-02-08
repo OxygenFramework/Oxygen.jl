@@ -1,6 +1,8 @@
 module Core
 
-using HTTP 
+using HTTP
+using HTTP: Router
+
 using Sockets 
 using JSON3
 using Base 
@@ -14,15 +16,15 @@ include("streamutil.jl");   @reexport using .StreamUtil
 include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 
-export @get, @post, @put, @patch, @delete, @route, @cron, 
-        @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
-        get, post, put, patch, delete, route,
+export  @cron, 
+        staticfiles, dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest,
         resetstate, starttasks, stoptasks
 
-global const ROUTER = Ref{HTTP.Handlers.Router}(HTTP.Router())
+
+global const timers = Ref{Vector{Timer}}([]) # CRON STATE
 global const server = Ref{Union{HTTP.Server, Nothing}}(nothing) 
-global const timers = Ref{Vector{Timer}}([])
+#
 
 # Generate a reliable path to our internal data folder that works when the 
 # package is used with PackageCompiler.jl
@@ -40,13 +42,35 @@ oxygen_title = raw"""
 
 function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool)
     printstyled(oxygen_title, color = :blue, bold = true)
-    @info "📦 Version 1.4.9 (2024-02-07)"
+    @info "📦 Version 1.4.8 (2024-02-01)"
     @info "✅ Started server: http://$host:$port" 
     docs    && @info "📖 Documentation: http://$host:$port$docspath"
     metrics && @info "📊 Metrics: http://$host:$port$docspath/metrics"
 end
 
 
+"""
+Reset all the internal state variables
+"""
+function resetstate(ctx)
+    # reset this modules state variables 
+    timers[] = []         
+
+    # This no longer is done at this level
+    # perhaps it should be done at the topmost level
+    #ROUTER[] = HTTP.Router()
+
+    server[] = nothing
+    # reset autodocs state variables
+    resetstatevariables()
+    # reset cron module state
+    resetcronstate()
+    # clear metrics
+    clear_history()
+end
+
+
+# CRON STATE
 """
     starttasks()
 
@@ -75,7 +99,7 @@ function starttasks()
     end
 end 
 
-
+# CRON STATE
 """
 Register all cron jobs 
 """
@@ -88,7 +112,7 @@ function registercronjobs()
     end
 end 
 
-
+# CRON STATE
 """
     stoptasks()
 
@@ -137,7 +161,7 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(; 
+function serve(router::Router; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -150,19 +174,41 @@ function serve(;
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(
+    configured_middelware = setupmiddleware(router,
         middleware=middleware, 
         serialize=serialize, 
         catch_errors=catch_errors, 
         metrics=metrics
     )
 
-    startserver(host, port, docs, metrics, kwargs, async, (kwargs) ->  
-        HTTP.serve!(handler(configured_middelware), host, port; kwargs...)
-    )
+
+    # The cleanup of resources may best be put at the topmost level in `methods.jl`
+
+    try 
+        startserver((; router), host, port, docs, metrics, kwargs, async, (kwargs) ->  
+            HTTP.serve!(handler(configured_middelware), host, port; kwargs...))
+
+
+
+    finally
+
+        # close server on exit if we aren't running asynchronously
+        if !async 
+            terminate((;))
+        end
+
+        # only reset state on exit if we aren't running asynchronously & are running it interactively 
+        if !async && isinteractive()
+            resetstate((;))
+        end
+
+    end
+
     server[] # this value is returned if startserver() is ran in async mode
 end
 
+
+# CHANGE: router, passed to setupmiddleware
 """
     serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
 
@@ -170,7 +216,7 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(; 
+function serveparallel(router::Router; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -184,7 +230,7 @@ function serveparallel(;
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(
+    configured_middelware = setupmiddleware(router,
         middleware=middleware, 
         serialize=serialize, 
         catch_errors=catch_errors,
@@ -198,15 +244,16 @@ function serveparallel(;
 end
 
 
+# CHANGE: router. 
 """
 Compose the user & internally defined middleware functions together. Practically, this allows
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(;middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
+function setupmiddleware(router::Router; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
 
     # determine if we have any special router or route-specific middleware
-    custom_middleware = hasmiddleware() ? [compose(getrouter(), middleware)] : reverse(middleware)
+    custom_middleware = hasmiddleware() ? [compose(router, middleware)] : reverse(middleware)
 
     # check if we should use our default serialization middleware function
     serializer = serialize ? [DefaultSerializer(catch_errors)] : []
@@ -216,58 +263,37 @@ function setupmiddleware(;middleware::Vector=[], metrics::Bool=true, serialize::
 
     # combine all our middleware functions
     return reduce(|>, [
-        getrouter(),
+        router,
         serializer...,
         custom_middleware...,
         collect_metrics...
     ])    
 end
 
+# CHANGE: Server could be passed as a reference
+# OUTSIDE: uses resetstate 
+# 
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(host, port, docs, metrics, kwargs, async, start)
-    try
-        serverwelcome(host, port, docs, metrics)
-        setup(docs, metrics)
-        server[] = start(preprocesskwargs(kwargs))
-        starttasks()
-        registercronjobs()
-        startcronjobs()
-        if !async     
-            try 
-                wait(server[])
-            catch 
-                println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
-            end
-        end
-    finally
-        # close server on exit if we aren't running asynchronously
-        if !async 
-            terminate()
-        end
-        # only reset state on exit if we aren't running asynchronously & are running it interactively 
-        if !async && isinteractive()
-            resetstate()
+function startserver((; router), host, port, docs, metrics, kwargs, async, start)
+
+    serverwelcome(host, port, docs, metrics)
+    setup(router; docs, metrics)
+    server[] = start(preprocesskwargs(kwargs)) # How does this one work!
+    starttasks()
+    registercronjobs()
+    startcronjobs()
+    if !async     
+        try 
+            wait(server[])
+        catch 
+            println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end
     end
+
 end
 
-"""
-Reset all the internal state variables
-"""
-function resetstate()
-    # reset this modules state variables 
-    timers[] = []         
-    ROUTER[] = HTTP.Router()
-    server[] = nothing
-    # reset autodocs state variables
-    resetstatevariables()
-    # reset cron module state
-    resetcronstate()
-    # clear metrics
-    clear_history()
-end
 
 
 """
@@ -292,26 +318,28 @@ end
 """
 This function called right before serving the server, which is useful for performing any additional setup
 """
-function setup(docs::Bool, metrics::Bool)
+function setup(router::Router; docs::Bool, metrics::Bool)
     
     docs ? enabledocs() : disabledocs()
 
     if docs
-        setupswagger()
+        setupswagger(router)
     end
 
     if metrics
-        setupmetrics()
+        setupmetrics(router)
     end
 end
 
 
+# OUTSIDE
+# Nothing to do for the router
 """
-    terminate()
+    terminate(ctx)
 
 stops the webserver immediately
 """
-function terminate()
+function terminate(ctx)
     if !isnothing(server[]) && isopen(server[])
         # stop background cron jobs
         stopcronjobs()
@@ -331,20 +359,10 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
+function internalrequest(router::Router, req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
     req.context[:ip] = "INTERNAL" # label internal requests
-    return req |> setupmiddleware(middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
+    return req |> setupmiddleware(router, middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
 end
-
-
-"""
-    getrouter()
-
-returns the interal http router for this application
-"""
-function getrouter() 
-    return ROUTER[]
-end 
 
 
 """
@@ -362,7 +380,7 @@ function DefaultSerializer(catch_errors::Bool)
     end
 end
 
-function MetricsMiddleware(catch_errors::Bool)
+function MetricsMiddleware(catch_errors::Bool) # The top level here will be good for injecting `history` 
     return function(handler)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
@@ -424,104 +442,13 @@ function MetricsMiddleware(catch_errors::Bool)
     end
 end
 
-### Routing Macros ###
-
-"""
-    @get(path::String, func::Function)
-
-Used to register a function to a specific endpoint to handle GET requests  
-"""
-macro get(path, func)
-    :(@route ["GET"] $(esc(path)) $(esc(func)))
-end
-
-"""
-    @post(path::String, func::Function)
-
-Used to register a function to a specific endpoint to handle POST requests
-"""
-macro post(path, func)
-    :(@route ["POST"] $(esc(path)) $(esc(func)))
-end
-
-"""
-    @put(path::String, func::Function)
-
-Used to register a function to a specific endpoint to handle PUT requests
-"""
-macro put(path, func)
-    :(@route ["PUT"] $(esc(path)) $(esc(func)))
-end
-
-"""
-    @patch(path::String, func::Function)
-
-Used to register a function to a specific endpoint to handle PATCH requests
-"""
-macro patch(path, func)
-    :(@route ["PATCH"] $(esc(path)) $(esc(func)))
-end
-
-"""
-    @delete(path::String, func::Function)
-
-Used to register a function to a specific endpoint to handle DELETE requests
-"""
-macro delete(path, func)
-    :(@route ["DELETE"] $(esc(path)) $(esc(func)))
-end
-
-"""
-    @route(methods::Array{String}, path::String, func::Function)
-
-Used to register a function to a specific endpoint to handle mulitiple request types
-"""
-macro route(methods, path, func)
-    :(route($(esc(methods)), $(esc(path)), $(esc(func))))
-end
-
-### Core Routing Functions ###
-
-function route(methods::Vector{String}, path::Union{String,Function}, func::Function)
-    for method in methods
-        register(method, path, func)
-    end
-end
-
-# This variation supports the do..block syntax
-route(func::Function, methods::Vector{String}, path::Union{String,Function}) = route(methods, path, func)
-
-
-# these utility functions help reduce the amount of repeated hardcoded values
-get_handler(path::Union{String,Function}, func::Function)     = route(["GET"], path, func)
-post_handler(path::Union{String,Function}, func::Function)    = route(["POST"], path, func)
-put_handler(path::Union{String,Function}, func::Function)     = route(["PUT"], path, func)
-patch_handler(path::Union{String,Function}, func::Function)   = route(["PATCH"], path, func)
-delete_handler(path::Union{String,Function}, func::Function)  = route(["DELETE"], path, func)
-
-### Core Routing Functions Support for do..end Syntax ###
-
-Base.get(func::Function, path::String)      = get_handler(path, func)
-Base.get(func::Function, path::Function)    = get_handler(path, func)
-
-post(func::Function, path::String)          = post_handler(path, func)
-post(func::Function, path::Function)        = post_handler(path, func)
-
-put(func::Function, path::String)           = put_handler(path, func)
-put(func::Function, path::Function)         = put_handler(path, func)
-
-patch(func::Function, path::String)         = patch_handler(path, func)
-patch(func::Function, path::Function)       = patch_handler(path, func)
-
-delete(func::Function, path::String)        = delete_handler(path, func)
-delete(func::Function, path::Function)      = delete_handler(path, func)
 
 """
     register(httpmethod::String, route::String, func::Function)
 
 Register a request handler function with a path to the ROUTER
 """
-function register(httpmethod::String, route::Union{String,Function}, func::Function)
+function register(router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
 
     # check if path is a callable function (that means it's a router higher-order-function)
     if isa(route, Function)
@@ -550,7 +477,6 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
         throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
     end  
     
-    router = getrouter()
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
     
@@ -641,33 +567,27 @@ function register(httpmethod::String, route::Union{String,Function}, func::Funct
     end
 end
 
+# CHANGE: setupswagger needs to use register manually. Needs to accept router as an argument
 
 # add the swagger and swagger/schema routes 
-function setupswagger()
+function setupswagger(router::Router)
 
     if isdocsenabled()
 
-        @get "$docspath" function()
-            return swaggerhtml()
-        end
+        register(router, "GET", "$docspath", req -> swaggerhtml())
+
+        register(router, "GET", "$docspath/swagger", req -> swaggerhtml())
     
-        @get "$docspath/swagger" function()
-            return swaggerhtml()
-        end
+        register(router, "GET", "$docspath/redoc", req -> redochtml())
+
+        register(router, "GET", getschemapath(), req -> getschema())
     
-        @get "$docspath/redoc" function()
-            return redochtml()
-        end
-    
-        @get "$(getschemapath())" function()
-            return getschema() 
-        end 
     end
 
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics()
+function setupmetrics(router::Router)
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath) :: String
@@ -681,9 +601,10 @@ function setupmetrics()
         end
     end
 
-    staticfiles("$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    staticfiles(router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
-    @get "$docspath/metrics/data/{window}/{latest}" function(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
+
+    function metrics(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
         lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
 
         if !isnothing(latest)
@@ -700,41 +621,21 @@ function setupmetrics()
            "requests_per_minute" => requests_per_unit(Minute, lower_bound)  |>  prepare_timeseries_data()
         )
     end
-end
 
-"""
-    @staticfiles(folder::String, mountdir::String, headers::Vector{Pair{String,String}}=[])
 
-Mount all files inside the /static folder (or user defined mount point)
-"""
-macro staticfiles(folder, mountdir="static", headers=[])
-    printstyled("@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
-    quote
-        staticfiles($(esc(folder)), $(esc(mountdir)); headers=$(esc(headers))) 
-    end
+    register(router, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
 end
 
 
-"""
-    @dynamicfiles(folder::String, mountdir::String, headers::Vector{Pair{String,String}}=[])
 
-Mount all files inside the /static folder (or user defined mount point), 
-but files are re-read on each request
-"""
-macro dynamicfiles(folder, mountdir="static", headers=[])
-    printstyled("@dynamicfiles macro is deprecated, please use the dynamicfiles() function instead\n", color = :red, bold = true) 
-    quote
-        dynamicfiles($(esc(folder)), $(esc(mountdir)); headers=$(esc(headers))) 
-    end      
-end
-
+# CHANGE: Export 
 """
     staticfiles(folder::String, mountdir::String; headers::Vector{Pair{String,String}}=[], loadfile::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point). 
 The `headers` array will get applied to all mounted files
 """
-function staticfiles(
+function staticfiles(router::Router,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
@@ -750,21 +651,25 @@ function staticfiles(
     function addroute(currentroute, filepath)
         # calculate the entire response once on load
         resp = file(filepath; loadfile=loadfile, headers=headers)
-        @get "$currentroute" function(req)
-            return resp
-        end
+
+        register(router, "GET", currentroute, req -> resp)
+
+        #@get "$currentroute" function(req)
+        #   return resp
+        #end
     end
     mountfolder(folder, mountdir, addroute)
 end
 
 
+# CHANGE: Export
 """
     dynamicfiles(folder::String, mountdir::String; headers::Vector{Pair{String,String}}=[], loadfile::Union{Function,Nothing}=nothing)
 
 Mount all files inside the /static folder (or user defined mount point), 
 but files are re-read on each request. The `headers` array will get applied to all mounted files
 """
-function dynamicfiles(
+function dynamicfiles(router::Router,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
@@ -776,10 +681,13 @@ function dynamicfiles(
     end
     registermountedfolder(mountdir)
     function addroute(currentroute, filepath)
-        @get "$currentroute" function(req)   
-            # calculate the entire response on each request
-            return file(filepath; loadfile=loadfile, headers=headers)
-        end
+
+        register(router, "GET", currentroute, req -> file(filepath; loadfile=loadfile, headers=headers))
+
+        # @get "$currentroute" function(req)   
+        #     # calculate the entire response on each request
+        #     return file(filepath; loadfile=loadfile, headers=headers)
+        # end
     end
     mountfolder(folder, mountdir, addroute)    
 end

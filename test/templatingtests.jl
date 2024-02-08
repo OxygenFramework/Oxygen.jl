@@ -5,11 +5,13 @@ using HTTP
 using Mustache
 using OteraEngine
 
-include("../src/Oxygen.jl")
-using .Oxygen
+#include("../src/Oxygen.jl")
+#using .Oxygen
+
+using Oxygen
 
 # ensure the init is called so we can load the extensions
-Oxygen.__init__()
+#Oxygen.__init__()
 
 function clean_output(result::String)
     # Replace carriage returns followed by line feeds (\r\n) with a single newline (\n)

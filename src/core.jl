@@ -55,6 +55,15 @@ function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool)
 end
 
 
+struct Context
+    router::Router
+    mountedfolders::Set{String}
+    taggedroutes::Dict{String, TaggedRoute}
+    custommiddleware::Dict{String, Tuple}
+end
+
+Context(router) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}())
+Context() = Context(Router())
 
 # TODO
 
@@ -153,9 +162,9 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}, custommiddleware::Dict{String, Tuple}; 
-    middleware::Vector=[], 
-    handler=stream_handler, 
+function serve(ctx::Context, history::CircularDeque{HTTPTransaction}; 
+    middleware::Vector=[],
+    handler=stream_handler,
     host="127.0.0.1", 
     port=8080, 
     serialize=true, 
@@ -166,11 +175,11 @@ function serve(router::Router, history::CircularDeque{HTTPTransaction}, mountedf
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(router, history, custommiddleware; middleware, serialize, catch_errors, metrics)
+    configured_middelware = setupmiddleware(ctx.router, ctx.custommiddleware, history; middleware, serialize, catch_errors, metrics)
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
 
-    return startserver((; router, history, mountedfolders, taggedroutes), host, port, docs, metrics, kwargs, async, (kwargs) ->  
+    return startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) ->  
             HTTP.serve!(handler(configured_middelware), host, port; kwargs...))
 end
 
@@ -183,7 +192,7 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, _handler::Handler, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}, custommiddleware::Dict{String, Tuple}; 
+function serveparallel(ctx::Context, history::CircularDeque{HTTPTransaction}, _handler::Handler; 
     middleware::Vector=[], 
     handler=stream_handler, 
     host="127.0.0.1", 
@@ -197,9 +206,9 @@ function serveparallel(router::Router, history::CircularDeque{HTTPTransaction}, 
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(router, history, custommiddleware; middleware, serialize, catch_errors, metrics)
+    configured_middelware = setupmiddleware(ctx.router, ctx.custommiddleware, history; middleware, serialize, catch_errors, metrics)
 
-    server = startserver((; router, history, mountedfolders, taggedroutes), host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    server = startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
     return server # this value is returned if startserver() is ran in async mode
@@ -212,7 +221,7 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(router::Router, history::CircularDeque{HTTPTransaction}, custommiddleware::Dict{String, Tuple}; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
+function setupmiddleware(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction}; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
 
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware(custommiddleware) ? [compose(router, middleware, custommiddleware)] : reverse(middleware)
@@ -238,10 +247,10 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver((; router, history, mountedfolders, taggedroutes), host, port, docs, metrics, kwargs, async, start)
+function startserver(ctx::Context, history::CircularDeque{HTTPTransaction}, host, port, docs, metrics, kwargs, async, start)
 
     serverwelcome(host, port, docs, metrics)
-    setup(router, history, mountedfolders, taggedroutes; docs, metrics)
+    setup(ctx, history; docs, metrics)
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     starttasks()
     registercronjobs()
@@ -281,16 +290,16 @@ end
 """
 This function called right before serving the server, which is useful for performing any additional setup
 """
-function setup(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}; docs::Bool, metrics::Bool)
+function setup(ctx::Context, history::CircularDeque{HTTPTransaction}; docs::Bool, metrics::Bool)
     
     docs ? enabledocs() : disabledocs()
 
     if docs
-        setupswagger((;router, mountedfolders, taggedroutes))
+        setupswagger(ctx)
     end
 
     if metrics
-        setupmetrics(router, history, mountedfolders, taggedroutes)
+        setupmetrics(ctx, history)
     end
 end
 
@@ -301,9 +310,9 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(router::Router, history::CircularDeque{HTTPTransaction}, custommiddleware::Dict{String, Tuple}, req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
+function internalrequest(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction}, req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
     req.context[:ip] = "INTERNAL" # label internal requests
-    return req |> setupmiddleware(router, history, custommiddleware, middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
+    return req |> setupmiddleware(router, custommiddleware, history, middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
 end
 
 
@@ -390,7 +399,7 @@ end
 
 Register a request handler function with a path to the ROUTER
 """
-function register((; router, mountedfolders, taggedroutes), httpmethod::String, route::Union{String,Function}, func::Function)
+function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
 
     # check if path is a callable function (that means it's a router higher-order-function)
     if isa(route, Function)
@@ -480,7 +489,7 @@ function register((; router, mountedfolders, taggedroutes), httpmethod::String, 
     end
 
     # strip off any regex patterns attached to our path parameters
-    registerschema((; mountedfolders, taggedroutes),
+    registerschema(ctx.mountedfolders, ctx.taggedroutes,
         route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
 
     # case 1.) The request handler is an anonymous function (don't parse out path params)
@@ -506,14 +515,14 @@ function register((; router, mountedfolders, taggedroutes), httpmethod::String, 
     end
 
     @suppress begin
-        HTTP.register!(router, httpmethod, route, handle)
+        HTTP.register!(ctx.router, httpmethod, route, handle)
     end
 end
 
 # CHANGE: setupswagger needs to use register manually. Needs to accept router as an argument
 
 # add the swagger and swagger/schema routes 
-function setupswagger(ctx)
+function setupswagger(ctx::Context)
 
     if isdocsenabled()
 
@@ -530,7 +539,7 @@ function setupswagger(ctx)
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction}, mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute})
+function setupmetrics(ctx::Context, history::CircularDeque{HTTPTransaction})
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath) :: String
@@ -544,9 +553,8 @@ function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction}, m
         end
     end
 
-    staticfiles((;router, mountedfolders, taggedroutes), "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    staticfiles(ctx, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
-
     function metrics(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
         lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
 
@@ -565,10 +573,8 @@ function setupmetrics(router::Router, history::CircularDeque{HTTPTransaction}, m
         )
     end
 
-
-    register((;router, mountedfolders, taggedroutes), "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
+    register(ctx, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
 end
-
 
 
 # CHANGE: Export 
@@ -578,7 +584,7 @@ end
 Mount all files inside the /static folder (or user defined mount point). 
 The `headers` array will get applied to all mounted files
 """
-function staticfiles(ctx,
+function staticfiles(ctx::Context,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
@@ -612,7 +618,7 @@ end
 Mount all files inside the /static folder (or user defined mount point), 
 but files are re-read on each request. The `headers` array will get applied to all mounted files
 """
-function dynamicfiles(ctx,
+function dynamicfiles(ctx::Context,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 

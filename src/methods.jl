@@ -14,14 +14,19 @@ function resetstate()
 
     # This no longer is done at this level
     # perhaps it should be done at the topmost level
-    ROUTER[] = HTTP.Router()
+
 
     SERVER[] = nothing
     # reset autodocs state variables
 
-    global MOUNTED_FOLDERS = Set{String}()
-    global TAGGED_ROUTES = Dict{String, TaggedRoute}()
-    CUSTOM_MIDDLEWARE[] = Dict()
+    #ROUTER[] = HTTP.Router()
+    #global MOUNTED_FOLDERS = Set{String}()
+    #global TAGGED_ROUTES = Dict{String, TaggedRoute}()
+    #CUSTOM_MIDDLEWARE[] = Dict()
+
+    CONTEXT[] = Context()
+    
+
     Core.resetstatevariables()
     # reset cron module state
     Core.resetcronstate()
@@ -65,7 +70,7 @@ function serve(;
     
     try
 
-        SERVER[] = Core.serve(ROUTER[], HISTORY[], MOUNTED_FOLDERS, TAGGED_ROUTES, CUSTOM_MIDDLEWARE[]; 
+        SERVER[] = Core.serve(CONTEXT[], HISTORY[]; 
                  middleware, handler, port, serialize, 
                  async, catch_errors, docs, metrics, kwargs...)
 
@@ -106,7 +111,7 @@ function serveparallel(;
 
     try
 
-        SERVER[] = Core.serveparallel(ROUTER[], HISTORY[], HANDLER[], MOUNTED_FOLDERS, TAGGED_ROUTES, CUSTOM_MIDDLEWARE[];                  
+        SERVER[] = Core.serveparallel(CONTEXT[], HISTORY[], HANDLER[];                  
                          middleware, handler, port, queuesize, serialize, 
                          async, catch_errors, docs, metrics, kwargs...)
 
@@ -190,7 +195,7 @@ end
 
 function route(methods::Vector{String}, path::Union{String,Function}, func::Function)
     for method in methods
-        Core.register((;router=ROUTER[], mountedfolders=MOUNTED_FOLDERS, taggedroutes=TAGGED_ROUTES), method, path, func)
+        Core.register(CONTEXT[], method, path, func)
     end
 end
 
@@ -259,7 +264,7 @@ staticfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Core.staticfiles((router=ROUTER[], mountedfolders=MOUNTED_FOLDERS), folder, mountdir, headers, laodfile)
+) = Core.staticfiles(CONTEXT[], folder, mountdir, headers, laodfile)
 
 
 dynamicfiles(
@@ -267,10 +272,10 @@ dynamicfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Core.dynamicfiles((router=ROUTER[], mountedfolders=MOUNTED_FOLDERS), folder, mountdir, headers, laodfile)
+) = Core.dynamicfiles(CONTEXT[], folder, mountdir, headers, laodfile)
 
 
-internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(ROUTER[], HISTORY[], CUSTOM_MIDDLEWARE[], req; middleware, metrics, serialize, catch_errors)
+internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(CONTEXT[].router, CONTEXT[].custommiddleware, HISTORY[], req; middleware, metrics, serialize, catch_errors)
 
 
 function router(prefix::String = ""; 
@@ -280,5 +285,5 @@ function router(prefix::String = "";
                 cron::Union{String, Nothing} = nothing)
 
 
-    return Core.AutoDoc.router(TAGGED_ROUTES, CUSTOM_MIDDLEWARE[], prefix; tags, middleware, interval, cron)
+    return Core.AutoDoc.router(CONTEXT[].taggedroutes, CONTEXT[].custommiddleware, prefix; tags, middleware, interval, cron)
 end

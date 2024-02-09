@@ -375,7 +375,7 @@ end
 """
 Used to generate & register schema related for a specific endpoint 
 """
-function registerschema((; mountedfolders, taggedroutes), path::String, httpmethod::String, parameters, returntype::Array)
+function registerschema(mountedfolders::Set{String}, taggedroutes::Dict{String, TaggedRoute}, path::String, httpmethod::String, parameters, returntype::Array)
 
     # skip any doc related endpoints
     if startswith(path, docspath)

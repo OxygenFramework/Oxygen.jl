@@ -56,7 +56,6 @@ end
 
 
 
-
 """
     starttasks()
 
@@ -65,7 +64,6 @@ Start all background repeat tasks
 function starttasks(ctx::Context, history::CircularDeque{HTTPTransaction})
     # when service exits timers are cleaned up
     # timers[] = [] 
-    #tasks = getrepeatasks() 
 
     # exit function early if no tasks are register
     if isempty(ctx.repeattasks)

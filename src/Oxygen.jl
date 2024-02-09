@@ -2,7 +2,7 @@ module Oxygen
 
 include("core.jl"); using .Core
 # Load any optional extensions
-#include("extensions/load.jl");
+include("extensions/load.jl");
 
 using .Core: Context
 const CONTEXT = Ref{Context}(Context())

@@ -72,7 +72,6 @@ function resetstatevariables()
     global enable_auto_docs = true 
     global docspath = "/docs"
     global schemapath = "/schema"
-    #global repeattasks = []
     global cronjobs = []
     global schema = defaultSchema()
     return

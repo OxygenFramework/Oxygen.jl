@@ -10,7 +10,7 @@ using Suppressor
 using Oxygen
 
 include("metricstests.jl")
-#include("templatingtests.jl") # TODO
+include("templatingtests.jl") # TODO
 include("routingfunctionstests.jl")
 include("rendertests.jl")
 include("bodyparsertests.jl")

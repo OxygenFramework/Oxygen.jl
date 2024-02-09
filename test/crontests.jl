@@ -12,6 +12,8 @@ using Oxygen.Core.Cron: iscronmatch, isweekday, lastweekdayofmonth,
             next, sleep_until, lastweekday, nthweekdayofmonth, 
             matchexpression
 
+const PORT = 7070 # 8080 is a very common port and could already be in use
+
 @testset "Cron Module Tests" begin
 
     @testset "methods" begin 
@@ -415,8 +417,7 @@ using Oxygen.Core.Cron: iscronmatch, isweekday, lastweekdayofmonth,
     end
 
 
-
-    localhost = "http://127.0.0.1:8080"
+    localhost = "http://127.0.0.1:$PORT"
 
     crondata = Dict("api_value" => 0)
 
@@ -429,7 +430,7 @@ using Oxygen.Core.Cron: iscronmatch, isweekday, lastweekdayofmonth,
         return crondata["api_value"]
     end
 
-    server = serve(async=true)
+    server = serve(async=true, port=PORT)
     sleep(3)
 
     @testset "Testing CRON API access" begin

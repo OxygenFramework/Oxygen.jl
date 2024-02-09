@@ -29,7 +29,7 @@ export  @cron,
         resetstate, starttasks, stoptasks
 
 
-global const timers = Ref{Vector{Timer}}([]) # CRON STATE
+global const timers = Ref{Vector{Timer}}([]) 
 
 
 # Generate a reliable path to our internal data folder that works when the 
@@ -60,23 +60,22 @@ struct Context
     mountedfolders::Set{String}
     taggedroutes::Dict{String, TaggedRoute}
     custommiddleware::Dict{String, Tuple}
+    # repeattasks
 end
 
 Context(router) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}())
 Context() = Context(Router())
 
-# TODO
 
-# CRON STATE
-# Depends on internalrequest and thus needs a full context to be passed in
 """
     starttasks()
 
 Start all background repeat tasks
 """
-function starttasks()
-    timers[] = []
-    tasks = getrepeatasks()
+function starttasks(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction})
+    # when service exits timers are cleaned up
+    # timers[] = [] 
+    tasks = getrepeatasks() 
 
     # exit function early if no tasks are register
     if isempty(tasks)
@@ -91,29 +90,25 @@ function starttasks()
         message = "method: $httpmethod, path: $path, inverval: $interval seconds"
         printstyled("[ Task: ", color = :magenta, bold = true)  
         println(message)
-        action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))
+        action = (timer) -> internalrequest(router, custommiddleware, history, HTTP.Request(httpmethod, path))
         timer = Timer(action, 0, interval=interval)
         push!(timers[], timer)   
     end
 end 
 
 
-# TODO
-
-# CRON STATE
 """
 Register all cron jobs 
 """
-function registercronjobs()
+function registercronjobs(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction})
     for job in getcronjobs()
         path, httpmethod, expression = job
         @cron expression path function()
-            internalrequest(HTTP.Request(httpmethod, path))
+            internalrequest(router, custommiddleware, history, HTTP.Request(httpmethod, path))
         end
     end
 end 
 
-# CRON STATE
 """
     stoptasks()
 
@@ -171,11 +166,12 @@ function serve(ctx::Context, history::CircularDeque{HTTPTransaction};
     async=false, 
     catch_errors=true, 
     docs=true,
-    metrics=true, 
+    metrics=true,
+    show_errors=true,
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx.router, ctx.custommiddleware, history; middleware, serialize, catch_errors, metrics)
+    configured_middelware = setupmiddleware(ctx.router, ctx.custommiddleware, history; middleware, serialize, catch_errors, metrics, show_errors)
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
 
@@ -184,7 +180,6 @@ function serve(ctx::Context, history::CircularDeque{HTTPTransaction};
 end
 
 
-# CHANGE: router, passed to setupmiddleware
 """
     serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
 
@@ -203,10 +198,11 @@ function serveparallel(ctx::Context, history::CircularDeque{HTTPTransaction}, _h
     catch_errors=true,
     docs=true,
     metrics=true, 
+    show_errors=true,                       
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx.router, ctx.custommiddleware, history; middleware, serialize, catch_errors, metrics)
+    configured_middelware = setupmiddleware(ctx.router, ctx.custommiddleware, history; middleware, serialize, catch_errors, metrics, show_errors)
 
     server = startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
@@ -215,19 +211,18 @@ function serveparallel(ctx::Context, history::CircularDeque{HTTPTransaction}, _h
 end
 
 
-# CHANGE: router. 
 """
 Compose the user & internally defined middleware functions together. Practically, this allows
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction}; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true) :: Function
+function setupmiddleware(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction}; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true) :: Function
 
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware(custommiddleware) ? [compose(router, middleware, custommiddleware)] : reverse(middleware)
 
     # check if we should use our default serialization middleware function
-    serializer = serialize ? [DefaultSerializer(catch_errors)] : []
+    serializer = serialize ? [DefaultSerializer(catch_errors; show_errors)] : []
 
     # check if we need to track metrics
     collect_metrics = metrics ? [MetricsMiddleware(history, metrics)] : []
@@ -241,9 +236,7 @@ function setupmiddleware(router::Router, custommiddleware::Dict{String, Tuple}, 
     ])    
 end
 
-# CHANGE: Server could be passed as a reference
-# OUTSIDE: uses resetstate 
-# 
+
 """
 Internal helper function to launch the server in a consistent way
 """
@@ -252,8 +245,8 @@ function startserver(ctx::Context, history::CircularDeque{HTTPTransaction}, host
     serverwelcome(host, port, docs, metrics)
     setup(ctx, history; docs, metrics)
     server = start(preprocesskwargs(kwargs)) # How does this one work!
-    starttasks()
-    registercronjobs()
+    starttasks(ctx.router, ctx.custommiddleware, history)
+    registercronjobs(ctx.router, ctx.custommiddleware, history)
     startcronjobs()
     if !async     
         try 
@@ -265,7 +258,6 @@ function startserver(ctx::Context, history::CircularDeque{HTTPTransaction}, host
 
     return server
 end
-
 
 
 """
@@ -284,7 +276,6 @@ function preprocesskwargs(kwargs)
 
     return kwargs_dict
 end
-
 
 
 """
@@ -319,10 +310,10 @@ end
 """
 Create a default serializer function that handles HTTP requests and formats the responses.
 """
-function DefaultSerializer(catch_errors::Bool)
+function DefaultSerializer(catch_errors::Bool; show_errors::Bool)
     return function(handle)
         return function(req::HTTP.Request)
-            return handlerequest(catch_errors) do 
+            return handlerequest(catch_errors; show_errors) do 
                 response = handle(req)
                 format_response!(req, response)
                 return req.response
@@ -331,7 +322,7 @@ function DefaultSerializer(catch_errors::Bool)
     end
 end
 
-function MetricsMiddleware(history::CircularDeque{HTTPTransaction}, catch_errors::Bool) # The top level here will be good for injecting `history` 
+function MetricsMiddleware(history::CircularDeque{HTTPTransaction}, catch_errors::Bool) 
     return function(handler)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
@@ -519,8 +510,6 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
     end
 end
 
-# CHANGE: setupswagger needs to use register manually. Needs to accept router as an argument
-
 # add the swagger and swagger/schema routes 
 function setupswagger(ctx::Context)
 
@@ -577,7 +566,6 @@ function setupmetrics(ctx::Context, history::CircularDeque{HTTPTransaction})
 end
 
 
-# CHANGE: Export 
 """
     staticfiles(folder::String, mountdir::String; headers::Vector{Pair{String,String}}=[], loadfile::Union{Function,Nothing}=nothing)
 
@@ -602,10 +590,6 @@ function staticfiles(ctx::Context,
         resp = file(filepath; loadfile=loadfile, headers=headers)
 
         register(ctx, "GET", currentroute, req -> resp)
-
-        #@get "$currentroute" function(req)
-        #   return resp
-        #end
     end
     mountfolder(folder, mountdir, addroute)
 end
@@ -628,15 +612,11 @@ function dynamicfiles(ctx::Context,
     if first(mountdir) == '/'
         mountdir = mountdir[2:end]
     end
-    registermountedfolder(mountdir)
+    registermountedfolder(ctx.mountedfolders, mountdir)
     function addroute(currentroute, filepath)
 
         register(ctx, "GET", currentroute, req -> file(filepath; loadfile=loadfile, headers=headers))
 
-        # @get "$currentroute" function(req)   
-        #     # calculate the entire response on each request
-        #     return file(filepath; loadfile=loadfile, headers=headers)
-        # end
     end
     mountfolder(folder, mountdir, addroute)    
 end

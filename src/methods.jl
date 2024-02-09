@@ -1,10 +1,5 @@
 # This is where methods are coupled to a global state
 
-#using Infiltrator
-#@infiltrate
-# Check if I can get this running 
-
-
 """
 Reset all the internal state variables
 """
@@ -15,23 +10,14 @@ function resetstate()
     # This no longer is done at this level
     # perhaps it should be done at the topmost level
 
-
     SERVER[] = nothing
-    # reset autodocs state variables
-
-    #ROUTER[] = HTTP.Router()
-    #global MOUNTED_FOLDERS = Set{String}()
-    #global TAGGED_ROUTES = Dict{String, TaggedRoute}()
-    #CUSTOM_MIDDLEWARE[] = Dict()
 
     CONTEXT[] = Context()
-    
 
     Core.resetstatevariables()
     # reset cron module state
     Core.resetcronstate()
     # clear metrics
-    #Core.clear_history()
     empty!(HISTORY[])
 end
 
@@ -47,13 +33,10 @@ function terminate()
         Core.stopcronjobs()
         # stop background tasks
         Core.stoptasks()
-        # stop any background worker threads
-        Core.StreamUtil.stop(HANDLER[])
         # stop server
         close(SERVER[])
     end
 end
-
 
 function serve(; 
       middleware::Vector=[], 
@@ -65,6 +48,7 @@ function serve(;
       catch_errors=true, 
       docs=true,
       metrics=true, 
+      show_errors=true,               
       kwargs...) 
 
     
@@ -72,7 +56,7 @@ function serve(;
 
         SERVER[] = Core.serve(CONTEXT[], HISTORY[]; 
                  middleware, handler, port, serialize, 
-                 async, catch_errors, docs, metrics, kwargs...)
+                 async, catch_errors, show_errors, docs, metrics, kwargs...)
 
         return SERVER[]
 
@@ -104,16 +88,19 @@ function serveparallel(;
                        catch_errors=true,
                        docs=true,
                        metrics=true, 
+                       show_errors=true,
                        kwargs...)
 
     # Moved from `streamutil.jl` start method
-    HANDLER[] = Handler()
+    streamhandler = Core.StreamUtil.Handler()
+
+    #HANDLER[] = Handler()
 
     try
 
-        SERVER[] = Core.serveparallel(CONTEXT[], HISTORY[], HANDLER[];                  
+        SERVER[] = Core.serveparallel(CONTEXT[], HISTORY[], streamhandler;                  
                          middleware, handler, port, queuesize, serialize, 
-                         async, catch_errors, docs, metrics, kwargs...)
+                         async, catch_errors, show_errors, docs, metrics, kwargs...)
 
         return SERVER[]
 
@@ -122,6 +109,8 @@ function serveparallel(;
         # close server on exit if we aren't running asynchronously
         if !async 
             terminate()
+            # stop any background worker threads
+            Core.StreamUtil.stop(streamhandler)
         end
 
         # only reset state on exit if we aren't running asynchronously & are running it interactively 
@@ -202,17 +191,6 @@ end
 # This variation supports the do..block syntax
 route(func::Function, methods::Vector{String}, path::Union{String,Function}) = route(methods, path, func)
 
-
-# REFACTOR: theese are internal methods which shouldn't be exported
-# these utility functions help reduce the amount of repeated hardcoded values
-#get_handler(path::Union{String,Function}, func::Function)     = route(["GET"], path, func)
-#post_handler(path::Union{String,Function}, func::Function)    = route(["POST"], path, func)
-#put_handler(path::Union{String,Function}, func::Function)     = route(["PUT"], path, func)
-#patch_handler(path::Union{String,Function}, func::Function)   = route(["PATCH"], path, func)
-#delete_handler(path::Union{String,Function}, func::Function)  = route(["DELETE"], path, func)
-
-
-
 ### Core Routing Functions Support for do..end Syntax ###
 
 Base.get(func::Function, path::String)      = route(["GET"], path, func)
@@ -264,7 +242,7 @@ staticfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Core.staticfiles(CONTEXT[], folder, mountdir, headers, laodfile)
+) = Core.staticfiles(CONTEXT[], folder, mountdir; headers, loadfile)
 
 
 dynamicfiles(
@@ -272,7 +250,7 @@ dynamicfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Core.dynamicfiles(CONTEXT[], folder, mountdir, headers, laodfile)
+) = Core.dynamicfiles(CONTEXT[], folder, mountdir; headers, loadfile)
 
 
 internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(CONTEXT[].router, CONTEXT[].custommiddleware, HISTORY[], req; middleware, metrics, serialize, catch_errors)
@@ -286,4 +264,14 @@ function router(prefix::String = "";
 
 
     return Core.AutoDoc.router(CONTEXT[].taggedroutes, CONTEXT[].custommiddleware, prefix; tags, middleware, interval, cron)
+end
+
+
+# Adding docstrings
+@doc (@doc(Core.AutoDoc.router)) router
+
+for method in [:serve, :serveparallel, :staticfiles, :dynamicfiles, :internalrequest]
+    eval(quote
+        @doc (@doc(Core.$method)) $method
+    end)
 end

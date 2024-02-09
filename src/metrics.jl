@@ -36,8 +36,6 @@ struct HTTPTransaction
     error_message::Union{String,Nothing}
 end
 
-#global const history = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(1_000_000))
-
 
 function push_history(history::CircularDeque{HTTPTransaction}, transaction::HTTPTransaction)
     pushfirst!(history, transaction)
@@ -46,10 +44,6 @@ end
 function get_history(history::CircularDeque{HTTPTransaction}) :: Vector{HTTPTransaction}
     return collect(history)
 end
-
-# function clear_history()
-#     empty!(history[])
-# end
 
 # Helper function to calculate percentile
 function percentile(values, p)

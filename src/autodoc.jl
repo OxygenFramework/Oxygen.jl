@@ -40,12 +40,9 @@ end
 global enable_auto_docs = true 
 global docspath = "/docs"
 global schemapath = "/schema"
-#global mountedfolders = Set{String}()
-#global taggedroutes = Dict{String, TaggedRoute}()
-global repeattasks = []
+global repeattasks = [] # TODO: move to the context
 global cronjobs = []
 global schema = defaultSchema()
-#global const custommiddlware = Ref{Dict{String, Tuple}}(Dict())
 
 function getschemapath()::String
     return "$docspath$schemapath"
@@ -161,9 +158,6 @@ function hasmiddleware(custommiddleware::Dict{String, Tuple})::Bool
     return !isempty(custommiddleware)
 end
 
-#function getroutermiddlware()
-#    return custommiddlware[]
-#end
 
 """
 This function dynamically determines which middleware functions to apply to a request at runtime. 

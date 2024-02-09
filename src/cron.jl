@@ -12,6 +12,7 @@ global const job_definitions = Ref{Set}(Set())
 # The global flag used to stop all tasks
 global const run = Ref{Bool}(false)
 
+# suggestion: "random Id" -> "unique identifier"
 """
     @cron(expression::String, func::Function)
 

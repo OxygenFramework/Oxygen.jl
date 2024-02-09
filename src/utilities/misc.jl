@@ -106,14 +106,16 @@ function redirect(path::String; code = 307) :: HTTP.Response
     return HTTP.Response(code, ["Location" => path])
 end
 
-function handlerequest(getresponse::Function, catch_errors::Bool)
+function handlerequest(getresponse::Function, catch_errors::Bool; show_errors=true)
     if !catch_errors
         return getresponse()
     else 
         try 
             return getresponse()       
         catch error
-            @error "ERROR: " exception=(error, catch_backtrace())
+            if show_errors
+                @error "ERROR: " exception=(error, catch_backtrace())
+            end
             return json(("message" => "The Server encountered a problem"), status = 500)    
         end  
     end

@@ -263,7 +263,7 @@ function router(prefix::String = "";
                 cron::Union{String, Nothing} = nothing)
 
 
-    return Core.AutoDoc.router(CONTEXT[].taggedroutes, CONTEXT[].custommiddleware, prefix; tags, middleware, interval, cron)
+    return Core.AutoDoc.router(CONTEXT[], prefix; tags, middleware, interval, cron)
 end
 
 

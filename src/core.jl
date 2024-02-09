@@ -21,7 +21,7 @@ include("metrics.jl");      @reexport using .Metrics
 
 using .Metrics: HTTPTransaction
 using .StreamUtil: Handler
-using .AutoDoc: TaggedRoute
+using .AutoDoc: TaggedRoute, Context
 
 export  @cron, 
         staticfiles, dynamicfiles,
@@ -55,16 +55,6 @@ function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool)
 end
 
 
-struct Context
-    router::Router
-    mountedfolders::Set{String}
-    taggedroutes::Dict{String, TaggedRoute}
-    custommiddleware::Dict{String, Tuple}
-    # repeattasks
-end
-
-Context(router) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}())
-Context() = Context(Router())
 
 
 """
@@ -72,25 +62,25 @@ Context() = Context(Router())
 
 Start all background repeat tasks
 """
-function starttasks(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction})
+function starttasks(ctx::Context, history::CircularDeque{HTTPTransaction})
     # when service exits timers are cleaned up
     # timers[] = [] 
-    tasks = getrepeatasks() 
+    #tasks = getrepeatasks() 
 
     # exit function early if no tasks are register
-    if isempty(tasks)
+    if isempty(ctx.repeattasks)
         return 
     end
 
     println()
-    printstyled("[ Starting $(length(tasks)) Repeat Task(s)\n", color = :magenta, bold = true)  
+    printstyled("[ Starting $(length(ctx.repeattasks)) Repeat Task(s)\n", color = :magenta, bold = true)  
     
-    for task in tasks
+    for task in ctx.repeattasks
         path, httpmethod, interval = task
         message = "method: $httpmethod, path: $path, inverval: $interval seconds"
         printstyled("[ Task: ", color = :magenta, bold = true)  
         println(message)
-        action = (timer) -> internalrequest(router, custommiddleware, history, HTTP.Request(httpmethod, path))
+        action = (timer) -> internalrequest(ctx.router, ctx.custommiddleware, history, HTTP.Request(httpmethod, path))
         timer = Timer(action, 0, interval=interval)
         push!(timers[], timer)   
     end
@@ -245,7 +235,7 @@ function startserver(ctx::Context, history::CircularDeque{HTTPTransaction}, host
     serverwelcome(host, port, docs, metrics)
     setup(ctx, history; docs, metrics)
     server = start(preprocesskwargs(kwargs)) # How does this one work!
-    starttasks(ctx.router, ctx.custommiddleware, history)
+    starttasks(ctx, history)
     registercronjobs(ctx.router, ctx.custommiddleware, history)
     startcronjobs()
     if !async     

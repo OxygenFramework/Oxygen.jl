@@ -15,22 +15,7 @@ using .Core.Metrics: HTTPTransaction
 const HISTORY = Ref{CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(1_000_000))
 
 include("methods.jl")
-
-
-# Some deprecated stuff
-
-function enabledocs()
-    @warn "This function is deprecated in favour of keyword argument `docs` in serve"
-end
-
-function disabledocs()
-    @warn "This function is deprecated in favour of keyword argument `docs` in serve"
-end
-
-function isdocsenabled()
-    @warn "This function is deprecated in favour of keyword argument `docs` in serve"
-    return true # as set in serve
-end
+include("deprecated.jl")
 
 
 export @get, @post, @put, @patch, @delete, @route, @cron, 

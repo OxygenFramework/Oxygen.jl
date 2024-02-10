@@ -17,17 +17,33 @@ struct TaggedRoute
     tags::Vector{String}
 end
 
+# This struct contains all parameters which are necessary to be created.
 struct Context
     router::Router
     mountedfolders::Set{String}
     taggedroutes::Dict{String, TaggedRoute}
     custommiddleware::Dict{String, Tuple}
     repeattasks::Vector
+    docspath::String
+    schemapath::String
+    schema::Dict
+    job_definitions::Set
 end
 
-Context(router) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}(), [])
-Context() = Context(Router())
+# # Created within a `serve` at runtime. Keyword arguments may be used to initialize some of the objects outside.
+# mutable struct Runtime
+#     run::Bool
+#     jobs::Ref{Set}(Set())
+#     timers::Vector{Timer}
+#     history::CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(1_000_000)
+#     streamhandler::Union{Nothing, StreamUtil.Handler}
+# end
 
+# # Returned from `serve` when async is enabled.
+# struct Service
+#     runtime::Runtime
+#     server::HTTP.Server
+# end
 
 include("util.jl");         @reexport using .Util
 include("cron.jl");         @reexport using .Cron
@@ -35,10 +51,24 @@ include("streamutil.jl");   @reexport using .StreamUtil
 include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 
-
 using DataStructures: CircularDeque
 using .Metrics: HTTPTransaction
 using .StreamUtil: Handler
+using .AutoDoc: defaultSchema
+
+Context(; router=Router(), docspath="/docs", schemapath="/schema", schema=defaultSchema()) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}(), [], docspath, schemapath, schema, Set())
+
+
+# To make it cleaner a macro could be used
+function Context(ctx::Context; router=ctx.router, mountedfolders=ctx.mountedfolders, taggedroutes=ctx.taggedroutes, 
+        custommiddleware=ctx.custommiddleware, repeattasks=ctx.repeattasks, docspath=ctx.docspath,
+        schemapath=ctx.schemapath, schema=ctx.schema, job_definitions=ctx.job_definitions)
+
+    return Context(router, mountedfolders, taggedroutes, custommiddleware, repeattasks, 
+                   docspath, schemapath, schema, job_definitions)
+end
+
+
 
 export  @cron, 
         staticfiles, dynamicfiles,
@@ -63,7 +93,7 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool)
+function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool, docspath::String)
     printstyled(oxygen_title, color = :blue, bold = true)
     @info "📦 Version 1.4.8 (2024-02-01)"
     @info "✅ Started server: http://$host:$port" 
@@ -95,7 +125,7 @@ function starttasks(ctx::Context, history::CircularDeque{HTTPTransaction})
         message = "method: $httpmethod, path: $path, inverval: $interval seconds"
         printstyled("[ Task: ", color = :magenta, bold = true)  
         println(message)
-        action = (timer) -> internalrequest(ctx.router, ctx.custommiddleware, history, HTTP.Request(httpmethod, path))
+        action = (timer) -> internalrequest(ctx, history, HTTP.Request(httpmethod, path))
         timer = Timer(action, 0, interval=interval)
         push!(timers[], timer)   
     end
@@ -105,11 +135,11 @@ end
 """
 Register all cron jobs 
 """
-function registercronjobs(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction})
+function registercronjobs(ctx::Context, history::CircularDeque{HTTPTransaction})
     for job in getcronjobs()
         path, httpmethod, expression = job
         @cron expression path function()
-            internalrequest(router, custommiddleware, history, HTTP.Request(httpmethod, path))
+            internalrequest(ctx, history, HTTP.Request(httpmethod, path))
         end
     end
 end 
@@ -176,7 +206,7 @@ function serve(ctx::Context, history::CircularDeque{HTTPTransaction};
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx.router, ctx.custommiddleware, history; middleware, serialize, catch_errors, metrics, show_errors)
+    configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, metrics, show_errors)
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
 
@@ -203,11 +233,11 @@ function serveparallel(ctx::Context, history::CircularDeque{HTTPTransaction}, _h
     catch_errors=true,
     docs=true,
     metrics=true, 
-    show_errors=true,                       
+    show_errors=true,
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx.router, ctx.custommiddleware, history; middleware, serialize, catch_errors, metrics, show_errors)
+    configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, metrics, show_errors)
 
     server = startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
@@ -221,20 +251,20 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction}; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true) :: Function
+function setupmiddleware(ctx::Context, history::CircularDeque{HTTPTransaction}; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true) :: Function
 
     # determine if we have any special router or route-specific middleware
-    custom_middleware = hasmiddleware(custommiddleware) ? [compose(router, middleware, custommiddleware)] : reverse(middleware)
+    custom_middleware = hasmiddleware(ctx.custommiddleware) ? [compose(ctx.router, middleware, ctx.custommiddleware)] : reverse(middleware)
 
     # check if we should use our default serialization middleware function
     serializer = serialize ? [DefaultSerializer(catch_errors; show_errors)] : []
 
     # check if we need to track metrics
-    collect_metrics = metrics ? [MetricsMiddleware(history, metrics)] : []
+    collect_metrics = metrics ? [MetricsMiddleware(history, metrics, ctx.docspath)] : []
 
     # combine all our middleware functions
     return reduce(|>, [
-        router,
+        ctx.router,
         serializer...,
         custom_middleware...,
         collect_metrics...
@@ -247,11 +277,11 @@ Internal helper function to launch the server in a consistent way
 """
 function startserver(ctx::Context, history::CircularDeque{HTTPTransaction}, host, port, docs, metrics, kwargs, async, start)
 
-    serverwelcome(host, port, docs, metrics)
+    serverwelcome(host, port, docs, metrics, ctx.docspath)
     setup(ctx, history; docs, metrics)
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     starttasks(ctx, history)
-    registercronjobs(ctx.router, ctx.custommiddleware, history)
+    registercronjobs(ctx, history)
     startcronjobs()
     if !async     
         try 
@@ -306,9 +336,9 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(router::Router, custommiddleware::Dict{String, Tuple}, history::CircularDeque{HTTPTransaction}, req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
+function internalrequest(ctx::Context, history::CircularDeque{HTTPTransaction}, req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
     req.context[:ip] = "INTERNAL" # label internal requests
-    return req |> setupmiddleware(router, custommiddleware, history, middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
+    return req |> setupmiddleware(ctx, history, middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
 end
 
 
@@ -327,7 +357,7 @@ function DefaultSerializer(catch_errors::Bool; show_errors::Bool)
     end
 end
 
-function MetricsMiddleware(history::CircularDeque{HTTPTransaction}, catch_errors::Bool) 
+function MetricsMiddleware(history::CircularDeque{HTTPTransaction}, catch_errors::Bool, docspath::String) 
     return function(handler)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
@@ -485,8 +515,7 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
     end
 
     # strip off any regex patterns attached to our path parameters
-    registerschema(ctx.mountedfolders, ctx.taggedroutes,
-        route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
+    registerschema(ctx, route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
 
     # case 1.) The request handler is an anonymous function (don't parse out path params)
     if numfields <= 1
@@ -521,13 +550,15 @@ function setupswagger(ctx::Context)
     # It is already checked at call site
     #if isdocsenabled()
 
-    register(ctx, "GET", "$docspath", req -> swaggerhtml())
+    (; docspath, schemapath, schema) = ctx
 
-    register(ctx, "GET", "$docspath/swagger", req -> swaggerhtml())
+    register(ctx, "GET", "$docspath", req -> swaggerhtml("$docspath$schemapath"))
+
+    register(ctx, "GET", "$docspath/swagger", req -> swaggerhtml("$docspath$schemapath"))
     
-    register(ctx, "GET", "$docspath/redoc", req -> redochtml())
+    register(ctx, "GET", "$docspath/redoc", req -> redochtml("$docspath$schemapath"))
 
-    register(ctx, "GET", getschemapath(), req -> getschema())
+    register(ctx, "GET", "$docspath$schemapath", req -> schema)
     
     #end
 
@@ -542,13 +573,13 @@ function setupmetrics(ctx::Context, history::CircularDeque{HTTPTransaction})
         # only replace content if it's in a generated file
         ext = lowercase(last(splitext(filepath)))
         if ext in [".html", ".css", ".js"]
-            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$docspath/metrics/")
+            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$(ctx.docspath)/metrics/")
         else
             return content
         end
     end
 
-    staticfiles(ctx, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    staticfiles(ctx, "$DATA_PATH/dashboard", "$(ctx.docspath)/metrics"; loadfile=loadfile)
     
     function metrics(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
         lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
@@ -568,7 +599,7 @@ function setupmetrics(ctx::Context, history::CircularDeque{HTTPTransaction})
         )
     end
 
-    register(ctx, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
+    register(ctx, "GET", "$(ctx.docspath)/metrics/data/{window}/{latest}", metrics)
 end
 
 

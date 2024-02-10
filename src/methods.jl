@@ -35,6 +35,7 @@ function terminate()
     end
 end
 
+
 function serve(; 
       middleware::Vector=[], 
       handler=Core.stream_handler, 
@@ -45,10 +46,16 @@ function serve(;
       catch_errors=true, 
       docs=true,
       metrics=true, 
-      show_errors=true,               
+      show_errors=true,
       kwargs...) 
 
     try
+
+        if isdefined(@__MODULE__, :SCHEMA)
+            @warn "Use `schema` keyword argument instead"
+            schema = SCHEMA
+        end
+
 
         SERVER[] = Core.serve(CONTEXT[], HISTORY[]; 
                  middleware, handler, port, serialize, 
@@ -90,9 +97,12 @@ function serveparallel(;
     # Moved from `streamutil.jl` start method
     streamhandler = Core.StreamUtil.Handler()
 
-    #HANDLER[] = Handler()
-
     try
+
+        if isdefined(@__MODULE__, :SCHEMA)
+            @warn "Use `schema` keyword argument instead"
+            schema = SCHEMA
+        end
 
         SERVER[] = Core.serveparallel(CONTEXT[], HISTORY[], streamhandler;                  
                          middleware, handler, port, queuesize, serialize, 
@@ -249,8 +259,7 @@ dynamicfiles(
 ) = Core.dynamicfiles(CONTEXT[], folder, mountdir; headers, loadfile)
 
 
-internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(CONTEXT[].router, CONTEXT[].custommiddleware, HISTORY[], req; middleware, metrics, serialize, catch_errors)
-
+internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(CONTEXT[], HISTORY[], req; middleware, metrics, serialize, catch_errors)
 
 function router(prefix::String = ""; 
                 tags::Vector{String} = Vector{String}(), 
@@ -263,12 +272,48 @@ function router(prefix::String = "";
 end
 
 
+mergeschema(route::String, customschema::Dict) = Core.mergeschema(CONTEXT[].schema, route, customschema)
+mergeschema(customschema::Dict) = Core.mergeschema(CONTEXT[].schema, customschema)
+
+
+"""
+    getschema()
+
+Return the current internal schema for this app
+"""
+function getschema()
+    return CONTEXT[].schema
+end
+
 # Adding docstrings
 @doc (@doc(Core.AutoDoc.router)) router
 
-for method in [:serve, :serveparallel, :staticfiles, :dynamicfiles, :internalrequest]
+for method in [:serve, :serveparallel, :staticfiles, :dynamicfiles, :internalrequest, :mergeschema]
     eval(quote
         @doc (@doc(Core.$method)) $method
     end)
 end
 
+
+
+"""
+    setschema(customschema::Dict)
+
+Overwrites the entire internal schema
+"""
+function setschema(customschema::Dict)
+
+    CONTEXT[] = Context(CONTEXT[]; schema = customschema)
+
+    return
+end
+
+
+
+# Could be a good addition when one wants to set only one of the paths.
+function configdocs(; docspath = "/docs", schemapath = "/schema")
+
+    CONTEXT[] = Context(CONTEXT[]; docspath, schemapath)
+
+    return
+end

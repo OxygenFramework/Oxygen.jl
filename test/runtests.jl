@@ -783,6 +783,7 @@ mergeschema("/put",
 data = Dict("msg" => "this is not a valid schema dictionary")
 setschema(data)
 
+
 @assert getschema() === data
 
 terminate()

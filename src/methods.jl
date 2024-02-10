@@ -7,9 +7,6 @@ function resetstate()
     # reset this modules state variables 
     Core.timers[] = []         
 
-    # This no longer is done at this level
-    # perhaps it should be done at the topmost level
-
     SERVER[] = nothing
 
     CONTEXT[] = Context()
@@ -51,7 +48,6 @@ function serve(;
       show_errors=true,               
       kwargs...) 
 
-    
     try
 
         SERVER[] = Core.serve(CONTEXT[], HISTORY[]; 
@@ -275,3 +271,4 @@ for method in [:serve, :serveparallel, :staticfiles, :dynamicfiles, :internalreq
         @doc (@doc(Core.$method)) $method
     end)
 end
+

@@ -288,7 +288,7 @@ This function called right before serving the server, which is useful for perfor
 """
 function setup(ctx::Context, history::CircularDeque{HTTPTransaction}; docs::Bool, metrics::Bool)
     
-    docs ? enabledocs() : disabledocs()
+    #docs ? enabledocs() : disabledocs()
 
     if docs
         setupswagger(ctx)
@@ -518,17 +518,18 @@ end
 # add the swagger and swagger/schema routes 
 function setupswagger(ctx::Context)
 
-    if isdocsenabled()
+    # It is already checked at call site
+    #if isdocsenabled()
 
-        register(ctx, "GET", "$docspath", req -> swaggerhtml())
+    register(ctx, "GET", "$docspath", req -> swaggerhtml())
 
-        register(ctx, "GET", "$docspath/swagger", req -> swaggerhtml())
+    register(ctx, "GET", "$docspath/swagger", req -> swaggerhtml())
     
-        register(ctx, "GET", "$docspath/redoc", req -> redochtml())
+    register(ctx, "GET", "$docspath/redoc", req -> redochtml())
 
-        register(ctx, "GET", getschemapath(), req -> getschema())
+    register(ctx, "GET", getschemapath(), req -> getschema())
     
-    end
+    #end
 
 end
 

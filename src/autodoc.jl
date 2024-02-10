@@ -9,8 +9,7 @@ using ..Util
 using ..Core: Context, TaggedRoute
 
 export registerschema, docspath, schemapath, getschema, 
-    swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, 
-    enabledocs, disabledocs, isdocsenabled, registermountedfolder, 
+    swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, registermountedfolder, 
     getrepeatasks, hasmiddleware, compose, resetstatevariables, getcronjobs, Context
 
 const SWAGGER_VERSION = "swagger@5.7.2"
@@ -32,7 +31,7 @@ function defaultSchema()
     )
 end
 
-global enable_auto_docs = true 
+#global enable_auto_docs = true 
 global docspath = "/docs"
 global schemapath = "/schema"
 global cronjobs = []
@@ -47,7 +46,7 @@ function getcronjobs()
 end
 
 function resetstatevariables()
-    global enable_auto_docs = true 
+    #global enable_auto_docs = true 
     global docspath = "/docs"
     global schemapath = "/schema"
     global cronjobs = []
@@ -62,32 +61,32 @@ function registermountedfolder(mountedfolders::Set{String}, folder::String)
     push!(mountedfolders, "/$folder")
 end
 
-"""
-    isdocsenabled()
+# """
+#     isdocsenabled()
 
-Returns true if we should mount the api doc endpoints, false otherwise
-"""
-function isdocsenabled()
-    return enable_auto_docs
-end
+# Returns true if we should mount the api doc endpoints, false otherwise
+# """
+# function isdocsenabled()
+#     return enable_auto_docs
+# end
 
-"""
-    enabledocs()
+# """
+#     enabledocs()
 
-Tells the api to mount the api doc endpoints on startup
-"""
-function enabledocs()
-    global enable_auto_docs = true 
-end
+# Tells the api to mount the api doc endpoints on startup
+# """
+# function enabledocs()
+#     global enable_auto_docs = true 
+# end
 
-"""
-    disabledocs()
+# """
+#     disabledocs()
 
-Tells the api to SKIP mounting the api doc endpoints on startup
-"""
-function disabledocs()
-    global enable_auto_docs = false 
-end
+# Tells the api to SKIP mounting the api doc endpoints on startup
+# """
+# function disabledocs()
+#     global enable_auto_docs = false 
+# end
 
 """
     configdocs(docs_url::String = "/docs", schema_url::String = "/schema")

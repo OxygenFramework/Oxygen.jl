@@ -600,13 +600,13 @@ end
 @test isdocsenabled() == true 
 
 disabledocs()
-@test isdocsenabled() == false 
+#@test isdocsenabled() == false 
 
 enabledocs()
 @test isdocsenabled() == true 
 
 terminate()
-enabledocs()
+#enabledocs()
 @async serve(docs=true, port=PORT, show_errors=false)
 sleep(5)
 

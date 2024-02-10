@@ -1,13 +1,12 @@
 module AutoDoc 
 using HTTP
-using HTTP: Router
 using Dates
 using DataStructures
 using Reexport
 using RelocatableFolders
 
-include("util.jl"); using .Util 
-include("cron.jl"); @reexport using .Cron
+using ..Util
+using ..Core: Context, TaggedRoute
 
 export registerschema, docspath, schemapath, getschema, 
     swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, 
@@ -21,22 +20,6 @@ const REDOC_VERSION = "redoc@2.1.2"
 # package is used with PackageCompiler.jl
 const DATA_PATH = @path abspath(joinpath(@__DIR__, "..", "data"))
 
-
-struct TaggedRoute 
-    httpmethods::Vector{String} 
-    tags::Vector{String}
-end
-
-struct Context
-    router::Router
-    mountedfolders::Set{String}
-    taggedroutes::Dict{String, TaggedRoute}
-    custommiddleware::Dict{String, Tuple}
-    repeattasks::Vector
-end
-
-Context(router) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}(), [])
-Context() = Context(Router())
 
 function defaultSchema()
     Dict(
@@ -52,17 +35,12 @@ end
 global enable_auto_docs = true 
 global docspath = "/docs"
 global schemapath = "/schema"
-#global repeattasks = [] # TODO: move to the context
 global cronjobs = []
 global schema = defaultSchema()
 
 function getschemapath()::String
     return "$docspath$schemapath"
 end
-
-# function getrepeatasks()
-#     return repeattasks
-# end
 
 function getcronjobs()
     return cronjobs

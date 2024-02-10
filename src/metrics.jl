@@ -6,8 +6,7 @@ using Dates
 using DataStructures
 using Statistics
 using RelocatableFolders
-
-include("util.jl"); using .Util
+using ..Util
 
 export MetricsMiddleware, get_history, clear_history, push_history, 
     HTTPTransaction,

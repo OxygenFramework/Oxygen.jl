@@ -11,17 +11,34 @@ using Suppressor
 using Reexport
 using RelocatableFolders
 
-using DataStructures: CircularDeque
+
+struct TaggedRoute 
+    httpmethods::Vector{String} 
+    tags::Vector{String}
+end
+
+struct Context
+    router::Router
+    mountedfolders::Set{String}
+    taggedroutes::Dict{String, TaggedRoute}
+    custommiddleware::Dict{String, Tuple}
+    repeattasks::Vector
+end
+
+Context(router) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}(), [])
+Context() = Context(Router())
 
 
 include("util.jl");         @reexport using .Util
+include("cron.jl");         @reexport using .Cron
 include("streamutil.jl");   @reexport using .StreamUtil
 include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 
+
+using DataStructures: CircularDeque
 using .Metrics: HTTPTransaction
 using .StreamUtil: Handler
-using .AutoDoc: TaggedRoute, Context
 
 export  @cron, 
         staticfiles, dynamicfiles,

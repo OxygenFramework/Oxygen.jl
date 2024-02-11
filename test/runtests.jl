@@ -599,7 +599,7 @@ end
 # should be set to true by default
 @test isdocsenabled() == true 
 
-disabledocs()
+@test_throws "" disabledocs()
 #@test isdocsenabled() == false 
 
 enabledocs()

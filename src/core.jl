@@ -28,6 +28,7 @@ struct Context
     schemapath::String
     schema::Dict
     job_definitions::Set
+    cronjobs::Vector
 end
 
 # # Created within a `serve` at runtime. Keyword arguments may be used to initialize some of the objects outside.
@@ -56,22 +57,20 @@ using .Metrics: HTTPTransaction
 using .StreamUtil: Handler
 using .AutoDoc: defaultSchema
 
-Context(; router=Router(), docspath="/docs", schemapath="/schema", schema=defaultSchema()) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}(), [], docspath, schemapath, schema, Set())
+Context(; router=Router(), docspath="/docs", schemapath="/schema", schema=defaultSchema()) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}(), [], docspath, schemapath, schema, Set(), [])
 
 
 # To make it cleaner a macro could be used
 function Context(ctx::Context; router=ctx.router, mountedfolders=ctx.mountedfolders, taggedroutes=ctx.taggedroutes, 
         custommiddleware=ctx.custommiddleware, repeattasks=ctx.repeattasks, docspath=ctx.docspath,
-        schemapath=ctx.schemapath, schema=ctx.schema, job_definitions=ctx.job_definitions)
+        schemapath=ctx.schemapath, schema=ctx.schema, job_definitions=ctx.job_definitions, cronjobs=ctx.cronjobs)
 
     return Context(router, mountedfolders, taggedroutes, custommiddleware, repeattasks, 
-                   docspath, schemapath, schema, job_definitions)
+                   docspath, schemapath, schema, job_definitions, cronjobs)
 end
 
 
-
-export  @cron, 
-        staticfiles, dynamicfiles,
+export  staticfiles, dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest,
         resetstate, starttasks, stoptasks
 
@@ -136,11 +135,15 @@ end
 Register all cron jobs 
 """
 function registercronjobs(ctx::Context, history::CircularDeque{HTTPTransaction})
-    for job in getcronjobs()
+    #for job in getcronjobs()
+    for job in ctx.cronjobs
         path, httpmethod, expression = job
-        @cron expression path function()
-            internalrequest(ctx, history, HTTP.Request(httpmethod, path))
-        end
+
+        cron(ctx.job_definitions, expression, path, () -> internalrequest(ctx, history, HTTP.Request(httpmethod, path)))
+
+        # @cron expression path function()
+        #     internalrequest(ctx, history, HTTP.Request(httpmethod, path))
+        # end
     end
 end 
 
@@ -282,7 +285,7 @@ function startserver(ctx::Context, history::CircularDeque{HTTPTransaction}, host
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     starttasks(ctx, history)
     registercronjobs(ctx, history)
-    startcronjobs()
+    startcronjobs(ctx.job_definitions)
     if !async     
         try 
             wait(server)

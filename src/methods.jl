@@ -11,9 +11,9 @@ function resetstate()
 
     CONTEXT[] = Context()
 
-    Core.resetstatevariables()
+    # Core.resetstatevariables()
     # reset cron module state
-    Core.resetcronstate()
+    # Core.resetcronstate()
     # clear metrics
     empty!(HISTORY[])
 end
@@ -309,7 +309,6 @@ function setschema(customschema::Dict)
 end
 
 
-
 # Could be a good addition when one wants to set only one of the paths.
 function configdocs(; docspath = "/docs", schemapath = "/schema")
 
@@ -317,3 +316,67 @@ function configdocs(; docspath = "/docs", schemapath = "/schema")
 
     return
 end
+
+
+# """
+#     @cron(expression::String, func::Function)
+
+# Registers a function with a cron expression. This will extract either the function name 
+# or the random Id julia assigns to each lambda function. 
+# """
+# macro cron(expression, func)
+#     quote 
+#         local f = $(esc(func))
+#         local job_definition = ($(esc(expression)), "$f", f)
+#         local job_id = hash(job_definition)
+#         local job = (job_id, job_definition...)
+#         push!($(CONTEXT[].job_definitions), job)  
+#     end
+# end
+
+
+"""
+    @cron(expression::String, func::Function)
+
+Registers a function with a cron expression. This will extract either the function name 
+or the random Id julia assigns to each lambda function. 
+"""
+macro cron(expression, func)
+    quote 
+        Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), "$(esc(func))", $(esc(func)))
+    end
+end
+
+
+
+"""
+    @cron(expression::String, name::String, func::Function)
+
+This variation Provide another way manually "name" a registered function. This information 
+is used by the server on startup to log out all cron jobs.
+"""
+macro cron(expression, name, func)
+    quote 
+        Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), "$(esc(name))", $(esc(func)))
+    end
+end
+
+
+"""
+    clearcronjobs()
+
+Clear any internal reference's to prexisting cron jobs
+"""
+function clearcronjobs()
+    empty!(CONTEXT[].job_definitions[])
+end
+
+
+"""
+Reset the globals in this module 
+"""
+function resetcronstate()
+    Core.Cron.stopcronjobs()
+    clearcronjobs()
+end
+

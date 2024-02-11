@@ -1,57 +1,14 @@
 module Cron
 
 using Dates
-export @cron, startcronjobs, stopcronjobs, clearcronjobs, resetcronstate
+export startcronjobs, stopcronjobs, cron
 
 # The vector of all running tasks
 global const jobs = Ref{Set}(Set())
 
-# Vector of cron expressions and lambda
-global const job_definitions = Ref{Set}(Set())
-
 # The global flag used to stop all tasks
 global const run = Ref{Bool}(false)
 
-# suggestion: "random Id" -> "unique identifier"
-"""
-    @cron(expression::String, func::Function)
-
-Registers a function with a cron expression. This will extract either the function name 
-or the random Id julia assigns to each lambda function. 
-"""
-macro cron(expression, func)
-    quote 
-        local f = $(esc(func))
-        local job_definition = ($(esc(expression)), "$f", f)
-        local job_id = hash(job_definition)
-        local job = (job_id, job_definition...)
-        push!($job_definitions[], job)  
-    end
-end
-
-"""
-    @cron(expression::String, name::String, func::Function)
-
-This variation Provide another way manually "name" a registered function. This information 
-is used by the server on startup to log out all cron jobs.
-"""
-macro cron(expression, name, func)
-    quote 
-        local job_definition = ($(esc(expression)), $(esc(name)), $(esc(func)))
-        local job_id = hash(job_definition)
-        local job = (job_id, job_definition...)
-        push!($job_definitions[], job)
-    end
-end
-
-"""
-    clearcronjobs()
-
-Clear any internal reference's to prexisting cron jobs
-"""
-function clearcronjobs()
-    empty!(job_definitions[])
-end
 
 """
     stopcronjobs()
@@ -64,13 +21,14 @@ function stopcronjobs()
     empty!(jobs[])
 end
 
-"""
-Reset the globals in this module 
-"""
-function resetcronstate()
-    stopcronjobs()
-    clearcronjobs()
+
+function cron(job_definitions, expression, name, f)
+    job_definition = (expression, name, f)
+    job_id = hash(job_definition)
+    job = (job_id, job_definition...)
+    push!(job_definitions, job)
 end
+
 
 """
     startcronjobs()
@@ -78,9 +36,9 @@ end
 Start all the cron job_definitions within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
 """
-function startcronjobs()
+function startcronjobs(job_definitions)
     
-    if isempty(job_definitions[])
+    if isempty(job_definitions)
         # printstyled("[ Cron: There are no registered cron jobs to start\n", color = :green, bold = true)  
         return 
     end
@@ -88,9 +46,9 @@ function startcronjobs()
     run[] = true
 
     println()
-    printstyled("[ Starting $(length(job_definitions[])) Cron Job(s)\n", color = :green, bold = true)  
+    printstyled("[ Starting $(length(job_definitions)) Cron Job(s)\n", color = :green, bold = true)  
 
-    for (job_id, expression, name, func) in job_definitions[]
+    for (job_id, expression, name, func) in job_definitions
 
         # prevent duplicate jobs from getting ran
         if job_id in jobs[]

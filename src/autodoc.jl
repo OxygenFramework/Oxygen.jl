@@ -10,7 +10,7 @@ using ..Core: Context, TaggedRoute
 
 export registerschema, 
     swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, registermountedfolder, 
-    getrepeatasks, hasmiddleware, compose, resetstatevariables, getcronjobs, Context
+    getrepeatasks, hasmiddleware, compose, resetstatevariables, Context
 
 const SWAGGER_VERSION = "swagger@5.7.2"
 const REDOC_VERSION = "redoc@2.1.2"
@@ -34,23 +34,23 @@ end
 #global docspath = "/docs"
 #global schemapath = "/schema"
 #global schema = defaultSchema()
-global cronjobs = []
+#global cronjobs = []
 
 # function getschemapath()::String
 #     return "$docspath$schemapath"
 # end
 
-function getcronjobs()
-    return cronjobs
-end
+# function getcronjobs()
+#     return cronjobs
+# end
 
-function resetstatevariables()
-    #global docspath = "/docs"
-    #global schemapath = "/schema"
-    global cronjobs = []
-    #global schema = defaultSchema()
-    return
-end
+# function resetstatevariables()
+#     #global docspath = "/docs"
+#     #global schemapath = "/schema"
+#     #global cronjobs = []
+#     #global schema = defaultSchema()
+#     return
+# end
 
 """
 Registers the folder as a source for mounting static files
@@ -231,8 +231,8 @@ function createrouter(ctx::Context, prefix::String,
              if !isnothing(cron) && !isempty(cron)
                 task = (path, httpmethod, cron)
                 # don't add duplicate cron jobs
-                if isnothing(findfirst(x -> x === task, cronjobs))
-                    push!(cronjobs, task)
+                if isnothing(findfirst(x -> x === task, ctx.cronjobs))
+                    push!(ctx.cronjobs, task)
                 end
             end
 

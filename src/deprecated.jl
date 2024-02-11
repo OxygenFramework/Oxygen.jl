@@ -5,7 +5,7 @@ function enabledocs()
 end
 
 function disabledocs()
-    @warn "This function is deprecated in favour of keyword argument `docs` in serve"
+    error("This function is deprecated in favour of keyword argument `docs` in serve")
 end
 
 function isdocsenabled()
@@ -15,7 +15,6 @@ end
 
 # I could check if it is defined and set it that way
 # global SCHEMA = Core.AutoDoc.defaultSchema()
-
 
 
 """

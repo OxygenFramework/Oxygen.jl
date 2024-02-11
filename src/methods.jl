@@ -4,17 +4,9 @@
 Reset all the internal state variables
 """
 function resetstate()
-    # reset this modules state variables 
-    Core.timers[] = []         
-
+    Oxygen.Core.timers[] = []         
     SERVER[] = nothing
-
-    CONTEXT[] = Context()
-
-    # Core.resetstatevariables()
-    # reset cron module state
-    # Core.resetcronstate()
-    # clear metrics
+    CONTEXT[] = Oxygen.Core.Context()
     empty!(HISTORY[])
 end
 
@@ -27,9 +19,9 @@ stops the webserver immediately
 function terminate()
     if !isnothing(SERVER[]) && isopen(SERVER[])
         # stop background cron jobs
-        Core.stopcronjobs()
+        Oxygen.Core.stopcronjobs()
         # stop background tasks
-        Core.stoptasks()
+        Oxygen.Core.stoptasks()
         # stop server
         close(SERVER[])
     end
@@ -38,7 +30,7 @@ end
 
 function serve(; 
       middleware::Vector=[], 
-      handler=Core.stream_handler, 
+      handler=Oxygen.Core.stream_handler, 
       host="127.0.0.1", 
       port=8080, 
       serialize=true, 
@@ -51,13 +43,7 @@ function serve(;
 
     try
 
-        if isdefined(@__MODULE__, :SCHEMA)
-            @warn "Use `schema` keyword argument instead"
-            schema = SCHEMA
-        end
-
-
-        SERVER[] = Core.serve(CONTEXT[], HISTORY[]; 
+        SERVER[] = Oxygen.Core.serve(CONTEXT[], HISTORY[]; 
                  middleware, handler, port, serialize, 
                  async, catch_errors, show_errors, docs, metrics, kwargs...)
 
@@ -79,10 +65,9 @@ function serve(;
 end
 
 
-
 function serveparallel(; 
                        middleware::Vector=[], 
-                       handler=Core.stream_handler, 
+                       handler=Oxygen.Core.stream_handler, 
                        host="127.0.0.1", 
                        port=8080, 
                        queuesize=1024, 
@@ -94,17 +79,11 @@ function serveparallel(;
                        show_errors=true,
                        kwargs...)
 
-    # Moved from `streamutil.jl` start method
-    streamhandler = Core.StreamUtil.Handler()
+    streamhandler = Oxygen.Core.StreamUtil.Handler()
 
     try
 
-        if isdefined(@__MODULE__, :SCHEMA)
-            @warn "Use `schema` keyword argument instead"
-            schema = SCHEMA
-        end
-
-        SERVER[] = Core.serveparallel(CONTEXT[], HISTORY[], streamhandler;                  
+        SERVER[] = Oxygen.Core.serveparallel(CONTEXT[], HISTORY[], streamhandler;                  
                          middleware, handler, port, queuesize, serialize, 
                          async, catch_errors, show_errors, docs, metrics, kwargs...)
 
@@ -116,7 +95,7 @@ function serveparallel(;
         if !async 
             terminate()
             # stop any background worker threads
-            Core.StreamUtil.stop(streamhandler)
+            Oxygen.Core.StreamUtil.stop(streamhandler)
         end
 
         # only reset state on exit if we aren't running asynchronously & are running it interactively 
@@ -185,12 +164,11 @@ macro route(methods, path, func)
 end
 
 
-
 ### Core Routing Functions ###
 
 function route(methods::Vector{String}, path::Union{String,Function}, func::Function)
     for method in methods
-        Core.register(CONTEXT[], method, path, func)
+        Oxygen.Core.register(CONTEXT[], method, path, func)
     end
 end
 
@@ -199,8 +177,8 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 
 ### Core Routing Functions Support for do..end Syntax ###
 
-Base.get(func::Function, path::String)      = route(["GET"], path, func)
-Base.get(func::Function, path::Function)    = route(["GET"], path, func)
+get(func::Function, path::String)           = route(["GET"], path, func)
+get(func::Function, path::Function)         = route(["GET"], path, func)
 
 post(func::Function, path::String)          = route(["POST"], path, func)
 post(func::Function, path::Function)        = route(["POST"], path, func)
@@ -248,7 +226,7 @@ staticfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Core.staticfiles(CONTEXT[], folder, mountdir; headers, loadfile)
+) = Oxygen.Core.staticfiles(CONTEXT[], folder, mountdir; headers, loadfile)
 
 
 dynamicfiles(
@@ -256,10 +234,10 @@ dynamicfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Core.dynamicfiles(CONTEXT[], folder, mountdir; headers, loadfile)
+) = Oxygen.Core.dynamicfiles(CONTEXT[], folder, mountdir; headers, loadfile)
 
 
-internalrequest(req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Core.internalrequest(CONTEXT[], HISTORY[], req; middleware, metrics, serialize, catch_errors)
+internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Oxygen.Core.internalrequest(CONTEXT[], HISTORY[], req; middleware, metrics, serialize, catch_errors)
 
 function router(prefix::String = ""; 
                 tags::Vector{String} = Vector{String}(), 
@@ -268,12 +246,12 @@ function router(prefix::String = "";
                 cron::Union{String, Nothing} = nothing)
 
 
-    return Core.AutoDoc.router(CONTEXT[], prefix; tags, middleware, interval, cron)
+    return Oxygen.Core.AutoDoc.router(CONTEXT[], prefix; tags, middleware, interval, cron)
 end
 
 
-mergeschema(route::String, customschema::Dict) = Core.mergeschema(CONTEXT[].schema, route, customschema)
-mergeschema(customschema::Dict) = Core.mergeschema(CONTEXT[].schema, customschema)
+mergeschema(route::String, customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].schema, route, customschema)
+mergeschema(customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].schema, customschema)
 
 
 """
@@ -286,14 +264,13 @@ function getschema()
 end
 
 # Adding docstrings
-@doc (@doc(Core.AutoDoc.router)) router
+@doc (@doc(Oxygen.Core.AutoDoc.router)) router
 
 for method in [:serve, :serveparallel, :staticfiles, :dynamicfiles, :internalrequest, :mergeschema]
     eval(quote
-        @doc (@doc(Core.$method)) $method
+        @doc (@doc(Oxygen.Core.$method)) $method
     end)
 end
-
 
 
 """
@@ -309,30 +286,17 @@ function setschema(customschema::Dict)
 end
 
 
-# Could be a good addition when one wants to set only one of the paths.
-function configdocs(; docspath = "/docs", schemapath = "/schema")
+"""
+    configdocs(docspath::String = "/docs", schemapath::String = "/schema")
+
+Configure the default docs and schema endpoints
+"""
+function configdocs(docspath::String = "/docs", schemapath::String = "/schema")
 
     CONTEXT[] = Context(CONTEXT[]; docspath, schemapath)
 
     return
 end
-
-
-# """
-#     @cron(expression::String, func::Function)
-
-# Registers a function with a cron expression. This will extract either the function name 
-# or the random Id julia assigns to each lambda function. 
-# """
-# macro cron(expression, func)
-#     quote 
-#         local f = $(esc(func))
-#         local job_definition = ($(esc(expression)), "$f", f)
-#         local job_id = hash(job_definition)
-#         local job = (job_id, job_definition...)
-#         push!($(CONTEXT[].job_definitions), job)  
-#     end
-# end
 
 
 """
@@ -343,10 +307,9 @@ or the random Id julia assigns to each lambda function.
 """
 macro cron(expression, func)
     quote 
-        Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), "$(esc(func))", $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), "$(esc(func))", $(esc(func)))
     end
 end
-
 
 
 """
@@ -357,7 +320,7 @@ is used by the server on startup to log out all cron jobs.
 """
 macro cron(expression, name, func)
     quote 
-        Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), "$(esc(name))", $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), "$(esc(name))", $(esc(func)))
     end
 end
 
@@ -368,7 +331,7 @@ end
 Clear any internal reference's to prexisting cron jobs
 """
 function clearcronjobs()
-    empty!(CONTEXT[].job_definitions[])
+    empty!(CONTEXT[].job_definitions)
 end
 
 
@@ -376,7 +339,6 @@ end
 Reset the globals in this module 
 """
 function resetcronstate()
-    Core.Cron.stopcronjobs()
+    Oxygen.Core.Cron.stopcronjobs()
     clearcronjobs()
 end
-

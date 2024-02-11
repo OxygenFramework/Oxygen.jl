@@ -70,6 +70,10 @@ function Context(ctx::Context; router=ctx.router, mountedfolders=ctx.mountedfold
 end
 
 
+const History = CircularDeque{HTTPTransaction}
+const Server = HTTP.Server
+
+
 export  staticfiles, dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest,
         resetstate, starttasks, stoptasks
@@ -320,8 +324,6 @@ end
 This function called right before serving the server, which is useful for performing any additional setup
 """
 function setup(ctx::Context, history::CircularDeque{HTTPTransaction}; docs::Bool, metrics::Bool)
-    
-    #docs ? enabledocs() : disabledocs()
 
     if docs
         setupswagger(ctx)

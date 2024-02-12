@@ -5,7 +5,7 @@ function enabledocs()
 end
 
 function disabledocs()
-    error("This function is deprecated in favour of keyword argument `docs` in serve")
+    throw("This function is deprecated in favour of keyword argument `docs` in serve")
 end
 
 function isdocsenabled()

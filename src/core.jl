@@ -32,16 +32,17 @@ struct Context
 end
 
 # # Created within a `serve` at runtime. Keyword arguments may be used to initialize some of the objects outside.
-# mutable struct Runtime
-#     run::Bool
-#     jobs::Ref{Set}(Set())
+# struct Runtime
+#     run::Ref{Bool}
+#     jobs::Set
 #     timers::Vector{Timer}
-#     history::CircularDeque{HTTPTransaction}}(CircularDeque{HTTPTransaction}(1_000_000)
+#     history::CircularDeque{HTTPTransaction}
 #     streamhandler::Union{Nothing, StreamUtil.Handler}
 # end
 
 # # Returned from `serve` when async is enabled.
 # struct Service
+#     context::Context
 #     runtime::Runtime
 #     server::HTTP.Server
 # end
@@ -144,10 +145,6 @@ function registercronjobs(ctx::Context, history::CircularDeque{HTTPTransaction})
         path, httpmethod, expression = job
 
         cron(ctx.job_definitions, expression, path, () -> internalrequest(ctx, history, HTTP.Request(httpmethod, path)))
-
-        # @cron expression path function()
-        #     internalrequest(ctx, history, HTTP.Request(httpmethod, path))
-        # end
     end
 end 
 
@@ -246,10 +243,10 @@ function serveparallel(ctx::Context, history::CircularDeque{HTTPTransaction}, _h
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, metrics, show_errors)
 
-    server = startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    return startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
-    return server # this value is returned if startserver() is ran in async mode
+    #return server # this value is returned if startserver() is ran in async mode
 end
 
 
@@ -555,7 +552,10 @@ function setupswagger(ctx::Context)
     # It is already checked at call site
     #if isdocsenabled()
 
-    (; docspath, schemapath, schema) = ctx
+    # waiting for next LTS
+    #(; docspath, schemapath, schema) = ctx
+
+    (docspath, schemapath, schema) = ctx.docspath, ctx.schemapath, ctx.schema
 
     register(ctx, "GET", "$docspath", req -> swaggerhtml("$docspath$schemapath"))
 

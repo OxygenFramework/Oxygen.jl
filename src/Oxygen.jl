@@ -4,7 +4,7 @@ include("core.jl"); using .Core
 # Load any optional extensions
 include("extensions/load.jl");
 
-import HTTP: Request
+import HTTP: Request, Response
 using .Core: Context, History, Server
 
 const CONTEXT = Ref{Context}(Context())
@@ -40,5 +40,5 @@ export @get, @post, @put, @patch, @delete, @route, @cron,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, starttasks, stoptasks,
         resetstate, startcronjobs, stopcronjobs, clearcronjobs, 
-        @oxidise, Request # frequently needed when Oxygen is used
+        @oxidise, Request, Response # frequently needed when Oxygen is used
 end

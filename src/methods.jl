@@ -333,12 +333,3 @@ Clear any internal reference's to prexisting cron jobs
 function clearcronjobs()
     empty!(CONTEXT[].job_definitions)
 end
-
-
-"""
-Reset the globals in this module 
-"""
-function resetcronstate()
-    Oxygen.Core.Cron.stopcronjobs()
-    clearcronjobs()
-end

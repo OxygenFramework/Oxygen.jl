@@ -884,5 +884,6 @@ end
 
 terminate()
 resetstate()
+clearcronjobs()
 
 end 

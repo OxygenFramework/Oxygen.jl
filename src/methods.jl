@@ -245,7 +245,6 @@ function router(prefix::String = "";
                 interval::Union{Real, Nothing} = nothing,
                 cron::Union{String, Nothing} = nothing)
 
-
     return Oxygen.Core.AutoDoc.router(CONTEXT[], prefix; tags, middleware, interval, cron)
 end
 

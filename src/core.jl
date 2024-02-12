@@ -61,13 +61,10 @@ using .AutoDoc: defaultSchema
 Context(; router=Router(), docspath="/docs", schemapath="/schema", schema=defaultSchema()) = Context(router, Set{String}(), Dict{String, TaggedRoute}(), Dict{String, Tuple}(), [], docspath, schemapath, schema, Set(), [])
 
 
-# To make it cleaner a macro could be used
-function Context(ctx::Context; router=ctx.router, mountedfolders=ctx.mountedfolders, taggedroutes=ctx.taggedroutes, 
-        custommiddleware=ctx.custommiddleware, repeattasks=ctx.repeattasks, docspath=ctx.docspath,
-        schemapath=ctx.schemapath, schema=ctx.schema, job_definitions=ctx.job_definitions, cronjobs=ctx.cronjobs)
-
-    return Context(router, mountedfolders, taggedroutes, custommiddleware, repeattasks, 
-                   docspath, schemapath, schema, job_definitions, cronjobs)
+@eval begin
+    function Context(ctx::Context; $([Expr(:kw ,k, :(ctx.$k)) for k in fieldnames(Context)]...))
+        return Context($(fieldnames(Context)...))
+    end
 end
 
 

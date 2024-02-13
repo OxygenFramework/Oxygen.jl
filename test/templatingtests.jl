@@ -97,13 +97,13 @@ Well, 6000.0 dollars, after taxes.
 
 
         @testset "mustache() from file with no content type" begin 
-            render = mustache(open("./content/mustache_template.txt"))
+            render = open(mustache, "./content/mustache_template.txt")
             response = render(data)
             @test response.body |> String |> clean_output == expected_output
         end
 
         @testset "mustache() from file with content type" begin 
-            render = mustache(open("./content/mustache_template.txt"), mime_type="text/plain")
+            render = open(io -> mustache(io; mime_type="text/plain"), "./content/mustache_template.txt")
             response = render(data)
             @test response.body |> String |> clean_output == expected_output
         end
@@ -240,7 +240,7 @@ Well, 6000.0 dollars, after taxes.
             @test result.body |> String |> clean_output == expected_output
 
             # with explicit content type
-            render = otera(open("./content/otera_template.html"); mime_type="text/html")
+            render = open(io -> otera(io; mime_type="text/html"), "./content/otera_template.html")
             result = render(data)
             @test result.body |> String |> clean_output == expected_output
         end

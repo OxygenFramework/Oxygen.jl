@@ -6,8 +6,11 @@ Reset all the internal state variables
 function resetstate()
     Oxygen.Core.timers[] = []         
     SERVER[] = nothing
-    CONTEXT[] = Oxygen.Core.Context()
     empty!(HISTORY[])
+
+    if (@__MODULE__) == Oxygen
+        CONTEXT[] = Oxygen.Core.Context()
+    end
 end
 
 # Nothing to do for the router

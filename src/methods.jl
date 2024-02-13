@@ -29,23 +29,33 @@ end
 
 
 function serve(; 
-      middleware::Vector=[], 
-      handler=Oxygen.Core.stream_handler, 
-      host="127.0.0.1", 
-      port=8080, 
-      serialize=true, 
-      async=false, 
-      catch_errors=true, 
-      docs=true,
-      metrics=true, 
-      show_errors=true,
-      kwargs...) 
+    middleware  = [], 
+    handler     = Oxygen.Core.stream_handler, 
+    host        = "127.0.0.1", 
+    port        = 8080, 
+    serialize   = true, 
+    async       = false, 
+    catch_errors= true, 
+    docs        = true,
+    metrics     = true, 
+    show_errors = true,
+    kwargs...) 
 
     try
 
         SERVER[] = Oxygen.Core.serve(CONTEXT[], HISTORY[]; 
-                 middleware, handler, port, serialize, 
-                 async, catch_errors, show_errors, docs, metrics, kwargs...)
+            middleware  = middleware,
+            handler     = handler,
+            host        = host, 
+            port        = port, 
+            serialize   = serialize, 
+            async       = async, 
+            catch_errors= catch_errors, 
+            docs        = docs,
+            metrics     = metrics,
+            show_errors = show_errors,
+            kwargs...
+        )
 
         return SERVER[]
 
@@ -66,27 +76,37 @@ end
 
 
 function serveparallel(; 
-                       middleware::Vector=[], 
-                       handler=Oxygen.Core.stream_handler, 
-                       host="127.0.0.1", 
-                       port=8080, 
-                       queuesize=1024, 
-                       serialize=true, 
-                       async=false, 
-                       catch_errors=true,
-                       docs=true,
-                       metrics=true, 
-                       show_errors=true,
-                       kwargs...)
-
-    streamhandler = Oxygen.Core.StreamUtil.Handler()
+    middleware  = [], 
+    handler     = Oxygen.Core.stream_handler, 
+    host        = "127.0.0.1", 
+    port        = 8080, 
+    queuesize   = 1024, 
+    serialize   = true, 
+    async       = false, 
+    catch_errors= true,
+    docs        = true,
+    metrics     = true, 
+    show_errors = true,
+    kwargs...)
+    
+    parallelhandler = Oxygen.Core.StreamUtil.Handler()
 
     try
-
-        SERVER[] = Oxygen.Core.serveparallel(CONTEXT[], HISTORY[], streamhandler;                  
-                         middleware, handler, port, queuesize, serialize, 
-                         async, catch_errors, show_errors, docs, metrics, kwargs...)
-
+        SERVER[] = Oxygen.Core.serveparallel(CONTEXT[], HISTORY[], parallelhandler;
+            middleware  = middleware,
+            handler     = handler, 
+            host        = host,
+            port        = port,
+            queuesize   = queuesize,
+            serialize   = serialize, 
+            async       = async, 
+            catch_errors= catch_errors,
+            docs        = docs,
+            metrics     = metrics, 
+            show_errors = show_errors,
+            kwargs...
+        )
+        
         return SERVER[]
 
     finally 

@@ -5,31 +5,17 @@ using DataStructures
 using Reexport
 using RelocatableFolders
 
+using ..Constants
 using ..Util
-using ..Core: Context, TaggedRoute
+using ..Core: Context
+using ..Types: TaggedRoute
 
 export registerschema, 
     swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, registermountedfolder, 
     getrepeatasks, hasmiddleware, compose, resetstatevariables, Context
 
-const SWAGGER_VERSION = "swagger@5.7.2"
-const REDOC_VERSION = "redoc@2.1.2"
-
-# Generate a reliable path to our internal data folder that works when the 
-# package is used with PackageCompiler.jl
-const DATA_PATH = @path abspath(joinpath(@__DIR__, "..", "data"))
-
-
-function defaultSchema()
-    Dict(
-        "openapi" => "3.0.0",
-        "info" => Dict(
-            "title" => "API Overview",
-            "version" => "1.0.0"
-        ),
-        "paths" => Dict()
-    )
-end
+const SWAGGER_VERSION   = "swagger@5.7.2"
+const REDOC_VERSION     = "redoc@2.1.2"
 
 #global docspath = "/docs"
 #global schemapath = "/schema"

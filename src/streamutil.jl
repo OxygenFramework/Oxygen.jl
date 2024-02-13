@@ -4,7 +4,7 @@ module StreamUtil
 using Sockets
 using HTTP
 
-export start, stop
+export start, stop, Handler
 
 struct WebRequest
     http::HTTP.Stream

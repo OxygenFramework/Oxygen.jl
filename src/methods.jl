@@ -8,6 +8,7 @@ function resetstate()
     SERVER[] = nothing
     empty!(HISTORY[])
 
+    # prevent context reset when created at compile-time
     if (@__MODULE__) == Oxygen
         CONTEXT[] = Oxygen.Core.Context()
     end

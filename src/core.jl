@@ -134,7 +134,7 @@ function stream_handler(middleware::Function)
 end 
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, showbanner=true, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -147,7 +147,8 @@ function serve(;
     async=false, 
     catch_errors=true, 
     docs=true,
-    metrics=true, 
+    metrics=true,
+    showbanner=true, 
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
@@ -158,14 +159,14 @@ function serve(;
         metrics=metrics
     )
 
-    startserver(host, port, docs, metrics, kwargs, async, (kwargs) ->  
+    startserver(host, port, docs, metrics, kwargs, async, showbanner, (kwargs) ->  
         HTTP.serve!(handler(configured_middelware), host, port; kwargs...)
     )
     server[] # this value is returned if startserver() is ran in async mode
 end
 
 """
-    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
+    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, showbanner=true, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
@@ -182,6 +183,7 @@ function serveparallel(;
     catch_errors=true,
     docs=true,
     metrics=true, 
+    showbanner=true,
     kwargs...)
 
     # compose our middleware ahead of time (so it only has to be built up once)
@@ -192,7 +194,7 @@ function serveparallel(;
         metrics=metrics
     )
 
-    startserver(host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    startserver(host, port, docs, metrics, kwargs, async, showbanner, (kwargs) -> 
         StreamUtil.start(handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
     )
     server[] # this value is returned if startserver() is ran in async mode
@@ -227,9 +229,9 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(host, port, docs, metrics, kwargs, async, start)
+function startserver(host, port, docs, metrics, kwargs, async, showbanner, start)
     try
-        serverwelcome(host, port, docs, metrics)
+        showbanner && serverwelcome(host, port, docs, metrics)
         setup(docs, metrics)
         server[] = start(preprocesskwargs(kwargs))
         starttasks()

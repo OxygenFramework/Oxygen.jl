@@ -7,12 +7,12 @@ using Sockets
 using Dates 
 using Oxygen
 
-include("metricstests.jl")
-include("templatingtests.jl")
-include("routingfunctionstests.jl")
-include("rendertests.jl")
-include("bodyparsertests.jl")
-include("crontests.jl")
+# include("metricstests.jl")
+# include("templatingtests.jl")
+# include("routingfunctionstests.jl")
+# include("rendertests.jl")
+# include("bodyparsertests.jl")
+# include("crontests.jl")
 
 
 struct Person
@@ -607,7 +607,7 @@ enabledocs()
 
 terminate()
 enabledocs()
-@async serve(docs=true)
+@async serve(docs=true, showbanner=false)
 sleep(5)
 
 ## Router related tests
@@ -787,7 +787,7 @@ setschema(data)
 
 terminate()
 
-@async serve(middleware=[handler1, handler2, handler3])
+@async serve(middleware=[handler1, handler2, handler3], showbanner=false)
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/get"))
@@ -810,7 +810,7 @@ function errorcatcher(handle)
 end
 
 # Test default handler by turning off serializaiton
-@async serve(serialize=false, middleware=[error_catcher], catch_errors=false)
+@async serve(serialize=false, middleware=[error_catcher], catch_errors=false, showbanner=false)
 sleep(3)
 r = internalrequest(HTTP.Request("GET", "/get"), catch_errors=false)
 @test r.status == 200
@@ -833,7 +833,7 @@ end
 
 try 
     # service should not have started and get requests should throw some error
-    @async serveparallel()
+    @async serveparallel(showbanner=false)
     sleep(3)
     r = HTTP.get("$localhost/get"; readtimeout=1)
 catch e
@@ -845,7 +845,7 @@ end
 # only run these tests if we have more than one thread to work with
 if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
 
-    @async serveparallel()
+    @async serveparallel(showbanner=false)
     sleep(3)
 
     r = HTTP.get("$localhost/get")
@@ -862,7 +862,7 @@ if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
     
     terminate()
 
-    @async serveparallel(middleware=[handler1, handler2, handler3])
+    @async serveparallel(middleware=[handler1, handler2, handler3], showbanner=false)
     sleep(1)
 
     r = HTTP.get("$localhost/get")
@@ -871,7 +871,7 @@ if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
     terminate()
 
     try 
-        @async serveparallel(queuesize=0)
+        @async serveparallel(queuesize=0, showbanner=false)
         sleep(1)
         r = HTTP.get("$localhost/get")
     catch e

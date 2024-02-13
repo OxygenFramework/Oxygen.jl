@@ -427,7 +427,7 @@ using Oxygen.Cron: iscronmatch, isweekday, lastweekdayofmonth,
         return crondata["api_value"]
     end
 
-    server = serve(async=true)
+    server = serve(async=true, showbanner=false)
     sleep(3)
 
     @testset "Testing CRON API access" begin

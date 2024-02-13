@@ -21,7 +21,7 @@ function create_mock_transactions(n::Int)
     [HTTPTransaction("192.168.1.$i", "/test/$i", MOCK_TIMESTAMP, 0.1 * i, i % 2 == 0, 200 + i, nothing) for i in 1:n]
 end
 
-const HISTORY = Oxygen.HISTORY[]
+const HISTORY = Oxygen.History(1_000_000)
 
 function clear_history()
     empty!(HISTORY)

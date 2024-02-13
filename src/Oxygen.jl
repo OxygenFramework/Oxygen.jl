@@ -8,9 +8,7 @@ import HTTP: Request, Response
 using .Core: Context, History, Server
 
 const CONTEXT = Ref{Context}(Context())
-const SERVER = Ref{Union{Server, Nothing}}(nothing) 
-const HISTORY = Ref{History}(History(1_000_000))
-const RUNTIME = Ref{Union{Runtime, Nothing}}(nothing)
+const SERVICE = Ref{Union{Service, Nothing}}(nothing)
 
 
 import Base: get 
@@ -23,8 +21,7 @@ macro oxidise()
         import Oxygen
         
         const CONTEXT = Ref{Oxygen.Context}(Oxygen.Context())
-        const SERVER = Ref{Union{Oxygen.Server, Nothing}}(nothing)
-        const HISTORY = Ref{Oxygen.History}(Oxygen.History(1_000_000))
+        const SERVICE = Ref{Union{Service, Nothing}}(nothing)
 
         include(joinpath(dirname(Base.find_package("Oxygen")), "methods.jl"))
         

@@ -19,6 +19,10 @@ include("streamutil.jl");   @reexport using .StreamUtil
 include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 
+export  staticfiles, dynamicfiles,
+        start, serve, serveparallel, terminate, internalrequest,
+        resetstate, starttasks, stoptasks, Runtime, Service, history
+
 
 struct TasksContext
     repeattasks::Vector
@@ -28,29 +32,53 @@ struct TasksRuntime
     timers::Vector{Timer}
 end
 
+#struct Runtime
+#     history::History
+#     cron::CronRuntime
+#     tasks::TasksRuntime
+# end
 
-mutable struct Runtime
+struct Service
+    context::Context # an immutable constant in this struct
     history::History
     cron::CronRuntime
     tasks::TasksRuntime
-end
-
-struct Service
-    context::Context
-    runtime::Runtime
     server::HTTP.Server
 end
+
 
 Base.close(service::Service) = close(service.server)
 Base.wait(service::Service) = wait(service.server)
 
 
-export  staticfiles, dynamicfiles,
-        start, serve, serveparallel, terminate, internalrequest,
-        resetstate, starttasks, stoptasks, Runtime, Service
+history(service::Service) = service.history
+
+Cron.stopcronjobs(service::Service) = stopcronjobs(service.cron)
+#Cron.stopcronjobs(runtime::Runtime) = stopcronjobs(runtime.cron)
+
+stoptasks(service::Service) = stoptasks(service.tasks)
+#stoptasks(runtime::Runtime) = stoptasks(runtime.tasks)
 
 
-#global const timers = Ref{Vector{Timer}}([]) 
+
+"""
+    terminate(ctx)
+
+stops the webserver immediately
+"""
+function terminate(service::Service)
+    if isopen(service.server)
+        # stop background cron jobs
+        #Oxygen.Core.stopcronjobs()
+        stopcronjobs(service)
+        # stop background tasks
+        #Oxygen.Core.stoptasks()
+        stoptasks(service)
+        # stop server
+        close(service)
+    end
+end
+
 
 
 oxygen_title = raw"""
@@ -108,7 +136,7 @@ end
 """
 Register all cron jobs 
 """
-function registercronjobs(ctx::Context, history::History)
+function registercronjobs(ctx::Context, history::History) # Needs to be refactored
     #for job in getcronjobs()
     for job in ctx.cronjobs
         path, httpmethod, expression = job
@@ -165,7 +193,7 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(ctx::Context, history::History; 
+function serve(ctx::Context; 
     middleware  = [],
     handler     = stream_handler,
     host        = "127.0.0.1", 
@@ -178,6 +206,8 @@ function serve(ctx::Context, history::History;
     show_errors = true,
     kwargs...)
 
+    history = History(1_000_000)
+    
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, metrics, show_errors)
 
@@ -195,7 +225,7 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(ctx::Context, history::History; 
+function serveparallel(ctx::Context; 
     middleware  = [], 
     handler     = stream_handler, 
     host        = "127.0.0.1", 
@@ -209,7 +239,8 @@ function serveparallel(ctx::Context, history::History;
     show_errors = true,
     kwargs...)
 
-    parallelhandler = Oxygen.Core.StreamUtil.Handler() 
+    parallelhandler = StreamUtil.Handler() 
+    history = History(1_000_000)
     
     try
         # compose our middleware ahead of time (so it only has to be built up once)
@@ -256,7 +287,14 @@ Internal helper function to launch the server in a consistent way
 function startserver(ctx::Context, history::History, host, port, docs, metrics, kwargs, async, start)
 
     serverwelcome(host, port, docs, metrics, ctx.docspath)
+
+    # A NOTE FOR A FUTURE REFACTOR
+    # Currently the documentation is registerd to the context router in `setup` and thus mutates 
+    # the context. An alternative is to create a seperate router and redirect "/docs" routes
+    # to it with a middleware. Docspath and schemapath should also be passed as kwargs.
+
     setup(ctx, history; docs, metrics)
+    
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     rt_tasks = starttasks(ctx, history)
 
@@ -269,9 +307,7 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
     registercronjobs(ctx, history) 
     rt_cron = startcronjobs(ctx.job_definitions)
 
-    runtime = Runtime(history, rt_cron, rt_tasks)
-
-    service = Service(ctx, runtime, server)
+    service = Service(ctx, history, rt_cron, rt_tasks, server)
 
     if !async     
         try 
@@ -281,7 +317,6 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
         end
     end
 
-    #return server
     return service
 end
 
@@ -624,7 +659,6 @@ function staticfiles(ctx::Context,
 end
 
 
-# CHANGE: Export
 """
     dynamicfiles(folder::String, mountdir::String; headers::Vector{Pair{String,String}}=[], loadfile::Union{Function,Nothing}=nothing)
 

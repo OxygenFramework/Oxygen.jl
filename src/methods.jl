@@ -4,11 +4,8 @@
 Reset all the internal state variables
 """
 function resetstate()
-    #Oxygen.Core.timers[] = []
-    
-    SERVER[] = nothing
-    RUNTIME[] = nothing
-    empty!(HISTORY[])
+
+    SERVICE[] = nothing
 
     # prevent context reset when created at compile-time
     if (@__MODULE__) == Oxygen
@@ -18,20 +15,15 @@ end
 
 # Nothing to do for the router
 """
-    terminate(ctx)
+    terminate([service])
 
 stops the webserver immediately
 """
+terminate(service::Service) = Oxygen.Core.terminate(service)
+
 function terminate()
-    if !isnothing(SERVER[]) && isopen(SERVER[])
-        # stop background cron jobs
-        #Oxygen.Core.stopcronjobs()
-        stopcronjobs()
-        # stop background tasks
-        #Oxygen.Core.stoptasks()
-        stoptasks()
-        # stop server
-        close(SERVER[])
+    if !isnothing(SERVICE[]) 
+        terminate(SERVICE[])
     end
 end
 
@@ -51,7 +43,7 @@ function serve(;
 
     try
 
-        service = Oxygen.Core.serve(CONTEXT[], HISTORY[]; 
+        SERVICE[] = Oxygen.Core.serve(CONTEXT[]; 
             middleware  = middleware,
             handler     = handler,
             host        = host, 
@@ -65,10 +57,7 @@ function serve(;
             kwargs...
         )
 
-        SERVER[] = service.server
-        RUNTIME[] = service.runtime
-
-        return service
+        return SERVICE[]
 
     finally
         
@@ -102,7 +91,7 @@ function serveparallel(;
     
 
     try
-        service = Oxygen.Core.serveparallel(CONTEXT[], HISTORY[];
+        SERVICE[] = Oxygen.Core.serveparallel(CONTEXT[];
             middleware  = middleware,
             handler     = handler, 
             host        = host,
@@ -117,10 +106,7 @@ function serveparallel(;
             kwargs...
         )
 
-        SERVER[] = service.server
-        RUNTIME[] = service.runtime
-
-        return service
+        return SERVICE[]
 
     finally 
 
@@ -270,7 +256,9 @@ dynamicfiles(
 ) = Oxygen.Core.dynamicfiles(CONTEXT[], folder, mountdir; headers, loadfile)
 
 
-internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Oxygen.Core.internalrequest(CONTEXT[], HISTORY[], req; middleware, metrics, serialize, catch_errors)
+#internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Oxygen.Core.internalrequest(CONTEXT[], HISTORY[], req; middleware, metrics, serialize, catch_errors)
+
+internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) = Oxygen.Core.internalrequest(CONTEXT[], !isnothing(SERVICE[]) ? history(SERVICE[]) : History(1), req; middleware, metrics, serialize, catch_errors)
 
 function router(prefix::String = ""; 
                 tags::Vector{String} = Vector{String}(), 
@@ -367,16 +355,24 @@ function clearcronjobs()
 end
 
 
+startcronjobs(ctx) = Oxygen.Core.startcronjobs(ctx)
+
 function startcronjobs()
-    RUNTIME[].cron = Oxygen.Core.startcronjobs(CONTEXT[].job_definitions)
+    startcronjobs(CONTEXT[].job_definitions)
 end
 
+stopcronjobs(service) = Oxygen.Core.stopcronjobs(service)
 
 function stopcronjobs()
-    Oxygen.Core.stopcronjobs(RUNTIME[].cron)
+    if !isnothing(SERVICE[])
+        Oxygen.Core.stopcronjobs(SERVICE[])
+    end
 end
 
+stoptasks(service) = Oxygen.Core.stoptasks(service)
 
 function stoptasks()
-    Oxygen.Core.stoptasks(RUNTIME[].tasks)
+    if !isnothing(SERVICE[])
+        stoptasks(SERVICE[])
+    end
 end

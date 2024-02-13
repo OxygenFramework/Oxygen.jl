@@ -1,7 +1,6 @@
 module AuthDemo 
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 using HTTP
 
 @get "/divide/{a}/{b}" function(req::HTTP.Request, a::Float64, b::Float64)

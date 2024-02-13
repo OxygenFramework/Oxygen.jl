@@ -4,9 +4,7 @@ using Test
 using HTTP
 using Mustache
 using OteraEngine
-
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 
 # ensure the init is called so we can load the extensions
 Oxygen.__init__()

@@ -5,12 +5,8 @@ using JSON3
 using StructTypes
 using Sockets
 using Dates 
-
-include("../src/Oxygen.jl")
-using .Oxygen
-
-include("../src/cron.jl")
-using .Cron: iscronmatch, isweekday, lastweekdayofmonth, 
+using Oxygen
+using Oxygen.Cron: iscronmatch, isweekday, lastweekdayofmonth, 
             next, sleep_until, lastweekday, nthweekdayofmonth, 
             matchexpression
 

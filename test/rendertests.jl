@@ -1,9 +1,7 @@
 module BodyParserTests 
 using Test
 using HTTP
-
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 
 @testset "Render Module Tests" begin
 

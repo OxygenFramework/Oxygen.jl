@@ -1,7 +1,6 @@
 module SwaggerDemo 
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 using HTTP
 using SwaggerMarkdown
 using StructTypes

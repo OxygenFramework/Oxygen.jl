@@ -1,7 +1,6 @@
 module ErrorHandlingDemo 
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 using HTTP
 
 @get "/" function(req::HTTP.Request)

@@ -1,7 +1,5 @@
 module ParallelDemo 
-
-    include("../src/Oxygen.jl")
-    using .Oxygen
+    using Oxygen
     using HTTP
     using JSON3
     using StructTypes

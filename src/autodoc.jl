@@ -5,9 +5,8 @@ using DataStructures
 using Reexport
 using RelocatableFolders
 
-include("util.jl"); using .Util 
-include("cron.jl"); @reexport using .Cron
-
+using ..Util
+@reexport using ..Cron
 export registerschema, docspath, schemapath, getschema, 
     swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, 
     router, enabledocs, disabledocs, isdocsenabled, registermountedfolder, 

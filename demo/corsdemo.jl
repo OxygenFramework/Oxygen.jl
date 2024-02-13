@@ -1,7 +1,6 @@
 module CorsDemo
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 using HTTP
 
 allowed_origins = [ "Access-Control-Allow-Origin" => "*" ]

@@ -9,6 +9,7 @@ using Suppressor
 using Reexport
 using RelocatableFolders
 
+include("cron.jl")
 include("util.jl");         @reexport using .Util
 include("streamutil.jl");   @reexport using .StreamUtil
 include("autodoc.jl");      @reexport using .AutoDoc

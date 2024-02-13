@@ -1,7 +1,6 @@
 module DynamicHeadersDemo
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 using HTTP
 
 get("/") do req::HTTP.Request

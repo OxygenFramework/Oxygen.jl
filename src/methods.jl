@@ -4,8 +4,10 @@
 Reset all the internal state variables
 """
 function resetstate()
-    Oxygen.Core.timers[] = []         
+    #Oxygen.Core.timers[] = []
+    
     SERVER[] = nothing
+    RUNTIME[] = nothing
     empty!(HISTORY[])
 
     # prevent context reset when created at compile-time
@@ -26,7 +28,8 @@ function terminate()
         #Oxygen.Core.stopcronjobs()
         stopcronjobs()
         # stop background tasks
-        Oxygen.Core.stoptasks()
+        #Oxygen.Core.stoptasks()
+        stoptasks()
         # stop server
         close(SERVER[])
     end
@@ -364,12 +367,16 @@ function clearcronjobs()
 end
 
 
-
 function startcronjobs()
-    RUNTIME[].cron = Oxygen.Core.startcronjobs(CONTEXT[].jobdefinitions)
+    RUNTIME[].cron = Oxygen.Core.startcronjobs(CONTEXT[].job_definitions)
 end
 
 
 function stopcronjobs()
     Oxygen.Core.stopcronjobs(RUNTIME[].cron)
+end
+
+
+function stoptasks()
+    Oxygen.Core.stoptasks(RUNTIME[].tasks)
 end

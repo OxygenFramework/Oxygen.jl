@@ -20,9 +20,19 @@ include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 
 
+struct TasksContext
+    repeattasks::Vector
+end
+
+struct TasksRuntime
+    timers::Vector{Timer}
+end
+
+
 mutable struct Runtime
     history::History
     cron::CronRuntime
+    tasks::TasksRuntime
 end
 
 struct Service
@@ -34,14 +44,13 @@ end
 Base.close(service::Service) = close(service.server)
 Base.wait(service::Service) = wait(service.server)
 
-#Runtime() = Runtime(History(1_000_000), 
 
 export  staticfiles, dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest,
         resetstate, starttasks, stoptasks, Runtime, Service
 
 
-global const timers = Ref{Vector{Timer}}([]) 
+#global const timers = Ref{Vector{Timer}}([]) 
 
 
 oxygen_title = raw"""
@@ -68,13 +77,15 @@ end
 
 Start all background repeat tasks
 """
-function starttasks(ctx::Context, history::History)
+function starttasks(ctx::Context, history::History) :: TasksRuntime
     # when service exits timers are cleaned up
     # timers[] = [] 
 
+    rt = TasksRuntime([])
+
     # exit function early if no tasks are register
     if isempty(ctx.repeattasks)
-        return 
+        return rt
     end
 
     println()
@@ -87,8 +98,10 @@ function starttasks(ctx::Context, history::History)
         println(message)
         action = (timer) -> internalrequest(ctx, history, HTTP.Request(httpmethod, path))
         timer = Timer(action, 0, interval=interval)
-        push!(timers[], timer)   
+        push!(rt.timers, timer)   
     end
+
+    return rt
 end 
 
 
@@ -109,13 +122,13 @@ end
 
 Stop all background repeat tasks
 """
-function stoptasks()
-    for timer in timers[]
+function stoptasks(rt::TasksRuntime)
+    for timer in rt.timers
         if isopen(timer)
             close(timer)
         end
     end
-    timers[] = []
+    empty!(rt.timers)
 end
 
 """
@@ -245,7 +258,7 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
     serverwelcome(host, port, docs, metrics, ctx.docspath)
     setup(ctx, history; docs, metrics)
     server = start(preprocesskwargs(kwargs)) # How does this one work!
-    starttasks(ctx, history)
+    rt_tasks = starttasks(ctx, history)
 
     # NOTE FOR A FUTURE REFACTOR
     # `registercronjobs` function afects `job_definitions` from previoulsy registered `cronjobs`. 
@@ -256,7 +269,7 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
     registercronjobs(ctx, history) 
     rt_cron = startcronjobs(ctx.job_definitions)
 
-    runtime = Runtime(history, rt_cron)
+    runtime = Runtime(history, rt_cron, rt_tasks)
 
     service = Service(ctx, runtime, server)
 

@@ -23,7 +23,8 @@ stops the webserver immediately
 function terminate()
     if !isnothing(SERVER[]) && isopen(SERVER[])
         # stop background cron jobs
-        Oxygen.Core.stopcronjobs()
+        #Oxygen.Core.stopcronjobs()
+        stopcronjobs()
         # stop background tasks
         Oxygen.Core.stoptasks()
         # stop server
@@ -47,7 +48,7 @@ function serve(;
 
     try
 
-        SERVER[] = Oxygen.Core.serve(CONTEXT[], HISTORY[]; 
+        service = Oxygen.Core.serve(CONTEXT[], HISTORY[]; 
             middleware  = middleware,
             handler     = handler,
             host        = host, 
@@ -61,7 +62,10 @@ function serve(;
             kwargs...
         )
 
-        return SERVER[]
+        SERVER[] = service.server
+        RUNTIME[] = service.runtime
+
+        return service
 
     finally
         
@@ -93,10 +97,9 @@ function serveparallel(;
     show_errors = true,
     kwargs...)
     
-    parallelhandler = Oxygen.Core.StreamUtil.Handler()
 
     try
-        SERVER[] = Oxygen.Core.serveparallel(CONTEXT[], HISTORY[], parallelhandler;
+        service = Oxygen.Core.serveparallel(CONTEXT[], HISTORY[];
             middleware  = middleware,
             handler     = handler, 
             host        = host,
@@ -110,8 +113,11 @@ function serveparallel(;
             show_errors = show_errors,
             kwargs...
         )
-        
-        return SERVER[]
+
+        SERVER[] = service.server
+        RUNTIME[] = service.runtime
+
+        return service
 
     finally 
 
@@ -119,7 +125,7 @@ function serveparallel(;
         if !async 
             terminate()
             # stop any background worker threads
-            Oxygen.Core.StreamUtil.stop(streamhandler)
+            #Oxygen.Core.StreamUtil.stop(parallelhandler)
         end
 
         # only reset state on exit if we aren't running asynchronously & are running it interactively 
@@ -355,4 +361,15 @@ Clear any internal reference's to prexisting cron jobs
 """
 function clearcronjobs()
     empty!(CONTEXT[].job_definitions)
+end
+
+
+
+function startcronjobs()
+    RUNTIME[].cron = Oxygen.Core.startcronjobs(CONTEXT[].jobdefinitions)
+end
+
+
+function stopcronjobs()
+    Oxygen.Core.stopcronjobs(RUNTIME[].cron)
 end

@@ -10,6 +10,8 @@ using .Core: Context, History, Server
 const CONTEXT = Ref{Context}(Context())
 const SERVER = Ref{Union{Server, Nothing}}(nothing) 
 const HISTORY = Ref{History}(History(1_000_000))
+const RUNTIME = Ref{Union{Runtime, Nothing}}(nothing)
+
 
 import Base: get 
 include("methods.jl")

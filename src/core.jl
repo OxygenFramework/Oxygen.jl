@@ -20,9 +20,25 @@ include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 
 
+mutable struct Runtime
+    history::History
+    cron::CronRuntime
+end
+
+struct Service
+    context::Context
+    runtime::Runtime
+    server::HTTP.Server
+end
+
+Base.close(service::Service) = close(service.server)
+Base.wait(service::Service) = wait(service.server)
+
+#Runtime() = Runtime(History(1_000_000), 
+
 export  staticfiles, dynamicfiles,
         start, serve, serveparallel, terminate, internalrequest,
-        resetstate, starttasks, stoptasks
+        resetstate, starttasks, stoptasks, Runtime, Service
 
 
 global const timers = Ref{Vector{Timer}}([]) 
@@ -166,7 +182,7 @@ Starts the webserver in streaming mode with your own custom request handler and 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
 Requests in the channel are then removed & handled by each the worker threads asynchronously. 
 """
-function serveparallel(ctx::Context, history::History, _handler::Handler; 
+function serveparallel(ctx::Context, history::History; 
     middleware  = [], 
     handler     = stream_handler, 
     host        = "127.0.0.1", 
@@ -180,13 +196,18 @@ function serveparallel(ctx::Context, history::History, _handler::Handler;
     show_errors = true,
     kwargs...)
 
-    # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, metrics, show_errors)
+    parallelhandler = Oxygen.Core.StreamUtil.Handler() 
+    
+    try
+        # compose our middleware ahead of time (so it only has to be built up once)
+        configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, metrics, show_errors)
 
-    return startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) -> 
-        StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
-    )
-    #return server # this value is returned if startserver() is ran in async mode
+        return startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) -> 
+            StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
+                           )
+    finally
+        StreamUtil.stop(parallelhandler)
+    end
 end
 
 
@@ -225,8 +246,20 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
     setup(ctx, history; docs, metrics)
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     starttasks(ctx, history)
-    registercronjobs(ctx, history)
-    startcronjobs(ctx.job_definitions)
+
+    # NOTE FOR A FUTURE REFACTOR
+    # `registercronjobs` function afects `job_definitions` from previoulsy registered `cronjobs`. 
+    # The `cronjobs` are created with `router`. Instead it should be returned as value there 
+    # in a struct which then could be passed down to register function thus this registration
+    # would not need to be done at runtime. This may also cause bugs when server is restarted.
+
+    registercronjobs(ctx, history) 
+    rt_cron = startcronjobs(ctx.job_definitions)
+
+    runtime = Runtime(history, rt_cron)
+
+    service = Service(ctx, runtime, server)
+
     if !async     
         try 
             wait(server)
@@ -235,7 +268,8 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
         end
     end
 
-    return server
+    #return server
+    return service
 end
 
 

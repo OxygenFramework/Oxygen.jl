@@ -1,13 +1,23 @@
 module Cron
 
 using Dates
-export startcronjobs, stopcronjobs, cron
+export startcronjobs, stopcronjobs, cron, CronContext, CronRuntime
 
 # The vector of all running tasks
-global const jobs = Ref{Set}(Set())
+#global const jobs = Ref{Set}(Set())
 
 # The global flag used to stop all tasks
-global const run = Ref{Bool}(false)
+#global const run = Ref{Bool}(false)
+
+struct CronContext
+    job_definitions::Set
+    cronjobs::Vector # may be refactored out in the future
+end
+
+struct CronRuntime 
+    run::Ref{Bool} 
+    jobs::Set
+end
 
 
 """
@@ -15,10 +25,10 @@ global const run = Ref{Bool}(false)
 
 Stop each background task by toggling a global reference that all cron jobs reference
 """
-function stopcronjobs()
-    run[] = false
+function stopcronjobs(rt::CronRuntime)
+    rt.run[] = false
     # clear the set of all running job ids
-    empty!(jobs[])
+    empty!(rt.jobs)
 end
 
 
@@ -36,14 +46,15 @@ end
 Start all the cron job_definitions within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
 """
-function startcronjobs(job_definitions)
+function startcronjobs(job_definitions) :: CronRuntime
     
     if isempty(job_definitions)
         # printstyled("[ Cron: There are no registered cron jobs to start\n", color = :green, bold = true)  
-        return 
+        return CronRuntime(Ref(false), Set())
     end
 
-    run[] = true
+    #run[] = true
+    rt = CronRuntime(Ref(true), Set())
 
     println()
     printstyled("[ Starting $(length(job_definitions)) Cron Job(s)\n", color = :green, bold = true)  
@@ -51,14 +62,14 @@ function startcronjobs(job_definitions)
     for (job_id, expression, name, func) in job_definitions
 
         # prevent duplicate jobs from getting ran
-        if job_id in jobs[]
+        if job_id in rt.jobs
             printstyled("[ Cron: Job already Exists ", color = :green, bold = true)
             println("{ id: $job_id, expr: $expression, name: $name }")
             continue
         end
 
         # add job it to set of running jobs
-        push!(jobs[], job_id)
+        push!(rt.jobs, job_id)
 
         message = isnothing(name) ? "$expression" : "{ id: $job_id, expr: $expression, name: $name }"
         printstyled("[ Cron: ", color = :green, bold = true)  
@@ -66,7 +77,7 @@ function startcronjobs(job_definitions)
         Threads.@spawn begin
             try 
 
-                while run[]
+                while rt.run[]
                     # get the current datetime object
                     current_time::DateTime = now()
                     # get the next datetime object that matches this cron expression
@@ -74,13 +85,13 @@ function startcronjobs(job_definitions)
                     # figure out how long we need to wait
                     ms_to_wait = sleep_until(current_time, next_date)
                     # breaking the sleep into 1-second intervals
-                    while ms_to_wait > 0 && run[]
+                    while ms_to_wait > 0 && rt.run[]
                         sleep_time = min(1000, ms_to_wait)  # Sleep for 1 second or the remaining time
                         sleep(Millisecond(sleep_time))
                         ms_to_wait -= sleep_time  # Reduce the wait time
                     end
                     # Execute the function if it's time and if we are still running
-                    if ms_to_wait <= 0 && run[]
+                    if ms_to_wait <= 0 && rt.run[]
                         try 
                             @async func()
                         catch error 
@@ -90,11 +101,13 @@ function startcronjobs(job_definitions)
                 end
             finally
                 # remove job id if the job fails
-                delete!(jobs[], job_id)
+                delete!(rt.jobs, job_id)
             end
         end
         
     end
+
+    return rt
 end
 
 weeknames = Dict(

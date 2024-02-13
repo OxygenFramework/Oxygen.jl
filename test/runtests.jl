@@ -575,13 +575,15 @@ r = internalrequest(HTTP.Request("GET", "asdfasdf"))
 r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"))
 @test r.status == 404
 
-r = internalrequest(HTTP.Request("GET", "/customerror"))
+# Here we use `@test_logs` both to test that an error log is produced,
+# and to suppress the log itself from showing up in the tests.
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/customerror"))
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", "/middleware-error"))
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/middleware-error"))
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", "/undefinederror"))
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/undefinederror"))
 @test r.status == 500    
 
 

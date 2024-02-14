@@ -297,9 +297,9 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
     # to it with a middleware. Docspath and schemapath should also be passed as kwargs.
 
     #setup(ctx, history; docs, metrics)
-
-    docs && setupswagger(ctx, docspath, schemapath)
-    metrics && setupmetrics(ctx, history, docspath)
+    
+    docs && setupswagger(ctx.router, ctx.schema, docspath, schemapath)
+    metrics && setupmetrics(ctx.router, history, docspath)
 
     
     server = start(preprocesskwargs(kwargs)) # How does this one work!
@@ -571,7 +571,7 @@ function register(router::Router, httpmethod::String, route::Union{String,Functi
     route = parse_route(httpmethod, route)
     hasPathParams, func_param_names, func_param_types = parse_func_params(httpmethod, route, func)
 
-    register(ctx.router, httpmethod, route, func, (hasPathParams, func_param_names, func_param_types))
+    register(router, httpmethod, route, func, (hasPathParams, func_param_names, func_param_types))
 end
 
 function register(router::Router, httpmethod::String, route::String, func::Function, func_params)
@@ -621,7 +621,7 @@ end
 # end
 
 # add the swagger and swagger/schema routes 
-function setupswagger(ctx::Context, docspath::String, schemapath::String)
+function setupswagger(router::Router, schema::Dict, docspath::String, schemapath::String)
 
     # It is already checked at call site
     #if isdocsenabled()
@@ -631,20 +631,21 @@ function setupswagger(ctx::Context, docspath::String, schemapath::String)
 
     #(docspath, schemapath, schema) = ctx.docspath, ctx.schemapath, ctx.schema
 
-    register(ctx, "GET", "$docspath", req -> swaggerhtml("$docspath$schemapath"))
+    register(router, "GET", "$docspath", req -> swaggerhtml("$docspath$schemapath"))
 
-    register(ctx, "GET", "$docspath/swagger", req -> swaggerhtml("$docspath$schemapath"))
+    register(router, "GET", "$docspath/swagger", req -> swaggerhtml("$docspath$schemapath"))
     
-    register(ctx, "GET", "$docspath/redoc", req -> redochtml("$docspath$schemapath"))
+    register(router, "GET", "$docspath/redoc", req -> redochtml("$docspath$schemapath"))
 
-    register(ctx, "GET", "$docspath$schemapath", req -> ctx.schema)
+    register(router, "GET", "$docspath$schemapath", req -> schema)
     
     #end
 
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(ctx::Context, history::History, docspath::String)
+#function setupmetrics(ctx::Context, history::History, docspath::String)
+function setupmetrics(router::Router, history::History, docspath::String)
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath) :: String
@@ -658,7 +659,7 @@ function setupmetrics(ctx::Context, history::History, docspath::String)
         end
     end
 
-    staticfiles(ctx, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    staticfiles(router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
     function metrics(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
         lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
@@ -678,7 +679,7 @@ function setupmetrics(ctx::Context, history::History, docspath::String)
         )
     end
 
-    register(ctx, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
+    register(router, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
 end
 
 
@@ -688,7 +689,7 @@ end
 Mount all files inside the /static folder (or user defined mount point). 
 The `headers` array will get applied to all mounted files
 """
-function staticfiles(ctx::Context,
+function staticfiles(router::Router,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
@@ -700,15 +701,28 @@ function staticfiles(ctx::Context,
         mountdir = mountdir[2:end]
     end
 
-    registermountedfolder(ctx.mountedfolders, mountdir)
     function addroute(currentroute, filepath)
         # calculate the entire response once on load
         resp = file(filepath; loadfile=loadfile, headers=headers)
 
-        register(ctx, "GET", currentroute, req -> resp)
+        #register(ctx, "GET", currentroute, req -> resp)
+        register(router, "GET", currentroute, req -> resp)
     end
     mountfolder(folder, mountdir, addroute)
 end
+
+function staticfiles(ctx::Context, folder::String, mountdir::String="static"; 
+                     headers::Vector=[], loadfile::Union{Function,Nothing}=nothing)
+
+    # remove the leading slash 
+    if first(mountdir) == '/'
+        mountdir = mountdir[2:end]
+    end
+
+    staticfiles(ctx.router, folder, mountdir; headers, loadfile)
+    registermountedfolder(ctx.mountedfolders, mountdir) 
+end
+
 
 
 """
@@ -717,7 +731,7 @@ end
 Mount all files inside the /static folder (or user defined mount point), 
 but files are re-read on each request. The `headers` array will get applied to all mounted files
 """
-function dynamicfiles(ctx::Context,
+function dynamicfiles(ctx::Context, #TODO: Make the same refactor as with staticfiles
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 

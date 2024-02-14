@@ -21,7 +21,7 @@ macro oxidise()
         import Oxygen
         
         const CONTEXT = Ref{Oxygen.Context}(Oxygen.Context())
-        const SERVICE = Ref{Union{Service, Nothing}}(nothing)
+        const SERVICE = Ref{Union{Oxygen.Service, Nothing}}(nothing)
 
         include(joinpath(dirname(Base.find_package("Oxygen")), "methods.jl"))
         

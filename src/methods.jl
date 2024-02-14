@@ -19,7 +19,7 @@ end
 
 stops the webserver immediately
 """
-terminate(service::Service) = Oxygen.Core.terminate(service)
+terminate(service::Oxygen.Service) = Oxygen.Core.terminate(service)
 
 function terminate()
     if !isnothing(SERVICE[]) 

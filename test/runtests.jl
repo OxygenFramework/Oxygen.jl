@@ -580,9 +580,12 @@ r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
 @suppress global r = internalrequest(HTTP.Request("GET", "/customerror"))
 @test r.status == 500
 
-# TODO
-#@suppress global r = internalrequest(HTTP.Request("GET", "/middleware-error"))
-#@test r.status == 500
+# NOTE: previosly metrics were enabled by default and it was were the errors were handled previously
+# This is due to fact that the `custom_middleware` is before `serializer` middleware. This may be
+# an intended behaviour to seperate error handling of the router and that of the `custom_middleware`.
+# A fix would be seperating error handling middleware from serializer and put it before `custom_middleware`.
+@suppress global r = internalrequest(HTTP.Request("GET", "/middleware-error"), metrics=true)
+@test r.status == 500
 
 @suppress global r = internalrequest(HTTP.Request("GET", "/undefinederror"))
 @test r.status == 500    

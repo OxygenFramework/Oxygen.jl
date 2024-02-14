@@ -6,7 +6,6 @@ using Sockets
 using JSON3
 using Base 
 using Dates
-using Suppressor
 using Reexport
 using RelocatableFolders
 using DataStructures: CircularDeque
@@ -208,9 +207,12 @@ function serve(ctx::Context;
     kwargs...)
 
     history = History(1_000_000)
+
+    #router = Router()
+    # push middleware
     
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, metrics, show_errors)
+    configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, docs, metrics, show_errors, docspath, schemapath)
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
 
@@ -263,10 +265,23 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(ctx::Context, history::History; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true, docspath = "/docs") :: Function
+function setupmiddleware(ctx::Context, history::History; middleware::Vector=[], docs::Bool=false, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true, docspath = "/docs", schemapath = "/schema") :: Function
 
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware(ctx.custommiddleware) ? [compose(ctx.router, middleware, ctx.custommiddleware)] : reverse(middleware)
+
+    # Note that this will make internalrequest slow which
+    # calls setupmiddleware uppon every request. 
+    if docs || metrics
+        router = Router()
+
+        docs && setupswagger(router, ctx.schema, docspath, schemapath)
+        metrics && setupmetrics(router, history, docspath)
+
+        docs_middleware = [DocsMiddleware(router, docspath)]
+    else
+        docs_middleware = []
+    end
 
     # check if we should use our default serialization middleware function
     serializer = serialize ? [DefaultSerializer(catch_errors; show_errors)] : []
@@ -277,9 +292,10 @@ function setupmiddleware(ctx::Context, history::History; middleware::Vector=[], 
     # combine all our middleware functions
     return reduce(|>, [
         ctx.router,
+        docs_middleware...,
         serializer...,
         custom_middleware...,
-        collect_metrics...
+        collect_metrics...,
     ])    
 end
 
@@ -297,11 +313,19 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
     # to it with a middleware. Docspath and schemapath should also be passed as kwargs.
 
     #setup(ctx, history; docs, metrics)
-    
-    docs && setupswagger(ctx.router, ctx.schema, docspath, schemapath)
-    metrics && setupmetrics(ctx.router, history, docspath)
 
+    # So now I need a to make a
+
+    # if docs || metrics
+    # router = Router()
+    # # push middleware
     
+    # docs && setupswagger(router, ctx.schema, docspath, schemapath)
+    # metrics && setupmetrics(router, history, docspath)
+
+    # docs_middleware = DocsMiddleware(router, docspath)
+
+
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     rt_tasks = starttasks(ctx, history)
 
@@ -347,30 +371,28 @@ function preprocesskwargs(kwargs)
 end
 
 
-# """
-# This function called right before serving the server, which is useful for performing any additional setup
-# """
-# function setup(ctx::Context, history::History; docs::Bool, metrics::Bool)
-
-#     if docs
-#         setupswagger(ctx)
-#     end
-
-#     if metrics
-#         setupmetrics(ctx, history)
-#     end
-# end
-
-
 """
     internalrequest(req::HTTP.Request; middleware::Vector=[], serialize::Bool=true, catch_errors::Bool=true)
 
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(ctx::Context, history::History, req::HTTP.Request; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors=true) :: HTTP.Response
+function internalrequest(ctx::Context, history::History, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, docs::Bool=false, serialize::Bool=true, catch_errors=true, docspath::String="/docs", schemapath="/schema") :: HTTP.Response
     req.context[:ip] = "INTERNAL" # label internal requests
-    return req |> setupmiddleware(ctx, history, middleware=middleware, metrics=metrics, serialize=serialize, catch_errors=catch_errors)
+    return req |> setupmiddleware(ctx, history; middleware, metrics, docs, serialize, catch_errors, docspath, schemapath)
+end
+
+
+function DocsMiddleware(router::Router, docspath::String)
+    return function(handle)
+        return function(req::HTTP.Request)
+            if startswith(req.target, docspath)
+                return router(req)
+            else
+                return handle(req)
+            end
+        end
+    end
 end
 
 
@@ -606,30 +628,12 @@ function register(router::Router, httpmethod::String, route::String, func::Funct
         end
     end
 
-    # TODO: check why it is there
-    @suppress begin
-        HTTP.register!(router, httpmethod, route, handle)
-    end
-
+    HTTP.register!(router, httpmethod, route, handle)
 end
 
 
-
-# function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
-#     registerschema(ctx, route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
-#     register(ctx.router, httpmethod, route, func)
-# end
-
 # add the swagger and swagger/schema routes 
 function setupswagger(router::Router, schema::Dict, docspath::String, schemapath::String)
-
-    # It is already checked at call site
-    #if isdocsenabled()
-
-    # waiting for next LTS
-    #(; docspath, schemapath, schema) = ctx
-
-    #(docspath, schemapath, schema) = ctx.docspath, ctx.schemapath, ctx.schema
 
     register(router, "GET", "$docspath", req -> swaggerhtml("$docspath$schemapath"))
 

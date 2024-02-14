@@ -25,11 +25,8 @@ Define our application Context object with default values
     taggedroutes::Dict{String, TaggedRoute}     = Dict{String, TaggedRoute}()
     custommiddleware::Dict{String, Tuple}       = Dict{String, Tuple}()
     repeattasks::Vector                         = []
-    #docspath::String                            = "/docs"
-    #schemapath::String                          = "/schema"
     schema::Dict                                = defaultSchema()
     job_definitions::Set                        = Set()
-    cronjobs::Vector                            = []
 end
 
 

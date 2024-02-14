@@ -69,9 +69,7 @@ stops the webserver immediately
 function terminate(service::Service)
     if isopen(service.server)
         # stop background cron jobs
-        #Oxygen.Core.stopcronjobs()
         stopcronjobs(service)
-        # stop background tasks
         #Oxygen.Core.stoptasks()
         stoptasks(service)
         # stop server
@@ -131,17 +129,17 @@ function starttasks(ctx::Context, history::History) :: TasksRuntime
 end 
 
 
-"""
-Register all cron jobs 
-"""
-function registercronjobs(ctx::Context, history::History) # Needs to be refactored
-    #for job in getcronjobs()
-    for job in ctx.cronjobs
-        path, httpmethod, expression = job
+# """
+# Register all cron jobs 
+# """
+# function registercronjobs(ctx::Context, history::History) # Needs to be refactored
+#     #for job in getcronjobs()
+#     for job in ctx.cronjobs
+#         path, httpmethod, expression = job
 
-        cron(ctx.job_definitions, expression, path, () -> internalrequest(ctx, history, HTTP.Request(httpmethod, path)))
-    end
-end 
+#         cron(ctx.job_definitions, expression, path, () -> internalrequest(ctx, history, HTTP.Request(httpmethod, path)))
+#     end
+# end 
 
 """
     stoptasks()
@@ -307,16 +305,7 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     rt_tasks = starttasks(ctx, history)
 
-    # NOTE FOR A FUTURE REFACTOR
-    # `registercronjobs` function afects `job_definitions` from previoulsy registered `cronjobs`. 
-    # The `cronjobs` are created with `router`. Instead it should be returned as value there 
-    # in a struct which then could be passed down to register function thus this registration
-    # would not need to be done at runtime. This may also cause bugs when server is restarted.
-
-    registercronjobs(ctx, history) 
-    rt_cron = startcronjobs(ctx.job_definitions)
-
-
+    rt_cron = startcronjobs(ctx.job_definitions, history)
     service = Service(ctx, history, rt_cron, rt_tasks, server)
 
     if !async     
@@ -395,7 +384,8 @@ function MetricsMiddleware(history::History, catch_errors::Bool, docspath::Strin
             return handlerequest(catch_errors) do 
                 
                 # Don't capture metrics on the documenation internals
-                if contains(req.target, docspath)
+                #if contains(req.target, docspath)
+                if startswith(req.target, docspath)
                     return handler(req)
                 end
 
@@ -451,7 +441,7 @@ function MetricsMiddleware(history::History, catch_errors::Bool, docspath::Strin
     end
 end
 
-parse_route(httpmethod::String, route::String) = route
+parse_route(httpmethod::String, route::String) = route, nothing
 
 function parse_route(httpmethod::String, route::Function)
 
@@ -478,11 +468,18 @@ function parse_route(httpmethod::String, route::Function)
         route = route(httpmethod)
     end    
 
+    # NOTE: It might be better if every route would contain crin parameter
+    if route isa Tuple
+        route, cron = route
+    else
+        cron = nothing
+    end
+
     if !isa(route, String)
         throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
     end  
-
-    return route
+    
+    return route, cron
 end
 
 
@@ -558,17 +555,25 @@ Register a request handler function with a path to the ROUTER
 #function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
 function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
 
-    route = parse_route(httpmethod, route)
+    route, cron_expression = parse_route(httpmethod, route)
     hasPathParams, func_param_names, func_param_types = parse_func_params(httpmethod, route, func)
 
     registerschema(ctx, route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
 
     register(ctx.router, httpmethod, route, func, (hasPathParams, func_param_names, func_param_types))
+    
+    if !isnothing(cron_expression) && !isempty(cron_expression)
+        task = (route, httpmethod, cron)
+        # NOTE: The route is unique. If dublicates are made here HTTP method would show warning
+        cron_func = (history) -> internalrequest(ctx, history, HTTP.Request(httpmethod, route))
+        cron(ctx.job_definitions, cron_expression, route, cron_func)
+    end
+
 end
 
 function register(router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
 
-    route = parse_route(httpmethod, route)
+    route, cron = parse_route(httpmethod, route) # the cron is always nothing here
     hasPathParams, func_param_names, func_param_types = parse_func_params(httpmethod, route, func)
 
     register(router, httpmethod, route, func, (hasPathParams, func_param_names, func_param_types))
@@ -620,8 +625,6 @@ function setupswagger(router::Router, schema::Dict, docspath::String, schemapath
     register(router, "GET", "$docspath/redoc", req -> redochtml("$docspath$schemapath"))
 
     register(router, "GET", "$docspath$schemapath", req -> schema)
-    
-    #end
 
 end
 

@@ -63,7 +63,6 @@ function mountfolder(folder::String, mountdir::String, addroute)
 
     iteratefiles(folder) do filepath
 
-
         # remove the first occurrence of the root folder from the filepath before "mounting"
         cleanedmountpath = replace(filepath, "$(folder)$(separator)" => "", count=1)
 
@@ -72,8 +71,6 @@ function mountfolder(folder::String, mountdir::String, addroute)
 
         # generate the path to mount the file to
         mountpath = mountdir == "/" || isnothing(mountdir) || isempty(mountdir) || all(isspace, mountdir) ? "/$cleanedmountpath" : "/$mountdir/$cleanedmountpath"
-
-
 
         paths[mountpath] = true 
         # register the file route

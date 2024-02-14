@@ -192,13 +192,13 @@ function createrouter(ctx::Context, prefix::String,
             end
 
              # register cron expression for this route 
-             if !isnothing(cron) && !isempty(cron)
-                task = (path, httpmethod, cron)
-                # don't add duplicate cron jobs
-                if isnothing(findfirst(x -> x === task, ctx.cronjobs))
-                    push!(ctx.cronjobs, task)
-                end
-            end
+            #  if !isnothing(cron) && !isempty(cron)
+            #     task = (path, httpmethod, cron)
+            #     # don't add duplicate cron jobs
+            #     #if isnothing(findfirst(x -> x === task, ctx.cronjobs))
+            #         #push!(ctx.cronjobs, task)
+            #      #end
+            # end
 
             combinedtags = [tags..., routertags...]
 
@@ -210,7 +210,8 @@ function createrouter(ctx::Context, prefix::String,
                 ctx.taggedroutes[path] = TaggedRoute(combinedmethods, combinedtags)
             end
 
-            return path 
+            #return path 
+            return (path, cron) 
         end
     end
 end

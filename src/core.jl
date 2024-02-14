@@ -66,7 +66,7 @@ function starttasks()
     
     for task in tasks
         path, httpmethod, interval = task
-        message = "method: $httpmethod, path: $path, inverval: $interval seconds"
+        message = "method: $httpmethod, path: $path, interval: $interval seconds"
         printstyled("[ Task: ", color = :magenta, bold = true)  
         println(message)
         action = (timer) -> internalrequest(HTTP.Request(httpmethod, path))

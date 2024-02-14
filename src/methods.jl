@@ -39,6 +39,8 @@ function serve(;
     docs        = true,
     metrics     = true, 
     show_errors = true,
+    docspath    = "/docs",
+    schemapath  = "/schema",
     kwargs...) 
 
     try
@@ -54,6 +56,8 @@ function serve(;
             docs        = docs,
             metrics     = metrics,
             show_errors = show_errors,
+            docspath    = docspath,
+            schemapath  = schemapath,
             kwargs...
         )
 
@@ -87,6 +91,8 @@ function serveparallel(;
     docs        = true,
     metrics     = true, 
     show_errors = true,
+    docspath    = "/docs",
+    schemapath  = "/schema",
     kwargs...)
     
 
@@ -103,6 +109,8 @@ function serveparallel(;
             docs        = docs,
             metrics     = metrics, 
             show_errors = show_errors,
+            docspath    = docspath,
+            schemapath  = schemapath,
             kwargs...
         )
 
@@ -306,17 +314,6 @@ function setschema(customschema::Dict)
 end
 
 
-"""
-    configdocs(docspath::String = "/docs", schemapath::String = "/schema")
-
-Configure the default docs and schema endpoints
-"""
-function configdocs(docspath::String = "/docs", schemapath::String = "/schema")
-
-    CONTEXT[] = Context(CONTEXT[]; docspath, schemapath)
-
-    return
-end
 
 
 """

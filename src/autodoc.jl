@@ -292,9 +292,10 @@ Used to generate & register schema related for a specific endpoint
 function registerschema(ctx::Context, path::String, httpmethod::String, parameters, returntype::Array)
 
     # skip any doc related endpoints
-    if startswith(path, ctx.docspath)
-        return 
-    end
+    # This can be better done at runtime
+    # if startswith(path, ctx.docspath)
+    #    return 
+    # end
 
     params = []
     for (name, type) in parameters

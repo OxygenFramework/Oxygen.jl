@@ -106,8 +106,6 @@ end
 Start all background repeat tasks
 """
 function starttasks(ctx::Context, history::History) :: TasksRuntime
-    # when service exits timers are cleaned up
-    # timers[] = [] 
 
     rt = TasksRuntime([])
 
@@ -204,6 +202,8 @@ function serve(ctx::Context;
     docs        = true,
     metrics     = true,
     show_errors = true,
+    docspath    = "/docs",
+    schemapath  = "/schema",
     kwargs...)
 
     history = History(1_000_000)
@@ -214,7 +214,7 @@ function serve(ctx::Context;
     # The cleanup of resources are put at the topmost level in `methods.jl`
 
     return startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) ->  
-            HTTP.serve!(handler(configured_middelware), host, port; kwargs...))
+            HTTP.serve!(handler(configured_middelware), host, port; kwargs...); docspath, schemapath)
 end
 
 
@@ -237,6 +237,8 @@ function serveparallel(ctx::Context;
     docs        = true,
     metrics     = true, 
     show_errors = true,
+    docspath    = "/docs",
+    schemapath  = "/schema",
     kwargs...)
 
     parallelhandler = StreamUtil.Handler() 
@@ -247,8 +249,8 @@ function serveparallel(ctx::Context;
         configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, metrics, show_errors)
 
         return startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) -> 
-            StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...)
-                           )
+            StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...);
+                           docspath, schemapath)
     finally
         StreamUtil.stop(parallelhandler)
     end
@@ -260,7 +262,7 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(ctx::Context, history::History; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true) :: Function
+function setupmiddleware(ctx::Context, history::History; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true, docspath = "/docs") :: Function
 
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware(ctx.custommiddleware) ? [compose(ctx.router, middleware, ctx.custommiddleware)] : reverse(middleware)
@@ -269,7 +271,7 @@ function setupmiddleware(ctx::Context, history::History; middleware::Vector=[], 
     serializer = serialize ? [DefaultSerializer(catch_errors; show_errors)] : []
 
     # check if we need to track metrics
-    collect_metrics = metrics ? [MetricsMiddleware(history, metrics, ctx.docspath)] : []
+    collect_metrics = metrics ? [MetricsMiddleware(history, metrics, docspath)] : []
 
     # combine all our middleware functions
     return reduce(|>, [
@@ -284,16 +286,20 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(ctx::Context, history::History, host, port, docs, metrics, kwargs, async, start)
+function startserver(ctx::Context, history::History, host, port, docs, metrics, kwargs, async, start; docspath="/docs", schemapath="/schema")
 
-    serverwelcome(host, port, docs, metrics, ctx.docspath)
+    serverwelcome(host, port, docs, metrics, docspath)
 
     # A NOTE FOR A FUTURE REFACTOR
     # Currently the documentation is registerd to the context router in `setup` and thus mutates 
     # the context. An alternative is to create a seperate router and redirect "/docs" routes
     # to it with a middleware. Docspath and schemapath should also be passed as kwargs.
 
-    setup(ctx, history; docs, metrics)
+    #setup(ctx, history; docs, metrics)
+
+    docs && setupswagger(ctx, docspath, schemapath)
+    metrics && setupmetrics(ctx, history, docspath)
+
     
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     rt_tasks = starttasks(ctx, history)
@@ -306,6 +312,7 @@ function startserver(ctx::Context, history::History, host, port, docs, metrics, 
 
     registercronjobs(ctx, history) 
     rt_cron = startcronjobs(ctx.job_definitions)
+
 
     service = Service(ctx, history, rt_cron, rt_tasks, server)
 
@@ -339,19 +346,19 @@ function preprocesskwargs(kwargs)
 end
 
 
-"""
-This function called right before serving the server, which is useful for performing any additional setup
-"""
-function setup(ctx::Context, history::History; docs::Bool, metrics::Bool)
+# """
+# This function called right before serving the server, which is useful for performing any additional setup
+# """
+# function setup(ctx::Context, history::History; docs::Bool, metrics::Bool)
 
-    if docs
-        setupswagger(ctx)
-    end
+#     if docs
+#         setupswagger(ctx)
+#     end
 
-    if metrics
-        setupmetrics(ctx, history)
-    end
-end
+#     if metrics
+#         setupmetrics(ctx, history)
+#     end
+# end
 
 
 """
@@ -569,7 +576,7 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
 end
 
 # add the swagger and swagger/schema routes 
-function setupswagger(ctx::Context)
+function setupswagger(ctx::Context, docspath::String, schemapath::String)
 
     # It is already checked at call site
     #if isdocsenabled()
@@ -577,7 +584,7 @@ function setupswagger(ctx::Context)
     # waiting for next LTS
     #(; docspath, schemapath, schema) = ctx
 
-    (docspath, schemapath, schema) = ctx.docspath, ctx.schemapath, ctx.schema
+    #(docspath, schemapath, schema) = ctx.docspath, ctx.schemapath, ctx.schema
 
     register(ctx, "GET", "$docspath", req -> swaggerhtml("$docspath$schemapath"))
 
@@ -585,14 +592,14 @@ function setupswagger(ctx::Context)
     
     register(ctx, "GET", "$docspath/redoc", req -> redochtml("$docspath$schemapath"))
 
-    register(ctx, "GET", "$docspath$schemapath", req -> schema)
+    register(ctx, "GET", "$docspath$schemapath", req -> ctx.schema)
     
     #end
 
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(ctx::Context, history::History)
+function setupmetrics(ctx::Context, history::History, docspath::String)
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath) :: String
@@ -600,13 +607,13 @@ function setupmetrics(ctx::Context, history::History)
         # only replace content if it's in a generated file
         ext = lowercase(last(splitext(filepath)))
         if ext in [".html", ".css", ".js"]
-            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$(ctx.docspath)/metrics/")
+            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$docspath/metrics/")
         else
             return content
         end
     end
 
-    staticfiles(ctx, "$DATA_PATH/dashboard", "$(ctx.docspath)/metrics"; loadfile=loadfile)
+    staticfiles(ctx, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
     function metrics(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
         lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
@@ -626,7 +633,7 @@ function setupmetrics(ctx::Context, history::History)
         )
     end
 
-    register(ctx, "GET", "$(ctx.docspath)/metrics/data/{window}/{latest}", metrics)
+    register(ctx, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
 end
 
 

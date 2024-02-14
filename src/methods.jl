@@ -264,7 +264,7 @@ dynamicfiles(
 ) = Oxygen.Core.dynamicfiles(CONTEXT[], folder, mountdir; headers, loadfile)
 
 
-internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, docs::Bool=false, serialize::Bool=true, catch_errors=true, docspath::String="/docs", schemapath="/schema") = Oxygen.Core.internalrequest(CONTEXT[], !isnothing(SERVICE[]) ? history(SERVICE[]) : History(1), req; middleware, metrics, docs, serialize, catch_errors, docspath, schemapath)
+internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, docs::Bool=false, serialize::Bool=true, catch_errors=true, docspath::String="/docs", schemapath="/schema") = Oxygen.Core.internalrequest(CONTEXT[], !isnothing(SERVICE[]) ? Oxygen.Core.history(SERVICE[]) : History(1), req; middleware, metrics, docs, serialize, catch_errors, docspath, schemapath)
 
 function router(prefix::String = ""; 
                 tags::Vector{String} = Vector{String}(), 

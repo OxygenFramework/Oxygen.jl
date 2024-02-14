@@ -15,6 +15,7 @@ include("routingfunctionstests.jl")
 include("rendertests.jl")
 include("bodyparsertests.jl")
 include("crontests.jl")
+include("oxidise.jl")
 
 struct Person
     name::String

@@ -17,26 +17,6 @@ export registerschema,
 const SWAGGER_VERSION   = "swagger@5.7.2"
 const REDOC_VERSION     = "redoc@2.1.2"
 
-#global docspath = "/docs"
-#global schemapath = "/schema"
-#global schema = defaultSchema()
-#global cronjobs = []
-
-# function getschemapath()::String
-#     return "$docspath$schemapath"
-# end
-
-# function getcronjobs()
-#     return cronjobs
-# end
-
-# function resetstatevariables()
-#     #global docspath = "/docs"
-#     #global schemapath = "/schema"
-#     #global cronjobs = []
-#     #global schema = defaultSchema()
-#     return
-# end
 
 """
 Registers the folder as a source for mounting static files
@@ -44,8 +24,6 @@ Registers the folder as a source for mounting static files
 function registermountedfolder(mountedfolders::Set{String}, folder::String)
     push!(mountedfolders, "/$folder")
 end
-
-
 
 
 """

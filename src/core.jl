@@ -1,6 +1,7 @@
 module Core
 
 using HTTP
+using HTTP: Router
 using Sockets 
 using JSON3
 using Base 
@@ -450,13 +451,9 @@ function MetricsMiddleware(history::History, catch_errors::Bool, docspath::Strin
     end
 end
 
+parse_route(httpmethod::String, route::String) = route
 
-"""
-    register(httpmethod::String, route::String, func::Function)
-
-Register a request handler function with a path to the ROUTER
-"""
-function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
+function parse_route(httpmethod::String, route::Function)
 
     # check if path is a callable function (that means it's a router higher-order-function)
     if isa(route, Function)
@@ -484,12 +481,15 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
     if !isa(route, String)
         throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
     end  
+
+    return route
+end
+
+
+function parse_func_params(httpmethod::String, route::String, func::Function)
     
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
-    
-    # determine if we have parameters defined in our path
-    hasPathParams = contains(route, variableRegex)
     
     # track which index the params are located in
     positions = []
@@ -509,8 +509,6 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
     func_param_names = [String(param) for param in Base.method_argnames(method)[3:end]]
     func_param_types = splice!(Array(fields), 3:numfields)
     
-    # create a map of paramter name to type definition
-    func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
 
     # each tuple tracks where the param is refereced (variable, function index, path index)
     param_positions::Array{Tuple{String, Int, Int}} = []
@@ -545,15 +543,53 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
         end
     end
 
-    # strip off any regex patterns attached to our path parameters
+    # determine if we have parameters defined in our path
+    hasPathParams = contains(route, variableRegex) # Can this be replaced with !isempty(func_param_names)
+
+    return hasPathParams, func_param_names, func_param_types
+end
+
+
+"""
+    register(ctx::Context, httpmethod::String, route::String, func::Function)
+
+Register a request handler function with a path to the ROUTER
+"""
+#function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
+function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
+
+    route = parse_route(httpmethod, route)
+    hasPathParams, func_param_names, func_param_types = parse_func_params(httpmethod, route, func)
+
     registerschema(ctx, route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
+
+    register(ctx.router, httpmethod, route, func, (hasPathParams, func_param_names, func_param_types))
+end
+
+function register(router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
+
+    route = parse_route(httpmethod, route)
+    hasPathParams, func_param_names, func_param_types = parse_func_params(httpmethod, route, func)
+
+    register(ctx.router, httpmethod, route, func, (hasPathParams, func_param_names, func_param_types))
+end
+
+function register(router::Router, httpmethod::String, route::String, func::Function, func_params)
+
+    (hasPathParams, func_param_names, func_param_types) = func_params
+
+    # create a map of paramter name to type definition
+    func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
+
+    method = first(methods(func))
+    numfields = method.nargs
 
     # case 1.) The request handler is an anonymous function (don't parse out path params)
     if numfields <= 1
         handle = function (req)
             func()
         end   
-    # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
+        # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
     elseif hasPathParams && numfields > 2
         handle = function (req) 
             # get all path parameters
@@ -563,17 +599,26 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
             # pass all parameters to handler in the correct order 
             func(req, pathParams...)
         end
-    # case 3.) This function should only get passed the request object
+        # case 3.) This function should only get passed the request object
     else 
         handle = function (req) 
             func(req)
         end
     end
 
+    # TODO: check why it is there
     @suppress begin
-        HTTP.register!(ctx.router, httpmethod, route, handle)
+        HTTP.register!(router, httpmethod, route, handle)
     end
+
 end
+
+
+
+# function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
+#     registerschema(ctx, route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
+#     register(ctx.router, httpmethod, route, func)
+# end
 
 # add the swagger and swagger/schema routes 
 function setupswagger(ctx::Context, docspath::String, schemapath::String)

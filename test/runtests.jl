@@ -32,10 +32,10 @@ configdocs("/docs", "/schema")
 
 StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 # mount all files inside the content folder under /static
-@staticfiles "content"
+staticfiles("content")
 
 # mount files under /dynamic
-@dynamicfiles "content" "/dynamic"
+dynamicfiles("content", "/dynamic")
 
 @get "/killserver" function ()
     terminate()

@@ -6,13 +6,14 @@ using StructTypes
 using Sockets
 using Dates 
 using Oxygen
+using Logging
 
-# include("metricstests.jl")
-# include("templatingtests.jl")
-# include("routingfunctionstests.jl")
-# include("rendertests.jl")
-# include("bodyparsertests.jl")
-# include("crontests.jl")
+include("metricstests.jl")
+include("templatingtests.jl")
+include("routingfunctionstests.jl")
+include("rendertests.jl")
+include("bodyparsertests.jl")
+include("crontests.jl")
 
 
 struct Person
@@ -369,7 +370,9 @@ r = internalrequest(HTTP.Request("GET", "/boolean/true"))
 r = internalrequest(HTTP.Request("GET", "/boolean/false"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/boolean/asdf"))
+# Here we use `@test_logs` both to test that an error log is produced,
+# and to suppress the log itself from showing up in the tests.
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/boolean/asdf"))
 @test r.status == 500
 
 
@@ -377,10 +380,10 @@ r = internalrequest(HTTP.Request("GET", "/boolean/asdf"))
 r = internalrequest(HTTP.Request("GET", "/fruit/1"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/fruit/4"))
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/fruit/4"))
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", "/fruit/-3"))
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/fruit/-3"))
 @test r.status == 500
 
 # date
@@ -390,7 +393,7 @@ r = internalrequest(HTTP.Request("GET", "/date/2022"))
 r = internalrequest(HTTP.Request("GET", "/date/2022-01-01"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/date/-3"))
+r = @test_logs (:error, r"ERROR")  internalrequest(HTTP.Request("GET", "/date/-3"))
 @test r.status == 500
 
 # datetime
@@ -398,10 +401,10 @@ r = internalrequest(HTTP.Request("GET", "/date/-3"))
 r = internalrequest(HTTP.Request("GET", "/datetime/2022-01-01"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/datetime/2022"))
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/datetime/2022"))
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", "/datetime/-3"))
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/datetime/-3"))
 @test r.status == 500
 
 
@@ -451,10 +454,10 @@ r = internalrequest(HTTP.Request("GET", """/struct/{"name": "jim", "age": 20}"""
 @test r.status == 200
 @test json(r, Student) == Student("jim", 20)
 
-r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
 @test r.status == 500
 
 # float 
@@ -558,11 +561,7 @@ r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
 @test r.status == 200
 @test text(r) == file("content/sample.html") |> text
 
-r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
-@test r.status == 500
-
-# don't suppress error reporting for this test
-r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
+r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/multiply/a/8"))
 @test r.status == 500
 
 # hit endpoint that doesn't exist
@@ -575,8 +574,6 @@ r = internalrequest(HTTP.Request("GET", "asdfasdf"))
 r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"))
 @test r.status == 404
 
-# Here we use `@test_logs` both to test that an error log is produced,
-# and to suppress the log itself from showing up in the tests.
 r = @test_logs (:error, r"ERROR") internalrequest(HTTP.Request("GET", "/customerror"))
 @test r.status == 500
 
@@ -809,6 +806,7 @@ function errorcatcher(handle)
     end
 end
 
+
 # Test default handler by turning off serializaiton
 @async serve(serialize=false, middleware=[error_catcher], catch_errors=false, showbanner=false)
 sleep(3)
@@ -844,22 +842,29 @@ end
 
 # only run these tests if we have more than one thread to work with
 if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
+    # Here we can't use `@test_logs` since the logs are being produced asynchronously.
+    # So instead we will use the `TestLogger` and inspect it's logs manually.
+    # This again has the effect of testing we emit logs while suppressing them
+    # from showing up while running the tests.
+    logger = Test.TestLogger()
+    with_logger(logger) do
+        @async serveparallel(showbanner=false)
+        sleep(3)
 
-    @async serveparallel(showbanner=false)
-    sleep(3)
+        r = HTTP.get("$localhost/get")
+        @test r.status == 200
 
-    r = HTTP.get("$localhost/get")
-    @test r.status == 200
+        r = HTTP.post("$localhost/post", body="some demo content")
+        @test text(r) == "some demo content"
 
-    r = HTTP.post("$localhost/post", body="some demo content")
-    @test text(r) == "some demo content"
-
-    try
-        r = HTTP.get("$localhost/customerror", connect_timeout=3)
-    catch e 
-        @test e isa MethodError || e isa HTTP.ExceptionRequest.StatusError
+        try
+            r =  HTTP.get("$localhost/customerror", connect_timeout=3)
+        catch e 
+            @test e isa MethodError || e isa HTTP.ExceptionRequest.StatusError
+        end
     end
-    
+    levels = [logrecord.level for logrecord in logger.logs]
+    @test (Logging.Error, Logging.Info) ⊆ levels
     terminate()
 
     @async serveparallel(middleware=[handler1, handler2, handler3], showbanner=false)
@@ -869,7 +874,7 @@ if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
     @test r.status == 200
 
     terminate()
-
+    
     try 
         @async serveparallel(queuesize=0, showbanner=false)
         sleep(1)

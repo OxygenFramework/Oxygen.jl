@@ -208,9 +208,6 @@ function serve(ctx::Context;
 
     history = History(1_000_000)
 
-    #router = Router()
-    # push middleware
-    
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, docs, metrics, show_errors, docspath, schemapath)
 
@@ -249,7 +246,7 @@ function serveparallel(ctx::Context;
     
     try
         # compose our middleware ahead of time (so it only has to be built up once)
-        configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, metrics, show_errors)
+        configured_middelware = setupmiddleware(ctx, history; middleware, serialize, catch_errors, docs, metrics, show_errors, docspath, schemapath)
 
         return startserver(ctx, history, host, port, docs, metrics, kwargs, async, (kwargs) -> 
             StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...);
@@ -306,25 +303,6 @@ Internal helper function to launch the server in a consistent way
 function startserver(ctx::Context, history::History, host, port, docs, metrics, kwargs, async, start; docspath="/docs", schemapath="/schema")
 
     serverwelcome(host, port, docs, metrics, docspath)
-
-    # A NOTE FOR A FUTURE REFACTOR
-    # Currently the documentation is registerd to the context router in `setup` and thus mutates 
-    # the context. An alternative is to create a seperate router and redirect "/docs" routes
-    # to it with a middleware. Docspath and schemapath should also be passed as kwargs.
-
-    #setup(ctx, history; docs, metrics)
-
-    # So now I need a to make a
-
-    # if docs || metrics
-    # router = Router()
-    # # push middleware
-    
-    # docs && setupswagger(router, ctx.schema, docspath, schemapath)
-    # metrics && setupmetrics(router, history, docspath)
-
-    # docs_middleware = DocsMiddleware(router, docspath)
-
 
     server = start(preprocesskwargs(kwargs)) # How does this one work!
     rt_tasks = starttasks(ctx, history)
@@ -648,7 +626,6 @@ function setupswagger(router::Router, schema::Dict, docspath::String, schemapath
 end
 
 # add the swagger and swagger/schema routes 
-#function setupmetrics(ctx::Context, history::History, docspath::String)
 function setupmetrics(router::Router, history::History, docspath::String)
 
     # This allows us to customize the path to the metrics dashboard
@@ -708,8 +685,6 @@ function staticfiles(router::Router,
     function addroute(currentroute, filepath)
         # calculate the entire response once on load
         resp = file(filepath; loadfile=loadfile, headers=headers)
-
-        #register(ctx, "GET", currentroute, req -> resp)
         register(router, "GET", currentroute, req -> resp)
     end
     mountfolder(folder, mountdir, addroute)

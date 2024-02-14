@@ -63,6 +63,7 @@ function mountfolder(folder::String, mountdir::String, addroute)
 
     iteratefiles(folder) do filepath
 
+
         # remove the first occurrence of the root folder from the filepath before "mounting"
         cleanedmountpath = replace(filepath, "$(folder)$(separator)" => "", count=1)
 
@@ -72,6 +73,8 @@ function mountfolder(folder::String, mountdir::String, addroute)
         # generate the path to mount the file to
         mountpath = mountdir == "/" || isnothing(mountdir) || isempty(mountdir) || all(isspace, mountdir) ? "/$cleanedmountpath" : "/$mountdir/$cleanedmountpath"
 
+
+
         paths[mountpath] = true 
         # register the file route
         addroute(mountpath, filepath)
@@ -79,17 +82,18 @@ function mountfolder(folder::String, mountdir::String, addroute)
         # also register file to the root of each subpath if this file is an index.html
         if endswith(mountpath, "/index.html")
 
-            #@suppress begin
-            # add the route with the trailing "/" character
-            trimmedpath = getbefore(mountpath, "index.html")
-            paths[trimmedpath] = true
-            addroute(trimmedpath, filepath)
+            # /docs/metrics and /docs/metrics/ are the same path 
+            # when HTTP is considered. 
+
+            # # add the route with the trailing "/" character
+            # trimmedpath = getbefore(mountpath, "index.html")
+            # paths[trimmedpath] = true
+            # addroute(trimmedpath, filepath)
 
             # add the route without the trailing "/" character
             bare_path = getbefore(mountpath, "/index.html")
             paths[bare_path] = true
             addroute(bare_path, filepath)
-        #end
         end
     end
     

@@ -322,7 +322,7 @@ or the random Id julia assigns to each lambda function.
 """
 macro cron(expression, func)
     quote 
-        Oxygen.Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), "$(esc(func))", $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), string($(esc(func))), $(esc(func)))
     end
 end
 
@@ -335,7 +335,7 @@ is used by the server on startup to log out all cron jobs.
 """
 macro cron(expression, name, func)
     quote 
-        Oxygen.Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), "$(esc(name))", $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), string($(esc(name))), $(esc(func)))
     end
 end
 

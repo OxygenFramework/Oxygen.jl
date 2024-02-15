@@ -53,7 +53,7 @@ Base.wait(service::Service) = wait(service.server)
 
 history(service::Service) = service.history
 
-Cron.stopcronjobs(service::Service) = stopcronjobs(service.cron)
+stopcronjobs(service::Service) = Cron.stopcronjobs(service.cron)
 #Cron.stopcronjobs(runtime::Runtime) = stopcronjobs(runtime.cron)
 
 stoptasks(service::Service) = stoptasks(service.tasks)
@@ -91,7 +91,7 @@ oxygen_title = raw"""
 
 function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool, docspath::String)
     printstyled(oxygen_title, color = :blue, bold = true)
-    @info "📦 Version 1.4.8 (2024-02-01)"
+    @info "📦 Version 1.4.9 (2024-02-07)"
     @info "✅ Started server: http://$host:$port" 
     docs    && @info "📖 Documentation: http://$host:$port$docspath"
     metrics && @info "📊 Metrics: http://$host:$port$docspath/metrics"

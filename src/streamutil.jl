@@ -4,7 +4,7 @@ module StreamUtil
 using Sockets
 using HTTP
 
-export start, stop
+export start, stop, Handler
 
 struct WebRequest
     http::HTTP.Stream
@@ -20,7 +20,6 @@ struct Handler
     end
 end
 
-global const HANDLER = Ref{Handler}(Handler())
 
 """
 This function is run in each spawned worker thread, which removes queued requests & handles them asynchronously
@@ -43,12 +42,12 @@ end
 """
 Shutdown the handler
 """
-function stop()
+function stop(handler::Handler)
     # toggle the shutdown flag
-    HANDLER[].shutdown[] = true
-    if isopen(HANDLER[].queue)
+    handler.shutdown[] = true
+    if isopen(handler.queue)
         # close the Channel
-        close(HANDLER[].queue)
+        close(handler.queue)
     end
 end
 
@@ -56,11 +55,8 @@ end
 """
 Starts the webserver in streaming mode and spaws n - 1 worker threads to start processing incoming requests
 """
-function start(handle_stream::Function; host="127.0.0.1", port=8080, queuesize = 1024, kwargs...)
+function start(handler::Handler, handle_stream::Function; host="127.0.0.1", port=8080, queuesize = 1024, kwargs...)
     
-    # reset handler on startup
-    HANDLER[] = Handler()
-    local handler = HANDLER[]
     local nthreads = Threads.nthreads() - 1
 
     if nthreads <= 0

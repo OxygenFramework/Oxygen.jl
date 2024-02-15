@@ -4,11 +4,8 @@ using Test
 using HTTP
 using StructTypes
 
-include("../src/Oxygen.jl")
-using .Oxygen
-
-include("../src/util.jl")
-using .Util: set_content_size!
+using Oxygen
+using Oxygen.Core.Util: set_content_size!
 
 struct rank
     title   :: String 

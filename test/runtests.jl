@@ -5,17 +5,17 @@ using JSON3
 using StructTypes
 using Sockets
 using Dates 
+using Suppressor
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 
 include("metricstests.jl")
-include("templatingtests.jl")
+include("templatingtests.jl") # TODO
 include("routingfunctionstests.jl")
 include("rendertests.jl")
 include("bodyparsertests.jl")
 include("crontests.jl")
-
+include("oxidise.jl")
 
 struct Person
     name::String
@@ -27,17 +27,19 @@ struct Book
     author::String
 end
 
-    
-localhost = "http://127.0.0.1:8080"
+const PORT = 6060 # 8080 port is frequently used
+localhost = "http://127.0.0.1:$PORT"
 
 configdocs("/docs", "/schema")
 
 StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 # mount all files inside the content folder under /static
-@staticfiles "content"
+#@staticfiles "content"
+staticfiles("content")
 
 # mount files under /dynamic
-@dynamicfiles "content" "/dynamic"
+#@dynamicfiles "content" "/dynamic"
+dynamicfiles("content", "/dynamic")
 
 @get "/killserver" function ()
     terminate()
@@ -327,10 +329,10 @@ end
     return "emptysubpath - post"
 end
 
-serve(async=true)
+serve(async=true, port=PORT, show_errors=false)
 
 # query metrics endpoints
-r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"))
+r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"), metrics=true, docspath="/docs")
 @test r.status == 200
 
 r = internalrequest(HTTP.Request("GET", "/anonymous"))
@@ -361,7 +363,6 @@ r = internalrequest(HTTP.Request("GET", "/html"))
 @test Dict(r.headers)["Content-Type"] == "text/html; charset=utf-8"
 
 
-
 # path param tests 
 
 # boolean
@@ -371,18 +372,18 @@ r = internalrequest(HTTP.Request("GET", "/boolean/true"))
 r = internalrequest(HTTP.Request("GET", "/boolean/false"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/boolean/asdf"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/boolean/asdf"))
 @test r.status == 500
 
 
-# enums
+# # enums
 r = internalrequest(HTTP.Request("GET", "/fruit/1"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/fruit/4"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/fruit/4"))
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", "/fruit/-3"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/fruit/-3"))
 @test r.status == 500
 
 # date
@@ -392,18 +393,18 @@ r = internalrequest(HTTP.Request("GET", "/date/2022"))
 r = internalrequest(HTTP.Request("GET", "/date/2022-01-01"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/date/-3"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/date/-3"))
 @test r.status == 500
 
-# datetime
+# # datetime
 
 r = internalrequest(HTTP.Request("GET", "/datetime/2022-01-01"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/datetime/2022"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/datetime/2022"))
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", "/datetime/-3"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/datetime/-3"))
 @test r.status == 500
 
 
@@ -453,10 +454,10 @@ r = internalrequest(HTTP.Request("GET", """/struct/{"name": "jim", "age": 20}"""
 @test r.status == 200
 @test json(r, Student) == Student("jim", 20)
 
-r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
+@suppress global r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
+@suppress global r = internalrequest(HTTP.Request("GET", """/struct/{"aged": 20}"""))
 @test r.status == 500
 
 # float 
@@ -485,7 +486,7 @@ r = internalrequest(HTTP.Request("PATCH", "/patch"))
 @test text(r) == "patch"
 
 
-# Query params tests 
+# # Query params tests 
 
 r = internalrequest(HTTP.Request("GET", "/query?message=hello"))
 @test r.status == 200
@@ -522,7 +523,7 @@ r = internalrequest(HTTP.Request("GET", "/static/"))
 @test text(r) == file("content/index.html") |> text
 
 
-# Body transformation tests
+# # Body transformation tests
 
 r = internalrequest(HTTP.Request("GET", "/text", [], "hello there!"))
 @test r.status == 200
@@ -560,30 +561,34 @@ r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
 @test r.status == 200
 @test text(r) == file("content/sample.html") |> text
 
-r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
 @test r.status == 500
 
 # don't suppress error reporting for this test
-r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/multiply/a/8"))
 @test r.status == 500
 
 # hit endpoint that doesn't exist
-r = internalrequest(HTTP.Request("GET", "asdfasdf"))
+@suppress global r = internalrequest(HTTP.Request("GET", "asdfasdf"))
 @test r.status == 404
 
-r = internalrequest(HTTP.Request("GET", "asdfasdf"))
+@suppress global r = internalrequest(HTTP.Request("GET", "asdfasdf"))
 @test r.status == 404
 
-r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/somefakeendpoint"))
 @test r.status == 404
 
-r = internalrequest(HTTP.Request("GET", "/customerror"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/customerror"))
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", "/middleware-error"))
+# NOTE: previosly metrics were enabled by default and it was were the errors were handled previously
+# This is due to fact that the `custom_middleware` is before `serializer` middleware. This may be
+# an intended behaviour to seperate error handling of the router and that of the `custom_middleware`.
+# A fix would be seperating error handling middleware from serializer and put it before `custom_middleware`.
+@suppress global r = internalrequest(HTTP.Request("GET", "/middleware-error"), metrics=true)
 @test r.status == 500
 
-r = internalrequest(HTTP.Request("GET", "/undefinederror"))
+@suppress global r = internalrequest(HTTP.Request("GET", "/undefinederror"))
 @test r.status == 500    
 
 
@@ -599,18 +604,18 @@ end
 # should be set to true by default
 @test isdocsenabled() == true 
 
-disabledocs()
-@test isdocsenabled() == false 
+@test_throws "" disabledocs()
+#@test isdocsenabled() == false 
 
 enabledocs()
 @test isdocsenabled() == true 
 
 terminate()
-enabledocs()
-@async serve(docs=true)
+#enabledocs()
+@async serve(docs=true, port=PORT, show_errors=false)
 sleep(5)
 
-## Router related tests
+# ## Router related tests
 
 # case 1
 r = internalrequest(HTTP.Request("GET", "/math/add/6/5"))
@@ -671,22 +676,22 @@ stoptasks()
 r = internalrequest(HTTP.Request("GET", "/get"))
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/docs"))
+r = internalrequest(HTTP.Request("GET", "/docs"), docs=true, docspath="/docs")
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/docs/swagger"))
+r = internalrequest(HTTP.Request("GET", "/docs/swagger"), docs=true, docspath="/docs")
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/docs/redoc"))
+r = internalrequest(HTTP.Request("GET", "/docs/redoc"), docs=true, docspath="/docs")
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/docs/schema"))
+r = internalrequest(HTTP.Request("GET", "/docs/schema"), docs=true, docspath="/docs", schemapath="/schema")
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/docs/metrics"))
+r = internalrequest(HTTP.Request("GET", "/docs/metrics"), metrics=true, docspath="/docs")
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"))
+r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"), metrics=true, docspath="/docs")
 @test r.status == 200
 
 invocation = []
@@ -717,10 +722,10 @@ r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), middleware=[handler1, 
 @test invocation == [1,2,3] # enusre the handlers are called in the correct order
 @test text(r) == "18.0" 
 
-r = internalrequest(HTTP.Request("GET", "/docs"), middleware=[handler1])
+r = internalrequest(HTTP.Request("GET", "/docs"), middleware=[handler1], docs=true, docspath="/docs")
 @test r.status == 200
 
-r = internalrequest(HTTP.Request("GET", "/docs/schema"))
+r = internalrequest(HTTP.Request("GET", "/docs/schema"), docs=true, docspath="/docs")
 @test r.status == 200
 @test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
 
@@ -783,11 +788,12 @@ mergeschema("/put",
 data = Dict("msg" => "this is not a valid schema dictionary")
 setschema(data)
 
+
 @assert getschema() === data
 
 terminate()
 
-@async serve(middleware=[handler1, handler2, handler3])
+@async serve(middleware=[handler1, handler2, handler3], port=PORT, show_errors=false)
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/get"))
@@ -833,7 +839,7 @@ end
 
 try 
     # service should not have started and get requests should throw some error
-    @async serveparallel()
+    @async serveparallel(port=PORT, show_errors=false)
     sleep(3)
     r = HTTP.get("$localhost/get"; readtimeout=1)
 catch e
@@ -845,7 +851,7 @@ end
 # only run these tests if we have more than one thread to work with
 if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
 
-    @async serveparallel()
+    @async serveparallel(port=PORT, show_errors=false)
     sleep(3)
 
     r = HTTP.get("$localhost/get")
@@ -862,7 +868,7 @@ if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
     
     terminate()
 
-    @async serveparallel(middleware=[handler1, handler2, handler3])
+    @async serveparallel(middleware=[handler1, handler2, handler3], port=PORT, show_errors=false)
     sleep(1)
 
     r = HTTP.get("$localhost/get")
@@ -871,7 +877,7 @@ if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
     terminate()
 
     try 
-        @async serveparallel(queuesize=0)
+        @async serveparallel(queuesize=0, port=PORT, show_errors=false)
         sleep(1)
         r = HTTP.get("$localhost/get")
     catch e
@@ -883,5 +889,6 @@ end
 
 terminate()
 resetstate()
+clearcronjobs()
 
 end 

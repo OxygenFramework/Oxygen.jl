@@ -9,7 +9,7 @@ export readfile, mountedfolders, mountfolder
 Reads a file as a String
 """
 function readfile(filepath::String)
-    return read(open(filepath), String)
+    return read(filepath, String)
 end
 
 
@@ -95,4 +95,3 @@ function mountfolder(folder::String, mountdir::String, addroute)
     end
     
 end
-

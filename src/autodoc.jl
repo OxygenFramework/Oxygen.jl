@@ -369,7 +369,7 @@ Read in a static file from the /data folder
 """
 function readstaticfile(filepath::String) :: String 
     path = joinpath(DATA_PATH, filepath)
-    return read(open(path), String)
+    return read(path, String)
 end
 
 function redochtml(schemapath::String) :: HTTP.Response

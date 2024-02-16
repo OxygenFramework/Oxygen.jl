@@ -37,11 +37,11 @@ function mustache(template::String; mime_type=nothing, from_file=false, kwargs..
     # Case 1: a path to a file was passed
     if from_file
         if mime_is_known
-            return mustache(open(template); mime_type=mime_type, kwargs...)
+            return open(io -> mustache(io; mime_type=mime_type, kwargs...), template)
         else
             # deterime the mime type based on the extension type 
             content_type = mime_from_path(template, MIME"application/octet-stream"()) |> contenttype_from_mime
-            return mustache(open(template); mime_type=content_type, kwargs...)
+            return open(io -> mustache(io; mime_type=content_type, kwargs...), template)
         end
     end
 
@@ -89,5 +89,3 @@ function mustache(file::IO; mime_type=nothing, kwargs...)
         response(content, status, resp_headers; detect=!mime_is_known)
     end
 end
-
-

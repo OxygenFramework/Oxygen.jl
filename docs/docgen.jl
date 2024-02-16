@@ -23,6 +23,6 @@ function sanitizefile(filelines)
 end
 
 # generate index.md and move assets
-readme = readlines(open("../README.md"))
+readme = readlines("../README.md")
 write("src/index.md", sanitizefile(readme))
 cp("../oxygen.png", "./src/oxygen.png", force=true)

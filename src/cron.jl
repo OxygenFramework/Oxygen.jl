@@ -54,7 +54,7 @@ end
 Start all the cron job_definitions within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
 """
-function startcronjobs(job_definitions, history) :: CronRuntime
+function startcronjobs(job_definitions::Set) :: CronRuntime
     
     if isempty(job_definitions)
         # printstyled("[ Cron: There are no registered cron jobs to start\n", color = :green, bold = true)  
@@ -101,14 +101,7 @@ function startcronjobs(job_definitions, history) :: CronRuntime
                     # Execute the function if it's time and if we are still running
                     if ms_to_wait <= 0 && rt.run[]
                         try 
-                            nargs = count_func_args(func) # countargs
-                            if nargs == 0
-                                @async func() # for ordinary functions
-                            elseif nargs == 1
-                                @async func(history)
-                            else
-                                throw("There are $nargs arguments to func wheras zero and one is allowed")
-                            end
+                            @async func() # for ordinary functions
                         catch error 
                             @error "ERROR in CRON job { id: $job_id, expr: $expression, name: $name }: " exception=(error, catch_backtrace())
                         end

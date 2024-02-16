@@ -28,6 +28,12 @@ function terminate()
 end
 
 
+# A callback used to initialize the service
+function setservice(service::Service)
+    SERVICE[] = service
+end
+
+
 function serve(; 
     middleware  = [], 
     handler     = Oxygen.Core.stream_handler, 
@@ -44,8 +50,7 @@ function serve(;
     kwargs...) 
 
     try
-
-        SERVICE[] = Oxygen.Core.serve(CONTEXT[]; 
+        Oxygen.Core.serve(CONTEXT[], setservice; 
             middleware  = middleware,
             handler     = handler,
             host        = host, 
@@ -97,7 +102,7 @@ function serveparallel(;
     
 
     try
-        SERVICE[] = Oxygen.Core.serveparallel(CONTEXT[];
+        Oxygen.Core.serveparallel(CONTEXT[], setservice;
             middleware  = middleware,
             handler     = handler, 
             host        = host,
@@ -376,7 +381,7 @@ end
 startcronjobs(ctx) = Oxygen.Core.startcronjobs(ctx)
 
 function startcronjobs()
-    startcronjobs(CONTEXT[].job_definitions)
+    startcronjobs(CONTEXT[])
 end
 
 stopcronjobs(service) = Oxygen.Core.stopcronjobs(service)

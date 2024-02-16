@@ -142,6 +142,7 @@ end
 Used to register a function to a specific endpoint to handle GET requests  
 """
 macro get(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["GET"] $(esc(path)) $(esc(func)))
 end
 
@@ -151,6 +152,7 @@ end
 Used to register a function to a specific endpoint to handle POST requests
 """
 macro post(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["POST"] $(esc(path)) $(esc(func)))
 end
 
@@ -160,6 +162,7 @@ end
 Used to register a function to a specific endpoint to handle PUT requests
 """
 macro put(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["PUT"] $(esc(path)) $(esc(func)))
 end
 
@@ -169,6 +172,7 @@ end
 Used to register a function to a specific endpoint to handle PATCH requests
 """
 macro patch(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["PATCH"] $(esc(path)) $(esc(func)))
 end
 
@@ -178,8 +182,10 @@ end
 Used to register a function to a specific endpoint to handle DELETE requests
 """
 macro delete(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["DELETE"] $(esc(path)) $(esc(func)))
 end
+
 
 """
     @route(methods::Array{String}, path::String, func::Function)
@@ -188,6 +194,23 @@ Used to register a function to a specific endpoint to handle mulitiple request t
 """
 macro route(methods, path, func)
     :(route($(esc(methods)), $(esc(path)), $(esc(func))))
+end
+
+
+"""
+    adjustparams(path, func)
+
+Adjust the order of `path` and `func` based on their types. This is used to support the `do ... end` syntax for 
+the routing macros.
+"""
+function adjustparams(path, func)
+    # case 1: do ... end block syntax was used
+    if isa(path, Expr) && path.head == :->
+        func, path
+    # case 2: regular syntax was used
+    else
+        path, func
+    end
 end
 
 
@@ -204,8 +227,8 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 
 ### Core Routing Functions Support for do..end Syntax ###
 
-get(func::Function, path::String)           = route(["GET"], path, func)
-get(func::Function, path::Function)         = route(["GET"], path, func)
+Base.get(func::Function, path::String)      = route(["GET"], path, func)
+Base.get(func::Function, path::Function)    = route(["GET"], path, func)
 
 post(func::Function, path::String)          = route(["POST"], path, func)
 post(func::Function, path::Function)        = route(["POST"], path, func)

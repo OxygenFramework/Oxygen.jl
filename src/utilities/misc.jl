@@ -6,6 +6,42 @@ export countargs, recursive_merge, parseparam,
     queryparams, redirect, handlerequest,
     format_response!, set_content_size!
 
+
+### Request helper functions ###
+
+"""
+    queryparams(request::HTTP.Request)
+
+Parse's the query parameters from the Requests URL and return them as a Dict
+"""
+function queryparams(req::HTTP.Request) :: Dict
+    local uri = HTTP.URI(req.target)
+    return HTTP.queryparams(uri.query)
+end
+
+
+"""
+    redirect(path::String; code = 308)
+
+return a redirect response 
+"""
+function redirect(path::String; code = 307) :: HTTP.Response
+    return HTTP.Response(code, ["Location" => path])
+end
+
+function handlerequest(getresponse::Function, catch_errors::Bool; show_errors::Bool = true)
+    if !catch_errors
+        return getresponse()
+    else 
+        try 
+            return getresponse()       
+        catch error
+            show_errors && @error "ERROR: " exception=(error, catch_backtrace())
+            return json(("message" => "The Server encountered a problem"), status = 500)    
+        end  
+    end
+end
+
 """
 countargs(func)
 
@@ -48,30 +84,39 @@ function recursive_merge(x::AbstractVector...)
     end
 end 
 
+"""
+    Path Parameter Parsing functions
+"""
 
-"""
-Parse incoming path parameters into their corresponding type
-ex.) parseparam(Float64, "4.6") => 4.6
-"""
-function parseparam(type::Type, rawvalue::String) 
-    value::String = HTTP.unescapeuri(rawvalue)
-    if type == Any || type == String 
-        return value
-    elseif type <: Enum
-        return type(parse(Int, value))   
-    elseif isprimitivetype(type) || type <: Number || type == Date || type == DateTime
-        return parse(type, value)
-    else 
-        return JSON3.read(value, type)
-    end 
+function parseparam(type::Type{Any}, rawvalue::String)
+    return HTTP.unescapeuri(rawvalue)
 end
 
+function parseparam(type::Type{String}, rawvalue::String)
+    return HTTP.unescapeuri(rawvalue)
+end
+
+function parseparam(type::Type{T}, rawvalue::String) where {T <: Enum}
+    return T(parse(Int, HTTP.unescapeuri(rawvalue)))
+end
+
+function parseparam(type::Type{T}, rawvalue::String) where {T <: Union{Date, DateTime}}
+    return parse(T, HTTP.unescapeuri(rawvalue))
+end
+
+function parseparam(type::Type{T}, rawvalue::String) where {T <: Union{Number, Char, Bool, Symbol}}
+    return parse(T, HTTP.unescapeuri(rawvalue))
+end
+
+function parseparam(type::Type{T}, rawvalue::String) where {T}
+    return JSON3.read(HTTP.unescapeuri(rawvalue), T)
+end
 
 """
 Iterate over the union type and parse the value with the first type that 
 doesn't throw an erorr
 """
-function parseparam(type::Union, rawvalue::String) 
+function parseparam(type::Union, rawvalue::String)
     value::String = HTTP.unescapeuri(rawvalue)
     result = value 
     for current_type in Base.uniontypes(type)
@@ -85,40 +130,29 @@ function parseparam(type::Union, rawvalue::String)
     return result
 end
 
-### Request helper functions ###
 
 """
-    queryparams(request::HTTP.Request)
-
-Parse's the query parameters from the Requests URL and return them as a Dict
+    Response Formatter functions
 """
-function queryparams(req::HTTP.Request) :: Dict
-    local uri = HTTP.URI(req.target)
-    return HTTP.queryparams(uri.query)
+
+function format_response!(req::HTTP.Request, resp::HTTP.Response)
+    # Return Response's as is without any modifications
+    req.response = resp
 end
 
-"""
-    redirect(path::String; code = 308)
-
-return a redirect response 
-"""
-function redirect(path::String; code = 307) :: HTTP.Response
-    return HTTP.Response(code, ["Location" => path])
+function format_response!(req::HTTP.Request, content::String)
+    # dynamically determine the content type
+    push!(req.response.headers, "Content-Type" => HTTP.sniff(content), "Content-Length" => string(sizeof(content)))
+    req.response.status = 200
+    req.response.body = content
 end
 
-function handlerequest(getresponse::Function, catch_errors::Bool; show_errors=true)
-    if !catch_errors
-        return getresponse()
-    else 
-        try 
-            return getresponse()       
-        catch error
-            if show_errors
-                @error "ERROR: " exception=(error, catch_backtrace())
-            end
-            return json(("message" => "The Server encountered a problem"), status = 500)    
-        end  
-    end
+function format_response!(req::HTTP.Request, content::Any)
+    # convert anthything else to a JSON string
+    body = JSON3.write(content)
+    push!(req.response.headers, "Content-Type" => "application/json; charset=utf-8", "Content-Length" => string(sizeof(body)))    
+    req.response.status = 200
+    req.response.body = body    
 end
 
 
@@ -149,22 +183,3 @@ function set_content_size!(body::Union{Base.CodeUnits{UInt8, String}, Vector{UIn
     end
 end
 
-function format_response!(req::HTTP.Request, resp::HTTP.Response)
-    # Return Response's as is without any modifications
-    req.response = resp
-end
-
-function format_response!(req::HTTP.Request, content::String)
-    # dynamically determine the content type
-    push!(req.response.headers, "Content-Type" => HTTP.sniff(content), "Content-Length" => string(sizeof(content)))
-    req.response.status = 200
-    req.response.body = content
-end
-
-function format_response!(req::HTTP.Request, content::Any)
-    # convert anthything else to a JSON string
-    body = JSON3.write(content)
-    push!(req.response.headers, "Content-Type" => "application/json; charset=utf-8", "Content-Length" => string(sizeof(body)))    
-    req.response.status = 200
-    req.response.body = body    
-end

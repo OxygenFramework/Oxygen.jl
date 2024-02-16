@@ -11,13 +11,14 @@ const CONTEXT = Ref{Context}(Context())
 const SERVICE = Ref{Union{Service, Nothing}}(nothing)
 
 
-import Base: get 
+import Base 
 include("methods.jl")
 include("deprecated.jl")
 
 
 macro oxidise()
     quote
+        import Base
         import Oxygen
         
         const CONTEXT = Ref{Oxygen.Context}(Oxygen.Context())

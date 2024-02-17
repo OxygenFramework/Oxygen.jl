@@ -20,7 +20,6 @@ macro oxidise()
         import Oxygen: Context
         
         const CONTEXT = Ref{Context}(Context())
-
         include(joinpath(dirname(Base.find_package("Oxygen")), "methods.jl"))
         
         nothing; # to hide last definition
@@ -28,15 +27,16 @@ macro oxidise()
 end
 
 
-export @get, @post, @put, @patch, @delete, @route, @cron, 
-        @staticfiles, @dynamicfiles, staticfiles, dynamicfiles,
+export  @oxidise, @get, @post, @put, @patch, @delete, @route, @cron, 
+        @staticfiles, @dynamicfiles, Request, Response, 
         get, post, put, patch, delete, route,
         serve, serveparallel, terminate, internalrequest, 
+        staticfiles, dynamicfiles,
         redirect, queryparams, formdata,
         html, text, json, file, xml, js, json, css, binary,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 
-        resetstate, @oxidise, Request, Response 
+        resetstate
 end

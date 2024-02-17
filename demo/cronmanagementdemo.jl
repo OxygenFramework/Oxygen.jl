@@ -9,58 +9,36 @@ get("/data") do
     Dict("msg" => "hello")
 end
 
-taskrouter = router("/tasks", tags=["tasks"])
-cronrouter = router("/cron", tags=["cron"])
-
-@get(taskrouter("/start")) do
-    starttasks()
-    "started tasks"
+function logtime()
+    @info "current time: $(now())"
 end
 
-@get(taskrouter("/stop")) do
-    stoptasks()
-    "stopped tasks"
+# initialize the app with an already running cron job
+@cron "*" logtime
+
+get("/register") do
+    @info "registering new job"
+    @cron "*/2" logtime
+    "registered jobs"
 end
 
-@get(taskrouter("/clear")) do
-    cleartasks()
-    "cleared tasks"
+get("/start") do
+    @info "/start POST endpoint hit; running job"
+    startcronjobs()
+    "started jobs"
 end
 
-get(router("/task", interval=3.5)) do 
-    println("repeat task")
+get("/clear") do 
+    @info "clearing jobs"
+    clearcronjobs()
+    "cleared jobs"
 end
 
-# function logtime()
-#     @info "current time: $(now())"
-# end
-
-# # initialize the app with an already running cron job
-# @cron "*" logtime
-
-# get(cronrouter("/register")) do
-#     @info "registering new job"
-#     @cron "*/2" logtime
-#     "registered jobs"
-# end
-
-# get(cronrouter("/start")) do
-#     @info "/start POST endpoint hit; running job"
-#     startcronjobs()
-#     "started jobs"
-# end
-
-# get(cronrouter("/clear")) do 
-#     @info "clearing jobs"
-#     clearcronjobs()
-#     "cleared jobs"
-# end
-
-# get(cronrouter("/stop")) do
-#     @info "/stop POST endpoint hit"
-#     stopcronjobs()
-#     "stopped jobs"
-# end
+get("/stop") do
+    @info "/stop POST endpoint hit"
+    stopcronjobs()
+    "stopped jobs"
+end
 
 
 try 

@@ -1,10 +1,10 @@
 module AppContext
-import Base: @kwdef, wait, close
+import Base: @kwdef, wait, close, isopen
 using HTTP
 using HTTP: Router
 using ..Types
 
-export Context, CronRuntime, TasksRuntime, Documenation, Service, history, wait, close
+export Context, CronRuntime, TasksRuntime, Documenation, Service, history, wait, close, isopen
 
 function defaultSchema() :: Dict
     Dict(
@@ -51,14 +51,9 @@ end
     tasks::TasksRuntime     = TasksRuntime()
 end
 
-
-Base.close(context::Context) = close(context.service.server[])
-Base.wait(context::Context) = wait(context.service.server[])
-
-Base.close(service::Service) = close(service.server[])
-Base.wait(service::Service) = wait(service.server[])
-
-history(context::Context) = context.service.history
+Base.isopen(context::Context)   = !isnothing(context.service.server[]) && isopen(context.service.server[])
+Base.close(context::Context)    = !isnothing(context.service.server[]) && close(context.service.server[])
+Base.wait(context::Context)     = !isnothing(context.service.server[]) && wait(context.service.server[])
 
 
 # @eval begin

@@ -50,6 +50,10 @@ end
     return "no args"
 end
 
+@get "/anyparams/{message}" function(req, message::Any)
+    return message
+end
+
 @get "/test" function(req)
     return "hello world!"
 end
@@ -375,6 +379,11 @@ r = internalrequest(HTTP.Request("GET", "/boolean/false"))
 
 @suppress global r = internalrequest(HTTP.Request("GET", "/boolean/asdf"))
 @test r.status == 500
+
+# Test parsing of Any type inside a request handler
+r = internalrequest(HTTP.Request("GET", "/anyparams/hello"))
+@test r.status == 200
+@test text(r) == "hello"
 
 
 # # enums

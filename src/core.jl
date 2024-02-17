@@ -48,13 +48,13 @@ end
 stops the webserver immediately
 """
 function terminate(context::Context)
-    if !isnothing(context.service.server[]) && isopen(context.service.server[])
+    if isopen(context)
         # stop background cron jobs
         stopcronjobs(context)
         #Oxygen.Core.stoptasks()
         stoptasks(context)
         # stop server
-        close(context.service.server[])
+        close(context)
     end
 end
 
@@ -221,7 +221,8 @@ function startserver(ctx::Context, host, port, docs, metrics, kwargs, async, sta
 
     if !async     
         try 
-            wait(ctx.service.server[])
+            # wait(ctx.service.server[])
+            wait(ctx)
         catch 
             println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end
@@ -288,7 +289,7 @@ function MetricsMiddleware(history::History, catch_errors::Bool, docspath::Strin
                 end
 
                 start_time = time()
-                
+
                 # Handle the request
                 response = handler(req)
                 # Log response time

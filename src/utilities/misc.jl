@@ -55,14 +55,6 @@ function countargs(f::Function)
 end
 
 
-# This is a temprary function which dublicates countargs
-# the difference is that countargs does not remove the first 
-# argument of the tupple which is a function pointer.
-function count_func_args(func)
-    return length(first(methods(func)).sig.parameters) - 1 
-end
-
-
 # https://discourse.julialang.org/t/multi-layer-dict-merge/27261/7
 recursive_merge(x::AbstractDict...) = merge(recursive_merge, x...)
 recursive_merge(x...) = x[end]

@@ -75,6 +75,10 @@ end
     "Bonjour le monde!"
 end
 
+@get("/grüßen") do 
+    "Hallo Welt!"
+end
+
 @get "/saludar" () -> "¡Hola Mundo!"
 @get "/salutare" f() = "ciao mondo!"
 

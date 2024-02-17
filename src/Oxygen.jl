@@ -1,6 +1,7 @@
 module Oxygen
 
 include("core.jl"); using .Core
+include("instances.jl"); using .Instances
 # Load any optional extensions
 include("extensions/load.jl");
 
@@ -38,5 +39,5 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route, @cron,
         enabledocs, disabledocs, isdocsenabled, 
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 
-        resetstate
+        resetstate, instance
 end

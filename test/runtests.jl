@@ -10,12 +10,13 @@ using Suppressor
 using Oxygen
 
 include("metricstests.jl")
-include("templatingtests.jl") # TODO
+include("templatingtests.jl")
 include("routingfunctionstests.jl")
 include("rendertests.jl")
 include("bodyparsertests.jl")
 include("crontests.jl")
 include("oxidise.jl")
+include("instancetests.jl")
 
 struct Person
     name::String

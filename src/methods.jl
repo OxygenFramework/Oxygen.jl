@@ -81,7 +81,6 @@ function serveparallel(;
     docspath    = "/docs",
     schemapath  = "/schema",
     kwargs...)
-    
 
     try
         Oxygen.Core.serveparallel(CONTEXT[];
@@ -101,7 +100,8 @@ function serveparallel(;
             kwargs...
         )
 
-        return CONTEXT[]
+        # return the resulting HTTP.Server object
+        return CONTEXT[].service.server[]
 
     finally 
 

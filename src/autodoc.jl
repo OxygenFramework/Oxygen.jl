@@ -193,20 +193,14 @@ function createrouter(ctx::Context, prefix::String,
             # register interval for this route 
             if !isnothing(interval) && interval >= 0.0
                 task = (path, httpmethod, interval)
-                # don't add duplicate tasks
-                if isnothing(findfirst(x -> x === task, ctx.tasks.repeattasks))
-                    push!(ctx.tasks.repeattasks, task)
-                end
+                push!(ctx.tasks.repeattasks, task)
             end
 
-             # register cron expression for this route 
-            #  if !isnothing(cron) && !isempty(cron)
-            #     task = (path, httpmethod, cron)
-            #     # don't add duplicate cron jobs
-            #     #if isnothing(findfirst(x -> x === task, ctx.cronjobs))
-            #         #push!(ctx.cronjobs, task)
-            #      #end
-            # end
+            # register cron expression for this route 
+            if !isnothing(cron) && !isempty(cron)
+                task = (path, httpmethod, cron)
+                push!(ctx.cron.cronjobs, task)                 
+            end
 
             combinedtags = [tags..., routertags...]
 
@@ -219,7 +213,7 @@ function createrouter(ctx::Context, prefix::String,
             end
 
             #return path 
-            return (path, cron) 
+            return path
         end
     end
 end

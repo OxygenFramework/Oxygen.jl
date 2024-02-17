@@ -59,17 +59,15 @@ function terminate(context::Context)
 end
 
 
-# """
-# Register all cron jobs 
-# """
-# function registercronjobs(ctx::Context, history::History) # Needs to be refactored
-#     #for job in getcronjobs()
-#     for job in ctx.cronjobs
-#         path, httpmethod, expression = job
-
-#         cron(ctx.job_definitions, expression, path, () -> internalrequest(ctx, history, HTTP.Request(httpmethod, path)))
-#     end
-# end 
+"""
+Register all cron jobs 
+"""
+function registercronjobs(ctx::Context)
+    for job in ctx.cron.cronjobs
+        path, httpmethod, expression = job
+        cron(ctx.cron.job_definitions, expression, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
+    end
+end 
 
 """
     decorate_request(ip::IPAddr)
@@ -120,6 +118,10 @@ function serve(ctx::Context;
     schemapath  = "/schema",
     kwargs...)
 
+    # overwrite docs & schema paths
+    ctx.docs.docspath[] = docspath
+    ctx.docs.schemapath[] = schemapath
+    
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, metrics, show_errors)
 
@@ -152,15 +154,18 @@ function serveparallel(ctx::Context;
     schemapath  = "/schema",
     kwargs...)
 
+    # overwrite docs & schema paths
+    ctx.docs.docspath[] = docspath
+    ctx.docs.schemapath[] = schemapath
+
     parallelhandler = StreamUtil.Handler() 
 
     try
         # compose our middleware ahead of time (so it only has to be built up once)
-        configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors, docspath, schemapath)
+        configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, metrics, show_errors)
 
         return startserver(ctx, host, port, docs, metrics, kwargs, async, (kwargs) -> 
-            StreamUtil.start(_handler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...);
-                           docspath, schemapath)
+            StreamUtil.start(parallelhandler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...))
     finally
         StreamUtil.stop(parallelhandler)
     end
@@ -201,14 +206,17 @@ function startserver(ctx::Context, host, port, docs, metrics, kwargs, async, sta
     serverwelcome(host, port, docs, metrics, ctx.docs.docspath[])
 
     # setup docs & metrics routes
-    docs    && setupswagger(ctx.service.router, ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[])
-    metrics && setupmetrics(ctx.service.router, ctx.service.history, ctx.docs.docspath[])
+    docs    && setupswagger(ctx, ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[])
+    metrics && setupmetrics(ctx, ctx.docs.docspath[])
 
     # start the HTTP server
     ctx.service.server[] = start(preprocesskwargs(kwargs))
 
     # kick off repeat tasks and cron jobs
     starttasks(ctx)
+
+    # Register & Start all cron jobs
+    registercronjobs(ctx)
     startcronjobs(ctx)
 
     if !async     
@@ -253,19 +261,6 @@ function internalrequest(ctx::Context, req::HTTP.Request; middleware::Vector=[],
 end
 
 
-# function DocsMiddleware(router::Router, docspath::String)
-#     return function(handle)
-#         return function(req::HTTP.Request)
-#             if startswith(req.target, docspath)
-#                 return router(req)
-#             else
-#                 return handle(req)
-#             end
-#         end
-#     end
-# end
-
-
 """
 Create a default serializer function that handles HTTP requests and formats the responses.
 """
@@ -293,8 +288,7 @@ function MetricsMiddleware(history::History, catch_errors::Bool, docspath::Strin
                 end
 
                 start_time = time()
-                # try
-
+                
                 # Handle the request
                 response = handler(req)
                 # Log response time
@@ -323,25 +317,6 @@ function MetricsMiddleware(history::History, catch_errors::Bool, docspath::Strin
 
                 # Return the response
                 return response
-
-
-                # catch e          
-                #     response_time = (time() - start_time) * 1000
-
-                #     # Log the error
-                #     push_history(history, HTTPTransaction(
-                #         string(req.context[:ip]),
-                #         string(req.target),
-                #         now(UTC),
-                #         response_time,
-                #         false,
-                #         500,
-                #         string(typeof(e))
-                #     ))
-
-                #     # let our caller figure out if they want to handle the error or not
-                #     rethrow(e)
-                # end
             end
         end
     end
@@ -374,7 +349,7 @@ function(func::Function, req::HTTP.Request)
 end
 ```
 """
-function generate_parser(pathparams::Vector)    
+function generate_parser(pathparams)    
     # Extract the parameter names
     func_args = [Symbol(param[1]) for param in pathparams]
 
@@ -395,9 +370,8 @@ function generate_parser(pathparams::Vector)
     end |> eval
 end
 
-parse_route(httpmethod::String, route::String) = route, nothing
 
-function parse_route(httpmethod::String, route::Function)
+function parse_route(httpmethod::String, route::Union{Function,String}) :: String
 
     # check if path is a callable function (that means it's a router higher-order-function)
     if isa(route, Function)
@@ -417,27 +391,20 @@ function parse_route(httpmethod::String, route::Function)
     end
 
     # if the route is still a function, then it's from the  3rd inner function 
-    # defined in the createrouter()function when the 'router()' function is passed directly.
+    # defined in the createrouter() function when the 'router()' function is passed directly.
     if isa(route, Function)
         route = route(httpmethod)
     end    
-
-    # NOTE: It might be better if every route would contain crin parameter
-    if route isa Tuple
-        route, cron = route
-    else
-        cron = nothing
-    end
 
     if !isa(route, String)
         throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
     end  
     
-    return route, cron
+    return route
 end
 
 
-function parse_func_params(httpmethod::String, route::String, func::Function)
+function parse_func_params(route::String, func::Function)
     
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
@@ -505,38 +472,24 @@ end
 
 Register a request handler function with a path to the ROUTER
 """
-#function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
 function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
-
-    route, cron_expression = parse_route(httpmethod, route)
-    hasPathParams, func_param_names, func_param_types = parse_func_params(httpmethod, route, func)
-
-    registerschema(ctx, route, httpmethod, zip(func_param_names, func_param_types), Base.return_types(func))
-
-    register(ctx.service.router, httpmethod, route, func, (hasPathParams, func_param_names, func_param_types))
-    
-    if !isnothing(cron_expression) && !isempty(cron_expression)
-        task = (route, httpmethod, cron)
-        # NOTE: The route is unique. If dublicates are made here HTTP method would show warning
-        cron_func = (history) -> internalrequest(ctx, history, HTTP.Request(httpmethod, route))
-        cron(ctx.cron.job_definitions, cron_expression, route, cron_func)
-    end
-
-end
-
-function register(router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
-
-    route, cron = parse_route(httpmethod, route) # the cron is always nothing here
-    hasPathParams, func_param_names, func_param_types = parse_func_params(httpmethod, route, func)
-
-    register(router, httpmethod, route, func, (hasPathParams, func_param_names, func_param_types))
-end
-
-function register(router::Router, httpmethod::String, route::String, func::Function, func_params)
-
-    (hasPathParams, func_param_names, func_param_types) = func_params
-
+    # Parse & validate path parameters
+    route = parse_route(httpmethod, route)
+    hasPathParams, func_param_names, func_param_types = parse_func_params(route, func)
     path_params = [param for param in zip(func_param_names, func_param_types)]
+
+    # Register the route schema with out autodocs module
+    registerschema(ctx, route, httpmethod, path_params, Base.return_types(func))
+
+    # Register the route with the router
+    registerhandler(ctx, httpmethod, route, func, hasPathParams, (func_param_names, func_param_types, path_params))
+end
+
+function registerhandler(ctx::Context, httpmethod::String, route::String, func::Function, hasPathParams::Bool, path_params)
+    func_param_names, func_param_types, path_params = path_params
+
+    # create a map of paramter name to type definition
+    func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
 
     method = first(methods(func))
     numfields = method.nargs
@@ -548,9 +501,26 @@ function register(router::Router, httpmethod::String, route::String, func::Funct
         end
     # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
     elseif hasPathParams && numfields > 2
-        parser = generate_parser(path_params) # Generate a specialized parser for this route
-        handle = function (req)
-            parser(func, req)
+
+        # Generate a specialized parser for this route
+        parser = generate_parser(path_params) 
+
+        # Our original parsing approach for parsing path parameters
+        traditional = function(req::HTTP.Request)
+            # get all path parameters
+            params = HTTP.getparams(req)
+            # convert params to their designated type (if applicable)
+            pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
+            # pass all parameters to handler in the correct order 
+            func(req, pathParams...)
+        end
+
+        # If we are hitting an internal docs route, then we need to use the traditional approach
+        # To avoid a world age issue with the parser function
+        if startswith(route, ctx.docs.docspath[])
+            handle = traditional
+        else
+            handle = (req::HTTP.Request) -> parser(func, req)
         end
     # case 3.) This function should only get passed the request object
     else 
@@ -559,27 +529,21 @@ function register(router::Router, httpmethod::String, route::String, func::Funct
         end
     end
 
-    HTTP.register!(router, httpmethod, route, handle)
+    HTTP.register!(ctx.service.router, httpmethod, route, handle)
 end
 
 
 # add the swagger and swagger/schema routes 
-function setupswagger(router::Router, schema::Dict, docspath::String, schemapath::String)
-
+function setupswagger(ctx::Context, schema::Dict, docspath::String, schemapath::String)
     full_schema = "$docspath$schemapath"
-
-    register(router, "GET", "$docspath", req -> swaggerhtml(full_schema))
-
-    register(router, "GET", "$docspath/swagger", req -> swaggerhtml(full_schema))
-    
-    register(router, "GET", "$docspath/redoc", req -> redochtml(full_schema))
-
-    register(router, "GET", full_schema, req -> schema)
-
+    register(ctx, "GET", "$docspath", () -> swaggerhtml(full_schema))
+    register(ctx, "GET", "$docspath/swagger", () -> swaggerhtml(full_schema))
+    register(ctx, "GET", "$docspath/redoc", () -> redochtml(full_schema))
+    register(ctx, "GET", full_schema, () -> schema)
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(router::HTTP.Router, history::History, docspath::String)
+function setupmetrics(ctx::Context, docspath::String)
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath) :: String
@@ -593,14 +557,16 @@ function setupmetrics(router::HTTP.Router, history::History, docspath::String)
         end
     end
 
-    staticfiles(router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    staticfiles(ctx, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
-    function metrics(req, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
+    function metrics(req::HTTP.Request, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
         lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
 
         if !isnothing(latest)
             lower_bound = latest
         end
+
+        history = ctx.service.history
 
         return Dict(
            "server" => server_metrics(history, nothing),
@@ -613,7 +579,7 @@ function setupmetrics(router::HTTP.Router, history::History, docspath::String)
         )
     end
 
-    register(router, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
+    register(ctx, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
 end
 
 
@@ -623,7 +589,7 @@ end
 Mount all files inside the /static folder (or user defined mount point). 
 The `headers` array will get applied to all mounted files
 """
-function staticfiles(router::Router,
+function staticfiles(ctx::Context,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
@@ -638,26 +604,10 @@ function staticfiles(router::Router,
     function addroute(currentroute, filepath)
         # calculate the entire response once on load
         resp = file(filepath; loadfile=loadfile, headers=headers)
-        register(router, "GET", currentroute, req -> resp)
+        register(ctx, "GET", currentroute, req -> resp)
     end
     mountfolder(folder, mountdir, addroute)
 end
-
-function staticfiles(ctx::Context, folder::String, mountdir::String="static"; 
-                     headers::Vector=[], loadfile::Union{Function,Nothing}=nothing)
-
-    # remove the leading slash 
-    if first(mountdir) == '/'
-        mountdir = mountdir[2:end]
-    end
-    registermountedfolder(ctx.docs.mountedfolders, mountdir)
-    function addroute(currentroute, filepath)
-        resp = file(filepath; loadfile=loadfile, headers=headers)
-        register(ctx, "GET", currentroute, req -> resp)
-    end
-    mountfolder(folder, mountdir, addroute)    
-end
-
 
 
 """

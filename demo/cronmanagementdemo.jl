@@ -14,7 +14,9 @@ function logtime()
 end
 
 # initialize the app with an already running cron job
-@cron "*" logtime
+get(router("/log", cron="*/2")) do
+    logtime()  
+end
 
 get("/register") do
     @info "registering new job"

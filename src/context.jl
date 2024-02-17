@@ -20,12 +20,13 @@ end
 @kwdef struct CronRuntime
     run::Ref{Bool}          = Ref{Bool}(false)  # Flag used to stop all running tasks
     jobs::Set               = Set()   # Set of all running tasks
+    cronjobs::Set           = Set()   # Cron job definitions registered through the router() (path, httpmethod, cron_expression)
     job_definitions::Set    = Set()   # Set of cron expressions and functions
 end
 
 @kwdef struct TasksRuntime
     timers::Vector{Timer}   = [] # Vector of running tasks
-    repeattasks::Vector     = [] # Vector of repeat task definitions (path, httpmethod, interval)
+    repeattasks::Set        = Set() # Vector of repeat task definitions (path, httpmethod, interval)
 end
 
 @kwdef struct Documenation

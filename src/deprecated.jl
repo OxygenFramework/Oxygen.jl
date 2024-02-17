@@ -25,7 +25,5 @@ function configdocs(docspath::String = "/docs", schemapath::String = "/schema")
     docspath == "/docs" || throw("""docspath is not not "/docs" """)
     schemapath == "/schema" || throw("""schemapat is not not "/schema" """)
 
-    #CONTEXT[] = Context(CONTEXT[]; docspath, schemapath)
-
     return
 end

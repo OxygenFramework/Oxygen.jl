@@ -433,6 +433,9 @@ const PORT = 7070 # 8080 is a very common port and could already be in use
     server = serve(async=true, port=PORT)
     sleep(3)
 
+    internalrequest(HTTP.Request("GET", "/cron-increment"))
+    internalrequest(HTTP.Request("GET", "/cron-increment"))
+
     @testset "Testing CRON API access" begin
         r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))
         @test r.status == 200

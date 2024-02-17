@@ -4,9 +4,6 @@
 Reset all the internal state variables
 """
 function resetstate()
-
-    SERVICE[] = nothing
-
     # prevent context reset when created at compile-time
     if (@__MODULE__) == Oxygen
         CONTEXT[] = Oxygen.Core.Context()
@@ -14,25 +11,9 @@ function resetstate()
 end
 
 # Nothing to do for the router
-"""
-    terminate([service])
 
-stops the webserver immediately
-"""
-terminate(service::Oxygen.Service) = Oxygen.Core.terminate(service)
-
-function terminate()
-    if !isnothing(SERVICE[]) 
-        terminate(SERVICE[])
-    end
-end
-
-
-# A callback used to initialize the service
-function setservice(service::Service)
-    SERVICE[] = service
-end
-
+terminate(context::Context) = Oxygen.Core.terminate(context)
+terminate() = terminate(CONTEXT[])
 
 function serve(; 
     middleware  = [], 
@@ -50,7 +31,7 @@ function serve(;
     kwargs...) 
 
     try
-        Oxygen.Core.serve(CONTEXT[], setservice; 
+        Oxygen.Core.serve(CONTEXT[]; 
             middleware  = middleware,
             handler     = handler,
             host        = host, 
@@ -66,7 +47,8 @@ function serve(;
             kwargs...
         )
 
-        return SERVICE[]
+        # return the resulting HTTP.Server object
+        return CONTEXT[].service.server[]
 
     finally
         
@@ -102,7 +84,7 @@ function serveparallel(;
     
 
     try
-        Oxygen.Core.serveparallel(CONTEXT[], setservice;
+        Oxygen.Core.serveparallel(CONTEXT[];
             middleware  = middleware,
             handler     = handler, 
             host        = host,
@@ -119,7 +101,7 @@ function serveparallel(;
             kwargs...
         )
 
-        return SERVICE[]
+        return CONTEXT[]
 
     finally 
 
@@ -292,7 +274,8 @@ dynamicfiles(
 ) = Oxygen.Core.dynamicfiles(CONTEXT[], folder, mountdir; headers, loadfile)
 
 
-internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, docs::Bool=false, serialize::Bool=true, catch_errors=true, docspath::String="/docs", schemapath="/schema") = Oxygen.Core.internalrequest(CONTEXT[], !isnothing(SERVICE[]) ? Oxygen.Core.history(SERVICE[]) : History(1), req; middleware, metrics, docs, serialize, catch_errors, docspath, schemapath)
+internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true) = 
+    Oxygen.Core.internalrequest(CONTEXT[], req; middleware, metrics, serialize, catch_errors)
 
 function router(prefix::String = ""; 
                 tags::Vector{String} = Vector{String}(), 
@@ -304,8 +287,8 @@ function router(prefix::String = "";
 end
 
 
-mergeschema(route::String, customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].schema, route, customschema)
-mergeschema(customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].schema, customschema)
+mergeschema(route::String, customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].docs.schema, route, customschema)
+mergeschema(customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].docs.schema, customschema)
 
 
 """
@@ -314,7 +297,7 @@ mergeschema(customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].schema, cust
 Return the current internal schema for this app
 """
 function getschema()
-    return CONTEXT[].schema
+    return CONTEXT[].docs.schema
 end
 
 # Adding docstrings
@@ -333,12 +316,10 @@ end
 Overwrites the entire internal schema
 """
 function setschema(customschema::Dict)
-
-    CONTEXT[] = Context(CONTEXT[]; schema = customschema)
-
+    empty!(CONTEXT[].docs.schema)
+    merge!(CONTEXT[].docs.schema, customschema)
     return
 end
-
 
 
 
@@ -350,7 +331,7 @@ or the random Id julia assigns to each lambda function.
 """
 macro cron(expression, func)
     quote 
-        Oxygen.Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), string($(esc(func))), $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].cron.job_definitions), $(esc(expression)), string($(esc(func))), $(esc(func)))
     end
 end
 
@@ -367,35 +348,31 @@ macro cron(expression, name, func)
     end
 end
 
+## Cron Job Functions ##
 
-"""
-    clearcronjobs()
+startcronjobs(ctx::Context) = Oxygen.Core.startcronjobs(ctx)
+startcronjobs() = startcronjobs(CONTEXT[])
 
-Clear any internal reference's to prexisting cron jobs
-"""
-function clearcronjobs()
-    empty!(CONTEXT[].job_definitions)
-end
+stopcronjobs(ctx::Context) = Oxygen.Core.stopcronjobs(ctx)
+stopcronjobs() = Oxygen.Core.stopcronjobs(CONTEXT[])
+
+clearcronjobs(ctx::Context) = Oxygen.Core.clearcronjobs(ctx)
+clearcronjobs() = clearcronjobs(CONTEXT[])
 
 
-startcronjobs(ctx) = Oxygen.Core.startcronjobs(ctx)
+### Repeat Task Functions ###
 
-function startcronjobs()
-    startcronjobs(CONTEXT[])
-end
+starttasks(context::Context) = Oxygen.Core.starttasks(context)
+starttasks() = starttasks(CONTEXT[])
 
-stopcronjobs(service) = Oxygen.Core.stopcronjobs(service)
+stoptasks(context::Context) = Oxygen.Core.stoptasks(context)
+stoptasks() = stoptasks(CONTEXT[])
 
-function stopcronjobs()
-    if !isnothing(SERVICE[])
-        Oxygen.Core.stopcronjobs(SERVICE[])
-    end
-end
+cleartasks(context::Context) = Oxygen.Core.cleartasks(context)
+cleartasks() = cleartasks(CONTEXT[])
 
-stoptasks(service) = Oxygen.Core.stoptasks(service)
 
-function stoptasks()
-    if !isnothing(SERVICE[])
-        stoptasks(SERVICE[])
-    end
-end
+## Documenation Funtions ##
+
+configdocs(ctx::Context, docspath, schemapath) = Oxygen.Core.configdocs(ctx, docspath, schemapath)
+configdocs(docspath::String, schemapath::String) = configdocs(CONTEXT[], docspath, schemapath)

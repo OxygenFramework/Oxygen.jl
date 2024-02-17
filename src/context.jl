@@ -1,11 +1,12 @@
 module AppContext
-import Base: @kwdef
+import Base: @kwdef, wait, close
+using HTTP
 using HTTP: Router
-using ..Types: TaggedRoute
+using ..Types
 
-export Context
+export Context, CronRuntime, TasksRuntime, Documenation, Service, history, wait, close
 
-function defaultSchema()
+function defaultSchema() :: Dict
     Dict(
         "openapi" => "3.0.0",
         "info" => Dict(
@@ -16,46 +17,58 @@ function defaultSchema()
     )
 end
 
-"""
-Define our application Context object with default values
-"""
+@kwdef struct CronRuntime
+    run::Ref{Bool}          = Ref{Bool}(false)  # Flag used to stop all running tasks
+    jobs::Set               = Set()   # Set of all running tasks
+    job_definitions::Set    = Set()   # Set of cron expressions and functions
+end
+
+@kwdef struct TasksRuntime
+    timers::Vector{Timer}   = [] # Vector of running tasks
+    repeattasks::Vector     = [] # Vector of repeat task definitions (path, httpmethod, interval)
+end
+
+@kwdef struct Documenation
+    docspath::Ref{String}                   = "/docs"
+    schemapath::Ref{String}                 = "/schema"
+    schema::Dict                            = defaultSchema()
+    mountedfolders::Set{String}             = Set{String}()                 # Set of all mounted folders for file hosting
+    taggedroutes::Dict{String, TaggedRoute} = Dict{String, TaggedRoute}()
+end
+
+@kwdef struct Service
+    server::Ref{Union{HTTP.Server,Nothing}} = Ref{Union{HTTP.Server,Nothing}}(nothing)
+    router::Router                          = Router()
+    custommiddleware::Dict{String, Tuple}   = Dict{String, Tuple}()
+    history::History                        = History(1_000_000)
+end
+
 @kwdef struct Context
-    router::Router                              = Router()
-    mountedfolders::Set{String}                 = Set{String}()
-    taggedroutes::Dict{String, TaggedRoute}     = Dict{String, TaggedRoute}()
-    custommiddleware::Dict{String, Tuple}       = Dict{String, Tuple}()
-    repeattasks::Vector                         = []
-    schema::Dict                                = defaultSchema()
-    job_definitions::Set                        = Set()
+    service::Service        = Service()    
+    docs::Documenation      = Documenation()
+    cron::CronRuntime       = CronRuntime()
+    tasks::TasksRuntime     = TasksRuntime()
 end
 
 
-@eval begin
-    """
-        Context(ctx::Context; kwargs...)
+Base.close(context::Context) = close(context.service.server[])
+Base.wait(context::Context) = wait(context.service.server[])
 
-    Create a new `Context` object by copying an existing one and optionally overriding some of its fields with keyword arguments.
-    """
-    function Context(ctx::Context; $([Expr(:kw ,k, :(ctx.$k)) for k in fieldnames(Context)]...))
-        return Context($(fieldnames(Context)...))
-    end
-end
+Base.close(service::Service) = close(service.server[])
+Base.wait(service::Service) = wait(service.server[])
 
-end
+history(context::Context) = context.service.history
 
 
-# # Created within a `serve` at runtime. Keyword arguments may be used to initialize some of the objects outside.
-# struct Runtime
-#     run::Ref{Bool}
-#     jobs::Set
-#     timers::Vector{Timer}
-#     history::CircularDeque{HTTPTransaction}
-#     streamhandler::Union{Nothing, StreamUtil.Handler}
+# @eval begin
+#     """
+#         Context(ctx::Context; kwargs...)
+
+#     Create a new `Context` object by copying an existing one and optionally overriding some of its fields with keyword arguments.
+#     """
+#     function Context(ctx::Context; $([Expr(:kw ,k, :(ctx.$k)) for k in fieldnames(Context)]...))
+#         return Context($(fieldnames(Context)...))
+#     end
 # end
 
-# # Returned from `serve` when async is enabled.
-# struct Service
-#     context::Context
-#     runtime::Runtime
-#     server::HTTP.Server
-# end
+end

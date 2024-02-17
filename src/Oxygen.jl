@@ -17,10 +17,9 @@ include("deprecated.jl")
 macro oxidise()
     quote
         import Base
-        import Oxygen
-        using Oxygen: Context
+        import Oxygen: Context
         
-        const CONTEXT = Ref{Oxygen.Context}(Oxygen.Context())
+        const CONTEXT = Ref{Context}(Context())
 
         include(joinpath(dirname(Base.find_package("Oxygen")), "methods.jl"))
         

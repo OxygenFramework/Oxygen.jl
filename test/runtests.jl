@@ -9,6 +9,8 @@ using Suppressor
 
 using Oxygen
 
+include("constants.jl"); using .Constants
+
 include("metricstests.jl")
 include("templatingtests.jl")
 include("routingfunctionstests.jl")
@@ -17,6 +19,8 @@ include("bodyparsertests.jl")
 include("crontests.jl")
 include("oxidise.jl")
 include("instancetests.jl")
+include("paralleltests.jl")
+
 
 struct Person
     name::String
@@ -28,8 +32,6 @@ struct Book
     author::String
 end
 
-const PORT = 6060 # 8080 port is frequently used
-localhost = "http://127.0.0.1:$PORT"
 
 configdocs("/docs", "/schema")
 
@@ -165,7 +167,7 @@ end
     """)
 end 
 
-@route ["GET"] "/get" function(req)
+@route ["GET"] "/get" function()
     return "get"
 end 
 
@@ -845,56 +847,6 @@ catch e
     @test true
 finally
     terminate()
-end
-
-try 
-    # service should not have started and get requests should throw some error
-    @async serveparallel(port=PORT, show_errors=false)
-    sleep(3)
-    r = HTTP.get("$localhost/get"; readtimeout=1)
-catch e
-    @test true
-finally
-    terminate()
-end
-
-# only run these tests if we have more than one thread to work with
-if Threads.nthreads() > 1 && VERSION != parse(VersionNumber, "1.6.6")
-
-    @async serveparallel(port=PORT, show_errors=false)
-    sleep(3)
-
-    r = HTTP.get("$localhost/get")
-    @test r.status == 200
-
-    r = HTTP.post("$localhost/post", body="some demo content")
-    @test text(r) == "some demo content"
-
-    try
-        r = HTTP.get("$localhost/customerror", connect_timeout=3)
-    catch e 
-        @test e isa MethodError || e isa HTTP.ExceptionRequest.StatusError
-    end
-    
-    terminate()
-
-    @async serveparallel(middleware=[handler1, handler2, handler3], port=PORT, show_errors=false)
-    sleep(1)
-
-    r = HTTP.get("$localhost/get")
-    @test r.status == 200
-
-    terminate()
-
-    try 
-        @async serveparallel(queuesize=0, port=PORT, show_errors=false)
-        sleep(1)
-        r = HTTP.get("$localhost/get")
-    catch e
-        @test e isa HTTP.ExceptionRequest.StatusError
-    finally
-        terminate()
-    end
 end
 
 terminate()

@@ -370,9 +370,3 @@ stoptasks() = stoptasks(CONTEXT[])
 
 cleartasks(context::Context) = Oxygen.Core.cleartasks(context)
 cleartasks() = cleartasks(CONTEXT[])
-
-
-## Documenation Funtions ##
-
-configdocs(ctx::Context, docspath, schemapath) = Oxygen.Core.configdocs(ctx, docspath, schemapath)
-configdocs(docspath::String, schemapath::String) = configdocs(CONTEXT[], docspath, schemapath)

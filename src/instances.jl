@@ -12,8 +12,6 @@ function extract_filename(include_str::String, include_regex::Regex)
     match_result = match(include_regex, include_str)
     if match_result !== nothing
         return match_result.captures[1]  # Return the captured filename
-    else
-        throw("No filename found")
     end
 end
 
@@ -43,10 +41,8 @@ function load(path::String)
 
     absolute_path = fullpath(path)
 
-    if !isfile(absolute_path)
-        throw("not a valid file")
-    end
-
+    !isfile(absolute_path) && throw("not a valid file")
+    
     # Read the file content
     content = read(absolute_path, String)
 

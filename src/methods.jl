@@ -55,13 +55,10 @@ function serve(;
         # close server on exit if we aren't running asynchronously
         if !async 
             terminate()
+            # only reset state on exit if we aren't running asynchronously & are running it interactively 
+            isinteractive() && resetstate()
         end
-
-        # only reset state on exit if we aren't running asynchronously & are running it interactively 
-        if !async && isinteractive()
-            resetstate()
-        end
-
+        
     end
 end
 
@@ -104,19 +101,12 @@ function serveparallel(;
         return CONTEXT[].service.server[]
 
     finally 
-
         # close server on exit if we aren't running asynchronously
         if !async 
             terminate()
-            # stop any background worker threads
-            #Oxygen.Core.StreamUtil.stop(parallelhandler)
+            # only reset state on exit if we aren't running asynchronously & are running it interactively 
+            isinteractive() && resetstate()
         end
-
-        # only reset state on exit if we aren't running asynchronously & are running it interactively 
-        if !async && isinteractive()
-            resetstate()
-        end
-
     end
 end
 

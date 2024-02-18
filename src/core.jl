@@ -52,7 +52,7 @@ function terminate(context::Context)
         # stop background cron jobs
         stopcronjobs(context)
         #Oxygen.Core.stoptasks()
-        stoptasks(context)
+        stoptasks(context) 
         # stop the parallel handler (if available)
         StreamUtil.stop(context.service.parallel_handler[])
         # stop server

@@ -12,7 +12,7 @@ end
 
 # Nothing to do for the router
 
-terminate(context::Context) = Oxygen.Core.terminate(context)
+terminate(context::Oxygen.Context) = Oxygen.Core.terminate(context)
 terminate() = terminate(CONTEXT[])
 
 function serve(; 
@@ -204,8 +204,8 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 
 ### Core Routing Functions Support for do..end Syntax ###
 
-Base.get(func::Function, path::String)      = route(["GET"], path, func)
-Base.get(func::Function, path::Function)    = route(["GET"], path, func)
+get(func::Function, path::String)      = route(["GET"], path, func)
+get(func::Function, path::Function)    = route(["GET"], path, func)
 
 post(func::Function, path::String)          = route(["POST"], path, func)
 post(func::Function, path::Function)        = route(["POST"], path, func)
@@ -340,23 +340,23 @@ end
 
 ## Cron Job Functions ##
 
-startcronjobs(ctx::Context) = Oxygen.Core.startcronjobs(ctx)
+startcronjobs(ctx::Oxygen.Context) = Oxygen.Core.startcronjobs(ctx)
 startcronjobs() = startcronjobs(CONTEXT[])
 
-stopcronjobs(ctx::Context) = Oxygen.Core.stopcronjobs(ctx)
+stopcronjobs(ctx::Oxygen.Context) = Oxygen.Core.stopcronjobs(ctx)
 stopcronjobs() = stopcronjobs(CONTEXT[])
 
-clearcronjobs(ctx::Context) = Oxygen.Core.clearcronjobs(ctx)
+clearcronjobs(ctx::Oxygen.Context) = Oxygen.Core.clearcronjobs(ctx)
 clearcronjobs() = clearcronjobs(CONTEXT[])
 
 
 ### Repeat Task Functions ###
 
-starttasks(context::Context) = Oxygen.Core.starttasks(context)
+starttasks(context::Oxygen.Context) = Oxygen.Core.starttasks(context)
 starttasks() = starttasks(CONTEXT[])
 
-stoptasks(context::Context) = Oxygen.Core.stoptasks(context)
+stoptasks(context::Oxygen.Context) = Oxygen.Core.stoptasks(context)
 stoptasks() = stoptasks(CONTEXT[])
 
-cleartasks(context::Context) = Oxygen.Core.cleartasks(context)
+cleartasks(context::Oxygen.Context) = Oxygen.Core.cleartasks(context)
 cleartasks() = cleartasks(CONTEXT[])

@@ -10,23 +10,20 @@ using .Core: Context, History, Server
 
 const CONTEXT = Ref{Context}(Context())
 
-import Base 
+import Base: get 
 include("methods.jl")
 include("deprecated.jl")
 
-
 macro oxidise()
     quote
-        import Base
-        import Oxygen: Context
+        import Oxygen
         
-        const CONTEXT = Ref{Context}(Context())
+        const CONTEXT = Ref{Oxygen.Context}(Oxygen.Context())
         include(joinpath(dirname(Base.find_package("Oxygen")), "methods.jl"))
         
         nothing; # to hide last definition
     end |> esc
 end
-
 
 export  @oxidise, @get, @post, @put, @patch, @delete, @route, @cron, 
         @staticfiles, @dynamicfiles, Request, Response, 

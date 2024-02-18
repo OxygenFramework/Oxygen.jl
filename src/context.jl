@@ -42,6 +42,7 @@ end
     router::Router                          = Router()
     custommiddleware::Dict{String, Tuple}   = Dict{String, Tuple}()
     history::History                        = History(1_000_000)
+    parallel_handler::Ref{Union{Handler,Nothing}} = Ref{Union{Handler,Nothing}}(nothing)
 end
 
 @kwdef struct Context

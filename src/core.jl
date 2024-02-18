@@ -53,6 +53,8 @@ function terminate(context::Context)
         stopcronjobs(context)
         #Oxygen.Core.stoptasks()
         stoptasks(context)
+        # stop the parallel handler (if available)
+        StreamUtil.stop(context.service.parallel_handler[])
         # stop server
         close(context)
     end
@@ -158,17 +160,14 @@ function serveparallel(ctx::Context;
     ctx.docs.docspath[] = docspath
     ctx.docs.schemapath[] = schemapath
 
-    parallelhandler = StreamUtil.Handler() 
+    # create and assign our parallel handler
+    ctx.service.parallel_handler[] = Handler() 
 
-    try
-        # compose our middleware ahead of time (so it only has to be built up once)
-        configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, metrics, show_errors)
+    # compose our middleware ahead of time (so it only has to be built up once)
+    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, metrics, show_errors)
 
-        return startserver(ctx, host, port, docs, metrics, kwargs, async, (kwargs) -> 
-            StreamUtil.start(parallelhandler, handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...))
-    finally
-        StreamUtil.stop(parallelhandler)
-    end
+    return startserver(ctx, host, port, docs, metrics, kwargs, async, (kwargs) -> 
+        StreamUtil.start(ctx.service.parallel_handler[], handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...))
 end
 
 
@@ -220,8 +219,7 @@ function startserver(ctx::Context, host, port, docs, metrics, kwargs, async, sta
     startcronjobs(ctx)
 
     if !async     
-        try 
-            # wait(ctx.service.server[])
+        try
             wait(ctx)
         catch 
             println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line

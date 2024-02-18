@@ -499,11 +499,7 @@ function registerhandler(ctx::Context, httpmethod::String, route::String, func::
     # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
     elseif hasPathParams && numfields > 2
 
-        # Generate a specialized parser for this route
-        parser = generate_parser(path_params) 
-
-        # Our original parsing approach for parsing path parameters
-        traditional = function(req::HTTP.Request)
+        handle = function(req::HTTP.Request)
             # get all path parameters
             params = HTTP.getparams(req)
             # convert params to their designated type (if applicable)
@@ -512,13 +508,26 @@ function registerhandler(ctx::Context, httpmethod::String, route::String, func::
             func(req, pathParams...)
         end
 
-        # If we are hitting an internal docs route, then we need to use the traditional approach
-        # To avoid a world age issue with the parser function
-        if startswith(route, ctx.docs.docspath[])
-            handle = traditional
-        else
-            handle = (req::HTTP.Request) -> parser(func, req)
-        end
+        # # Generate a specialized parser for this route
+        # parser = generate_parser(path_params) 
+
+        # # Our original parsing approach for parsing path parameters
+        # traditional = function(req::HTTP.Request)
+        #     # get all path parameters
+        #     params = HTTP.getparams(req)
+        #     # convert params to their designated type (if applicable)
+        #     pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
+        #     # pass all parameters to handler in the correct order 
+        #     func(req, pathParams...)
+        # end
+
+        # # If we are hitting an internal docs route, then we need to use the traditional approach
+        # # To avoid a world age issue with the parser function
+        # if startswith(route, ctx.docs.docspath[])
+        #     handle = traditional
+        # else
+        #     handle = (req::HTTP.Request) -> parser(func, req)
+        # end
     # case 3.) This function should only get passed the request object
     else 
         handle = function (req) 

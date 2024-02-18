@@ -395,10 +395,8 @@ function parse_route(httpmethod::String, route::Union{Function,String}) :: Strin
         route = route(httpmethod)
     end    
 
-    if !isa(route, String)
-        throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
-    end  
-    
+    !isa(route, String) && throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
+      
     return route
 end
 
@@ -559,14 +557,13 @@ function setupmetrics(ctx::Context, docspath::String)
     staticfiles(ctx, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
     function metrics(req::HTTP.Request, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
-        lower_bound = !isnothing(window) && window > 0 ? Minute(window) : nothing
-
-        if !isnothing(latest)
-            lower_bound = latest
-        end
 
         history = ctx.service.history
 
+        # Figure out how far back to read from the history object
+        window_value = !isnothing(window) && window > 0 ? Minute(window) : nothing
+        lower_bound = !isnothing(latest) ? latest : window_value
+        
         return Dict(
            "server" => server_metrics(history, nothing),
            "endpoints" => all_endpoint_metrics(history, nothing),
@@ -594,18 +591,16 @@ function staticfiles(ctx::Context,
         headers::Vector=[], 
         loadfile::Union{Function,Nothing}=nothing
     )
-
     # remove the leading slash 
     if first(mountdir) == '/'
         mountdir = mountdir[2:end]
     end
-
+    registermountedfolder(ctx.docs.mountedfolders, mountdir)
     function addroute(currentroute, filepath)
-        # calculate the entire response once on load
         resp = file(filepath; loadfile=loadfile, headers=headers)
-        register(ctx, "GET", currentroute, req -> resp)
+        register(ctx, "GET", currentroute, () -> resp)
     end
-    mountfolder(folder, mountdir, addroute)
+    mountfolder(folder, mountdir, addroute)  
 end
 
 
@@ -615,7 +610,7 @@ end
 Mount all files inside the /static folder (or user defined mount point), 
 but files are re-read on each request. The `headers` array will get applied to all mounted files
 """
-function dynamicfiles(ctx::Context, #TODO: Make the same refactor as with staticfiles
+function dynamicfiles(ctx::Context,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
@@ -627,9 +622,7 @@ function dynamicfiles(ctx::Context, #TODO: Make the same refactor as with static
     end
     registermountedfolder(ctx.docs.mountedfolders, mountdir)
     function addroute(currentroute, filepath)
-
-        register(ctx, "GET", currentroute, req -> file(filepath; loadfile=loadfile, headers=headers))
-
+        register(ctx, "GET", currentroute, () -> file(filepath; loadfile=loadfile, headers=headers))
     end
     mountfolder(folder, mountdir, addroute)    
 end

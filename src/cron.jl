@@ -57,13 +57,6 @@ function startcronjobs(ctx::Context)
 
     for (job_id, expression, name, func) in ctx.cron.job_definitions
 
-        # prevent duplicate jobs from getting ran
-        if job_id in ctx.cron.jobs
-            printstyled("[ Cron: Job already Exists ", color = :green, bold = true)
-            println("{ id: $job_id, expr: $expression, name: $name }")
-            continue
-        end
-
         # add job it to set of running jobs
         push!(ctx.cron.jobs, job_id)
 

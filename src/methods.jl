@@ -58,7 +58,7 @@ function serve(;
             # only reset state on exit if we aren't running asynchronously & are running it interactively 
             isinteractive() && resetstate()
         end
-        
+
     end
 end
 
@@ -344,7 +344,7 @@ startcronjobs(ctx::Context) = Oxygen.Core.startcronjobs(ctx)
 startcronjobs() = startcronjobs(CONTEXT[])
 
 stopcronjobs(ctx::Context) = Oxygen.Core.stopcronjobs(ctx)
-stopcronjobs() = Oxygen.Core.stopcronjobs(CONTEXT[])
+stopcronjobs() = stopcronjobs(CONTEXT[])
 
 clearcronjobs(ctx::Context) = Oxygen.Core.clearcronjobs(ctx)
 clearcronjobs() = clearcronjobs(CONTEXT[])

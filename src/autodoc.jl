@@ -7,11 +7,11 @@ using RelocatableFolders
 
 using ..Constants
 using ..Util
-using ..Core: Context
+using ..Core: Context, Documenation
 using ..Types: TaggedRoute
 
 export registerschema, 
-    swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, registermountedfolder, 
+    swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, 
     getrepeatasks, hasmiddleware, compose, resetstatevariables, configdocs
 
 const SWAGGER_VERSION   = "swagger@5.7.2"
@@ -25,13 +25,6 @@ Configure the default docs and schema endpoints
 function configdocs(ctx::Context, docspath::String, schemapath::String)
     ctx.docs.docspath[] = docspath
     ctx.docs.schemapath[] = schemapath
-end
-
-"""
-Registers the folder as a source for mounting static files
-"""
-function registermountedfolder(mountedfolders::Set{String}, folder::String)
-    push!(mountedfolders, "/$folder")
 end
 
 
@@ -270,10 +263,10 @@ end
 """
 Used to generate & register schema related for a specific endpoint 
 """
-function registerschema(ctx::Context, path::String, httpmethod::String, parameters, returntype::Array)
+function registerschema(docs::Documenation, path::String, httpmethod::String, parameters, returntype::Array)
 
     # skip any doc related endpoints
-    if startswith(path, ctx.docs.docspath[])
+    if startswith(path, docs.docspath[])
        return 
     end
 
@@ -294,22 +287,9 @@ function registerschema(ctx::Context, path::String, httpmethod::String, paramete
         push!(params, param)
     end
 
-
-    is_mounted_path = false
-    for folder in ctx.docs.mountedfolders
-        if startswith(path, folder)
-            is_mounted_path = true
-            break 
-        end
-    end
-
-    if is_mounted_path
-        return 
-    end
-
     # lookup if this route has any registered tags
-    if haskey(ctx.docs.taggedroutes, path) && httpmethod in ctx.docs.taggedroutes[path].httpmethods
-        tags = ctx.docs.taggedroutes[path].tags 
+    if haskey(docs.taggedroutes, path) && httpmethod in docs.taggedroutes[path].httpmethods
+        tags = docs.taggedroutes[path].tags 
     else 
         tags = []
     end
@@ -363,7 +343,7 @@ function registerschema(ctx::Context, path::String, httpmethod::String, paramete
 
     # remove any special regex patterns from the path before adding this path to the schema
     cleanedpath = replace(path, r"(?=:)(.*?)(?=}/)" => "")
-    mergeschema(ctx.docs.schema, cleanedpath, route)
+    mergeschema(docs.schema, cleanedpath, route)
 end
 
 """

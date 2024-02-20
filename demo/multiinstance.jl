@@ -6,6 +6,10 @@ module A
     @get "/" function()
         text("server A")
     end
+
+    @get "/another" function()
+        text("another route in server A")
+    end
 end
 
 module B

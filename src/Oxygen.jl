@@ -36,5 +36,5 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route, @cron,
         enabledocs, disabledocs, isdocsenabled, 
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 
-        resetstate, instance
+        resetstate, instance, setupmetrics, setupdocs
 end

@@ -3,7 +3,7 @@ module Cron
 import Base: @kwdef
 using Dates
 using ..Util: countargs
-using ..AppContext: Context
+using ..Core: CronRuntime
 
 export cron, startcronjobs, stopcronjobs, clearcronjobs
 
@@ -22,18 +22,18 @@ end
 
 Stop each background task by toggling a global reference that all cron jobs reference
 """
-function stopcronjobs(ctx::Context)
-    ctx.cron.run[] = false
+function stopcronjobs(cron::CronRuntime)
+    cron.run[] = false
     # clear the set of all running job ids
-    empty!(ctx.cron.jobs)
+    empty!(cron.jobs)
 end
 
 """
 Clears all cron job defintions
 """
-function clearcronjobs(ctx::Context)
+function clearcronjobs(cron::CronRuntime)
     # clear all job definitions
-    empty!(ctx.cron.job_definitions)
+    empty!(cron.job_definitions)
 end
 
 
@@ -43,29 +43,29 @@ end
 Start all the cron job_definitions within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
 """
-function startcronjobs(ctx::Context)
+function startcronjobs(cron::CronRuntime)
     
-    if isempty(ctx.cron.job_definitions)
+    if isempty(cron.job_definitions)
         # printstyled("[ Cron: There are no registered cron jobs to start\n", color = :green, bold = true)  
         return 
     end
 
-    ctx.cron.run[] = true
+    cron.run[] = true
 
     println()
-    printstyled("[ Starting $(length(ctx.cron.job_definitions)) Cron Job(s)\n", color = :green, bold = true)  
+    printstyled("[ Starting $(length(cron.job_definitions)) Cron Job(s)\n", color = :green, bold = true)  
 
-    for (job_id, expression, name, func) in ctx.cron.job_definitions
+    for (job_id, expression, name, func) in cron.job_definitions
 
         # add job it to set of running jobs
-        push!(ctx.cron.jobs, job_id)
+        push!(cron.jobs, job_id)
 
         message = isnothing(name) ? "$expression" : "{ id: $job_id, expr: $expression, name: $name }"
         printstyled("[ Cron: ", color = :green, bold = true)  
         println(message)
         Threads.@spawn begin
             try 
-                while ctx.cron.run[]
+                while cron.run[]
                     # get the current datetime object
                     current_time::DateTime = now()
                     # get the next datetime object that matches this cron expression
@@ -73,13 +73,13 @@ function startcronjobs(ctx::Context)
                     # figure out how long we need to wait
                     ms_to_wait = sleep_until(current_time, next_date)
                     # breaking the sleep into 1-second intervals
-                    while ms_to_wait > 0 && ctx.cron.run[]
+                    while ms_to_wait > 0 && cron.run[]
                         sleep_time = min(1000, ms_to_wait)  # Sleep for 1 second or the remaining time
                         sleep(Millisecond(sleep_time))
                         ms_to_wait -= sleep_time  # Reduce the wait time
                     end
                     # Execute the function if it's time and if we are still running
-                    if ms_to_wait <= 0 && ctx.cron.run[]
+                    if ms_to_wait <= 0 && cron.run[]
                         try 
                             @async func() # for ordinary functions
                         catch error 
@@ -89,7 +89,7 @@ function startcronjobs(ctx::Context)
                 end
             finally
                 # remove job id if the job fails
-                delete!(ctx.cron.jobs, job_id)
+                delete!(cron.jobs, job_id)
             end
         end
         

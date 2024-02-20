@@ -1,6 +1,6 @@
 using HTTP
 
-export readfile, mountedfolders, mountfolder
+export readfile, mountfolder
 
 """
     readfile(filepath::String)

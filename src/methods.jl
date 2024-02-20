@@ -253,7 +253,7 @@ staticfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Oxygen.Core.staticfiles(CONTEXT[], folder, mountdir; headers, loadfile)
+) = Oxygen.Core.staticfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
 
 
 dynamicfiles(
@@ -261,7 +261,7 @@ dynamicfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Oxygen.Core.dynamicfiles(CONTEXT[], folder, mountdir; headers, loadfile)
+) = Oxygen.Core.dynamicfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
 
 
 internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true) = 
@@ -340,23 +340,23 @@ end
 
 ## Cron Job Functions ##
 
-startcronjobs(ctx::Oxygen.Context) = Oxygen.Core.startcronjobs(ctx)
+startcronjobs(ctx::Oxygen.Context) = Oxygen.Core.startcronjobs(ctx.cron)
 startcronjobs() = startcronjobs(CONTEXT[])
 
-stopcronjobs(ctx::Oxygen.Context) = Oxygen.Core.stopcronjobs(ctx)
+stopcronjobs(ctx::Oxygen.Context) = Oxygen.Core.stopcronjobs(ctx.cron)
 stopcronjobs() = stopcronjobs(CONTEXT[])
 
-clearcronjobs(ctx::Oxygen.Context) = Oxygen.Core.clearcronjobs(ctx)
+clearcronjobs(ctx::Oxygen.Context) = Oxygen.Core.clearcronjobs(ctx.cron)
 clearcronjobs() = clearcronjobs(CONTEXT[])
 
 
 ### Repeat Task Functions ###
 
-starttasks(context::Oxygen.Context) = Oxygen.Core.starttasks(context)
+starttasks(context::Oxygen.Context) = Oxygen.Core.starttasks(context.tasks)
 starttasks() = starttasks(CONTEXT[])
 
-stoptasks(context::Oxygen.Context) = Oxygen.Core.stoptasks(context)
+stoptasks(context::Oxygen.Context) = Oxygen.Core.stoptasks(context.tasks)
 stoptasks() = stoptasks(CONTEXT[])
 
-cleartasks(context::Oxygen.Context) = Oxygen.Core.cleartasks(context)
+cleartasks(context::Oxygen.Context) = Oxygen.Core.cleartasks(context.tasks)
 cleartasks() = cleartasks(CONTEXT[])

@@ -25,7 +25,8 @@ end
 end
 
 @kwdef struct TasksRuntime
-    timers::Vector{Timer}   = [] # Vector of running tasks
+    timers::Vector{Timer}   = [] # Vector of all running tasks
+    registeredtasks::Set    = Set() # Set of all registered task definitions ()
     repeattasks::Set        = Set() # Vector of repeat task definitions (path, httpmethod, interval)
 end
 
@@ -33,7 +34,6 @@ end
     docspath::Ref{String}                   = "/docs"
     schemapath::Ref{String}                 = "/schema"
     schema::Dict                            = defaultSchema()
-    mountedfolders::Set{String}             = Set{String}()                 # Set of all mounted folders for file hosting
     taggedroutes::Dict{String, TaggedRoute} = Dict{String, TaggedRoute}()
 end
 

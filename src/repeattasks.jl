@@ -1,32 +1,33 @@
 module RepeatTasks
 using HTTP
-using ..Core
+using ..Core: TasksRuntime
 
 export starttasks, stoptasks, cleartasks
+
+
 
 """
     starttasks()
 
 Start all background repeat tasks
 """
-function starttasks(ctx::Context)
+function starttasks(tasks::TasksRuntime)
 
     # exit function early if no tasks are register
-    if isempty(ctx.tasks.repeattasks)
+    if isempty(tasks.registeredtasks)
         return
     end
 
     println()
-    printstyled("[ Starting $(length(ctx.tasks.repeattasks)) Repeat Task(s)\n", color = :magenta, bold = true)  
+    printstyled("[ Starting $(length(tasks.registeredtasks)) Repeat Task(s)\n", color = :magenta, bold = true)  
     
-    for task in ctx.tasks.repeattasks
+    for (action, task) in tasks.registeredtasks
         path, httpmethod, interval = task
         message = "method: $httpmethod, path: $path, interval: $interval seconds"
         printstyled("[ Task: ", color = :magenta, bold = true)  
         println(message)
-        action = (timer) -> internalrequest(ctx, HTTP.Request(httpmethod, path))
         timer = Timer(action, 0, interval=interval)
-        push!(ctx.tasks.timers, timer)   
+        push!(tasks.timers, timer)   
     end
 
 end 
@@ -36,13 +37,13 @@ end
 
 Stop all background repeat tasks
 """
-function stoptasks(ctx::Context)
-    for timer in ctx.tasks.timers
+function stoptasks(tasks::TasksRuntime)
+    for timer in tasks.timers
         if isopen(timer)
             close(timer)
         end
     end
-    empty!(ctx.tasks.timers)
+    empty!(tasks.timers)
 end
 
 
@@ -51,8 +52,8 @@ end
 
 Clear any stored repeat task definitions
 """
-function cleartasks(ctx::Context)
-    empty!(ctx.tasks.repeattasks)
+function cleartasks(tasks::TasksRuntime)
+    empty!(tasks.repeattasks)
 end
 
 

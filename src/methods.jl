@@ -26,8 +26,9 @@ function serve(;
     docs        = true,
     metrics     = true, 
     show_errors = true,
-    docspath    = "/docs",
-    schemapath  = "/schema",
+    show_banner  = true,
+    docs_path    = "/docs",
+    schema_path  = "/schema",
     kwargs...) 
 
     try
@@ -42,8 +43,9 @@ function serve(;
             docs        = docs,
             metrics     = metrics,
             show_errors = show_errors,
-            docspath    = docspath,
-            schemapath  = schemapath,
+            show_banner = show_banner,
+            docs_path   = docs_path,
+            schema_path = schema_path,
             kwargs...
         )
 
@@ -75,8 +77,9 @@ function serveparallel(;
     docs        = true,
     metrics     = true, 
     show_errors = true,
-    docspath    = "/docs",
-    schemapath  = "/schema",
+    show_banner  = true,
+    docs_path    = "/docs",
+    schema_path  = "/schema",
     kwargs...)
 
     try
@@ -92,8 +95,9 @@ function serveparallel(;
             docs        = docs,
             metrics     = metrics, 
             show_errors = show_errors,
-            docspath    = docspath,
-            schemapath  = schemapath,
+            show_banner = show_banner,
+            docs_path   = docs_path,
+            schema_path = schema_path,
             kwargs...
         )
 

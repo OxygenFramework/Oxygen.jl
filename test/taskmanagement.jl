@@ -13,7 +13,7 @@ get(router("/three", interval=3)) do
     iterations[] += 1
 end
 
-serve(async=true)
+serve(async=true, show_banner=false)
 
 while iterations[] < 10
     sleep(1)

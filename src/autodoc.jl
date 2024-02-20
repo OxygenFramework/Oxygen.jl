@@ -12,20 +12,10 @@ using ..Types: TaggedRoute
 
 export registerschema, 
     swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, 
-    getrepeatasks, hasmiddleware, compose, resetstatevariables, configdocs
+    getrepeatasks, hasmiddleware, compose, resetstatevariables
 
 const SWAGGER_VERSION   = "swagger@5.7.2"
 const REDOC_VERSION     = "redoc@2.1.2"
-
-"""
-    configdocs(docs_url::String, schema_url::String)
-
-Configure the default docs and schema endpoints
-"""
-function configdocs(ctx::Context, docspath::String, schemapath::String)
-    ctx.docs.docspath[] = docspath
-    ctx.docs.schemapath[] = schemapath
-end
 
 
 """

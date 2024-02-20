@@ -27,8 +27,8 @@ app2.get("/add/{a}/{b}") do req, a::Int, b::Int
 end
 
 # start both servers together
-app1.serve(port=8001, async=true, show_errors=false)
-app2.serve(port=8002, async=true, show_errors=false)
+app1.serve(port=8001, async=true, show_errors=false, show_banner=false)
+app2.serve(port=8002, async=true, show_errors=false, show_banner=false)
 
 @testset "testing unqiue instances" begin
 

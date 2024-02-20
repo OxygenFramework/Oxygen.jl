@@ -325,7 +325,7 @@ end
     return "emptysubpath - post"
 end
 
-serve(async=true, port=PORT, show_errors=false)
+serve(async=true, port=PORT, show_errors=false, show_banner=false)
 
 # query metrics endpoints
 r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"), metrics=true)
@@ -613,7 +613,7 @@ enabledocs()
 
 terminate()
 #enabledocs()
-@async serve(docs=true, port=PORT, show_errors=false)
+@async serve(docs=true, port=PORT, show_errors=false, show_banner=false)
 sleep(5)
 
 # ## Router related tests
@@ -794,7 +794,7 @@ setschema(data)
 
 terminate()
 
-@async serve(middleware=[handler1, handler2, handler3], port=PORT, show_errors=false)
+@async serve(middleware=[handler1, handler2, handler3], port=PORT, show_errors=false, show_banner=false)
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/get"))
@@ -817,7 +817,7 @@ function errorcatcher(handle)
 end
 
 # Test default handler by turning off serializaiton
-@async serve(serialize=false, middleware=[error_catcher], catch_errors=false)
+@async serve(serialize=false, middleware=[error_catcher], catch_errors=false, show_banner=false)
 sleep(3)
 r = internalrequest(HTTP.Request("GET", "/get"), catch_errors=false)
 @test r.status == 200

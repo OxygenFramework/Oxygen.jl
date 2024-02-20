@@ -19,9 +19,9 @@ end
 Configure the default docs and schema endpoints
 """
 function configdocs(docspath::String = "/docs", schemapath::String = "/schema")
-    
     @warn "This function is deprecated in favour of keyword argument `docspath` and `schemapath` in serve"
-    Oxygen.Core.configdocs(CONTEXT[], docspath, schemapath)
+    CONTEXT[].docs.docspath[] = docspath
+    CONTEXT[].docs.schemapath[] = schemapath
     return
 end
 

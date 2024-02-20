@@ -6,6 +6,7 @@ using Sockets
 using JSON3
 using Base 
 using Dates
+using Suppressor
 using Reexport
 using RelocatableFolders
 using DataStructures: CircularDeque
@@ -133,19 +134,20 @@ function serve(ctx::Context;
     docs        = true,
     metrics     = true,
     show_errors = true,
-    docspath    = "/docs",
-    schemapath  = "/schema",
+    show_banner  = true,
+    docs_path    = "/docs",
+    schema_path  = "/schema",
     kwargs...)
 
     # overwrite docs & schema paths
-    ctx.docs.docspath[] = docspath
-    ctx.docs.schemapath[] = schemapath
+    ctx.docs.docspath[] = docs_path
+    ctx.docs.schemapath[] = schema_path
 
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, metrics, show_errors)
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
-    return startserver(ctx, host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
         HTTP.serve!(handler(configured_middelware), host, port; kwargs...))
 end
 
@@ -169,13 +171,14 @@ function serveparallel(ctx::Context;
     docs        = true,
     metrics     = true, 
     show_errors = true,
-    docspath    = "/docs",
-    schemapath  = "/schema",
+    show_banner  = true,
+    docs_path    = "/docs",
+    schema_path  = "/schema",
     kwargs...)
 
     # overwrite docs & schema paths
-    ctx.docs.docspath[] = docspath
-    ctx.docs.schemapath[] = schemapath
+    ctx.docs.docspath[] = docs_path
+    ctx.docs.schemapath[] = schema_path
 
     # create and assign our parallel handler
     ctx.service.parallel_handler[] = Handler() 
@@ -183,7 +186,7 @@ function serveparallel(ctx::Context;
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, metrics, show_errors)
 
-    return startserver(ctx, host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(ctx.service.parallel_handler[], handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...))
 end
 
@@ -217,9 +220,9 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(ctx::Context, host, port, docs, metrics, kwargs, async, start)
+function startserver(ctx::Context, show_banner, host, port, docs, metrics, kwargs, async, start)
 
-    serverwelcome(host, port, docs, metrics, ctx.docs.docspath[])
+    show_banner && serverwelcome(host, port, docs, metrics, ctx.docs.docspath[])
 
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
@@ -462,8 +465,11 @@ function register(router::Router, httpmethod::String, route::Union{String,Functi
     hasPathParams, func_param_names, func_param_types = parse_func_params(route, func)
     path_params = [param for param in zip(func_param_names, func_param_types)]
 
-    # Register the route with the router
-    registerhandler(router, httpmethod, route, func, hasPathParams, (func_param_names, func_param_types, path_params))
+    # only suppress warnings for internally defined routes
+    @suppress begin 
+        # Register the route with the router
+        registerhandler(router, httpmethod, route, func, hasPathParams, (func_param_names, func_param_types, path_params))
+    end
 end
 
 function registerhandler(router::Router, httpmethod::String, route::String, func::Function, hasPathParams::Bool, path_params)

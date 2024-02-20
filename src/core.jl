@@ -6,7 +6,6 @@ using Sockets
 using JSON3
 using Base 
 using Dates
-using Suppressor
 using Reexport
 using RelocatableFolders
 using DataStructures: CircularDeque
@@ -68,7 +67,7 @@ end
 
 
 """
-Register all cron jobs 
+Register all cron jobs defined through our router() HOF
 """
 function registercronjobs(ctx::Context)
     for job in ctx.cron.cronjobs
@@ -78,7 +77,7 @@ function registercronjobs(ctx::Context)
 end
 
 """
-Register all repeat tasks
+Register all repeat tasks defined through our router() HOF
 """
 function registertasks(ctx::Context)
     for task in ctx.tasks.repeattasks
@@ -137,14 +136,17 @@ function serve(ctx::Context;
     show_banner  = true,
     docs_path    = "/docs",
     schema_path  = "/schema",
-    kwargs...)
+    kwargs...) :: Server
 
     # overwrite docs & schema paths
     ctx.docs.docspath[] = docs_path
     ctx.docs.schemapath[] = schema_path
 
+    # intitialize documenation router (used by docs and metrics)
+    ctx.docs.router[] = Router()
+
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, metrics, show_errors)
+    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors)
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
     return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
@@ -174,17 +176,20 @@ function serveparallel(ctx::Context;
     show_banner  = true,
     docs_path    = "/docs",
     schema_path  = "/schema",
-    kwargs...)
+    kwargs...) :: Server
 
     # overwrite docs & schema paths
     ctx.docs.docspath[] = docs_path
     ctx.docs.schemapath[] = schema_path
 
+    # intitialize documenation router (used by docs and metrics)
+    ctx.docs.router[] = Router()
+
     # create and assign our parallel handler
     ctx.service.parallel_handler[] = Handler() 
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, metrics, show_errors)
+    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors)
 
     return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
         StreamUtil.start(ctx.service.parallel_handler[], handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...))
@@ -196,10 +201,13 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(ctx::Context; middleware::Vector=[], metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true) :: Function
+function setupmiddleware(ctx::Context; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true) :: Function
 
     # determine if we have any special router or route-specific middleware
     custom_middleware = hasmiddleware(ctx.service.custommiddleware) ? [compose(ctx.service.router, middleware, ctx.service.custommiddleware)] : reverse(middleware)
+
+    # Docs middleware should only be available at runtime when serve() or serveparallel is called
+    docs_middleware = docs && !isnothing(ctx.docs.router[]) ? [DocsMiddleware(ctx.docs.router[], ctx.docs.docspath[])] : []
 
     # check if we should use our default serialization middleware function
     serializer = serialize ? [DefaultSerializer(catch_errors; show_errors)] : []
@@ -213,6 +221,7 @@ function setupmiddleware(ctx::Context; middleware::Vector=[], metrics::Bool=true
         serializer...,
         custom_middleware...,
         collect_metrics...,
+        docs_middleware...,
     ])    
 end
 
@@ -220,7 +229,7 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(ctx::Context, show_banner, host, port, docs, metrics, kwargs, async, start)
+function startserver(ctx::Context, show_banner, host, port, docs, metrics, kwargs, async, start) :: Server
 
     show_banner && serverwelcome(host, port, docs, metrics, ctx.docs.docspath[])
 
@@ -277,6 +286,21 @@ and bypassing any globally defined middleware
 function internalrequest(ctx::Context, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true) :: HTTP.Response
     req.context[:ip] = "INTERNAL" # label internal requests
     return req |> setupmiddleware(ctx; middleware, metrics, serialize, catch_errors)
+end
+
+
+function DocsMiddleware(docsrouter::Router, docspath::String)
+    return function(handle)
+        return function(req::HTTP.Request)
+            if startswith(req.target, docspath)
+                response = docsrouter(req)
+            else
+                response = handle(req)
+            end
+            format_response!(req, response)               
+            return req.response
+        end
+    end
 end
 
 
@@ -465,11 +489,8 @@ function register(router::Router, httpmethod::String, route::Union{String,Functi
     hasPathParams, func_param_names, func_param_types = parse_func_params(route, func)
     path_params = [param for param in zip(func_param_names, func_param_types)]
 
-    # only suppress warnings for internally defined routes
-    @suppress begin 
-        # Register the route with the router
-        registerhandler(router, httpmethod, route, func, hasPathParams, (func_param_names, func_param_types, path_params))
-    end
+    # Register the route with the router
+    registerhandler(router, httpmethod, route, func, hasPathParams, (func_param_names, func_param_types, path_params))
 end
 
 function registerhandler(router::Router, httpmethod::String, route::String, func::Function, hasPathParams::Bool, path_params)
@@ -507,7 +528,7 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
 end
 
 function setupdocs(ctx::Context)
-    setupdocs(ctx.service.router, ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[])
+    setupdocs(ctx.docs.router[], ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[])
 end
 
 # add the swagger and swagger/schema routes 
@@ -520,7 +541,7 @@ function setupdocs(router::Router, schema::Dict, docspath::String, schemapath::S
 end
 
 function setupmetrics(context::Context)
-    setupmetrics(context.service.router, context.service.history, context.docs.docspath[])
+    setupmetrics(context.docs.router[], context.service.history, context.docs.docspath[])
 end
 
 # add the swagger and swagger/schema routes 

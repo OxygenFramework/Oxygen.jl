@@ -1,7 +1,7 @@
 module AppContext
 import Base: @kwdef, wait, close, isopen
 using HTTP
-using HTTP: Router
+using HTTP: Server, Router
 using ..Types
 
 export Context, CronRuntime, TasksRuntime, Documenation, Service, history, wait, close, isopen
@@ -21,7 +21,7 @@ end
     run::Ref{Bool}          = Ref{Bool}(false)  # Flag used to stop all running tasks
     jobs::Set               = Set()   # Set of all running tasks
     cronjobs::Set           = Set()   # Cron job definitions registered through the router() (path, httpmethod, cron_expression)
-    job_definitions::Set    = Set()   # Set of cron expressions and functions
+    job_definitions::Set    = Set()   # Set of cron expressions and functions (expression, name, function)
 end
 
 @kwdef struct TasksRuntime
@@ -31,14 +31,15 @@ end
 end
 
 @kwdef struct Documenation
+    router::Ref{Union{Router,Nothing}} = Ref{Union{Router,Nothing}}(nothing)    # used for docs & metrics internal endpoints
     docspath::Ref{String}                   = "/docs"
     schemapath::Ref{String}                 = "/schema"
     schema::Dict                            = defaultSchema()
-    taggedroutes::Dict{String, TaggedRoute} = Dict{String, TaggedRoute}()
+    taggedroutes::Dict{String, TaggedRoute} = Dict{String, TaggedRoute}()       # used to group routes by tag
 end
 
 @kwdef struct Service
-    server::Ref{Union{HTTP.Server,Nothing}} = Ref{Union{HTTP.Server,Nothing}}(nothing)
+    server::Ref{Union{Server,Nothing}}      = Ref{Union{Server,Nothing}}(nothing)
     router::Router                          = Router()
     custommiddleware::Dict{String, Tuple}   = Dict{String, Tuple}()
     history::History                        = History(1_000_000)

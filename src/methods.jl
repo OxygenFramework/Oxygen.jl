@@ -32,7 +32,7 @@ function serve(;
     kwargs...) 
 
     try
-        Oxygen.Core.serve(CONTEXT[]; 
+        server = Oxygen.Core.serve(CONTEXT[]; 
             middleware  = middleware,
             handler     = handler,
             host        = host, 
@@ -50,7 +50,7 @@ function serve(;
         )
 
         # return the resulting HTTP.Server object
-        return CONTEXT[].service.server[]
+        return server
 
     finally
         
@@ -83,7 +83,7 @@ function serveparallel(;
     kwargs...)
 
     try
-        Oxygen.Core.serveparallel(CONTEXT[];
+        server = Oxygen.Core.serveparallel(CONTEXT[];
             middleware  = middleware,
             handler     = handler, 
             host        = host,
@@ -102,7 +102,7 @@ function serveparallel(;
         )
 
         # return the resulting HTTP.Server object
-        return CONTEXT[].service.server[]
+        return server
 
     finally 
         # close server on exit if we aren't running asynchronously

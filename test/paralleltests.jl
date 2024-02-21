@@ -51,8 +51,7 @@ using ..Constants
         # service should not have started and get requests should throw some error
         @async serveparallel(port=PORT, show_errors=false, show_banner=false)
         sleep(3)
-        r = internalrequest(HTTP.Request("GET", "/get"))
-        # r = HTTP.get("$localhost/get"; readtimeout=1)
+        r = HTTP.get("$localhost/get"; readtimeout=1)
     catch e
         @test true
     finally
@@ -65,18 +64,14 @@ using ..Constants
         serveparallel(host=HOST, port=PORT, show_errors=true, async=true, show_banner=false)
         sleep(3)
 
-        # r = HTTP.get("$localhost/get")
-        r = internalrequest(HTTP.Request("GET", "/get"))
+        r = HTTP.get("$localhost/get")
         @test r.status == 200
 
-        # r = HTTP.post("$localhost/post", body="some demo content")
-        r = internalrequest(HTTP.Request("POST", "/post", [], "some demo content"))
-
+        r = HTTP.post("$localhost/post", body="some demo content")
         @test text(r) == "some demo content"
 
         try
-            # r = HTTP.get("$localhost/customerror", connect_timeout=3)
-            r = internalrequest(HTTP.Request("GET", "/customerror"))
+            r = HTTP.get("$localhost/customerror", connect_timeout=3)
         catch e 
             @test e isa MethodError || e isa HTTP.ExceptionRequest.StatusError
         end
@@ -86,8 +81,7 @@ using ..Constants
         serveparallel(host=HOST, port=PORT, middleware=[handler1, handler2, handler3], show_errors=true, async=true)
         sleep(1)
 
-        # r = HTTP.get("$localhost/get")
-        r = internalrequest(HTTP.Request("GET", "/get"))
+        r = HTTP.get("$localhost/get")
         @test r.status == 200
 
         terminate()
@@ -95,8 +89,7 @@ using ..Constants
         try 
             @async serveparallel(queuesize=0, port=PORT, show_errors=false, show_banner=false)
             sleep(1)
-            # r = HTTP.get("$localhost/get")
-            r = internalrequest(HTTP.Request("GET", "/get"))
+            r = HTTP.get("$localhost/get")
         catch e
             @test e isa HTTP.ExceptionRequest.StatusError
         finally

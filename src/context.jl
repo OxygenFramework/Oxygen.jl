@@ -53,9 +53,9 @@ end
     tasks::TasksRuntime     = TasksRuntime()
 end
 
-Base.isopen(context::Context)   = !isnothing(context.service.server[]) && isopen(context.service.server[])
-Base.close(context::Context)    = !isnothing(context.service.server[]) && close(context.service.server[])
-Base.wait(context::Context)     = !isnothing(context.service.server[]) && wait(context.service.server[])
+Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])
+Base.close(service::Service)    = !isnothing(service.server[]) && close(service.server[])
+Base.wait(service::Service)     = !isnothing(service.server[]) && wait(service.server[])
 
 
 # @eval begin

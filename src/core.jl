@@ -48,7 +48,7 @@ end
 stops the webserver immediately
 """
 function terminate(context::Context)
-    if isopen(context)
+    if isopen(context.service)
         # stop background cron jobs
         stopcronjobs(context.cron)
         clearcronjobs(context.cron)
@@ -61,7 +61,7 @@ function terminate(context::Context)
         StreamUtil.stop(context.service.parallel_handler[])
 
         # stop server
-        close(context)
+        close(context.service)
     end
 end
 
@@ -249,7 +249,7 @@ function startserver(ctx::Context, show_banner, host, port, docs, metrics, kwarg
 
     if !async     
         try
-            wait(ctx)
+            wait(ctx.service)
         catch 
             println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end

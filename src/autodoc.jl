@@ -182,7 +182,7 @@ function createrouter(ctx::Context, prefix::String,
             # register cron expression for this route 
             if !isnothing(cron) && !isempty(cron)
                 task = (path, httpmethod, cron)
-                push!(ctx.cron.cronjobs, task)                 
+                push!(ctx.cron.job_definitions, task)                 
             end
 
             combinedtags = [tags..., routertags...]
@@ -254,11 +254,6 @@ end
 Used to generate & register schema related for a specific endpoint 
 """
 function registerschema(docs::Documenation, path::String, httpmethod::String, parameters, returntype::Array)
-
-    # skip any doc related endpoints
-    if startswith(path, docs.docspath[])
-       return 
-    end
 
     params = []
     for (name, type) in parameters

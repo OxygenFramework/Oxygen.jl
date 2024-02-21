@@ -20,8 +20,8 @@ end
 @kwdef struct CronRuntime
     run::Ref{Bool}          = Ref{Bool}(false)  # Flag used to stop all running tasks
     jobs::Set               = Set()   # Set of all running tasks
-    cronjobs::Set           = Set()   # Cron job definitions registered through the router() (path, httpmethod, cron_expression)
-    job_definitions::Set    = Set()   # Set of cron expressions and functions (expression, name, function)
+    job_definitions::Set    = Set()   # Cron job definitions registered through the router() (path, httpmethod, cron_expression)
+    cronjobs::Set           = Set()   # Set of cron expressions and functions (expression, name, function)
 end
 
 @kwdef struct TasksRuntime

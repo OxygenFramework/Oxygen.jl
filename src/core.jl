@@ -70,9 +70,9 @@ end
 Register all cron jobs defined through our router() HOF
 """
 function registercronjobs(ctx::Context)
-    for job in ctx.cron.cronjobs
+    for job in ctx.cron.job_definitions
         path, httpmethod, expression = job
-        cron(ctx.cron.job_definitions, expression, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
+        cron(ctx.cron.cronjobs, expression, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
     end
 end
 

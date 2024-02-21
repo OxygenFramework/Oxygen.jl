@@ -10,11 +10,11 @@ export cron, startcronjobs, stopcronjobs, clearcronjobs
 """
 Builds a new CRON job definition and appends it to hte list of job definitions
 """
-function cron(job_definitions, expression, name, f)
+function cron(cronjobs, expression, name, f)
     job_definition = (expression, name, f)
     job_id = hash(job_definition)
     job = (job_id, job_definition...)
-    push!(job_definitions, job)
+    push!(cronjobs, job)
 end
 
 """
@@ -33,19 +33,19 @@ Clears all cron job defintions
 """
 function clearcronjobs(cron::CronRuntime)
     # clear all job definitions
-    empty!(cron.job_definitions)
+    empty!(cron.cronjobs)
 end
 
 
 """
     startcronjobs()
     
-Start all the cron job_definitions within their own async task. Each individual task will loop conintually 
+Start all the cron cronjobs within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
 """
 function startcronjobs(cron::CronRuntime)
     
-    if isempty(cron.job_definitions)
+    if isempty(cron.cronjobs)
         # printstyled("[ Cron: There are no registered cron jobs to start\n", color = :green, bold = true)  
         return 
     end
@@ -53,9 +53,9 @@ function startcronjobs(cron::CronRuntime)
     cron.run[] = true
 
     println()
-    printstyled("[ Starting $(length(cron.job_definitions)) Cron Job(s)\n", color = :green, bold = true)  
+    printstyled("[ Starting $(length(cron.cronjobs)) Cron Job(s)\n", color = :green, bold = true)  
 
-    for (job_id, expression, name, func) in cron.job_definitions
+    for (job_id, expression, name, func) in cron.cronjobs
 
         # add job it to set of running jobs
         push!(cron.jobs, job_id)

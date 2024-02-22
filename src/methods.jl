@@ -10,11 +10,6 @@ function resetstate()
     end
 end
 
-# Nothing to do for the router
-
-terminate(context::Oxygen.Context) = Oxygen.Core.terminate(context)
-terminate() = terminate(CONTEXT[])
-
 function serve(; 
     middleware  = [], 
     handler     = Oxygen.Core.stream_handler, 
@@ -208,20 +203,20 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 
 ### Core Routing Functions Support for do..end Syntax ###
 
-get(func::Function, path::String)      = route(["GET"], path, func)
-get(func::Function, path::Function)    = route(["GET"], path, func)
+get(func::Function, path::String)       = route(["GET"], path, func)
+get(func::Function, path::Function)     = route(["GET"], path, func)
 
-post(func::Function, path::String)          = route(["POST"], path, func)
-post(func::Function, path::Function)        = route(["POST"], path, func)
+post(func::Function, path::String)      = route(["POST"], path, func)
+post(func::Function, path::Function)    = route(["POST"], path, func)
 
-put(func::Function, path::String)           = route(["PUT"], path, func) 
-put(func::Function, path::Function)         = route(["PUT"], path, func) 
+put(func::Function, path::String)       = route(["PUT"], path, func) 
+put(func::Function, path::Function)     = route(["PUT"], path, func) 
 
-patch(func::Function, path::String)         = route(["PATCH"], path, func)
-patch(func::Function, path::Function)       = route(["PATCH"], path, func)
+patch(func::Function, path::String)     = route(["PATCH"], path, func)
+patch(func::Function, path::Function)   = route(["PATCH"], path, func)
 
-delete(func::Function, path::String)        = route(["DELETE"], path, func)
-delete(func::Function, path::Function)      = route(["DELETE"], path, func)
+delete(func::Function, path::String)    = route(["DELETE"], path, func)
+delete(func::Function, path::Function)  = route(["DELETE"], path, func)
 
 
 
@@ -294,15 +289,6 @@ function getschema()
     return CONTEXT[].docs.schema
 end
 
-# Adding docstrings
-@doc (@doc(Oxygen.Core.AutoDoc.router)) router
-
-for method in [:serve, :serveparallel, :staticfiles, :dynamicfiles, :internalrequest, :mergeschema]
-    eval(quote
-        @doc (@doc(Oxygen.Core.$method)) $method
-    end)
-end
-
 
 """
     setschema(customschema::Dict)
@@ -344,8 +330,13 @@ end
 
 ## Cron Job Functions ##
 
-startcronjobs(ctx::Oxygen.Context) = Oxygen.Core.startcronjobs(ctx.cron)
+function startcronjobs(ctx::Oxygen.Context)
+    Oxygen.Core.registercronjobs(ctx)
+    Oxygen.Core.startcronjobs(ctx.cron)
+end
+
 startcronjobs() = startcronjobs(CONTEXT[])
+
 
 stopcronjobs(ctx::Oxygen.Context) = Oxygen.Core.stopcronjobs(ctx.cron)
 stopcronjobs() = stopcronjobs(CONTEXT[])
@@ -353,14 +344,47 @@ stopcronjobs() = stopcronjobs(CONTEXT[])
 clearcronjobs(ctx::Oxygen.Context) = Oxygen.Core.clearcronjobs(ctx.cron)
 clearcronjobs() = clearcronjobs(CONTEXT[])
 
-
 ### Repeat Task Functions ###
 
-starttasks(context::Oxygen.Context) = Oxygen.Core.starttasks(context.tasks)
+
+function starttasks(context::Oxygen.Context) 
+    Oxygen.Core.registertasks(context)
+    Oxygen.Core.starttasks(context.tasks)
+end
+
 starttasks() = starttasks(CONTEXT[])
+
 
 stoptasks(context::Oxygen.Context) = Oxygen.Core.stoptasks(context.tasks)
 stoptasks() = stoptasks(CONTEXT[])
 
 cleartasks(context::Oxygen.Context) = Oxygen.Core.cleartasks(context.tasks)
 cleartasks() = cleartasks(CONTEXT[])
+
+
+### Terminate Function ###
+
+terminate(context::Oxygen.Context) = Oxygen.Core.terminate(context)
+terminate() = terminate(CONTEXT[])
+
+
+### Setup Docs Strings ###
+
+# @doc (@doc(Oxygen.Core.AutoDoc.router)) router
+
+internal_methods = [
+    # Core methods
+    :serve, :serveparallel, :terminate, :staticfiles, :dynamicfiles,  :internalrequest,
+    # Docs Methods
+    :router, :mergeschema,
+    # Cron methods
+    :startcronjobs, :stopcronjobs, :clearcronjobs, 
+    # Repeat Task methods
+    :starttasks, :stoptasks, :cleartasks
+]
+
+for method in internal_methods
+    eval(quote
+        @doc (@doc(Oxygen.Core.$method)) $method
+    end)
+end

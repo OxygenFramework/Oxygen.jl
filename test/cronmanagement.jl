@@ -5,17 +5,14 @@ using Oxygen; @oxidise
 
 const iterations = Ref{Int}(0)
 
-function register()
-    @cron "*/2" function()
-        iterations[] += 1
-    end
-
-    @cron "*/5" function()
-        iterations[] += 1
-    end
+@cron "*/2" function()
+    iterations[] += 1
 end
 
-register()
+@cron "*/5" function()
+    iterations[] += 1
+end
+
 startcronjobs()
 
 while iterations[] < 10

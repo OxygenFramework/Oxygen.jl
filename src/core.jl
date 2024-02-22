@@ -21,9 +21,8 @@ include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 
 export  start, serve, serveparallel, terminate, 
-        internalrequest, staticfiles, dynamicfiles,
-        setupmetrics, setupdocs
-        
+        internalrequest, staticfiles, dynamicfiles
+                        
 oxygen_title = raw"""
    ____                            
   / __ \_  ____  ______ ____  ____ 

@@ -26,15 +26,19 @@ macro oxidise()
 end
 
 export  @oxidise, @get, @post, @put, @patch, @delete, @route, @cron, 
-        @staticfiles, @dynamicfiles, Request, Response, 
+        @staticfiles, @dynamicfiles,
         get, post, put, patch, delete, route,
         serve, serveparallel, terminate, internalrequest, 
-        staticfiles, dynamicfiles,
+        resetstate, instance, staticfiles, dynamicfiles,
+        # Util
         redirect, queryparams, formdata,
         html, text, json, file, xml, js, json, css, binary,
+        # Docs
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 
+        # Tasks & Cron
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 
-        resetstate, instance, setupmetrics, setupdocs
+        # Common HTTP Types
+        Request, Response
 end

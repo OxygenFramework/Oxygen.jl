@@ -13,10 +13,7 @@ get(router("/three", interval=3)) do
     iterations[] += 1
 end
 
-# this should do nothing because the tasks aren't registered yet
 starttasks()
-
-serve(async=true, show_banner=false)
 
 while iterations[] < 10
     sleep(1)

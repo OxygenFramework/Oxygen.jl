@@ -440,11 +440,11 @@ r = internalrequest(HTTP.Request("GET", """/tuple/["a","b","c"]"""))
 # union 
 r = internalrequest(HTTP.Request("GET", "/union/true"))
 @test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
+@test Dict(r.headers)["Content-Type"] == "text/plain; charset=utf-8"
 
 r = internalrequest(HTTP.Request("GET", "/union/false"))
 @test r.status == 200
-@test Dict(r.headers)["Content-Type"] == "application/json; charset=utf-8"
+@test Dict(r.headers)["Content-Type"] == "text/plain; charset=utf-8"
 
 r = internalrequest(HTTP.Request("GET", "/union/asdfasd"))
 @test r.status == 200

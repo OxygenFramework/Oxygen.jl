@@ -141,17 +141,32 @@ function format_response!(req::HTTP.Request, resp::HTTP.Response)
     req.response = resp
 end
 
-function format_response!(req::HTTP.Request, content::String)
-    # dynamically determine the content type
-    push!(req.response.headers, "Content-Type" => HTTP.sniff(content), "Content-Length" => string(sizeof(content)))
+function format_response!(req::HTTP.Request, content::AbstractString)
+    # Dynamically determine the content type when given a string
+    body = string(content)
+    HTTP.setheader(req.response, "Content-Type" => HTTP.sniff(body))
+    HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
+
     req.response.status = 200
     req.response.body = content
 end
 
+function format_response!(req::HTTP.Request, content::Union{Number, Bool, Char, Symbol})
+    # Convert all primitvies to a string and set the content type to text/plain
+    body = string(content)
+    HTTP.setheader(req.response, "Content-Type" => "text/plain; charset=utf-8")
+    HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
+
+    req.response.status = 200
+    req.response.body = body
+end
+
 function format_response!(req::HTTP.Request, content::Any)
-    # convert anthything else to a JSON string
+    # Convert anthything else to a JSON string
     body = JSON3.write(content)
-    push!(req.response.headers, "Content-Type" => "application/json; charset=utf-8", "Content-Length" => string(sizeof(body)))    
+    HTTP.setheader(req.response, "Content-Type" => "application/json; charset=utf-8")
+    HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
+
     req.response.status = 200
     req.response.body = body    
 end

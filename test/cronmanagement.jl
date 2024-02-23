@@ -5,6 +5,10 @@ using Oxygen; @oxidise
 
 const iterations = Ref{Int}(0)
 
+get(router("/three", cron="*/3")) do 
+    iterations[] += 1
+end
+
 @cron "*/2" function()
     iterations[] += 1
 end
@@ -15,7 +19,7 @@ end
 
 startcronjobs()
 
-while iterations[] < 10
+while iterations[] < 15
     sleep(1)
 end
 

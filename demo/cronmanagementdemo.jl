@@ -42,6 +42,10 @@ get("/stop") do
     "stopped jobs"
 end
 
+@cron "*/3" function()
+    println("every 3 seconds")
+end
+
 
 try 
     serve()

@@ -71,6 +71,10 @@ using Oxygen
     "hello world!"
 end
 
+@get("/gruessen") do 
+    "Hallo Welt!"
+end
+
 @get "/saluer" () -> begin
     "Bonjour le monde!"
 end

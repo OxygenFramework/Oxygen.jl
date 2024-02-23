@@ -13,9 +13,17 @@ get(router("/three", interval=3)) do
     iterations[] += 1
 end
 
+@repeattask 3 function()
+    iterations[] += 1
+end
+
+@repeattask 4 "every 4 seconds" function()
+    iterations[] += 1
+end
+
 starttasks()
 
-while iterations[] < 10
+while iterations[] < 15
     sleep(1)
 end
 

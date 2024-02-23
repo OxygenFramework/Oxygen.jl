@@ -4,7 +4,8 @@ using HTTP
 using HTTP: Server, Router
 using ..Types
 
-export Context, CronRuntime, TasksRuntime, Documenation, Service, history, wait, close, isopen
+export Context, CronContext, TasksContext, Documenation, Service, history, wait, close, isopen
+
 
 function defaultSchema() :: Dict
     Dict(
@@ -17,40 +18,40 @@ function defaultSchema() :: Dict
     )
 end
 
-@kwdef struct CronRuntime
+@kwdef struct CronContext
     run::Ref{Bool}          = Ref{Bool}(false)  # Flag used to stop all running tasks
     jobs::Set               = Set()   # Set of all running tasks
     job_definitions::Set    = Set()   # Cron job definitions registered through the router() (path, httpmethod, cron_expression)
     cronjobs::Set           = Set()   # Set of cron expressions and functions (expression, name, function)
 end
 
-@kwdef struct TasksRuntime
+@kwdef struct TasksContext
     timers::Vector{Timer}   = [] # Vector of all running tasks
-    registeredtasks::Set    = Set() # Set of all registered task definitions ()
+    task_definitions::Set   = Set() # Set of all registered task definitions ()
     repeattasks::Set        = Set() # Vector of repeat task definitions (path, httpmethod, interval)
 end
 
 @kwdef struct Documenation
-    router::Ref{Union{Router,Nothing}} = Ref{Union{Router,Nothing}}(nothing)    # used for docs & metrics internal endpoints
-    docspath::Ref{String}                   = "/docs"
-    schemapath::Ref{String}                 = "/schema"
+    router::Ref{Nullable{Router}}           = Ref{Nullable{Router}}(nothing)    # used for docs & metrics internal endpoints
+    docspath::Ref{String}                   = Ref{String}("/docs")
+    schemapath::Ref{String}                 = Ref{String}("/schema")
     schema::Dict                            = defaultSchema()
     taggedroutes::Dict{String, TaggedRoute} = Dict{String, TaggedRoute}()       # used to group routes by tag
 end
 
 @kwdef struct Service
-    server::Ref{Union{Server,Nothing}}      = Ref{Union{Server,Nothing}}(nothing)
+    server::Ref{Nullable{Server}}           = Ref{Nullable{Server}}(nothing)
     router::Router                          = Router()
     custommiddleware::Dict{String, Tuple}   = Dict{String, Tuple}()
     history::History                        = History(1_000_000)
-    parallel_handler::Ref{Union{Handler,Nothing}} = Ref{Union{Handler,Nothing}}(nothing)
+    parallel_handler::Ref{Nullable{Handler}} = Ref{Nullable{Handler}}(nothing)
 end
 
 @kwdef struct Context
     service::Service        = Service()    
     docs::Documenation      = Documenation()
-    cron::CronRuntime       = CronRuntime()
-    tasks::TasksRuntime     = TasksRuntime()
+    cron::CronContext       = CronContext()
+    tasks::TasksContext     = TasksContext()
 end
 
 Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])

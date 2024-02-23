@@ -79,12 +79,11 @@ end
 Register all repeat tasks defined through our router() HOF
 """
 function registertasks(ctx::Context)
-    for task in ctx.tasks.repeattasks
-        path, httpmethod, interval = task
-        action = (timer) -> internalrequest(ctx, HTTP.Request(httpmethod, path))
-        push!(ctx.tasks.registeredtasks, (action, task))
+    for task_definition in ctx.tasks.task_definitions
+        path, httpmethod, interval = task_definition
+        task(ctx.tasks.repeattasks, interval, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
     end
-end 
+end
 
 """
     decorate_request(ip::IPAddr)
@@ -365,7 +364,7 @@ function MetricsMiddleware(history::History, catch_errors::Bool, docspath::Strin
 end
 
 
-function parse_route(httpmethod::String, route::Union{Function,String}) :: String
+function parse_route(httpmethod::String, route::Union{String,Function}) :: String
 
     # check if path is a callable function (that means it's a router higher-order-function)
     if isa(route, Function)
@@ -560,7 +559,7 @@ function setupmetrics(router::Router, history::History, docspath::String)
 
     staticfiles(router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
-    function metrics(req::HTTP.Request, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
+    function metrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
 
         # Figure out how far back to read from the history object
         window_value = !isnothing(window) && window > 0 ? Minute(window) : nothing
@@ -591,7 +590,7 @@ function staticfiles(router::HTTP.Router,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
-        loadfile::Union{Function,Nothing}=nothing
+        loadfile::Nullable{Function}=nothing
     )
     # remove the leading slash 
     if first(mountdir) == '/'
@@ -615,7 +614,7 @@ function dynamicfiles(router::Router,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
-        loadfile::Union{Function,Nothing}=nothing
+        loadfile::Nullable{Function}=nothing
     )
     # remove the leading slash 
     if first(mountdir) == '/'

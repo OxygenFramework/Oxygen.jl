@@ -3,23 +3,9 @@
 module StreamUtil
 using Sockets
 using HTTP
+using ..Types
 
 export start, stop, Handler
-
-struct WebRequest
-    http::HTTP.Stream
-    done::Threads.Event
-end
-
-struct Handler
-    queue::Channel{WebRequest}
-    count::Threads.Atomic{Int}
-    shutdown::Threads.Atomic{Bool}
-    Handler( queuesize = 1024 ) = begin
-        new(Channel{WebRequest}(queuesize), Threads.Atomic{Int}(0), Threads.Atomic{Bool}(false))
-    end
-end
-
 
 """
 This function is run in each spawned worker thread, which removes queued requests & handles them asynchronously
@@ -42,7 +28,11 @@ end
 """
 Shutdown the handler
 """
-function stop(handler::Handler)
+function stop(handler::Union{Handler,Nothing})
+    if isnothing(handler)
+        return
+    end
+    
     # toggle the shutdown flag
     handler.shutdown[] = true
     if isopen(handler.queue)

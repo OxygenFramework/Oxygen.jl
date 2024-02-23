@@ -6,6 +6,42 @@ export countargs, recursive_merge, parseparam,
     queryparams, redirect, handlerequest,
     format_response!, set_content_size!
 
+
+### Request helper functions ###
+
+"""
+    queryparams(request::HTTP.Request)
+
+Parse's the query parameters from the Requests URL and return them as a Dict
+"""
+function queryparams(req::HTTP.Request) :: Dict
+    local uri = HTTP.URI(req.target)
+    return HTTP.queryparams(uri.query)
+end
+
+
+"""
+    redirect(path::String; code = 308)
+
+return a redirect response 
+"""
+function redirect(path::String; code = 307) :: HTTP.Response
+    return HTTP.Response(code, ["Location" => path])
+end
+
+function handlerequest(getresponse::Function, catch_errors::Bool; show_errors::Bool = true)
+    if !catch_errors
+        return getresponse()
+    else 
+        try 
+            return getresponse()       
+        catch error
+            show_errors && @error "ERROR: " exception=(error, catch_backtrace())
+            return json(("message" => "The Server encountered a problem"), status = 500)    
+        end  
+    end
+end
+
 """
 countargs(func)
 
@@ -17,6 +53,7 @@ Return the number of arguments of the first method of the function `f`.
 function countargs(f::Function)
     return methods(f) |> first |> x -> x.nargs
 end
+
 
 # https://discourse.julialang.org/t/multi-layer-dict-merge/27261/7
 recursive_merge(x::AbstractDict...) = merge(recursive_merge, x...)
@@ -48,30 +85,39 @@ function recursive_merge(x::AbstractVector...)
     end
 end 
 
+"""
+    Path Parameter Parsing functions
+"""
 
-"""
-Parse incoming path parameters into their corresponding type
-ex.) parseparam(Float64, "4.6") => 4.6
-"""
-function parseparam(type::Type, rawvalue::String) 
-    value::String = HTTP.unescapeuri(rawvalue)
-    if type == Any || type == String 
-        return value
-    elseif type <: Enum
-        return type(parse(Int, value))   
-    elseif isprimitivetype(type) || type <: Number || type == Date || type == DateTime
-        return parse(type, value)
-    else 
-        return JSON3.read(value, type)
-    end 
+function parseparam(type::Type{Any}, rawvalue::String)
+    return HTTP.unescapeuri(rawvalue)
 end
 
+function parseparam(type::Type{String}, rawvalue::String)
+    return HTTP.unescapeuri(rawvalue)
+end
+
+function parseparam(type::Type{T}, rawvalue::String) where {T <: Enum}
+    return T(parse(Int, HTTP.unescapeuri(rawvalue)))
+end
+
+function parseparam(type::Type{T}, rawvalue::String) where {T <: Union{Date, DateTime}}
+    return parse(T, HTTP.unescapeuri(rawvalue))
+end
+
+function parseparam(type::Type{T}, rawvalue::String) where {T <: Union{Number, Char, Bool, Symbol}}
+    return parse(T, HTTP.unescapeuri(rawvalue))
+end
+
+function parseparam(type::Type{T}, rawvalue::String) where {T}
+    return JSON3.read(HTTP.unescapeuri(rawvalue), T)
+end
 
 """
 Iterate over the union type and parse the value with the first type that 
 doesn't throw an erorr
 """
-function parseparam(type::Union, rawvalue::String) 
+function parseparam(type::Union, rawvalue::String)
     value::String = HTTP.unescapeuri(rawvalue)
     result = value 
     for current_type in Base.uniontypes(type)
@@ -85,40 +131,44 @@ function parseparam(type::Union, rawvalue::String)
     return result
 end
 
-### Request helper functions ###
 
 """
-    queryparams(request::HTTP.Request)
-
-Parse's the query parameters from the Requests URL and return them as a Dict
+    Response Formatter functions
 """
-function queryparams(req::HTTP.Request) :: Dict
-    local uri = HTTP.URI(req.target)
-    return HTTP.queryparams(uri.query)
+
+function format_response!(req::HTTP.Request, resp::HTTP.Response)
+    # Return Response's as is without any modifications
+    req.response = resp
 end
 
-"""
-    redirect(path::String; code = 308)
+function format_response!(req::HTTP.Request, content::AbstractString)
+    # Dynamically determine the content type when given a string
+    body = string(content)
+    HTTP.setheader(req.response, "Content-Type" => HTTP.sniff(body))
+    HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
 
-return a redirect response 
-"""
-function redirect(path::String; code = 307) :: HTTP.Response
-    return HTTP.Response(code, ["Location" => path])
+    req.response.status = 200
+    req.response.body = content
 end
 
-function handlerequest(getresponse::Function, catch_errors::Bool; show_errors=true)
-    if !catch_errors
-        return getresponse()
-    else 
-        try 
-            return getresponse()       
-        catch error
-            if show_errors
-                @error "ERROR: " exception=(error, catch_backtrace())
-            end
-            return json(("message" => "The Server encountered a problem"), status = 500)    
-        end  
-    end
+function format_response!(req::HTTP.Request, content::Union{Number, Bool, Char, Symbol})
+    # Convert all primitvies to a string and set the content type to text/plain
+    body = string(content)
+    HTTP.setheader(req.response, "Content-Type" => "text/plain; charset=utf-8")
+    HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
+
+    req.response.status = 200
+    req.response.body = body
+end
+
+function format_response!(req::HTTP.Request, content::Any)
+    # Convert anthything else to a JSON string
+    body = JSON3.write(content)
+    HTTP.setheader(req.response, "Content-Type" => "application/json; charset=utf-8")
+    HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
+
+    req.response.status = 200
+    req.response.body = body    
 end
 
 
@@ -149,22 +199,51 @@ function set_content_size!(body::Union{Base.CodeUnits{UInt8, String}, Vector{UIn
     end
 end
 
-function format_response!(req::HTTP.Request, resp::HTTP.Response)
-    # Return Response's as is without any modifications
-    req.response = resp
-end
 
-function format_response!(req::HTTP.Request, content::String)
-    # dynamically determine the content type
-    push!(req.response.headers, "Content-Type" => HTTP.sniff(content), "Content-Length" => string(sizeof(content)))
-    req.response.status = 200
-    req.response.body = content
-end
 
-function format_response!(req::HTTP.Request, content::Any)
-    # convert anthything else to a JSON string
-    body = JSON3.write(content)
-    push!(req.response.headers, "Content-Type" => "application/json; charset=utf-8", "Content-Length" => string(sizeof(body)))    
-    req.response.status = 200
-    req.response.body = body    
-end
+
+# """
+#     generate_parser(func::Function, pathparams::Vector{Tuple{String,Type}})
+
+# This function generates a parsing function specifically tailored to a given path.
+# It generates parsing expressions for each parameter and then passes them to the given function. 
+
+# ```julia
+
+# # Here's an exmaple endpoint
+# @get "/" function(req::HTTP.Request, a::Float64, b::Float64)
+#     return a + b
+# end
+
+# # Here's the function that's generated by the macro
+# function(func::Function, req::HTTP.Request)
+#     # Extract the path parameters 
+#     params = HTTP.getparams(req)
+#     # Generate the parsing expressions
+#     a = parseparam(Float64, params["a"])
+#     b = parseparam(Float64, params["b"])
+#     # Call the original function with the parsed parameters in the order they appear
+#     func(req, a, b)
+# end
+# ```
+# """
+# function generate_parser(pathparams)    
+#     # Extract the parameter names
+#     func_args = [Symbol(param[1]) for param in pathparams]
+
+#     # Create the parsing expressions for each path parameter
+#     parsing_exprs = [
+#         :( $(Symbol(param_name)) = parseparam($(param_type), params[$("$param_name")]) ) 
+#         for (param_name, param_type) in pathparams
+#     ]
+#     quote 
+#         function(func::Function, req::HTTP.Request)
+#             # Extract the path parameters 
+#             params = HTTP.getparams(req)
+#             # Generate the parsing expressions
+#             $(parsing_exprs...)
+#             # Pass the func at runtime, so that revise can work with this
+#             func(req, $(func_args...))
+#         end
+#     end |> eval
+# end

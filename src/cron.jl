@@ -1,91 +1,71 @@
 module Cron
 
+import Base: @kwdef
 using Dates
-export startcronjobs, stopcronjobs, cron, CronContext, CronRuntime
 using ..Util: countargs
+using ..Core: CronRuntime
 
-# The vector of all running tasks
-#global const jobs = Ref{Set}(Set())
+export cron, startcronjobs, stopcronjobs, clearcronjobs
 
-# The global flag used to stop all tasks
-#global const run = Ref{Bool}(false)
-
-struct CronContext
-    job_definitions::Set
-    cronjobs::Vector # may be refactored out in the future
+"""
+Builds a new CRON job definition and appends it to hte list of job definitions
+"""
+function cron(cronjobs, expression, name, f)
+    job_definition = (expression, name, f)
+    job_id = hash(job_definition)
+    job = (job_id, job_definition...)
+    push!(cronjobs, job)
 end
-
-struct CronRuntime 
-    run::Ref{Bool} 
-    jobs::Set
-end
-
 
 """
     stopcronjobs()
 
 Stop each background task by toggling a global reference that all cron jobs reference
 """
-function stopcronjobs(rt::CronRuntime)
-    rt.run[] = false
+function stopcronjobs(cron::CronRuntime)
+    cron.run[] = false
     # clear the set of all running job ids
-    empty!(rt.jobs)
+    empty!(cron.jobs)
 end
 
-
-function cron(job_definitions, expression, name, f)
-    job_definition = (expression, name, f)
-    job_id = hash(job_definition)
-    job = (job_id, job_definition...)
-    push!(job_definitions, job)
+"""
+Clears all cron job defintions
+"""
+function clearcronjobs(cron::CronRuntime)
+    # clear all job definitions
+    empty!(cron.cronjobs)
 end
 
-
-# This is a temprary function which dublicates countargs
-# the difference is that countargs does not remove the first 
-# argument of the tupple which is a function pointer.
-function count_func_args(func)
-    return length(first(methods(func)).sig.parameters) - 1 
-end
 
 """
     startcronjobs()
     
-Start all the cron job_definitions within their own async task. Each individual task will loop conintually 
+Start all the cron cronjobs within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
 """
-function startcronjobs(job_definitions, history) :: CronRuntime
+function startcronjobs(cron::CronRuntime)
     
-    if isempty(job_definitions)
+    if isempty(cron.cronjobs)
         # printstyled("[ Cron: There are no registered cron jobs to start\n", color = :green, bold = true)  
-        return CronRuntime(Ref(false), Set())
+        return 
     end
 
-    #run[] = true
-    rt = CronRuntime(Ref(true), Set())
+    cron.run[] = true
 
     println()
-    printstyled("[ Starting $(length(job_definitions)) Cron Job(s)\n", color = :green, bold = true)  
+    printstyled("[ Starting $(length(cron.cronjobs)) Cron Job(s)\n", color = :green, bold = true)  
 
-    for (job_id, expression, name, func) in job_definitions
-
-        # prevent duplicate jobs from getting ran
-        if job_id in rt.jobs
-            printstyled("[ Cron: Job already Exists ", color = :green, bold = true)
-            println("{ id: $job_id, expr: $expression, name: $name }")
-            continue
-        end
+    for (job_id, expression, name, func) in cron.cronjobs
 
         # add job it to set of running jobs
-        push!(rt.jobs, job_id)
+        push!(cron.jobs, job_id)
 
         message = isnothing(name) ? "$expression" : "{ id: $job_id, expr: $expression, name: $name }"
         printstyled("[ Cron: ", color = :green, bold = true)  
         println(message)
         Threads.@spawn begin
             try 
-
-                while rt.run[]
+                while cron.run[]
                     # get the current datetime object
                     current_time::DateTime = now()
                     # get the next datetime object that matches this cron expression
@@ -93,22 +73,15 @@ function startcronjobs(job_definitions, history) :: CronRuntime
                     # figure out how long we need to wait
                     ms_to_wait = sleep_until(current_time, next_date)
                     # breaking the sleep into 1-second intervals
-                    while ms_to_wait > 0 && rt.run[]
+                    while ms_to_wait > 0 && cron.run[]
                         sleep_time = min(1000, ms_to_wait)  # Sleep for 1 second or the remaining time
                         sleep(Millisecond(sleep_time))
                         ms_to_wait -= sleep_time  # Reduce the wait time
                     end
                     # Execute the function if it's time and if we are still running
-                    if ms_to_wait <= 0 && rt.run[]
+                    if ms_to_wait <= 0 && cron.run[]
                         try 
-                            nargs = count_func_args(func) # countargs
-                            if nargs == 0
-                                @async func() # for ordinary functions
-                            elseif nargs == 1
-                                @async func(history)
-                            else
-                                throw("There are $nargs arguments to func wheras zero and one is allowed")
-                            end
+                            @async func() # for ordinary functions
                         catch error 
                             @error "ERROR in CRON job { id: $job_id, expr: $expression, name: $name }: " exception=(error, catch_backtrace())
                         end
@@ -116,13 +89,11 @@ function startcronjobs(job_definitions, history) :: CronRuntime
                 end
             finally
                 # remove job id if the job fails
-                delete!(rt.jobs, job_id)
+                delete!(cron.jobs, job_id)
             end
         end
         
     end
-
-    return rt
 end
 
 weeknames = Dict(

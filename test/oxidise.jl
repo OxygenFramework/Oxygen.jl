@@ -11,12 +11,12 @@ PORT = 6060
     return "Hello World"
 end
 
-service = serve(async=true, port=PORT, show_errors=false)
+serve(async=true, port=PORT, show_errors=false, show_banner=false)
 
 r = internalrequest(HTTP.Request("GET", "/test"))
 @test r.status == 200
 @test text(r) == "Hello World"
 
-terminate(service)
+terminate()
 
 end

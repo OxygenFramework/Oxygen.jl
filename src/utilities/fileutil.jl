@@ -1,7 +1,6 @@
 using HTTP
-#using Suppressor
 
-export readfile, mountedfolders, mountfolder
+export readfile, mountfolder
 
 """
     readfile(filepath::String)

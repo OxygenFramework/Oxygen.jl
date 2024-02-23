@@ -8,7 +8,7 @@ using Sockets
 using Dates
 using DataStructures: CircularDeque
 
-export Server, History, HTTPTransaction, TaggedRoute
+export Server, History, HTTPTransaction, TaggedRoute, WebRequest, Handler
 
 struct TaggedRoute 
     httpmethods::Vector{String} 
@@ -27,6 +27,21 @@ struct HTTPTransaction
     status::Int16
     error_message::Union{String,Nothing}
 end
+
+struct WebRequest
+    http::HTTP.Stream
+    done::Threads.Event
+end
+
+struct Handler
+    queue::Channel{WebRequest}
+    count::Threads.Atomic{Int}
+    shutdown::Threads.Atomic{Bool}
+    Handler( queuesize = 1024 ) = begin
+        new(Channel{WebRequest}(queuesize), Threads.Atomic{Int}(0), Threads.Atomic{Bool}(false))
+    end
+end
+
 
 const Server    = HTTP.Server
 const History   = CircularDeque{HTTPTransaction}

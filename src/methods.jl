@@ -4,29 +4,11 @@
 Reset all the internal state variables
 """
 function resetstate()
-
-    SERVICE[] = nothing
-
     # prevent context reset when created at compile-time
     if (@__MODULE__) == Oxygen
         CONTEXT[] = Oxygen.Core.Context()
     end
 end
-
-# Nothing to do for the router
-"""
-    terminate([service])
-
-stops the webserver immediately
-"""
-terminate(service::Oxygen.Service) = Oxygen.Core.terminate(service)
-
-function terminate()
-    if !isnothing(SERVICE[]) 
-        terminate(SERVICE[])
-    end
-end
-
 
 function serve(; 
     middleware  = [], 
@@ -39,13 +21,13 @@ function serve(;
     docs        = true,
     metrics     = true, 
     show_errors = true,
-    docspath    = "/docs",
-    schemapath  = "/schema",
+    show_banner  = true,
+    docs_path    = "/docs",
+    schema_path  = "/schema",
     kwargs...) 
 
     try
-
-        SERVICE[] = Oxygen.Core.serve(CONTEXT[]; 
+        server = Oxygen.Core.serve(CONTEXT[]; 
             middleware  = middleware,
             handler     = handler,
             host        = host, 
@@ -56,23 +38,22 @@ function serve(;
             docs        = docs,
             metrics     = metrics,
             show_errors = show_errors,
-            docspath    = docspath,
-            schemapath  = schemapath,
+            show_banner = show_banner,
+            docs_path   = docs_path,
+            schema_path = schema_path,
             kwargs...
         )
 
-        return SERVICE[]
+        # return the resulting HTTP.Server object
+        return server
 
     finally
         
         # close server on exit if we aren't running asynchronously
         if !async 
             terminate()
-        end
-
-        # only reset state on exit if we aren't running asynchronously & are running it interactively 
-        if !async && isinteractive()
-            resetstate()
+            # only reset state on exit if we aren't running asynchronously & are running it interactively 
+            isinteractive() && resetstate()
         end
 
     end
@@ -91,13 +72,13 @@ function serveparallel(;
     docs        = true,
     metrics     = true, 
     show_errors = true,
-    docspath    = "/docs",
-    schemapath  = "/schema",
+    show_banner  = true,
+    docs_path    = "/docs",
+    schema_path  = "/schema",
     kwargs...)
-    
 
     try
-        SERVICE[] = Oxygen.Core.serveparallel(CONTEXT[];
+        server = Oxygen.Core.serveparallel(CONTEXT[];
             middleware  = middleware,
             handler     = handler, 
             host        = host,
@@ -109,27 +90,22 @@ function serveparallel(;
             docs        = docs,
             metrics     = metrics, 
             show_errors = show_errors,
-            docspath    = docspath,
-            schemapath  = schemapath,
+            show_banner = show_banner,
+            docs_path   = docs_path,
+            schema_path = schema_path,
             kwargs...
         )
 
-        return SERVICE[]
+        # return the resulting HTTP.Server object
+        return server
 
     finally 
-
         # close server on exit if we aren't running asynchronously
         if !async 
             terminate()
-            # stop any background worker threads
-            #Oxygen.Core.StreamUtil.stop(parallelhandler)
+            # only reset state on exit if we aren't running asynchronously & are running it interactively 
+            isinteractive() && resetstate()
         end
-
-        # only reset state on exit if we aren't running asynchronously & are running it interactively 
-        if !async && isinteractive()
-            resetstate()
-        end
-
     end
 end
 
@@ -142,6 +118,7 @@ end
 Used to register a function to a specific endpoint to handle GET requests  
 """
 macro get(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["GET"] $(esc(path)) $(esc(func)))
 end
 
@@ -151,6 +128,7 @@ end
 Used to register a function to a specific endpoint to handle POST requests
 """
 macro post(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["POST"] $(esc(path)) $(esc(func)))
 end
 
@@ -160,6 +138,7 @@ end
 Used to register a function to a specific endpoint to handle PUT requests
 """
 macro put(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["PUT"] $(esc(path)) $(esc(func)))
 end
 
@@ -169,6 +148,7 @@ end
 Used to register a function to a specific endpoint to handle PATCH requests
 """
 macro patch(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["PATCH"] $(esc(path)) $(esc(func)))
 end
 
@@ -178,8 +158,10 @@ end
 Used to register a function to a specific endpoint to handle DELETE requests
 """
 macro delete(path, func)
+    path, func = adjustparams(path, func)
     :(@route ["DELETE"] $(esc(path)) $(esc(func)))
 end
+
 
 """
     @route(methods::Array{String}, path::String, func::Function)
@@ -188,6 +170,23 @@ Used to register a function to a specific endpoint to handle mulitiple request t
 """
 macro route(methods, path, func)
     :(route($(esc(methods)), $(esc(path)), $(esc(func))))
+end
+
+
+"""
+    adjustparams(path, func)
+
+Adjust the order of `path` and `func` based on their types. This is used to support the `do ... end` syntax for 
+the routing macros.
+"""
+function adjustparams(path, func)
+    # case 1: do ... end block syntax was used
+    if isa(path, Expr) && path.head == :->
+        func, path
+    # case 2: regular syntax was used
+    else
+        path, func
+    end
 end
 
 
@@ -204,20 +203,20 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 
 ### Core Routing Functions Support for do..end Syntax ###
 
-get(func::Function, path::String)           = route(["GET"], path, func)
-get(func::Function, path::Function)         = route(["GET"], path, func)
+get(func::Function, path::String)       = route(["GET"], path, func)
+get(func::Function, path::Function)     = route(["GET"], path, func)
 
-post(func::Function, path::String)          = route(["POST"], path, func)
-post(func::Function, path::Function)        = route(["POST"], path, func)
+post(func::Function, path::String)      = route(["POST"], path, func)
+post(func::Function, path::Function)    = route(["POST"], path, func)
 
-put(func::Function, path::String)           = route(["PUT"], path, func) 
-put(func::Function, path::Function)         = route(["PUT"], path, func) 
+put(func::Function, path::String)       = route(["PUT"], path, func) 
+put(func::Function, path::Function)     = route(["PUT"], path, func) 
 
-patch(func::Function, path::String)         = route(["PATCH"], path, func)
-patch(func::Function, path::Function)       = route(["PATCH"], path, func)
+patch(func::Function, path::String)     = route(["PATCH"], path, func)
+patch(func::Function, path::Function)   = route(["PATCH"], path, func)
 
-delete(func::Function, path::String)        = route(["DELETE"], path, func)
-delete(func::Function, path::Function)      = route(["DELETE"], path, func)
+delete(func::Function, path::String)    = route(["DELETE"], path, func)
+delete(func::Function, path::Function)  = route(["DELETE"], path, func)
 
 
 
@@ -253,7 +252,7 @@ staticfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Oxygen.Core.staticfiles(CONTEXT[], folder, mountdir; headers, loadfile)
+) = Oxygen.Core.staticfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
 
 
 dynamicfiles(
@@ -261,10 +260,11 @@ dynamicfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Union{Function,Nothing}=nothing
-) = Oxygen.Core.dynamicfiles(CONTEXT[], folder, mountdir; headers, loadfile)
+) = Oxygen.Core.dynamicfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
 
 
-internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, docs::Bool=false, serialize::Bool=true, catch_errors=true, docspath::String="/docs", schemapath="/schema") = Oxygen.Core.internalrequest(CONTEXT[], !isnothing(SERVICE[]) ? Oxygen.Core.history(SERVICE[]) : History(1), req; middleware, metrics, docs, serialize, catch_errors, docspath, schemapath)
+internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true) = 
+    Oxygen.Core.internalrequest(CONTEXT[], req; middleware, metrics, serialize, catch_errors)
 
 function router(prefix::String = ""; 
                 tags::Vector{String} = Vector{String}(), 
@@ -276,8 +276,8 @@ function router(prefix::String = "";
 end
 
 
-mergeschema(route::String, customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].schema, route, customschema)
-mergeschema(customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].schema, customschema)
+mergeschema(route::String, customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].docs.schema, route, customschema)
+mergeschema(customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].docs.schema, customschema)
 
 
 """
@@ -286,16 +286,7 @@ mergeschema(customschema::Dict) = Oxygen.Core.mergeschema(CONTEXT[].schema, cust
 Return the current internal schema for this app
 """
 function getschema()
-    return CONTEXT[].schema
-end
-
-# Adding docstrings
-@doc (@doc(Oxygen.Core.AutoDoc.router)) router
-
-for method in [:serve, :serveparallel, :staticfiles, :dynamicfiles, :internalrequest, :mergeschema]
-    eval(quote
-        @doc (@doc(Oxygen.Core.$method)) $method
-    end)
+    return CONTEXT[].docs.schema
 end
 
 
@@ -305,12 +296,10 @@ end
 Overwrites the entire internal schema
 """
 function setschema(customschema::Dict)
-
-    CONTEXT[] = Context(CONTEXT[]; schema = customschema)
-
+    empty!(CONTEXT[].docs.schema)
+    merge!(CONTEXT[].docs.schema, customschema)
     return
 end
-
 
 
 
@@ -322,7 +311,7 @@ or the random Id julia assigns to each lambda function.
 """
 macro cron(expression, func)
     quote 
-        Oxygen.Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), string($(esc(func))), $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].cron.cronjobs), $(esc(expression)), string($(esc(func))), $(esc(func)))
     end
 end
 
@@ -335,39 +324,67 @@ is used by the server on startup to log out all cron jobs.
 """
 macro cron(expression, name, func)
     quote 
-        Oxygen.Core.cron($(CONTEXT[].job_definitions), $(esc(expression)), string($(esc(name))), $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].cron.cronjobs), $(esc(expression)), string($(esc(name))), $(esc(func)))
     end
 end
 
+## Cron Job Functions ##
 
-"""
-    clearcronjobs()
-
-Clear any internal reference's to prexisting cron jobs
-"""
-function clearcronjobs()
-    empty!(CONTEXT[].job_definitions)
+function startcronjobs(ctx::Oxygen.Context)
+    Oxygen.Core.registercronjobs(ctx)
+    Oxygen.Core.startcronjobs(ctx.cron)
 end
 
+startcronjobs() = startcronjobs(CONTEXT[])
 
-startcronjobs(ctx) = Oxygen.Core.startcronjobs(ctx)
 
-function startcronjobs()
-    startcronjobs(CONTEXT[].job_definitions)
+stopcronjobs(ctx::Oxygen.Context) = Oxygen.Core.stopcronjobs(ctx.cron)
+stopcronjobs() = stopcronjobs(CONTEXT[])
+
+clearcronjobs(ctx::Oxygen.Context) = Oxygen.Core.clearcronjobs(ctx.cron)
+clearcronjobs() = clearcronjobs(CONTEXT[])
+
+### Repeat Task Functions ###
+
+
+function starttasks(context::Oxygen.Context) 
+    Oxygen.Core.registertasks(context)
+    Oxygen.Core.starttasks(context.tasks)
 end
 
-stopcronjobs(service) = Oxygen.Core.stopcronjobs(service)
+starttasks() = starttasks(CONTEXT[])
 
-function stopcronjobs()
-    if !isnothing(SERVICE[])
-        Oxygen.Core.stopcronjobs(SERVICE[])
-    end
-end
 
-stoptasks(service) = Oxygen.Core.stoptasks(service)
+stoptasks(context::Oxygen.Context) = Oxygen.Core.stoptasks(context.tasks)
+stoptasks() = stoptasks(CONTEXT[])
 
-function stoptasks()
-    if !isnothing(SERVICE[])
-        stoptasks(SERVICE[])
-    end
+cleartasks(context::Oxygen.Context) = Oxygen.Core.cleartasks(context.tasks)
+cleartasks() = cleartasks(CONTEXT[])
+
+
+### Terminate Function ###
+
+terminate(context::Oxygen.Context) = Oxygen.Core.terminate(context)
+terminate() = terminate(CONTEXT[])
+
+
+### Setup Docs Strings ###
+
+# @doc (@doc(Oxygen.Core.AutoDoc.router)) router
+
+internal_methods = [
+    # Core methods
+    :serve, :serveparallel, :terminate, :staticfiles, :dynamicfiles,  :internalrequest,
+    # Docs Methods
+    :router, :mergeschema,
+    # Cron methods
+    :startcronjobs, :stopcronjobs, :clearcronjobs, 
+    # Repeat Task methods
+    :starttasks, :stoptasks, :cleartasks
+]
+
+for method in internal_methods
+    eval(quote
+        @doc (@doc(Oxygen.Core.$method)) $method
+    end)
 end

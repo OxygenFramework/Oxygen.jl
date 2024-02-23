@@ -430,8 +430,11 @@ const PORT = 7070 # 8080 is a very common port and could already be in use
         return crondata["api_value"]
     end
 
-    server = serve(async=true, port=PORT)
+    server = serve(async=true, port=PORT, show_banner=false)
     sleep(3)
+
+    internalrequest(HTTP.Request("GET", "/cron-increment"))
+    internalrequest(HTTP.Request("GET", "/cron-increment"))
 
     @testset "Testing CRON API access" begin
         r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))

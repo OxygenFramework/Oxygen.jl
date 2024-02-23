@@ -125,7 +125,7 @@ Well, 6000.0 dollars, after taxes.
         end
 
 
-        @testset "mustache api tests" begin 
+        # @testset "mustache api tests" begin 
 
             mus_str = mustache(mustache_template_str)
             mus_tpl = mustache(mustache_template)
@@ -155,7 +155,7 @@ Well, 6000.0 dollars, after taxes.
             @test r.status == 200
             @test r.body |> String |> clean_output == expected_output
             
-        end
+        # end
 
 
 

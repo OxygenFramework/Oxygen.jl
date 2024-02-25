@@ -27,6 +27,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 - Auto-generated swagger documentation
 - Out-of-the-box JSON serialization & deserialization (customizable)
 - Type definition support for path parameters
+- Multiple Instance Support
 - Multithreading support
 - Cron Scheduling (on endpoints & functions)
 - Middleware chaining (at the application, router, and route levels)
@@ -669,6 +670,41 @@ end
 # make sure 'myserializer' is the last middleware function in this list
 serve(middleware=[myserializer], serialize=false)
 ```
+
+## Multiple Instance's with `@oxidise`
+
+Oxygen provides a new macro which makes it possible to setup and run multiple instances. It generates methods and binds them to a new internal state for the current module. 
+
+In the example below, two simple servers are defined within modules A and B and are started in the parent module. Both modules contain all of the functions exported from Oxygen which can be called directly as shown below.
+
+```julia
+module A
+    using Oxygen; @oxidise
+
+    @get "/" function()
+        text("server A")
+    end
+end
+
+module B
+    using Oxygen; @oxidise
+
+    @get "/" function()
+        text("server B")
+    end
+end
+
+try 
+    # start both instances
+    A.serve(port=8001, async=true)
+    B.serve(port=8002, async=false)
+finally
+    # shut down if we `Ctrl+C`
+    A.terminate()
+    B.terminate()
+end
+```
+
 
 ## Multithreading & Parallelism
 

@@ -306,24 +306,24 @@ end
 
 
 """
-    @repeattask(interval::Real, func::Function)
+    @repeat(interval::Real, func::Function)
 
-Registers a function and interval with a Timer object. This will extract either the function name 
+Registers a repeat task. This will extract either the function name 
 or the random Id julia assigns to each lambda function. 
 """
-macro repeattask(interval, func)
+macro repeat(interval, func)
     quote 
         Oxygen.Core.task($(CONTEXT[].tasks.repeattasks), $(esc(interval)), string($(esc(func))), $(esc(func)))
     end
 end
 
 """
-@repeattask(interval::Real, name::String, func::Function)
+@repeat(interval::Real, name::String, func::Function)
 
 This variation provides way manually "name" a registered repeat task. This information 
 is used by the server on startup to log out all cron jobs.
 """
-macro repeattask(interval, name, func)
+macro repeat(interval, name, func)
     quote 
         Oxygen.Core.task($(CONTEXT[].tasks.repeattasks), $(esc(interval)), string($(esc(name))), $(esc(func)))
     end

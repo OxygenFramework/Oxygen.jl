@@ -13,11 +13,11 @@ get(router("/two", interval=2)) do
     iterations[] += 1
 end
 
-@repeattask 3 function()
+@repeat 3 function()
     iterations[] += 1
 end
 
-@repeattask 4 "every 4 seconds" function()
+@repeat 4 "every 4 seconds" function()
     iterations[] += 1
 end
 

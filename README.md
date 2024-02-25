@@ -404,6 +404,128 @@ end
 serve()
 ```
 
+## Multiple Instances
+
+In some scenarios, it might make sense to spin up multiple web services within the same module on different ports. Oxygen provides both a static and dynamic way to create multiple instances of a web server.
+
+As a general rule of thumb, if you know how many instances you need ahead of time it's best to go with the static approach.
+
+### Static: multiple instance's with `@oxidise` 
+
+Oxygen provides a new macro which makes it possible to setup and run multiple instances. It generates methods and binds them to a new internal state for the current module. 
+
+In the example below, two simple servers are defined within modules A and B and are started in the parent module. Both modules contain all of the functions exported from Oxygen which can be called directly as shown below.
+
+```julia
+module A
+    using Oxygen; @oxidise
+
+    @get "/" function()
+        text("server A")
+    end
+end
+
+module B
+    using Oxygen; @oxidise
+
+    @get "/" function()
+        text("server B")
+    end
+end
+
+try 
+    # start both instances
+    A.serve(port=8001, async=true)
+    B.serve(port=8002, async=false)
+finally
+    # shut down if we `Ctrl+C`
+    A.terminate()
+    B.terminate()
+end
+```
+
+### Dynamic: multiple instance's with `instance()` 
+
+The `instance` function helps you create a completely independent instance of an Oxygen web server at runtime. It works by dynamically creating a julia module at runtime and loading the Oxygen code within it.
+
+All of the methods of Oxygen are available under the named instance. In the example below we can use the `get`, `@get`, and `serve` by simply using dot syntax on the `app1` variable to access the underlying methods.
+
+
+```julia
+using Oxygen
+
+######### Setup the first app #########
+
+app1 = instance()
+
+app1.get("/") do 
+    "welcome to server #1"
+end
+
+app1.@get("/subtract/{a}/{b}") do req, a::Int, b::Int
+    ("answer" => a - b)
+end
+
+######### Setup the second app #########
+
+app2 = instance()
+
+app2.get("/") do 
+    "welcome to server #2"
+end
+
+app2.@get("/add/{a}/{b}") do req, a::Int, b::Int
+    ("answer" => a + b)
+end
+
+######### Start both instances #########
+
+try 
+    # start both servers together
+    app1.serve(port=8001, async=true)
+    app2.serve(port=8002)
+finally
+    # clean it up
+    app1.terminate()
+    app2.terminate()
+end
+```
+
+## Multithreading & Parallelism
+
+For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a 
+multithreaded mode. In order to utilize this mode, julia must have more than 1 thread to work with. You can start a julia session with 4 threads using the command below
+```shell 
+julia --threads 4
+```
+
+``serveparallel(queuesize=1024)`` Starts the webserver in streaming mode and spawns n - 1 worker 
+threads. The ``queuesize`` parameter sets how many requests can be scheduled within the queue (a julia Channel)
+before they start getting dropped. Each worker thread pops requests off the queue and handles them asynchronously within each thread. 
+
+```julia
+using Oxygen
+using StructTypes
+using Base.Threads
+
+# Make the Atomic struct serializable
+StructTypes.StructType(::Type{Atomic{Int64}}) = StructTypes.Struct()
+
+x = Atomic{Int64}(0);
+
+@get "/show" function()
+    return x
+end
+
+@get "/increment" function()
+    atomic_add!(x, 1)
+    return x
+end
+
+# start the web server in parallel mode
+serveparallel()
+```
+
 
 ## Templating
 
@@ -671,127 +793,6 @@ end
 serve(middleware=[myserializer], serialize=false)
 ```
 
-## Creating Multiple Instances
-
-In some scenarios, it might make sense to spin up multiple web services within the same module on different ports. Oxygen provides two way's to create multiple instances of an oxygen web server: `static` & `dynamic`.
-
-As a general rule of thumb, if you know how many instances you need ahead of time it's best to go with the static approach.
-
-### Static: multiple instance's with `@oxidise` 
-
-Oxygen provides a new macro which makes it possible to setup and run multiple instances. It generates methods and binds them to a new internal state for the current module. 
-
-In the example below, two simple servers are defined within modules A and B and are started in the parent module. Both modules contain all of the functions exported from Oxygen which can be called directly as shown below.
-
-```julia
-module A
-    using Oxygen; @oxidise
-
-    @get "/" function()
-        text("server A")
-    end
-end
-
-module B
-    using Oxygen; @oxidise
-
-    @get "/" function()
-        text("server B")
-    end
-end
-
-try 
-    # start both instances
-    A.serve(port=8001, async=true)
-    B.serve(port=8002, async=false)
-finally
-    # shut down if we `Ctrl+C`
-    A.terminate()
-    B.terminate()
-end
-```
-
-
-### Dynamic: multiple instance's with `instance()` 
-
-The `instance` function helps you create a completely independent instance of an Oxygen web server at runtime. It works by dynamically creating a julia module at runtime and loading the Oxygen code within it.
-
-All of the methods of Oxygen are available under the named instance. In the example below we can use the `get`, `@get`, and `serve` by simply using dot syntax on the `app1` variable to access the underlying methods.
-
-
-```julia
-using Oxygen
-
-# Setup the first app
-app1 = instance()
-
-app1.get("/") do 
-    "welcome to server #1"
-end
-
-app1.@get("/subtract/{a}/{b}") do req, a::Int, b::Int
-    ("answer" => a - b)
-end
-
-# Setup the second app
-app2 = instance()
-
-app2.get("/") do 
-    "welcome to server #2"
-end
-
-app2.@get("/add/{a}/{b}") do req, a::Int, b::Int
-    ("answer" => a + b)
-end
-
-try 
-    # start both servers together
-    app1.serve(port=8001, async=true)
-    app2.serve(port=8002)
-finally
-    # clean it up
-    app1.terminate()
-    app2.terminate()
-end
-
-```
-
-
-
-## Multithreading & Parallelism
-
-For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a 
-multithreaded mode. In order to utilize this mode, julia must have more than 1 thread to work with. You can start a julia session with 4 threads using the command below
-```shell 
-julia --threads 4
-```
-
-``serveparallel(queuesize=1024)`` Starts the webserver in streaming mode and spawns n - 1 worker 
-threads. The ``queuesize`` parameter sets how many requests can be scheduled within the queue (a julia Channel)
-before they start getting dropped. Each worker thread pops requests off the queue and handles them asynchronously within each thread. 
-
-```julia
-using Oxygen
-using StructTypes
-using Base.Threads
-
-# Make the Atomic struct serializable
-StructTypes.StructType(::Type{Atomic{Int64}}) = StructTypes.Struct()
-
-x = Atomic{Int64}(0);
-
-@get "/show" function()
-    return x
-end
-
-@get "/increment" function()
-    atomic_add!(x, 1)
-    return x
-end
-
-# start the web server in parallel mode
-serveparallel()
-```
 
 ## Autogenerated Docs with Swagger
 

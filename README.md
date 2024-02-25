@@ -671,7 +671,13 @@ end
 serve(middleware=[myserializer], serialize=false)
 ```
 
-## Multiple Instance's with `@oxidise`
+## Creating Multiple Instances
+
+In some scenarios, it might make sense to spin up multiple web services within the same module on different ports. Oxygen provides two way's to create multiple instances of an oxygen web server: `static` & `dynamic`.
+
+As a general rule of thumb, if you know how many instances you need ahead of time it's best to go with the static approach.
+
+### Static: multiple instance's with `@oxidise` 
 
 Oxygen provides a new macro which makes it possible to setup and run multiple instances. It generates methods and binds them to a new internal state for the current module. 
 
@@ -704,6 +710,52 @@ finally
     B.terminate()
 end
 ```
+
+
+### Dynamic: multiple instance's with `instance()` 
+
+The `instance` function helps you create a completely independent instance of an Oxygen web server at runtime. It works by dynamically creating a julia module at runtime and loading the Oxygen code within it.
+
+All of the methods of Oxygen are available under the named instance. In the example below we can use the `get`, `@get`, and `serve` by simply using dot syntax on the `app1` variable to access the underlying methods.
+
+
+```julia
+using Oxygen
+
+# Setup the first app
+app1 = instance()
+
+app1.get("/") do 
+    "welcome to server #1"
+end
+
+app1.@get("/subtract/{a}/{b}") do req, a::Int, b::Int
+    ("answer" => a - b)
+end
+
+# Setup the second app
+app2 = instance()
+
+app2.get("/") do 
+    "welcome to server #2"
+end
+
+app2.@get("/add/{a}/{b}") do req, a::Int, b::Int
+    ("answer" => a + b)
+end
+
+try 
+    # start both servers together
+    app1.serve(port=8001, async=true)
+    app2.serve(port=8002)
+finally
+    # clean it up
+    app1.terminate()
+    app2.terminate()
+end
+
+```
+
 
 
 ## Multithreading & Parallelism

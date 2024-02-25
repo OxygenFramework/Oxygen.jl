@@ -49,7 +49,7 @@ using ..Constants
 
     try 
         # service should not have started and get requests should throw some error
-        serveparallel(port=PORT, show_errors=false, show_banner=false, async=true)
+        @async serveparallel(port=PORT, show_errors=false, show_banner=false)
         sleep(3)
         r = HTTP.get("$localhost/get"; readtimeout=1)
     catch e

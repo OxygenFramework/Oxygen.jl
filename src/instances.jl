@@ -6,11 +6,7 @@ export instance
 
 
 function escape_path_if_windows(path::String)
-    if Sys.iswindows()
-        return replace(path, "\\" => "\\\\")
-    else
-        return path
-    end
+    return Sys.iswindows() ? replace(path, "\\" => "\\\\") : path
 end
 
 function fullpath(path::AbstractString) :: String

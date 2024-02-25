@@ -406,7 +406,7 @@ serve()
 
 ## Multiple Instances
 
-In some scenarios, it might make sense to spin up multiple web services within the same module on different ports. Oxygen provides both a static and dynamic way to create multiple instances of a web server.
+In some advanced scenarios, you might need to spin up multiple web severs within the same module on different ports. Oxygen provides both a static and dynamic way to create multiple instances of a web server.
 
 As a general rule of thumb, if you know how many instances you need ahead of time it's best to go with the static approach.
 
@@ -448,7 +448,7 @@ end
 
 The `instance` function helps you create a completely independent instance of an Oxygen web server at runtime. It works by dynamically creating a julia module at runtime and loading the Oxygen code within it.
 
-All of the methods of Oxygen are available under the named instance. In the example below we can use the `get`, `@get`, and `serve` by simply using dot syntax on the `app1` variable to access the underlying methods.
+All of the same methods from Oxygen are available under the named instance. In the example below we can use the `get`, `@get`, and `serve` by simply using dot syntax on the `app1` variable to access the underlying methods.
 
 
 ```julia

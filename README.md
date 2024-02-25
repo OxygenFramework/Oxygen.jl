@@ -458,24 +458,16 @@ using Oxygen
 
 app1 = instance()
 
-app1.get("/") do 
-    "welcome to server #1"
-end
-
-app1.@get("/subtract/{a}/{b}") do req, a::Int, b::Int
-    ("answer" => a - b)
+app1.@get "/" function()
+    text("server A")
 end
 
 ######### Setup the second app #########
 
 app2 = instance()
 
-app2.get("/") do 
-    "welcome to server #2"
-end
-
-app2.@get("/add/{a}/{b}") do req, a::Int, b::Int
-    ("answer" => a + b)
+app2.@get "/" function()
+    text("server B")
 end
 
 ######### Start both instances #########

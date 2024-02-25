@@ -420,7 +420,7 @@ In the example below, two simple servers are defined within modules A and B and 
 module A
     using Oxygen; @oxidise
 
-    @get "/" function()
+    get("/") do
         text("server A")
     end
 end
@@ -428,7 +428,7 @@ end
 module B
     using Oxygen; @oxidise
 
-    @get "/" function()
+    get("/") do
         text("server B")
     end
 end
@@ -448,7 +448,7 @@ end
 
 The `instance` function helps you create a completely independent instance of an Oxygen web server at runtime. It works by dynamically creating a julia module at runtime and loading the Oxygen code within it.
 
-All of the same methods from Oxygen are available under the named instance. In the example below we can use the `get`, `@get`, and `serve` by simply using dot syntax on the `app1` variable to access the underlying methods.
+All of the same methods from Oxygen are available under the named instance. In the example below we can use the `get`, and `serve` by simply using dot syntax on the `app1` variable to access the underlying methods.
 
 
 ```julia
@@ -458,7 +458,7 @@ using Oxygen
 
 app1 = instance()
 
-app1.@get "/" function()
+app1.get("/") do
     text("server A")
 end
 
@@ -466,7 +466,7 @@ end
 
 app2 = instance()
 
-app2.@get "/" function()
+app1.get("/") do
     text("server B")
 end
 

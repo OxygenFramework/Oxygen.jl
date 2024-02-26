@@ -211,7 +211,7 @@ function setupmiddleware(ctx::Context; middleware::Vector=[], docs::Bool=true, m
     serializer = serialize ? [DefaultSerializer(catch_errors; show_errors)] : []
 
     # check if we need to track metrics
-    collect_metrics = metrics ? [MetricsMiddleware(ctx.service.history, metrics, ctx.docs.docspath[])] : []
+    collect_metrics = metrics ? [MetricsMiddleware(ctx.service.history, metrics)] : []
 
     # combine all our middleware functions
     return reduce(|>, [
@@ -317,17 +317,11 @@ function DefaultSerializer(catch_errors::Bool; show_errors::Bool)
     end
 end
 
-function MetricsMiddleware(history::History, catch_errors::Bool, docspath::String) 
+function MetricsMiddleware(history::History, catch_errors::Bool) 
     return function(handler)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
                 
-                # Don't capture metrics on the documenation internals
-                #if contains(req.target, docspath)
-                if startswith(req.target, docspath)
-                    return handler(req)
-                end
-
                 start_time = time()
 
                 # Handle the request

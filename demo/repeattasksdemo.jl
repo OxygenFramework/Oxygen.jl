@@ -1,7 +1,6 @@
 module RepeatTasksDemo
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 
 const iterations = Ref{Int}(0)
 

@@ -8,7 +8,7 @@ using RelocatableFolders
 using ..Constants
 using ..Util
 using ..Core: Context, Documenation
-using ..Types: TaggedRoute, Nullable
+using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable
 
 export registerschema, 
     swaggerhtml, redochtml, getschemapath, configdocs, mergeschema, setschema, 
@@ -175,14 +175,14 @@ function createrouter(ctx::Context, prefix::String,
             
             # register interval for this route 
             if !isnothing(interval) && interval >= 0.0
-                task = (path, httpmethod, interval)
+                task = TaskDefinition(path, httpmethod, interval)
                 push!(ctx.tasks.task_definitions, task)
             end
 
             # register cron expression for this route 
             if !isnothing(cron) && !isempty(cron)
-                task = (path, httpmethod, cron)
-                push!(ctx.cron.job_definitions, task)                 
+                job = CronDefinition(path, httpmethod, cron)
+                push!(ctx.cron.job_definitions, job)                 
             end
 
             combinedtags = [tags..., routertags...]

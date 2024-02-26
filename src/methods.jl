@@ -313,7 +313,7 @@ or the random Id julia assigns to each lambda function.
 """
 macro repeat(interval, func)
     quote 
-        Oxygen.Core.task($(CONTEXT[].tasks.repeattasks), $(esc(interval)), string($(esc(func))), $(esc(func)))
+        Oxygen.Core.task($(CONTEXT[].tasks.registered_tasks), $(esc(interval)), string($(esc(func))), $(esc(func)))
     end
 end
 
@@ -325,7 +325,7 @@ is used by the server on startup to log out all cron jobs.
 """
 macro repeat(interval, name, func)
     quote 
-        Oxygen.Core.task($(CONTEXT[].tasks.repeattasks), $(esc(interval)), string($(esc(name))), $(esc(func)))
+        Oxygen.Core.task($(CONTEXT[].tasks.registered_tasks), $(esc(interval)), string($(esc(name))), $(esc(func)))
     end
 end
 
@@ -337,7 +337,7 @@ or the random Id julia assigns to each lambda function.
 """
 macro cron(expression, func)
     quote 
-        Oxygen.Core.cron($(CONTEXT[].cron.cronjobs), $(esc(expression)), string($(esc(func))), $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].cron.registered_jobs), $(esc(expression)), string($(esc(func))), $(esc(func)))
     end
 end
 
@@ -350,7 +350,7 @@ is used by the server on startup to log out all cron jobs.
 """
 macro cron(expression, name, func)
     quote 
-        Oxygen.Core.cron($(CONTEXT[].cron.cronjobs), $(esc(expression)), string($(esc(name))), $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].cron.registered_jobs), $(esc(expression)), string($(esc(name))), $(esc(func)))
     end
 end
 

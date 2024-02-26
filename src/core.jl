@@ -70,8 +70,8 @@ Register all cron jobs defined through our router() HOF
 """
 function registercronjobs(ctx::Context)
     for job in ctx.cron.job_definitions
-        path, httpmethod, expression = job
-        cron(ctx.cron.cronjobs, expression, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
+        path, httpmethod, expression = job.path, job.httpmethod, job.expression
+        cron(ctx.cron.registered_jobs, expression, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
     end
 end
 
@@ -79,9 +79,9 @@ end
 Register all repeat tasks defined through our router() HOF
 """
 function registertasks(ctx::Context)
-    for task_definition in ctx.tasks.task_definitions
-        path, httpmethod, interval = task_definition
-        task(ctx.tasks.repeattasks, interval, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
+    for task_def in ctx.tasks.task_definitions
+        path, httpmethod, interval = task_def.path, task_def.httpmethod, task_def.interval
+        task(ctx.tasks.registered_tasks, interval, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
     end
 end
 

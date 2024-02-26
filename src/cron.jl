@@ -3,17 +3,16 @@ import Base: @kwdef
 using Dates
 using ..Util: countargs
 using ..Core: CronContext
-using ..Types: Nullable
+using ..Types: ActiveCron, RegisteredCron, Nullable
 
 export cron, startcronjobs, stopcronjobs, clearcronjobs
 
 """
 Builds a new CRON job definition and appends it to hte list of cron jobs
 """
-function cron(cronjobs::Set, expression::String, name::String, f::Function)
-    job_definition = (expression, name, f)
-    job_id = hash(job_definition)
-    job = (job_id, job_definition...)
+function cron(cronjobs::Set{RegisteredCron}, expression::String, name::String, f::Function)
+    job_id = hash((expression, name, f))
+    job = RegisteredCron(job_id, expression, name, f)
     push!(cronjobs, job)
 end
 
@@ -25,7 +24,7 @@ Stop each background task by toggling a global reference that all cron jobs refe
 function stopcronjobs(cron::CronContext)
     cron.run[] = false
     # clear the set of all running job ids
-    empty!(cron.jobs)
+    empty!(cron.active_jobs)
 end
 
 """
@@ -33,7 +32,7 @@ Clears all cron job defintions
 """
 function clearcronjobs(cron::CronContext)
     # clear all job definitions
-    empty!(cron.cronjobs)
+    empty!(cron.registered_jobs)
 end
 
 
@@ -45,23 +44,41 @@ and sleep untill the next time it's suppost to
 """
 function startcronjobs(cron::CronContext)
     
-    if isempty(cron.cronjobs)
+    if isempty(cron.registered_jobs)
         return 
     end
 
+    # set the global run flag to true
     cron.run[] = true
 
-    println()
-    printstyled("[ Starting $(length(cron.cronjobs)) Cron Job(s)\n", color = :green, bold = true)  
+    # pull out all ids for the current running tasks
+    running_tasks = Set{UInt}(job.id for job in cron.active_jobs)
 
-    for (job_id, expression, name, func) in cron.cronjobs
-
-        if job_id in cron.jobs
-            continue
+    # filter out any jobs that are already running
+    filtered_jobs = filter(cron.registered_jobs) do cronjob
+        # (job_id, expression, name, func) = cronjob
+        if cronjob.id in running_tasks
+            printstyled("[ Cron: $(cronjob.name) is already running\n", color = :yellow)
+            return false
+        else
+            return true
         end
+    end
+
+    # exit function early if no jobs to start
+    if isempty(filtered_jobs)
+        return
+    end
+
+    println()
+    printstyled("[ Starting $(length(filtered_jobs)) Cron Job(s)\n", color = :green, bold = true)  
+
+    for job in filtered_jobs
+
+        job_id, expression, name, func = job.id, job.expression, job.name, job.action
 
         # add job it to set of running jobs
-        push!(cron.jobs, job_id)
+        push!(cron.active_jobs, ActiveCron(job_id, job))
 
         printstyled("[ Cron: ", color = :green, bold = true)  
         println("{ expr: $expression, name: $name }")
@@ -92,7 +109,7 @@ function startcronjobs(cron::CronContext)
                 end
             finally
                 # remove job id if the job fails
-                delete!(cron.jobs, job_id)
+                delete!(cron.active_jobs, job_id)
             end
         end
         

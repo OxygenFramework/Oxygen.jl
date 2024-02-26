@@ -23,6 +23,13 @@ end
 
 starttasks()
 
+# register a new task after the others have already began
+@repeat 5 function()
+    iterations[] += 1
+end
+
+starttasks()
+
 while iterations[] < 15
     sleep(1)
 end

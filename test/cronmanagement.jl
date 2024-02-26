@@ -19,6 +19,13 @@ end
 
 startcronjobs()
 
+# register a new cron job after the others have already began
+@cron "*/4" function()
+    iterations[] += 1
+end
+
+startcronjobs()
+
 while iterations[] < 15
     sleep(1)
 end

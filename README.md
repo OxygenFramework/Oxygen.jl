@@ -380,29 +380,50 @@ In addition, Oxygen provides utility functions to manually start and stop cron j
 
 ## Repeat Tasks
 
-The `router()` function has an `interval` parameter which is used to call
-a request handler on a set interval (in seconds). 
+Repeat tasks provide a simple api to run a function on a set interval. 
+
+There are two ways to register repeat tasks: 
+- Through the `interval` parameter in a `router()`
+- Using the `@repeat` macro
+
 
 **It's important to note that request handlers that use this property can't define additional function parameters outside of the default `HTTP.Request` parameter.**
 
 In the example below, the `/repeat/hello` endpoint is called every 0.5 seconds and `"hello"` is printed to the console each time.
 
+The `router()` function has an `interval` parameter which is used to call
+a request handler on a set interval (in seconds). 
+
 ```julia
 using Oxygen
 
-repeat = router("/repeat", interval=0.5, tags=["repeat"])
+taskrouter = router("/repeat", interval=0.5, tags=["repeat"])
 
-@get repeat("/hello") function()
+@get taskrouter("/hello") function()
     println("hello")
 end
 
 # you can override properties by setting route specific values 
-@get repeat("/bonjour", interval=1.5) function()
+@get taskrouter("/bonjour", interval=1.5) function()
     println("bonjour")
 end
 
 serve()
 ```
+
+Below is an example of how to register a repeat task outside of the router
+```julia
+@repeat 1.5 function()
+    println("runs every 1.5 seconds")
+end
+
+# you can also "name" a repeat task 
+@repeat 5 "every-five" function()
+    println("runs every 5 seconds")
+end
+```
+
+When the server is ran, all tasks are started automatically. But the module also provides utilities to have more fine-grained control over the running tasks using the following functions: `starttasks()`, `stoptasks()`, and `cleartasks()`
 
 ## Multiple Instances
 

@@ -22,6 +22,7 @@ end
 end
 
 starttasks()
+starttasks() # all active tasks should be filtered out and not started again
 
 # register a new task after the others have already began
 @repeat 5 function()

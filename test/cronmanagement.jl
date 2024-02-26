@@ -18,6 +18,7 @@ end
 end
 
 startcronjobs()
+startcronjobs() # all active cron jobs should be filtered out and not started again
 
 # register a new cron job after the others have already began
 @cron "*/4" function()

@@ -325,7 +325,7 @@ end
     return "emptysubpath - post"
 end
 
-serve(async=true, port=PORT, show_errors=false, show_banner=false)
+serve(async=true, port=PORT, show_errors=false, show_banner=true)
 
 # query metrics endpoints
 r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"), metrics=true)

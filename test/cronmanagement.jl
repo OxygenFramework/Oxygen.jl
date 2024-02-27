@@ -5,6 +5,10 @@ using Oxygen; @oxidise
 
 const iterations = Ref{Int}(0)
 
+get(router("/three", cron="*/3")) do 
+    iterations[] += 1
+end
+
 @cron "*/2" function()
     iterations[] += 1
 end
@@ -14,8 +18,16 @@ end
 end
 
 startcronjobs()
+startcronjobs() # all active cron jobs should be filtered out and not started again
 
-while iterations[] < 10
+# register a new cron job after the others have already began
+@cron "*/4" function()
+    iterations[] += 1
+end
+
+startcronjobs()
+
+while iterations[] < 15
     sleep(1)
 end
 

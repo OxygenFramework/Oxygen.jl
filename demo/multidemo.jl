@@ -1,7 +1,6 @@
 module MultiInstanceDemo
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 using HTTP
 
 # Setup the first app

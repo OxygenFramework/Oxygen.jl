@@ -1,7 +1,6 @@
 module CronManagementDemo 
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 using HTTP
 using Dates
 

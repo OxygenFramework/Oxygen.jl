@@ -27,6 +27,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 - Auto-generated swagger documentation
 - Out-of-the-box JSON serialization & deserialization (customizable)
 - Type definition support for path parameters
+- Multiple Instance Support
 - Multithreading support
 - Cron Scheduling (on endpoints & functions)
 - Middleware chaining (at the application, router, and route levels)
@@ -69,6 +70,10 @@ using Oxygen
 
 @get "/greet" function()
     "hello world!"
+end
+
+@get("/gruessen") do 
+    "Hallo Welt!"
 end
 
 @get "/saluer" () -> begin
@@ -375,28 +380,163 @@ In addition, Oxygen provides utility functions to manually start and stop cron j
 
 ## Repeat Tasks
 
-The `router()` function has an `interval` parameter which is used to call
-a request handler on a set interval (in seconds). 
+Repeat tasks provide a simple api to run a function on a set interval. 
+
+There are two ways to register repeat tasks: 
+- Through the `interval` parameter in a `router()`
+- Using the `@repeat` macro
+
 
 **It's important to note that request handlers that use this property can't define additional function parameters outside of the default `HTTP.Request` parameter.**
 
 In the example below, the `/repeat/hello` endpoint is called every 0.5 seconds and `"hello"` is printed to the console each time.
 
+The `router()` function has an `interval` parameter which is used to call
+a request handler on a set interval (in seconds). 
+
 ```julia
 using Oxygen
 
-repeat = router("/repeat", interval=0.5, tags=["repeat"])
+taskrouter = router("/repeat", interval=0.5, tags=["repeat"])
 
-@get repeat("/hello") function()
+@get taskrouter("/hello") function()
     println("hello")
 end
 
 # you can override properties by setting route specific values 
-@get repeat("/bonjour", interval=1.5) function()
+@get taskrouter("/bonjour", interval=1.5) function()
     println("bonjour")
 end
 
 serve()
+```
+
+Below is an example of how to register a repeat task outside of the router
+```julia
+@repeat 1.5 function()
+    println("runs every 1.5 seconds")
+end
+
+# you can also "name" a repeat task 
+@repeat 5 "every-five" function()
+    println("runs every 5 seconds")
+end
+```
+
+When the server is ran, all tasks are started automatically. But the module also provides utilities to have more fine-grained control over the running tasks using the following functions: `starttasks()`, `stoptasks()`, and `cleartasks()`
+
+## Multiple Instances
+
+In some advanced scenarios, you might need to spin up multiple web severs within the same module on different ports. Oxygen provides both a static and dynamic way to create multiple instances of a web server.
+
+As a general rule of thumb, if you know how many instances you need ahead of time it's best to go with the static approach.
+
+### Static: multiple instance's with `@oxidise` 
+
+Oxygen provides a new macro which makes it possible to setup and run multiple instances. It generates methods and binds them to a new internal state for the current module. 
+
+In the example below, two simple servers are defined within modules A and B and are started in the parent module. Both modules contain all of the functions exported from Oxygen which can be called directly as shown below.
+
+```julia
+module A
+    using Oxygen; @oxidise
+
+    get("/") do
+        text("server A")
+    end
+end
+
+module B
+    using Oxygen; @oxidise
+
+    get("/") do
+        text("server B")
+    end
+end
+
+try 
+    # start both instances
+    A.serve(port=8001, async=true)
+    B.serve(port=8002, async=false)
+finally
+    # shut down if we `Ctrl+C`
+    A.terminate()
+    B.terminate()
+end
+```
+
+### Dynamic: multiple instance's with `instance()` 
+
+The `instance` function helps you create a completely independent instance of an Oxygen web server at runtime. It works by dynamically creating a julia module at runtime and loading the Oxygen code within it.
+
+All of the same methods from Oxygen are available under the named instance. In the example below we can use the `get`, and `serve` by simply using dot syntax on the `app1` variable to access the underlying methods.
+
+
+```julia
+using Oxygen
+
+######### Setup the first app #########
+
+app1 = instance()
+
+app1.get("/") do
+    text("server A")
+end
+
+######### Setup the second app #########
+
+app2 = instance()
+
+app1.get("/") do
+    text("server B")
+end
+
+######### Start both instances #########
+
+try 
+    # start both servers together
+    app1.serve(port=8001, async=true)
+    app2.serve(port=8002)
+finally
+    # clean it up
+    app1.terminate()
+    app2.terminate()
+end
+```
+
+## Multithreading & Parallelism
+
+For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a 
+multithreaded mode. In order to utilize this mode, julia must have more than 1 thread to work with. You can start a julia session with 4 threads using the command below
+```shell 
+julia --threads 4
+```
+
+``serveparallel(queuesize=1024)`` Starts the webserver in streaming mode and spawns n - 1 worker 
+threads. The ``queuesize`` parameter sets how many requests can be scheduled within the queue (a julia Channel)
+before they start getting dropped. Each worker thread pops requests off the queue and handles them asynchronously within each thread. 
+
+```julia
+using Oxygen
+using StructTypes
+using Base.Threads
+
+# Make the Atomic struct serializable
+StructTypes.StructType(::Type{Atomic{Int64}}) = StructTypes.Struct()
+
+x = Atomic{Int64}(0);
+
+@get "/show" function()
+    return x
+end
+
+@get "/increment" function()
+    atomic_add!(x, 1)
+    return x
+end
+
+# start the web server in parallel mode
+serveparallel()
 ```
 
 
@@ -666,40 +806,6 @@ end
 serve(middleware=[myserializer], serialize=false)
 ```
 
-## Multithreading & Parallelism
-
-For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a 
-multithreaded mode. In order to utilize this mode, julia must have more than 1 thread to work with. You can start a julia session with 4 threads using the command below
-```shell 
-julia --threads 4
-```
-
-``serveparallel(queuesize=1024)`` Starts the webserver in streaming mode and spawns n - 1 worker 
-threads. The ``queuesize`` parameter sets how many requests can be scheduled within the queue (a julia Channel)
-before they start getting dropped. Each worker thread pops requests off the queue and handles them asynchronously within each thread. 
-
-```julia
-using Oxygen
-using StructTypes
-using Base.Threads
-
-# Make the Atomic struct serializable
-StructTypes.StructType(::Type{Atomic{Int64}}) = StructTypes.Struct()
-
-x = Atomic{Int64}(0);
-
-@get "/show" function()
-    return x
-end
-
-@get "/increment" function()
-    atomic_add!(x, 1)
-    return x
-end
-
-# start the web server in parallel mode
-serveparallel()
-```
 
 ## Autogenerated Docs with Swagger
 

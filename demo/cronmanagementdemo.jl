@@ -1,7 +1,6 @@
 module CronManagementDemo 
 
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 using HTTP
 using Dates
 
@@ -40,6 +39,10 @@ get("/stop") do
     @info "/stop POST endpoint hit"
     stopcronjobs()
     "stopped jobs"
+end
+
+@cron "*/3" function()
+    println("every 3 seconds")
 end
 
 

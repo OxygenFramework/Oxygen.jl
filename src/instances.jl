@@ -1,10 +1,17 @@
 module Instances
+
 using RelocatableFolders
 
 export instance
 
+
+function escape_path_if_windows(path::String)
+    return Sys.iswindows() ? replace(path, "\\" => "\\\\") : path
+end
+
 function fullpath(path::AbstractString) :: String
-    return @path abspath(joinpath(@__DIR__, path)) |> String
+    absolute_path = @path abspath(joinpath(@__DIR__, path))
+    return absolute_path |> String |> escape_path_if_windows
 end
 
 function extract_filename(include_str::String, include_regex::Regex)
@@ -15,7 +22,7 @@ function extract_filename(include_str::String, include_regex::Regex)
     end
 end
 
-function preprocess_includes(content::String, include_regex::Regex = r"include\(\"(.*)\"\)")    
+function preprocess_includes(content::String, include_regex::Regex = r"include\(\"(.*)\"\)")
 
     # Function to replace include calls with absolute paths
     function replace_include(match)

@@ -1,19 +1,18 @@
 module Cron
-
 import Base: @kwdef
 using Dates
 using ..Util: countargs
-using ..Core: CronRuntime
+using ..Core: CronContext
+using ..Types: ActiveCron, RegisteredCron, Nullable
 
 export cron, startcronjobs, stopcronjobs, clearcronjobs
 
 """
-Builds a new CRON job definition and appends it to hte list of job definitions
+Builds a new CRON job definition and appends it to hte list of cron jobs
 """
-function cron(cronjobs, expression, name, f)
-    job_definition = (expression, name, f)
-    job_id = hash(job_definition)
-    job = (job_id, job_definition...)
+function cron(cronjobs::Set{RegisteredCron}, expression::String, name::String, f::Function)
+    job_id = hash((expression, name, f))
+    job = RegisteredCron(job_id, expression, name, f)
     push!(cronjobs, job)
 end
 
@@ -22,18 +21,18 @@ end
 
 Stop each background task by toggling a global reference that all cron jobs reference
 """
-function stopcronjobs(cron::CronRuntime)
+function stopcronjobs(cron::CronContext)
     cron.run[] = false
     # clear the set of all running job ids
-    empty!(cron.jobs)
+    empty!(cron.active_jobs)
 end
 
 """
 Clears all cron job defintions
 """
-function clearcronjobs(cron::CronRuntime)
+function clearcronjobs(cron::CronContext)
     # clear all job definitions
-    empty!(cron.cronjobs)
+    empty!(cron.registered_jobs)
 end
 
 
@@ -43,26 +42,47 @@ end
 Start all the cron cronjobs within their own async task. Each individual task will loop conintually 
 and sleep untill the next time it's suppost to 
 """
-function startcronjobs(cron::CronRuntime)
+function startcronjobs(cron::CronContext)
     
-    if isempty(cron.cronjobs)
-        # printstyled("[ Cron: There are no registered cron jobs to start\n", color = :green, bold = true)  
+    if isempty(cron.registered_jobs)
         return 
     end
 
+    # set the global run flag to true
     cron.run[] = true
 
-    println()
-    printstyled("[ Starting $(length(cron.cronjobs)) Cron Job(s)\n", color = :green, bold = true)  
+    # pull out all ids for the current running tasks
+    running_tasks = Set{UInt}(job.id for job in cron.active_jobs)
 
-    for (job_id, expression, name, func) in cron.cronjobs
+    # filter out any jobs that are already running
+    filtered_jobs = filter(cron.registered_jobs) do cronjob
+        # (job_id, expression, name, func) = cronjob
+        if cronjob.id in running_tasks
+            printstyled("[ Cron: $(cronjob.name) is already running\n", color = :yellow)
+            return false
+        else
+            return true
+        end
+    end
+
+    # exit function early if no jobs to start
+    if isempty(filtered_jobs)
+        return
+    end
+
+    println()
+    printstyled("[ Starting $(length(filtered_jobs)) Cron Job(s)\n", color = :green, bold = true)  
+
+    for job in filtered_jobs
+
+        job_id, expression, name, func = job.id, job.expression, job.name, job.action
 
         # add job it to set of running jobs
-        push!(cron.jobs, job_id)
+        push!(cron.active_jobs, ActiveCron(job_id, job))
 
-        message = isnothing(name) ? "$expression" : "{ id: $job_id, expr: $expression, name: $name }"
         printstyled("[ Cron: ", color = :green, bold = true)  
-        println(message)
+        println("{ expr: $expression, name: $name }")
+        # Assuming name and expression are your variables
         Threads.@spawn begin
             try 
                 while cron.run[]
@@ -89,7 +109,7 @@ function startcronjobs(cron::CronRuntime)
                 end
             finally
                 # remove job id if the job fails
-                delete!(cron.jobs, job_id)
+                delete!(cron.active_jobs, job_id)
             end
         end
         
@@ -228,7 +248,7 @@ function getoccurance(time::DateTime, daynumber::Int64, occurance::Int64)
 end
 
 
-function matchexpression(input::Union{SubString,Nothing}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
+function matchexpression(input::Nullable{SubString}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
     try 
             
         # base case: return true if 
@@ -305,7 +325,7 @@ function matchexpression(input::Union{SubString,Nothing}, time::DateTime, conver
 end
 
 
-function match_special(input::Union{SubString,Nothing}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
+function match_special(input::Nullable{SubString}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
     
     # base case: return true if 
     if isnothing(input)
@@ -391,7 +411,7 @@ end
 
 
 function iscronmatch(expression::String, time::DateTime) :: Bool
-    parsed_expression::Vector{Union{Nothing, SubString{String}}} = split(strip(expression), " ")
+    parsed_expression::Vector{Nullable{SubString{String}}} = split(strip(expression), " ")
 
     # fill in any missing arguments with nothing, so the array is always 
     fill_length = 6 - length(parsed_expression)
@@ -462,7 +482,7 @@ expression
 """
 function next(cron_expr::String, start_time::DateTime)::DateTime
 
-    parsed_expression::Vector{Union{Nothing, SubString{String}}} = split(strip(cron_expr), " ")
+    parsed_expression::Vector{Nullable{SubString{String}}} = split(strip(cron_expr), " ")
 
     # fill in any missing arguments with nothing, so the array is always 
     fill_length = 6 - length(parsed_expression)

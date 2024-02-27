@@ -1,6 +1,8 @@
 # This is where methods are coupled to a global state
 
 """
+    resetstate()
+
 Reset all the internal state variables
 """
 function resetstate()
@@ -203,6 +205,7 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 
 ### Core Routing Functions Support for do..end Syntax ###
 
+
 get(func::Function, path::String)       = route(["GET"], path, func)
 get(func::Function, path::Function)     = route(["GET"], path, func)
 
@@ -251,7 +254,7 @@ staticfiles(
     folder::String, 
     mountdir::String="static"; 
     headers::Vector=[], 
-    loadfile::Union{Function,Nothing}=nothing
+    loadfile::Nullable{Function}=nothing
 ) = Oxygen.Core.staticfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
 
 
@@ -259,7 +262,7 @@ dynamicfiles(
     folder::String, 
     mountdir::String="static"; 
     headers::Vector=[], 
-    loadfile::Union{Function,Nothing}=nothing
+    loadfile::Nullable{Function}=nothing
 ) = Oxygen.Core.dynamicfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
 
 
@@ -268,9 +271,9 @@ internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false,
 
 function router(prefix::String = ""; 
                 tags::Vector{String} = Vector{String}(), 
-                middleware::Union{Nothing, Vector} = nothing, 
-                interval::Union{Real, Nothing} = nothing,
-                cron::Union{String, Nothing} = nothing)
+                middleware::Nullable{Vector} = nothing, 
+                interval::Nullable{Real} = nothing,
+                cron::Nullable{String} = nothing)
 
     return Oxygen.Core.AutoDoc.router(CONTEXT[], prefix; tags, middleware, interval, cron)
 end
@@ -302,6 +305,29 @@ function setschema(customschema::Dict)
 end
 
 
+"""
+    @repeat(interval::Real, func::Function)
+
+Registers a repeat task. This will extract either the function name 
+or the random Id julia assigns to each lambda function. 
+"""
+macro repeat(interval, func)
+    quote 
+        Oxygen.Core.task($(CONTEXT[].tasks.registered_tasks), $(esc(interval)), string($(esc(func))), $(esc(func)))
+    end
+end
+
+"""
+@repeat(interval::Real, name::String, func::Function)
+
+This variation provides way manually "name" a registered repeat task. This information 
+is used by the server on startup to log out all cron jobs.
+"""
+macro repeat(interval, name, func)
+    quote 
+        Oxygen.Core.task($(CONTEXT[].tasks.registered_tasks), $(esc(interval)), string($(esc(name))), $(esc(func)))
+    end
+end
 
 """
     @cron(expression::String, func::Function)
@@ -311,7 +337,7 @@ or the random Id julia assigns to each lambda function.
 """
 macro cron(expression, func)
     quote 
-        Oxygen.Core.cron($(CONTEXT[].cron.cronjobs), $(esc(expression)), string($(esc(func))), $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].cron.registered_jobs), $(esc(expression)), string($(esc(func))), $(esc(func)))
     end
 end
 
@@ -319,35 +345,33 @@ end
 """
     @cron(expression::String, name::String, func::Function)
 
-This variation Provide another way manually "name" a registered function. This information 
+This variation provides way manually "name" a registered function. This information 
 is used by the server on startup to log out all cron jobs.
 """
 macro cron(expression, name, func)
     quote 
-        Oxygen.Core.cron($(CONTEXT[].cron.cronjobs), $(esc(expression)), string($(esc(name))), $(esc(func)))
+        Oxygen.Core.cron($(CONTEXT[].cron.registered_jobs), $(esc(expression)), string($(esc(name))), $(esc(func)))
     end
 end
 
 ## Cron Job Functions ##
 
-function startcronjobs(ctx::Oxygen.Context)
+function startcronjobs(ctx::Context)
     Oxygen.Core.registercronjobs(ctx)
     Oxygen.Core.startcronjobs(ctx.cron)
 end
 
 startcronjobs() = startcronjobs(CONTEXT[])
 
-
-stopcronjobs(ctx::Oxygen.Context) = Oxygen.Core.stopcronjobs(ctx.cron)
+stopcronjobs(ctx::Context) = Oxygen.Core.stopcronjobs(ctx.cron)
 stopcronjobs() = stopcronjobs(CONTEXT[])
 
-clearcronjobs(ctx::Oxygen.Context) = Oxygen.Core.clearcronjobs(ctx.cron)
+clearcronjobs(ctx::Context) = Oxygen.Core.clearcronjobs(ctx.cron)
 clearcronjobs() = clearcronjobs(CONTEXT[])
 
 ### Repeat Task Functions ###
 
-
-function starttasks(context::Oxygen.Context) 
+function starttasks(context::Context) 
     Oxygen.Core.registertasks(context)
     Oxygen.Core.starttasks(context.tasks)
 end
@@ -355,36 +379,48 @@ end
 starttasks() = starttasks(CONTEXT[])
 
 
-stoptasks(context::Oxygen.Context) = Oxygen.Core.stoptasks(context.tasks)
+stoptasks(context::Context) = Oxygen.Core.stoptasks(context.tasks)
 stoptasks() = stoptasks(CONTEXT[])
 
-cleartasks(context::Oxygen.Context) = Oxygen.Core.cleartasks(context.tasks)
+cleartasks(context::Context) = Oxygen.Core.cleartasks(context.tasks)
 cleartasks() = cleartasks(CONTEXT[])
 
 
 ### Terminate Function ###
 
-terminate(context::Oxygen.Context) = Oxygen.Core.terminate(context)
+terminate(context::Context) = Oxygen.Core.terminate(context)
 terminate() = terminate(CONTEXT[])
 
 
 ### Setup Docs Strings ###
 
-# @doc (@doc(Oxygen.Core.AutoDoc.router)) router
 
-internal_methods = [
-    # Core methods
-    :serve, :serveparallel, :terminate, :staticfiles, :dynamicfiles,  :internalrequest,
-    # Docs Methods
-    :router, :mergeschema,
-    # Cron methods
-    :startcronjobs, :stopcronjobs, :clearcronjobs, 
-    # Repeat Task methods
-    :starttasks, :stoptasks, :cleartasks
-]
-
-for method in internal_methods
+for method in [:serve, :serveparallel, :terminate, :staticfiles, :dynamicfiles,  :internalrequest]
     eval(quote
         @doc (@doc(Oxygen.Core.$method)) $method
     end)
 end
+
+
+# Docs Methods
+for method in [:router, :mergeschema]
+    eval(quote
+        @doc (@doc(Oxygen.Core.AutoDoc.$method)) $method
+    end)
+end
+
+# Repeat Task methods
+for method in [:starttasks, :stoptasks, :cleartasks]
+    eval(quote
+        @doc (@doc(Oxygen.Core.RepeatTasks.$method)) $method
+    end)
+end
+
+
+# Cron methods
+for method in [:startcronjobs, :stopcronjobs, :clearcronjobs]
+    eval(quote
+        @doc (@doc(Oxygen.Core.Cron.$method)) $method
+    end)
+end
+

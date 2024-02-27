@@ -28,7 +28,7 @@ end
 """
 Shutdown the handler
 """
-function stop(handler::Union{Handler,Nothing})
+function stop(handler::Nullable{Handler})
     if isnothing(handler)
         return
     end

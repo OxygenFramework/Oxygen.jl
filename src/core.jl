@@ -70,8 +70,8 @@ Register all cron jobs defined through our router() HOF
 """
 function registercronjobs(ctx::Context)
     for job in ctx.cron.job_definitions
-        path, httpmethod, expression = job
-        cron(ctx.cron.cronjobs, expression, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
+        path, httpmethod, expression = job.path, job.httpmethod, job.expression
+        cron(ctx.cron.registered_jobs, expression, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
     end
 end
 
@@ -79,12 +79,11 @@ end
 Register all repeat tasks defined through our router() HOF
 """
 function registertasks(ctx::Context)
-    for task in ctx.tasks.repeattasks
-        path, httpmethod, interval = task
-        action = (timer) -> internalrequest(ctx, HTTP.Request(httpmethod, path))
-        push!(ctx.tasks.registeredtasks, (action, task))
+    for task_def in ctx.tasks.task_definitions
+        path, httpmethod, interval = task_def.path, task_def.httpmethod, task_def.interval
+        task(ctx.tasks.registered_tasks, interval, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
     end
-end 
+end
 
 """
     decorate_request(ip::IPAddr)
@@ -212,7 +211,7 @@ function setupmiddleware(ctx::Context; middleware::Vector=[], docs::Bool=true, m
     serializer = serialize ? [DefaultSerializer(catch_errors; show_errors)] : []
 
     # check if we need to track metrics
-    collect_metrics = metrics ? [MetricsMiddleware(ctx.service.history, metrics, ctx.docs.docspath[])] : []
+    collect_metrics = metrics ? [MetricsMiddleware(ctx.service.history, metrics)] : []
 
     # combine all our middleware functions
     return reduce(|>, [
@@ -318,17 +317,11 @@ function DefaultSerializer(catch_errors::Bool; show_errors::Bool)
     end
 end
 
-function MetricsMiddleware(history::History, catch_errors::Bool, docspath::String) 
+function MetricsMiddleware(history::History, catch_errors::Bool) 
     return function(handler)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
                 
-                # Don't capture metrics on the documenation internals
-                #if contains(req.target, docspath)
-                if startswith(req.target, docspath)
-                    return handler(req)
-                end
-
                 start_time = time()
 
                 # Handle the request
@@ -365,7 +358,7 @@ function MetricsMiddleware(history::History, catch_errors::Bool, docspath::Strin
 end
 
 
-function parse_route(httpmethod::String, route::Union{Function,String}) :: String
+function parse_route(httpmethod::String, route::Union{String,Function}) :: String
 
     # check if path is a callable function (that means it's a router higher-order-function)
     if isa(route, Function)
@@ -560,7 +553,7 @@ function setupmetrics(router::Router, history::History, docspath::String)
 
     staticfiles(router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
     
-    function metrics(req::HTTP.Request, window::Union{Int, Nothing}, latest::Union{DateTime, Nothing})
+    function metrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
 
         # Figure out how far back to read from the history object
         window_value = !isnothing(window) && window > 0 ? Minute(window) : nothing
@@ -591,7 +584,7 @@ function staticfiles(router::HTTP.Router,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
-        loadfile::Union{Function,Nothing}=nothing
+        loadfile::Nullable{Function}=nothing
     )
     # remove the leading slash 
     if first(mountdir) == '/'
@@ -615,7 +608,7 @@ function dynamicfiles(router::Router,
         folder::String, 
         mountdir::String="static"; 
         headers::Vector=[], 
-        loadfile::Union{Function,Nothing}=nothing
+        loadfile::Nullable{Function}=nothing
     )
     # remove the leading slash 
     if first(mountdir) == '/'

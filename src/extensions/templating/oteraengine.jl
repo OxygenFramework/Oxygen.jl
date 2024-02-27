@@ -4,11 +4,6 @@ using .OteraEngine
 
 export otera
 
-function response(content::String, status=200, headers=[]; detect=true) :: HTTP.Response
-    response_headers = detect ? ["Content-Type" => HTTP.sniff(content)] : []
-    return HTTP.Response(status, [response_headers; headers;], content)
-end
-
 """
     otera(template::String; kwargs...)
 

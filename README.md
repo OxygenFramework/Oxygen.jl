@@ -487,7 +487,7 @@ end
 
 app2 = instance()
 
-app1.get("/") do
+app2.get("/") do
     text("server B")
 end
 

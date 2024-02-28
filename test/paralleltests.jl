@@ -81,17 +81,6 @@ using ..Constants
         @test r.status == 200
 
         terminate()
-
-        ###### No need for queuesize test anymore since we're moving away from internal queue's
-        # try 
-        #     serveparallel(queuesize=0, port=PORT, show_errors=false, show_banner=false, async=true)
-        #     sleep(1)
-        #     r = HTTP.get("$localhost/get")
-        # catch e
-        #     @test e isa HTTP.ExceptionRequest.StatusError
-        # finally
-        #     terminate()
-        # end
     end
 
 end

@@ -9,7 +9,6 @@ using ..Constants
 
 @testset "parallel tests" begin 
 
-
     invocation = []
 
     function handler1(handler)
@@ -48,15 +47,11 @@ using ..Constants
         processtring(3)
     end
 
-    try 
-        # service should not have started and get requests should throw some error
-        @async serveparallel(port=PORT, show_errors=false, show_banner=false)
-        sleep(3)
-        @suppress_err r = HTTP.get("$localhost/get"; readtimeout=1)
-    catch e
-        @test true
-    finally
-        terminate()
+    if Threads.nthreads() <= 1
+        # service work even when we only have a single thread available (not ideal)
+        serveparallel(port=PORT, show_errors=false, show_banner=false, async=true)
+        r = HTTP.get("$localhost/get")
+        @test r.status == 200
     end
 
     # only run these tests if we have more than one thread to work with
@@ -87,15 +82,16 @@ using ..Constants
 
         terminate()
 
-        try 
-            serveparallel(queuesize=0, port=PORT, show_errors=false, show_banner=false, async=true)
-            sleep(1)
-            r = HTTP.get("$localhost/get")
-        catch e
-            @test e isa HTTP.ExceptionRequest.StatusError
-        finally
-            terminate()
-        end
+        ###### No need for queuesize test anymore since we're moving away from internal queue's
+        # try 
+        #     serveparallel(queuesize=0, port=PORT, show_errors=false, show_banner=false, async=true)
+        #     sleep(1)
+        #     r = HTTP.get("$localhost/get")
+        # catch e
+        #     @test e isa HTTP.ExceptionRequest.StatusError
+        # finally
+        #     terminate()
+        # end
     end
 
 end

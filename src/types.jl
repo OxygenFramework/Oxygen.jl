@@ -8,8 +8,7 @@ using Sockets
 using Dates
 using DataStructures: CircularDeque
 
-export Server, History, HTTPTransaction, TaggedRoute,
-    WebRequest, Handler, Nullable, 
+export Server, History, HTTPTransaction, TaggedRoute, Nullable, 
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition
 
@@ -71,21 +70,6 @@ struct HTTPTransaction
     success     :: Bool
     status      :: Int16
     error_message :: Nullable{String}
-end
-
-struct WebRequest
-    http :: HTTP.Stream
-    done :: Threads.Event
-end
-
-struct Handler
-    queue   :: Channel{WebRequest}
-    count   :: Threads.Atomic{Int}
-    shutdown:: Threads.Atomic{Bool}
-
-    Handler( queuesize = 1024 ) = begin
-        new(Channel{WebRequest}(queuesize), Threads.Atomic{Int}(0), Threads.Atomic{Bool}(false))
-    end
 end
 
 const Server = HTTP.Server

@@ -52,6 +52,9 @@ using ..Constants
         serveparallel(port=PORT, show_errors=false, show_banner=false, async=true)
         r = HTTP.get("$localhost/get")
         @test r.status == 200
+
+        # clean up the server on tests without additional threads
+        terminate()
     end
 
     # only run these tests if we have more than one thread to work with
@@ -84,5 +87,4 @@ using ..Constants
     end
 
 end
-
 end

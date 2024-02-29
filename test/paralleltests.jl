@@ -49,7 +49,7 @@ using ..Constants
 
     if Threads.nthreads() <= 1
         # service work even when we only have a single thread available (not ideal)
-        serveparallel(port=PORT, show_errors=false, show_banner=false, async=true)
+        @async serveparallel(port=PORT, show_errors=false, show_banner=false)
         r = HTTP.get("$localhost/get")
         @test r.status == 200
 

@@ -268,7 +268,7 @@ function startserver(ctx::Context, show_banner, host, port, docs, metrics, kwarg
     if !async     
         try
             wait(ctx.service)
-        catch 
+        finally 
             println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end
     end

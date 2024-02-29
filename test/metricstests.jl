@@ -1,8 +1,10 @@
 module MetricsTests 
 using Test
 using Dates 
-
+using HTTP
 using Oxygen
+
+using ..Constants
 
 using Oxygen.Core.Metrics:
     percentile, HTTPTransaction, TimeseriesRecord, get_history, push_history,
@@ -126,6 +128,37 @@ end
     end
 
 
+end
+
+module A
+    using Oxygen; @oxidise
+
+    @get "/" function()
+        text("server A")
     end
+end
+
+@testset "metrics collection & calculations" begin
+    try 
+        A.serve(host=HOST, port=PORT, async=true, show_banner=false)
+
+        # send a couple requests so we can collect metrics
+        for i in 1:10
+            @test HTTP.get("$localhost/").status == 200
+        end
+
+        r = HTTP.get("$localhost/docs/metrics/data/15/null")
+        @test r.status == 200
+
+        data = json(r)
+        @test data["server"]["total_requests"] == 10
+        @test data["server"]["total_requests"] == 10
+        @test data["server"]["total_errors"] == 0
+
+    finally
+        A.terminate()
+    end
+
+end 
 
 end

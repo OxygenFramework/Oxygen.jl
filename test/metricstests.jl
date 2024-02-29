@@ -140,7 +140,7 @@ end
 
 @testset "metrics collection & calculations" begin
     try 
-        A.serve(host=HOST, port=PORT, async=true, show_banner=false)
+        A.serve(host=HOST, port=PORT, async=true, show_banner=false, access_log=nothing)
 
         # send a couple requests so we can collect metrics
         for i in 1:10

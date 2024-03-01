@@ -1,78 +1,54 @@
 using HTTP
-using MIMEs
+using Base64
 using .CairoMakie
 
-export png_uri, svg_uri, pdf_uri, html_uri
+export png, svg, pdf, html
 
 # Here we list all our supported MIME types
-PNG = MIME"image/png"()
-SVG = MIME"image/svg+xml"()
-PDF = MIME"application/pdf"()
-HTML = MIME"text/html"()
-
+const PNG   = MIME"image/png"()
+const SVG   = MIME"image/svg+xml"()
+const PDF   = MIME"application/pdf"()
+const HTML  = MIME"text/html"()
 
 """
-    generate_data_uri(fig::Figure, mime_type::MIME)
-
-Generate a data URI for a given figure and MIME type. The figure is converted to the specified MIME type, 
-then base64-encoded and formatted as a data URI.
+Converts a Figure object to the designated MIME type and wraps it inside an HTTP response.
 """
-function generate_data_uri(fig::Figure, mime_type::MIME)
+function response(fig::Figure, mime_type::MIME) :: HTTP.Response
     io = IOBuffer()
     show(io, mime_type, fig)
-    return "data:$(string(mime_type));base64,$(base64encode(take!(io)))"
+    body = take!(io)
+    headers = [
+        "Content-Type" => string(mime_type),
+        "Content-Length" => string(sizeof(body))
+    ]
+    return HTTP.Response(200, headers, body)
 end
 
+"""
+    svg(fig::Figure) :: HTTP.Response
+
+Convert a figure to an PNG and wrap it inside an HTTP response.
+"""
+png(fig::Figure) :: HTTP.Response = response(fig, PNG)
+
 
 """
-    png_uri(fig::Figure)
+    svg(fig::Figure) :: HTTP.Response
 
-Generate a data URI for a given figure in PNG format.
-
-# Arguments
-- `fig::Figure`: The figure to convert.
-
-# Returns
-- A string representing the data URI of the figure in PNG format.
+Convert a figure to an SVG and wrap it inside an HTTP response.
 """
-png_uri(fig::Figure) = generate_data_uri(fig, PNG)
+svg(fig::Figure) :: HTTP.Response = response(fig, SVG)
 
 """
-    svg_uri(fig::Figure)
+    pdf(fig::Figure) :: HTTP.Response
 
-Generate a data URI for a given figure in SVG format.
-
-# Arguments
-- `fig::Figure`: The figure to convert.
-
-# Returns
-- A string representing the data URI of the figure in SVG format.
+Convert a figure to a PDF and wrap it inside an HTTP response.
 """
-svg_uri(fig::Figure) = generate_data_uri(fig, SVG)
+pdf(fig::Figure) :: HTTP.Response = response(fig, PDF)
 
 """
-    pdf_uri(fig::Figure)
+    html(fig::Figure) :: HTTP.Response
 
-Generate a data URI for a given figure in PDF format.
-
-# Arguments
-- `fig::Figure`: The figure to convert.
-
-# Returns
-- A string representing the data URI of the figure in PDF format.
+Convert a figure to HTML and wrap it inside an HTTP response.
 """
-pdf_uri(fig::Figure) = generate_data_uri(fig, PDF)
-
-"""
-    html_uri(fig::Figure)
-
-Generate a data URI for a given figure in HTML format.
-
-# Arguments
-- `fig::Figure`: The figure to convert.
-
-# Returns
-- A string representing the data URI of the figure in HTML format.
-"""
-html_uri(fig::Figure) = generate_data_uri(fig, HTML)
-
+html(fig::Figure) :: HTTP.Response = response(fig, HTML)

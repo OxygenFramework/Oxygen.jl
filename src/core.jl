@@ -82,7 +82,7 @@ end
 
 
 """
-    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
+    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
 
 Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
 threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
@@ -106,6 +106,10 @@ function serveparallel(ctx::Context;
 
     if Threads.nthreads() <= 1
         @warn "serveparallel() only has 1 thread available to use, try launching julia like this: \"julia -t auto\" to leverage multiple threads"
+    end
+
+    if haskey(kwargs, :queuesize)
+        @warn "Deprecated: The `queuesize` parameter is no longer used / supported in serveparallel()"
     end
 
     # overwrite docs & schema paths

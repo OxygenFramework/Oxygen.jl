@@ -8,7 +8,7 @@ using Dates
 
 using Oxygen
 
-using Oxygen.Core.Cron: iscronmatch, isweekday, lastweekdayofmonth, 
+using Oxygen.Cron: iscronmatch, isweekday, lastweekdayofmonth, 
             next, sleep_until, lastweekday, nthweekdayofmonth, 
             matchexpression
 

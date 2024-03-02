@@ -1,10 +1,8 @@
 module MetricsTests 
 using Test
 using Dates 
-
 using Oxygen
-
-using Oxygen.Core.Metrics:
+using Oxygen.Metrics:
     percentile, HTTPTransaction, TimeseriesRecord, get_history, push_history,
     group_transactions, get_transaction_metrics, recent_transactions,
     all_endpoint_metrics, server_metrics, error_distribution,

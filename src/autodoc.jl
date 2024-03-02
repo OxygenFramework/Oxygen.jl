@@ -5,9 +5,9 @@ using DataStructures
 using Reexport
 using RelocatableFolders
 
+using ..Util: html, recursive_merge
 using ..Constants
-using ..Util
-using ..Core: Context, Documenation
+using ..AppContext: Context, Documenation
 using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable
 
 export registerschema, 

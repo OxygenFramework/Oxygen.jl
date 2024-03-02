@@ -1,6 +1,6 @@
-using HTTP
-using Base64
-using .CairoMakie
+import HTTP
+import .CairoMakie: Figure
+import .Core.Util.html # import the html function from util so we can override it
 
 export png, svg, pdf, html
 

@@ -52,6 +52,3 @@ pdf(fig::Figure) :: HTTP.Response = response(fig, PDF)
 Convert a figure to HTML and wrap it inside an HTTP response.
 """
 html(fig::Figure) :: HTTP.Response = response(fig, HTML)
-
-
-CairoMakie.text(content::String; status=200, headers=[]) = Core.util.text(content; status, headers) 

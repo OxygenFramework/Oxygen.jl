@@ -1,6 +1,6 @@
 import HTTP
-import .CairoMakie: Figure
-import .Core.Util.html # import the html function from util so we can override it
+import .CairoMakie: Figure, text
+import .Core.Util: html, text # import the html function from util so we can override it
 
 export png, svg, pdf, html
 

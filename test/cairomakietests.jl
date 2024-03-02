@@ -3,6 +3,7 @@ using HTTP
 using Test
 using CairoMakie: heatmap
 using Oxygen; @oxidise
+import Oxygen: text
 using ..Constants
 
 @testset "CairoMakie Utils" begin 

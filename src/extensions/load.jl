@@ -30,5 +30,5 @@ function __init__()
     ################################################################
     #                       Plotting Extensions                    #
     ################################################################
-    @require CairoMakie="13f3f980-e62b-5c42-98c6-ff1f3baf88f0" include("plotting/cariomakie.jl")
+    @require CairoMakie="13f3f980-e62b-5c42-98c6-ff1f3baf88f0" include("plotting/cairomakie.jl")
 end

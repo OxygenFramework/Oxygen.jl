@@ -13,15 +13,17 @@ const HTML  = MIME"text/html"()
 """
 Converts a Figure object to the designated MIME type and wraps it inside an HTTP response.
 """
-function response(fig::Figure, mime_type::MIME) :: HTTP.Response
+function response(fig::Figure, mime_type::MIME, status::Int, headers::Vector) :: HTTP.Response
+    # Convert & load the figure into an IOBuffer
     io = IOBuffer()
     show(io, mime_type, fig)
     body = take!(io)
-    headers = [
-        "Content-Type" => string(mime_type),
-        "Content-Length" => string(sizeof(body))
-    ]
-    return HTTP.Response(200, headers, body)
+    
+    # format the response
+    resp = HTTP.Response(status, headers, body)
+    HTTP.setheader(resp, "Content-Type" => string(mime_type))
+    HTTP.setheader(resp, "Content-Length" => string(sizeof(body)))
+    return resp
 end
 
 """
@@ -29,7 +31,7 @@ end
 
 Convert a figure to an PNG and wrap it inside an HTTP response.
 """
-png(fig::Figure) :: HTTP.Response = response(fig, PNG)
+png(fig::Figure, status=200, headers=[]) :: HTTP.Response = response(fig, PNG, status, headers)
 
 
 """
@@ -37,18 +39,18 @@ png(fig::Figure) :: HTTP.Response = response(fig, PNG)
 
 Convert a figure to an SVG and wrap it inside an HTTP response.
 """
-svg(fig::Figure) :: HTTP.Response = response(fig, SVG)
+svg(fig::Figure, status=200, headers=[]) :: HTTP.Response = response(fig, SVG, status, headers)
 
 """
     pdf(fig::Figure) :: HTTP.Response
 
 Convert a figure to a PDF and wrap it inside an HTTP response.
 """
-pdf(fig::Figure) :: HTTP.Response = response(fig, PDF)
+pdf(fig::Figure, status=200, headers=[]) :: HTTP.Response = response(fig, PDF, status, headers)
 
 """
     html(fig::Figure) :: HTTP.Response
 
 Convert a figure to HTML and wrap it inside an HTTP response.
 """
-html(fig::Figure) :: HTTP.Response = response(fig, HTML)
+html(fig::Figure, status=200, headers=[]) :: HTTP.Response = response(fig, HTML, status, headers)

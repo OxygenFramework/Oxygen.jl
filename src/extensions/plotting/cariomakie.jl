@@ -1,8 +1,8 @@
 import HTTP
 import .CairoMakie: Figure
-import .Core.Util: html # import the html function from util so we can override it
+import .Core.Util: html, text # import the html function from util so we can override it
 
-export png, svg, pdf, html
+export png, svg, pdf, html, text
 
 # Here we list all our supported MIME types
 const PNG   = MIME"image/png"()
@@ -52,3 +52,6 @@ pdf(fig::Figure) :: HTTP.Response = response(fig, PDF)
 Convert a figure to HTML and wrap it inside an HTTP response.
 """
 html(fig::Figure) :: HTTP.Response = response(fig, HTML)
+
+
+CairoMakie.text(content::String; status=200, headers=[]) = Core.util.text(content; status, headers) 

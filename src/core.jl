@@ -9,6 +9,7 @@ using Dates
 using Reexport
 using RelocatableFolders
 using DataStructures: CircularDeque
+import Base.Threads: lock
 
 include("types.jl");        @reexport using .Types 
 include("constants.jl");    @reexport using .Constants
@@ -235,7 +236,7 @@ function setupmiddleware(ctx::Context; middleware::Vector=[], docs::Bool=true, m
     serializer = serialize ? [DefaultSerializer(catch_errors; show_errors)] : []
 
     # check if we need to track metrics
-    collect_metrics = metrics ? [MetricsMiddleware(ctx.service.history, metrics)] : []
+    collect_metrics = metrics ? [MetricsMiddleware(ctx.service, metrics)] : []
 
     # combine all our middleware functions
     return reduce(|>, [
@@ -341,40 +342,39 @@ function DefaultSerializer(catch_errors::Bool; show_errors::Bool)
     end
 end
 
-function MetricsMiddleware(history::History, catch_errors::Bool) 
+function MetricsMiddleware(service::Service, catch_errors::Bool) 
     return function(handler)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
-                
                 start_time = time()
-
                 # Handle the request
                 response = handler(req)
                 # Log response time
                 response_time = (time() - start_time) * 1000
-                if response.status == 200
-                    push_history(history, HTTPTransaction(
-                        string(req.context[:ip]),
-                        string(req.target),
-                        now(UTC),
-                        response_time,
-                        true,
-                        response.status,
-                        nothing
-                    ))
-                else 
-                    push_history(history, HTTPTransaction(
-                        string(req.context[:ip]),
-                        string(req.target),
-                        now(UTC),
-                        response_time,
-                        false,
-                        response.status,
-                        text(response)
-                    ))
+                # Make sure we update the History object in a thread-safe way
+                lock(service.history_lock) do 
+                    if response.status == 200
+                        push_history(service.history, HTTPTransaction(
+                            string(req.context[:ip]),
+                            string(req.target),
+                            now(UTC),
+                            response_time,
+                            true,
+                            response.status,
+                            nothing
+                        ))
+                    else 
+                        push_history(service.history, HTTPTransaction(
+                            string(req.context[:ip]),
+                            string(req.target),
+                            now(UTC),
+                            response_time,
+                            false,
+                            response.status,
+                            text(response)
+                        ))
+                    end
                 end
-
-                # Return the response
                 return response
             end
         end
@@ -557,11 +557,11 @@ function setupdocs(router::Router, schema::Dict, docspath::String, schemapath::S
 end
 
 function setupmetrics(context::Context)
-    setupmetrics(context.docs.router[], context.service.history, context.docs.docspath[])
+    setupmetrics(context.docs.router[], context.service.history, context.docs.docspath[], context.service.history_lock)
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(router::Router, history::History, docspath::String)
+function setupmetrics(router::Router, history::History, docspath::String, history_lock::ReentrantLock)
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath) :: String
@@ -576,22 +576,38 @@ function setupmetrics(router::Router, history::History, docspath::String)
     end
 
     staticfiles(router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+
+
+    """
+    Create a thread-safe copy of the history object and it's internal data
+    """
+    function safe_get_transactions(history::History) :: Vector{HTTPTransaction}
+        transactions = []
+        lock(history_lock) do
+            transactions = collect(history)
+        end
+        return transactions
+    end
     
     function metrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
 
+        # create a threadsafe copy of the current transactions in our history object
+        transactions = safe_get_transactions(history)
+        
         # Figure out how far back to read from the history object
         window_value = !isnothing(window) && window > 0 ? Minute(window) : nothing
         lower_bound = !isnothing(latest) ? latest : window_value
         
         return Dict(
-           "server"     => server_metrics(history, nothing),
-           "endpoints"  => all_endpoint_metrics(history, nothing),
-           "errors"     => error_distribution(history, nothing),
-           "avg_latency_per_second" => avg_latency_per_unit(history, Second, lower_bound)   |> prepare_timeseries_data(),
-           "requests_per_second"    => requests_per_unit(history, Second, lower_bound)      |> prepare_timeseries_data(),
-           "avg_latency_per_minute" => avg_latency_per_unit(history, Minute, lower_bound)   |> prepare_timeseries_data(),
-           "requests_per_minute"    => requests_per_unit(history, Minute, lower_bound)      |> prepare_timeseries_data()
+            "server"     => server_metrics(transactions, nothing),
+            "endpoints"  => all_endpoint_metrics(transactions, nothing),
+            "errors"     => error_distribution(transactions, nothing),
+            "avg_latency_per_second" => avg_latency_per_unit(transactions, Second, lower_bound)   |> prepare_timeseries_data(),
+            "requests_per_second"    => requests_per_unit(transactions, Second, lower_bound)      |> prepare_timeseries_data(),
+            "avg_latency_per_minute" => avg_latency_per_unit(transactions, Minute, lower_bound)   |> prepare_timeseries_data(),
+            "requests_per_minute"    => requests_per_unit(transactions, Minute, lower_bound)      |> prepare_timeseries_data()
         )
+        
     end
 
     register(router, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)

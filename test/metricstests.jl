@@ -63,25 +63,25 @@ end
 
     # Test for recent_transactions
     @testset "Recent Transactions Retrieval" begin
-        transactions = recent_transactions(HISTORY, Minute(15))
+        transactions = recent_transactions(get_history(HISTORY), Minute(15))
         @test all(t -> now(UTC) - t.timestamp <= Minute(15) + Second(1), transactions)
     end
 
     # Test for all_endpoint_metrics
     @testset "All Endpoint Metrics Calculation" begin
-        metrics = all_endpoint_metrics(HISTORY)
+        metrics = all_endpoint_metrics(get_history(HISTORY))
         @test metrics isa Dict
     end
 
     # Test for server_metrics
     @testset "Server Metrics Calculation" begin
-        metrics = server_metrics(HISTORY)
+        metrics = server_metrics(get_history(HISTORY))
         @test metrics["total_requests"] >= 0
     end
 
     # Test for error_distribution
     @testset "Error Distribution Calculation" begin
-        distribution = error_distribution(HISTORY)
+        distribution = error_distribution(get_history(HISTORY))
         @test typeof(distribution) == Dict{String, Int}
     end
 
@@ -96,9 +96,9 @@ end
 
     # Test for bin_transactions, requests_per_unit, and avg_latency_per_unit
     @testset "Transaction Binning and Metrics" begin
-        bin_transactions(HISTORY, Minute(15))
-        req_per_unit = requests_per_unit(HISTORY, Minute(1))
-        avg_latency = avg_latency_per_unit(HISTORY, Minute(1))
+        bin_transactions(get_history(HISTORY), Minute(15))
+        req_per_unit = requests_per_unit(get_history(HISTORY), Minute(1))
+        avg_latency = avg_latency_per_unit(get_history(HISTORY), Minute(1))
         @test typeof(req_per_unit) == Dict{Dates.DateTime, Int}
         @test typeof(avg_latency) == Dict{Dates.DateTime, Number}
     end
@@ -110,7 +110,7 @@ end
         push_history(HISTORY, HTTPTransaction("192.168.1.2", "/test", DateTime(2023, 1, 1, 13), 0.5, true, 200, nothing))
         push_history(HISTORY, HTTPTransaction("192.168.1.3", "/test", DateTime(2023, 1, 1, 14), 0.5, true, 200, nothing))
 
-        transactions = recent_transactions(HISTORY, DateTime(2023, 1, 1, 13))
+        transactions = recent_transactions(get_history(HISTORY), DateTime(2023, 1, 1, 13))
         @test length(transactions) == 1
         @test all(t -> t.timestamp >= DateTime(2023, 1, 1, 13), transactions)
     end
@@ -120,7 +120,7 @@ end
         push_history(HISTORY, HTTPTransaction("192.168.1.1", "/test", now(), 0.5, true, 200, nothing))
         push_history(HISTORY, HTTPTransaction("192.168.1.2", "/test", now(), 1.0, false, 500, "Error"))
 
-        metrics = endpoint_metrics(HISTORY, "/test")
+        metrics = endpoint_metrics(get_history(HISTORY), "/test")
 
         @test metrics["total_requests"] == 2
         @test metrics["avg_latency"] == 0.75

@@ -33,6 +33,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 - Middleware chaining (at the application, router, and route levels)
 - Static & Dynamic file hosting
 - Templating Support
+- Plotting Support
 - Route tagging
 - Repeat tasks
 
@@ -536,7 +537,24 @@ end
 # start the web server in parallel mode
 serveparallel()
 ```
+## Plotting Support
 
+Oxygen has a package extension for the CairoMakie.jl library that helps us return Figures directly from a request handler while keeping all operations in-memory. Each helper function will read the figure into an IOBuffer, set the content type, and return the binary data inside a `HTTP.Response`.
+
+Here are the currently supported helper utils: `png`, `svg`, `pdf`, `html`
+
+```julia
+using CairoMakie: heatmap
+using Oxygen
+
+# generate a random heatmap plot and return it as a png
+@get "/plot/png" function()
+    fig, ax, pl = heatmap(rand(50, 50))
+    png(fig)
+end
+
+serve()
+```
 
 ## Templating
 
@@ -885,33 +903,6 @@ mergeschema(
   )
 )
 ```
-
-# Common Issues & Tips
-
-## Problems working with Julia's REPL
-
-This is a recurring issue that occurs when writing and testing code in the REPL. Often, people find that their changes are not reflected when they rerun the server. The reason for this is that all the routing utilities are defined as macros, and they are only executed during the precompilation stage. To have your changes take effect, you need to move your route declarations to the `__init__()` function in your module.
-
-```julia
-module OxygenExample
-using Oxygen
-using HTTP
-
-# is called whenever you load this module
-function __init__()
-    @get "/greet" function(req::HTTP.Request)
-        return "hello world!"
-    end
-end
-
-# you can call this function from the REPL to start the server
-function runserver()
-    serve()
-end
-
-end 
-```
-
 
 
 # API Reference (macros)

@@ -1,9 +1,10 @@
 module CairoMakieDemo
-import CairoMakie: heatmap
+using CairoMakie: heatmap
+using Oxygen: text # CairoMakie also exports text
 using Oxygen
 
 get("/") do 
-    html("<h1>welcome to the random plot api!</h1>")
+    text("welcome to the random plot api!")
 end
 
 # generate a random plot

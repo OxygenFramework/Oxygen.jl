@@ -487,7 +487,7 @@ end
 
 app2 = instance()
 
-app1.get("/") do
+app2.get("/") do
     text("server B")
 end
 
@@ -512,9 +512,7 @@ multithreaded mode. In order to utilize this mode, julia must have more than 1 t
 julia --threads 4
 ```
 
-``serveparallel(queuesize=1024)`` Starts the webserver in streaming mode and spawns n - 1 worker 
-threads. The ``queuesize`` parameter sets how many requests can be scheduled within the queue (a julia Channel)
-before they start getting dropped. Each worker thread pops requests off the queue and handles them asynchronously within each thread. 
+``serveparallel()`` Starts the webserver in streaming mode and handles requests in a cooperative multitasking approach. This function uses `Threads.@spawn` to schedule a new task on any available thread. Meanwhile, @async is used inside this task when calling each request handler. This allows the task to yield during I/O operations.
 
 ```julia
 using Oxygen

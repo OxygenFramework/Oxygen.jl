@@ -1,5 +1,6 @@
 module AppContext
 import Base: @kwdef, wait, close, isopen
+import Base.Threads: ReentrantLock
 using HTTP
 using HTTP: Server, Router
 using ..Types
@@ -43,7 +44,7 @@ end
     router              :: Router                   = Router()
     custommiddleware    :: Dict{String, Tuple}      = Dict{String, Tuple}()
     history             :: History                  = History(1_000_000)
-    parallel_handler    :: Ref{Nullable{Handler}}   = Ref{Nullable{Handler}}(nothing)
+    history_lock        :: ReentrantLock            = ReentrantLock()
 end
 
 @kwdef struct Context

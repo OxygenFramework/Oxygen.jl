@@ -9,6 +9,7 @@ using Dates
 using Reexport
 using RelocatableFolders
 using DataStructures: CircularDeque
+import Base.Threads: lock
 
 include("types.jl");        @reexport using .Types 
 include("constants.jl");    @reexport using .Constants
@@ -16,7 +17,6 @@ include("context.jl");      @reexport using .AppContext
 include("util.jl");         @reexport using .Util
 include("cron.jl");         @reexport using .Cron
 include("repeattasks.jl");  @reexport using .RepeatTasks
-include("streamutil.jl");   @reexport using .StreamUtil
 include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 
@@ -41,6 +41,96 @@ function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool, docsp
     metrics && @info "📊 Metrics: http://$host:$port$docspath/metrics"
 end
 
+
+"""
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
+
+Start the webserver with your own custom request handler
+"""
+function serve(ctx::Context; 
+    middleware  = [],
+    handler     = stream_handler,
+    host        = "127.0.0.1", 
+    port        = 8080, 
+    serialize   = true, 
+    async       = false, 
+    catch_errors= true, 
+    docs        = true,
+    metrics     = true,
+    show_errors = true,
+    show_banner  = true,
+    docs_path    = "/docs",
+    schema_path  = "/schema",
+    kwargs...) :: Server
+
+    # overwrite docs & schema paths
+    ctx.docs.docspath[] = docs_path
+    ctx.docs.schemapath[] = schema_path
+
+    # intitialize documenation router (used by docs and metrics)
+    ctx.docs.router[] = Router()
+
+    # compose our middleware ahead of time (so it only has to be built up once)
+    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors)
+
+    # setup the primary stream handler function (can be customized by the caller)
+    handle_stream = handler(configured_middelware)
+
+    # The cleanup of resources are put at the topmost level in `methods.jl`
+    return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
+        HTTP.serve!(handle_stream, host, port; kwargs...))
+end
+
+
+"""
+    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
+
+Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
+threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
+Requests in the channel are then removed & handled by each the worker threads asynchronously. 
+"""
+function serveparallel(ctx::Context; 
+    middleware  = [], 
+    handler     = stream_handler, 
+    host        = "127.0.0.1", 
+    port        = 8080, 
+    serialize   = true, 
+    async       = false, 
+    catch_errors= true,
+    docs        = true,
+    metrics     = true, 
+    show_errors = true,
+    show_banner  = true,
+    docs_path    = "/docs",
+    schema_path  = "/schema",
+    kwargs...) :: Server
+
+    if Threads.nthreads() <= 1
+        @warn "serveparallel() only has 1 thread available to use, try launching julia like this: \"julia -t auto\" to leverage multiple threads"
+    end
+
+    if haskey(kwargs, :queuesize)
+        @warn "Deprecated: The `queuesize` parameter is no longer used / supported in serveparallel()"
+    end
+
+    # overwrite docs & schema paths
+    ctx.docs.docspath[] = docs_path
+    ctx.docs.schemapath[] = schema_path
+
+    # intitialize documenation router (used by docs and metrics)
+    ctx.docs.router[] = Router()
+
+    # compose our middleware ahead of time (so it only has to be built up once)
+    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors)
+
+    # setup the primary stream handler function (can be customized by the caller)
+    handle_stream = handler(configured_middelware) |> parallel_stream_handler 
+
+    return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
+        HTTP.serve!(handle_stream, host, port; kwargs...))
+end
+
+
 """
     terminate(ctx)
 
@@ -55,9 +145,6 @@ function terminate(context::Context)
         # stop repeating tasks
         stoptasks(context.tasks) 
         cleartasks(context.tasks)
-
-        # stop the parallel handler (if available)
-        StreamUtil.stop(context.service.parallel_handler[])
 
         # stop server
         close(context.service)
@@ -101,7 +188,8 @@ function decorate_request(ip::IPAddr)
 end
 
 """
-This function determines how we handle the incoming request 
+This is our root stream handler used in both serve() and serveparallel().
+This function determines how we handle all incoming requests
 """
 function stream_handler(middleware::Function)
     return function (stream::HTTP.Stream)
@@ -112,85 +200,22 @@ function stream_handler(middleware::Function)
         # handle the incoming request
         return handle_stream(stream)
     end
-end 
-
-
-"""
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
-
-Start the webserver with your own custom request handler
-"""
-function serve(ctx::Context; 
-    middleware  = [],
-    handler     = stream_handler,
-    host        = "127.0.0.1", 
-    port        = 8080, 
-    serialize   = true, 
-    async       = false, 
-    catch_errors= true, 
-    docs        = true,
-    metrics     = true,
-    show_errors = true,
-    show_banner  = true,
-    docs_path    = "/docs",
-    schema_path  = "/schema",
-    kwargs...) :: Server
-
-    # overwrite docs & schema paths
-    ctx.docs.docspath[] = docs_path
-    ctx.docs.schemapath[] = schema_path
-
-    # intitialize documenation router (used by docs and metrics)
-    ctx.docs.router[] = Router()
-
-    # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors)
-
-    # The cleanup of resources are put at the topmost level in `methods.jl`
-    return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
-        HTTP.serve!(handler(configured_middelware), host, port; kwargs...))
 end
 
-
 """
-    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, queuesize=1024, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
+    parallel_stream_handler(handle_stream::Function)
 
-Starts the webserver in streaming mode with your own custom request handler and spawns n - 1 worker 
-threads to process individual requests. A Channel is used to schedule individual requests in FIFO order. 
-Requests in the channel are then removed & handled by each the worker threads asynchronously. 
+This function uses `Threads.@spawn` to schedule a new task on any available thread. 
+Inside this task, `@async` is used for cooperative multitasking, allowing the task to yield during I/O operations. 
 """
-function serveparallel(ctx::Context; 
-    middleware  = [], 
-    handler     = stream_handler, 
-    host        = "127.0.0.1", 
-    port        = 8080, 
-    queuesize   = 1024, 
-    serialize   = true, 
-    async       = false, 
-    catch_errors= true,
-    docs        = true,
-    metrics     = true, 
-    show_errors = true,
-    show_banner  = true,
-    docs_path    = "/docs",
-    schema_path  = "/schema",
-    kwargs...) :: Server
-
-    # overwrite docs & schema paths
-    ctx.docs.docspath[] = docs_path
-    ctx.docs.schemapath[] = schema_path
-
-    # intitialize documenation router (used by docs and metrics)
-    ctx.docs.router[] = Router()
-
-    # create and assign our parallel handler
-    ctx.service.parallel_handler[] = Handler() 
-
-    # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors)
-
-    return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
-        StreamUtil.start(ctx.service.parallel_handler[], handler(configured_middelware); host=host, port=port, queuesize=queuesize, kwargs...))
+function parallel_stream_handler(handle_stream::Function)
+    function(stream::HTTP.Stream)
+        task = Threads.@spawn begin 
+            handle = @async handle_stream(stream)  
+            wait(handle)
+        end
+        wait(task)
+    end
 end
 
 
@@ -211,7 +236,7 @@ function setupmiddleware(ctx::Context; middleware::Vector=[], docs::Bool=true, m
     serializer = serialize ? [DefaultSerializer(catch_errors; show_errors)] : []
 
     # check if we need to track metrics
-    collect_metrics = metrics ? [MetricsMiddleware(ctx.service.history, metrics)] : []
+    collect_metrics = metrics ? [MetricsMiddleware(ctx.service, metrics)] : []
 
     # combine all our middleware functions
     return reduce(|>, [
@@ -248,7 +273,7 @@ function startserver(ctx::Context, show_banner, host, port, docs, metrics, kwarg
     if !async     
         try
             wait(ctx.service)
-        catch 
+        finally 
             println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end
     end
@@ -317,40 +342,39 @@ function DefaultSerializer(catch_errors::Bool; show_errors::Bool)
     end
 end
 
-function MetricsMiddleware(history::History, catch_errors::Bool) 
+function MetricsMiddleware(service::Service, catch_errors::Bool) 
     return function(handler)
         return function(req::HTTP.Request)
             return handlerequest(catch_errors) do 
-                
                 start_time = time()
-
                 # Handle the request
                 response = handler(req)
                 # Log response time
                 response_time = (time() - start_time) * 1000
-                if response.status == 200
-                    push_history(history, HTTPTransaction(
-                        string(req.context[:ip]),
-                        string(req.target),
-                        now(UTC),
-                        response_time,
-                        true,
-                        response.status,
-                        nothing
-                    ))
-                else 
-                    push_history(history, HTTPTransaction(
-                        string(req.context[:ip]),
-                        string(req.target),
-                        now(UTC),
-                        response_time,
-                        false,
-                        response.status,
-                        text(response)
-                    ))
+                # Make sure we update the History object in a thread-safe way
+                lock(service.history_lock) do 
+                    if response.status == 200
+                        push_history(service.history, HTTPTransaction(
+                            string(req.context[:ip]),
+                            string(req.target),
+                            now(UTC),
+                            response_time,
+                            true,
+                            response.status,
+                            nothing
+                        ))
+                    else 
+                        push_history(service.history, HTTPTransaction(
+                            string(req.context[:ip]),
+                            string(req.target),
+                            now(UTC),
+                            response_time,
+                            false,
+                            response.status,
+                            text(response)
+                        ))
+                    end
                 end
-
-                # Return the response
                 return response
             end
         end
@@ -533,11 +557,11 @@ function setupdocs(router::Router, schema::Dict, docspath::String, schemapath::S
 end
 
 function setupmetrics(context::Context)
-    setupmetrics(context.docs.router[], context.service.history, context.docs.docspath[])
+    setupmetrics(context.docs.router[], context.service.history, context.docs.docspath[], context.service.history_lock)
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(router::Router, history::History, docspath::String)
+function setupmetrics(router::Router, history::History, docspath::String, history_lock::ReentrantLock)
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath) :: String
@@ -552,22 +576,38 @@ function setupmetrics(router::Router, history::History, docspath::String)
     end
 
     staticfiles(router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+
+
+    """
+    Create a thread-safe copy of the history object and it's internal data
+    """
+    function safe_get_transactions(history::History) :: Vector{HTTPTransaction}
+        transactions = []
+        lock(history_lock) do
+            transactions = collect(history)
+        end
+        return transactions
+    end
     
     function metrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
 
+        # create a threadsafe copy of the current transactions in our history object
+        transactions = safe_get_transactions(history)
+        
         # Figure out how far back to read from the history object
         window_value = !isnothing(window) && window > 0 ? Minute(window) : nothing
         lower_bound = !isnothing(latest) ? latest : window_value
         
         return Dict(
-           "server"     => server_metrics(history, nothing),
-           "endpoints"  => all_endpoint_metrics(history, nothing),
-           "errors"     => error_distribution(history, nothing),
-           "avg_latency_per_second" => avg_latency_per_unit(history, Second, lower_bound)   |> prepare_timeseries_data(),
-           "requests_per_second"    => requests_per_unit(history, Second, lower_bound)      |> prepare_timeseries_data(),
-           "avg_latency_per_minute" => avg_latency_per_unit(history, Minute, lower_bound)   |> prepare_timeseries_data(),
-           "requests_per_minute"    => requests_per_unit(history, Minute, lower_bound)      |> prepare_timeseries_data()
+            "server"     => server_metrics(transactions, nothing),
+            "endpoints"  => all_endpoint_metrics(transactions, nothing),
+            "errors"     => error_distribution(transactions, nothing),
+            "avg_latency_per_second" => avg_latency_per_unit(transactions, Second, lower_bound)   |> prepare_timeseries_data(),
+            "requests_per_second"    => requests_per_unit(transactions, Second, lower_bound)      |> prepare_timeseries_data(),
+            "avg_latency_per_minute" => avg_latency_per_unit(transactions, Minute, lower_bound)   |> prepare_timeseries_data(),
+            "requests_per_minute"    => requests_per_unit(transactions, Minute, lower_bound)      |> prepare_timeseries_data()
         )
+        
     end
 
     register(router, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)

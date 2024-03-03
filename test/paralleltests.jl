@@ -60,7 +60,7 @@ using ..Constants
     # only run these tests if we have more than one thread to work with
     if Threads.nthreads() > 1
 
-        serveparallel(host=HOST, port=PORT, show_errors=true, async=true, show_banner=false)
+        serveparallel(host=HOST, port=PORT, show_errors=true, async=true, show_banner=true)
         sleep(3)
 
         r = HTTP.get("$localhost/get")

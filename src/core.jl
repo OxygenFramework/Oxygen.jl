@@ -33,12 +33,13 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool, docspath::String)
+function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
     printstyled(oxygen_title, color = :blue, bold = true)
     @info "📦 Version 1.5.0 (2024-02-26)"
     @info "✅ Started server: http://$host:$port" 
-    docs    && @info "📖 Documentation: http://$host:$port$docspath"
-    metrics && @info "📊 Metrics: http://$host:$port$docspath/metrics"
+    docs     && @info "📖 Documentation: http://$host:$port$docspath"
+    metrics  && @info "📊 Metrics: http://$host:$port$docspath/metrics"
+    parallel && @info "🚀 Running in parallel mode with $(Threads.nthreads()) available threads"
 end
 
 
@@ -77,7 +78,7 @@ function serve(ctx::Context;
     handle_stream = handler(configured_middelware)
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
-    return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    return startserver(ctx; host, port, show_banner, docs, metrics, kwargs, async, start=(kwargs) -> 
         HTTP.serve!(handle_stream, host, port; kwargs...))
 end
 
@@ -126,7 +127,7 @@ function serveparallel(ctx::Context;
     # setup the primary stream handler function (can be customized by the caller)
     handle_stream = handler(configured_middelware) |> parallel_stream_handler 
 
-    return startserver(ctx, show_banner, host, port, docs, metrics, kwargs, async, (kwargs) -> 
+    return startserver(ctx; host, port, show_banner, docs, metrics, parallel=true, async, kwargs, start=(kwargs) -> 
         HTTP.serve!(handle_stream, host, port; kwargs...))
 end
 
@@ -252,9 +253,9 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(ctx::Context, show_banner, host, port, docs, metrics, kwargs, async, start) :: Server
+function startserver(ctx::Context; host, port, show_banner=false, docs=false, metrics=false, parallel=false, async=false, kwargs, start) :: Server
 
-    show_banner && serverwelcome(host, port, docs, metrics, ctx.docs.docspath[])
+    show_banner && serverwelcome(host, port, docs, metrics, parallel, ctx.docs.docspath[])
 
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)

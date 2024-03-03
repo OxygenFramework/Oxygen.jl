@@ -577,10 +577,7 @@ function setupmetrics(router::Router, history::History, docspath::String, histor
 
     staticfiles(router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
 
-
-    """
-    Create a thread-safe copy of the history object and it's internal data
-    """
+    # Create a thread-safe copy of the history object and it's internal data
     function safe_get_transactions(history::History) :: Vector{HTTPTransaction}
         transactions = []
         lock(history_lock) do

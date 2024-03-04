@@ -5,7 +5,7 @@ using HTTP
 using StructTypes
 
 using Oxygen
-using Oxygen.Core.Util: set_content_size!
+using Oxygen: set_content_size!
 
 struct rank
     title   :: String 

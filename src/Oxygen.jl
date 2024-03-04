@@ -2,7 +2,6 @@ module Oxygen
 
 include("core.jl"); using .Core
 include("instances.jl"); using .Instances
-# Load any optional extensions
 include("extensions/load.jl");
 
 import HTTP: Request, Response

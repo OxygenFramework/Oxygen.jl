@@ -35,11 +35,11 @@ oxygen_title = raw"""
 
 function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
     printstyled(oxygen_title, color = :blue, bold = true)
-    @info "📦 Version 1.5.0 (2024-02-26)"
+    @info "📦 Version 1.5.1 (2024-03-03)"
     @info "✅ Started server: http://$host:$port" 
     docs     && @info "📖 Documentation: http://$host:$port$docspath"
     metrics  && @info "📊 Metrics: http://$host:$port$docspath/metrics"
-    parallel && @info "🚀 Running in parallel mode with $(Threads.nthreads()) available threads"
+    parallel && @info "🚀 Running in parallel mode with $(Threads.nthreads()) threads"
 end
 
 

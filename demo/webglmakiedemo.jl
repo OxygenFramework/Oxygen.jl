@@ -1,7 +1,7 @@
 module WGLGLMakieDemo
 
 using Oxygen
-using Oxygen: text
+using Oxygen: text, html
 using WGLMakie
 using WGLMakie.Makie: FigureLike
 using Bonito, FileIO, Colors, HTTP

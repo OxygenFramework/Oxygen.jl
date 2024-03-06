@@ -1,5 +1,10 @@
 using Requires
 
+const PNG   = MIME"image/png"()
+const SVG   = MIME"image/svg+xml"()
+const PDF   = MIME"application/pdf"()
+const HTML  = MIME"text/html"()
+
 """
 response(content::String, status=200, headers=[]) :: HTTP.Response
 
@@ -31,4 +36,12 @@ function __init__()
     #                       Plotting Extensions                    #
     ################################################################
     @require CairoMakie="13f3f980-e62b-5c42-98c6-ff1f3baf88f0" include("plotting/cairomakie.jl")
+    @require Bonito="824d6782-a2ef-11e9-3a09-e5662e0c26f8" include("plotting/bonito.jl")
+    @require WGLMakie="276b4fcb-3e11-5398-bf8b-a0c2d153d008" begin 
+        @require Bonito="824d6782-a2ef-11e9-3a09-e5662e0c26f8" begin
+            include("plotting/wglmakie.jl")
+        end
+    end
+
+    
 end

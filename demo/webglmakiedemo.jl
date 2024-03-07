@@ -1,35 +1,10 @@
 module WGLGLMakieDemo
-
 using Oxygen
 using Oxygen: text, html
 using WGLMakie
 using WGLMakie.Makie: FigureLike
 using Bonito, FileIO, Colors, HTTP
 WGLMakie.activate!()
-
-"""
-Converts a Figure object to the designated MIME type and wraps it inside an HTTP response.
-"""
-function response(content::Union{FigureLike, App}, mime_type::MIME, status::Int, headers::Vector)
-    # Force inlining all data & js dependencies
-    Page(exportable=true, offline=true)
-
-    # Convert & load the figure into an IOBuffer
-    io = IOBuffer()
-    show(io, mime_type, content)
-    body = take!(io)
-    
-    # format the response
-    resp = HTTP.Response(status, headers, body)
-    HTTP.setheader(resp, "Content-Type" => string(mime_type))
-    HTTP.setheader(resp, "Content-Length" => string(sizeof(body)))
-    return resp
-end
-
-const HTML  = MIME"text/html"()
-
-html(app::Bonito.App, status=200, headers=[]) :: HTTP.Response = response(app, HTML, status, headers)
-html(plot::Makie.FigureLike, status=200, headers=[]) :: HTTP.Response = response(plot, HTML, status, headers)
 
 get("/") do 
     text("home")

@@ -4,12 +4,6 @@ import .Core.Util: html # import the html function from util so we can override 
 
 export png, svg, pdf, html
 
-# Here we list all our supported MIME types
-const PNG   = MIME"image/png"()
-const SVG   = MIME"image/svg+xml"()
-const PDF   = MIME"application/pdf"()
-const HTML  = MIME"text/html"()
-
 """
 Converts a Figure object to the designated MIME type and wraps it inside an HTTP response.
 """

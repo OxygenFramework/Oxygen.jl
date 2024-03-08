@@ -44,6 +44,20 @@ function json(content::Any; status = 200, headers = []) :: HTTP.Response
 end
 
 """
+    json(content::Vector{UInt8}; status::Int, headers::Vector{Pair}) :: HTTP.Response
+
+A helper function that can be passed binary data that should be interpreted as JSON. 
+No conversion is done on the content since it's already in binary format.
+"""
+function json(content::Vector{UInt8}; status = 200, headers = []) :: HTTP.Response
+    response = HTTP.Response(status, headers, body = content)
+    HTTP.setheader(response, "Content-Type" => "application/json; charset=utf-8")
+    HTTP.setheader(response, "Content-Length" => string(sizeof(content)))
+    return response
+end
+
+
+"""
     xml(content::String; status::Int, headers::Vector{Pair}) :: HTTP.Response
 
 A convenience function to return a String that should be interpreted as XML

@@ -27,6 +27,13 @@ using Oxygen
         @test Dict(response.headers)["Content-Type"] == "application/json; charset=utf-8"
     end
 
+    @testset "json binary function" begin
+        response = json(Vector{UInt8}("{\"message\":\"Hello, World!\"}"))
+        @test response.status == 200
+        @test text(response) == "{\"message\":\"Hello, World!\"}"
+        @test Dict(response.headers)["Content-Type"] == "application/json; charset=utf-8"
+    end
+ 
     @testset "xml function" begin
         response = xml("<message>Hello, World!</message>")
         @test response.status == 200

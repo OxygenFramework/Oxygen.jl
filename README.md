@@ -539,22 +539,58 @@ serveparallel()
 ```
 ## Plotting Support
 
-Oxygen has a package extension for the CairoMakie.jl library that helps us return Figures directly from a request handler while keeping all operations in-memory. Each helper function will read the figure into an IOBuffer, set the content type, and return the binary data inside a `HTTP.Response`.
+Oxygen is equipped with several package extensions that enhance its plotting capabilities. These extensions make it easy to return plots directly from request handlers. All operations are performed in-memory using an IOBuffer and return a `HTTP.Response`
 
-Here are the currently supported helper utils: `png`, `svg`, `pdf`, `html`
+Supported Packages and their helper utils:
 
+- CairoMakie.jl: `png`, `svg`, `pdf`, `html`
+- WGLMakie.jl: `html`
+- Bonito.jl: `html`
+
+#### CairoMakie.jl
 ```julia
 using CairoMakie: heatmap
 using Oxygen
 
-# generate a random heatmap plot and return it as a png
-@get "/plot/png" function()
+@get "/cairo" function()
     fig, ax, pl = heatmap(rand(50, 50))
     png(fig)
 end
 
 serve()
 ```
+
+#### WGLMakie.jl
+```julia
+using Bonito
+using WGLMakie: heatmap
+using Oxygen
+using Oxygen: html # Bonito also exports html
+
+@get "/wgl" function()
+    fig = heatmap(rand(50, 50))
+    html(fig)
+end
+
+serve()
+```
+
+#### Bonito.jl
+```julia
+using Bonito
+using Oxygen
+using Oxygen: html # Bonito also exports html
+
+@get "/bonito" function()
+    app = App() do
+        return DOM.div(DOM.h1("hello world"))
+    end
+    html(app)
+end
+
+serve()
+```
+
 
 ## Templating
 

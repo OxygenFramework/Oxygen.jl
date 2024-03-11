@@ -25,6 +25,13 @@ end
 
 function __init__()
 
+
+    ################################################################
+    #                       Serialization Extensions               #
+    ################################################################
+    @require ProtoBuf = "3349acd9-ac6a-5e09-bcdb-63829b23a429" include("serialization/protobuf.jl")
+
+
     ################################################################
     #                       Templating Extensions                  #
     ################################################################
@@ -42,6 +49,5 @@ function __init__()
             include("plotting/wglmakie.jl")
         end
     end
-
     
 end

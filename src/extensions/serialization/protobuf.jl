@@ -24,7 +24,7 @@ end
 """
     protobuf(content::T, url::String, method::String = "POST") :: HTTP.Request where {T}
 
-Create a HTTP.Request and encode a protobuf message into the body
+Encode a protobuf message into the body of an HTTP.Request
 
 # Arguments
 - `content`: The protobuf message to encode.
@@ -50,7 +50,7 @@ end
 """
     protobuf(content::T; status = 200, headers = []) :: HTTP.Response where {T}
 
-Encode a protobuf message into the body of an HTTP response.
+Encode a protobuf message into the body of an HTTP.Response
 
 # Arguments
 - `content`: The protobuf message to encode.

@@ -24,7 +24,7 @@ end
 """
     protobuf(content::T, url::String, method::String = "POST") :: HTTP.Request where {T}
 
-Encode a protobuf message into the body of an HTTP request.
+Create a HTTP.Request and encode a protobuf message into the body
 
 # Arguments
 - `content`: The protobuf message to encode.
@@ -35,7 +35,7 @@ Encode a protobuf message into the body of an HTTP request.
 # Returns
 - An HTTP request object with the encoded protobuf message in its body.
 """
-function protobuf(content::T, url::String; method = "GET", headers = []) :: HTTP.Request where {T}
+function protobuf(content::T, url::String; method = "POST", headers = []) :: HTTP.Request where {T}
     io = IOBuffer()
     encode(ProtoEncoder(io), content)
     body = take!(io)

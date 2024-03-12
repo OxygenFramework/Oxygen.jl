@@ -13,7 +13,7 @@ using .test_pb: MyMessage
 
 @testset "Protobuf decoder test" begin
     message = MyMessage(-1, ["a", "b"])
-    req::HTTP.Request = protobuf(message, "/")
+    req::HTTP.Request = protobuf(message, "/data")
 
     decoded_msg = protobuf(req, MyMessage)
 
@@ -31,7 +31,7 @@ end
         Person("Charlie", 40)
     ])
 
-    req::HTTP.Request = protobuf(message, "/", method="POST")
+    req::HTTP.Request = protobuf(message, "/data", method="POST")
 
     decoded_msg = protobuf(req, People)
 

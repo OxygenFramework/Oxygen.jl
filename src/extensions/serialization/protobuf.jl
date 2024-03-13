@@ -28,19 +28,19 @@ Encode a protobuf message into the body of an HTTP.Request
 
 # Arguments
 - `content`: The protobuf message to encode.
-- `url`: The URL to which the request will be sent.
+- `target`: The target (URL) to which the request will be sent.
 - `method`: The HTTP method for the request (default is "POST").
 - `headers`: The HTTP headers for the request (default is an empty list).
 
 # Returns
 - An HTTP request object with the encoded protobuf message in its body.
 """
-function protobuf(content::T, url::String; method = "POST", headers = []) :: HTTP.Request where {T}
+function protobuf(content::T, target::String; method = "POST", headers = []) :: HTTP.Request where {T}
     io = IOBuffer()
     encode(ProtoEncoder(io), content)
     body = take!(io)
     # Format the request
-    request = HTTP.Request(method, url, headers, body)
+    request = HTTP.Request(method, target, headers, body)
     HTTP.setheader(request, "Content-Type" => "application/octet-stream")
     HTTP.setheader(request, "Content-Length" => string(sizeof(body)))
     return request

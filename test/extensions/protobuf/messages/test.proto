@@ -1,0 +1,6 @@
+syntax = "proto3";
+
+message MyMessage {
+    sint32 a = 1;
+    repeated string b = 2;
+}

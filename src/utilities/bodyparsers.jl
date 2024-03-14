@@ -53,7 +53,7 @@ end
 
 Read the body of a HTTP.Request as JSON with additional arguments for the read/serializer into a custom struct.
 """
-function json(req::HTTP.Request, classtype; kwargs...)
+function json(req::HTTP.Request, classtype::Type{T}; kwargs...) :: T where {T}
     body = IOBuffer(HTTP.payload(req))
     return eof(body) ? nothing : JSON3.read(body, classtype; kwargs...)    
 end
@@ -96,6 +96,6 @@ end
 
 Read the body of a HTTP.Messages.Response as JSON with additional keyword arguments and serialize it into a custom struct
 """
-function json(response::HTTP.Messages.Response, classtype; kwargs...)
+function json(response::HTTP.Messages.Response, classtype::Type{T}; kwargs...) :: T where {T}
     return JSON3.read(String(response.body), classtype; kwargs...)
 end

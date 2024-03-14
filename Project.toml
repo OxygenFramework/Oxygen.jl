@@ -30,6 +30,7 @@ Pkg = "^1"
 Reexport = "^1"
 RelocatableFolders = "^1"
 Requires = "^1"
+ProtoBuf = "^1"
 Sockets = "^1"
 Statistics = "^1"
 StructTypes = "^1"
@@ -43,10 +44,11 @@ CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Mustache = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
 OteraEngine = "b2d7f28f-acd6-4007-8b26-bc27716e5513"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+ProtoBuf = "3349acd9-ac6a-5e09-bcdb-63829b23a429"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [targets]
-test = ["Bonito", "CairoMakie", "Mustache", "OteraEngine", "Pkg", "StructTypes", "Test", "Suppressor", "WGLMakie"]
+test = ["Bonito", "CairoMakie", "Mustache", "OteraEngine", "Pkg", "ProtoBuf", "StructTypes", "Suppressor", "Test", "WGLMakie"]

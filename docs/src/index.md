@@ -34,6 +34,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 - Static & Dynamic file hosting
 - Templating Support
 - Plotting Support
+- Protocol Buffer Support
 - Route tagging
 - Repeat tasks
 
@@ -537,7 +538,62 @@ end
 # start the web server in parallel mode
 serveparallel()
 ```
-## Plotting Support
+
+## Protocol Buffers
+
+Oxygen includes an extension for the [ProtoBuf.jl](https://github.com/JuliaIO/ProtoBuf.jl) package. This extension provides a `protobuf()` function, simplifying the process of working with Protocol Buffers in the context of web server. For a better understanding of this package, please refer to its official documentation.
+
+
+
+This function has overloads for the following scenarios:
+- Decoding a protobuf message from the body of an HTTP request.
+- Encoding a protobuf message into the body of an HTTP request.
+- Encoding a protobuf message into the body of an HTTP response.
+
+
+```julia
+using HTTP
+using ProtoBuf
+using Oxygen
+
+# The generated classes need to be created ahead of time (check the protobufs)
+include("people_pb.jl");
+using .people_pb: People, Person
+
+# Decode a Protocol Buffer Message 
+@post "/count" function(req::HTTP.Request)
+    # decode the request body into a People object
+    message = protobuf(req, People)
+    # count the number of Person objects
+    return length(message.people)
+end
+
+# Encode & Return Protocol Buffer message
+@get "/get" function()
+    message = People([
+        Person("John Doe", 20),
+        Person("Alice", 30),
+        Person("Bob", 35)
+    ])
+    # seralize the object inside the body of a HTTP.Response
+    return protobuf(message)
+end
+```
+
+The following is an example of a schema that was used to create the necessary Julia bindings. These bindings allow for the encoding and decoding of messages in the above example.
+```protobuf
+syntax = "proto3";
+message Person {
+    string name = 1;
+    sint32 age = 2;
+}
+message People {
+    repeated Person people = 1;
+}
+```
+
+
+## Plotting
 
 Oxygen is equipped with several package extensions that enhance its plotting capabilities. These extensions make it easy to return plots directly from request handlers. All operations are performed in-memory using an IOBuffer and return a `HTTP.Response`
 

@@ -172,6 +172,14 @@ macro route(methods, path, func)
     :(route($(esc(methods)), $(esc(path)), $(esc(func))))
 end
 
+macro events(path, func)
+    path, func = adjustparams(path, func)
+    :(events($(esc(path)), $(esc(func))))
+end
+
+function events(path::String, func::Function)
+    Oxygen.Core.register_sse(CONTEXT[].service.router, path, func)
+end
 
 """
     adjustparams(path, func)

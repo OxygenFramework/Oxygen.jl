@@ -42,6 +42,7 @@ end
 @kwdef struct Service
     server              :: Ref{Nullable{Server}}    = Ref{Nullable{Server}}(nothing)
     router              :: Router                   = Router()
+    stream_router       :: Router                   = Router()
     custommiddleware    :: Dict{String, Tuple}      = Dict{String, Tuple}()
     history             :: History                  = History(1_000_000)
     history_lock        :: ReentrantLock            = ReentrantLock()

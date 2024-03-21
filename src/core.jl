@@ -544,6 +544,14 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
     HTTP.register!(router, httpmethod, route, handle)
 end
 
+function register_sse(router::Router, route::String, func::Function)
+    # Parse & validate path parameters
+    # route = parse_route(httpmethod, route)
+    # hasPathParams, func_param_names, func_param_types = parse_func_params(route, func)
+    # path_params = [param for param in zip(func_param_names, func_param_types)]
+    HTTP.register!(router, route, func)
+end
+
 function setupdocs(ctx::Context)
     setupdocs(ctx.docs.router[], ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[])
 end

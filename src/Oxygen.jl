@@ -28,8 +28,8 @@ macro oxidise()
 end
 
 export  @oxidise, @get, @post, @put, @patch, @delete, @route, 
-        @staticfiles, @dynamicfiles, @cron, @repeat,
-        get, post, put, patch, delete, route,
+        @staticfiles, @dynamicfiles, @cron, @repeat, @events,
+        get, post, put, patch, delete, route, events,
         serve, serveparallel, terminate, internalrequest, 
         resetstate, instance, staticfiles, dynamicfiles,
         # Util

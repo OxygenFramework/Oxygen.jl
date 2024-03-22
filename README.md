@@ -634,14 +634,18 @@ serve()
 #### Bonito.jl
 ```julia
 using Bonito
+using WGLMakie: heatmap
 using Oxygen
 using Oxygen: html # Bonito also exports html
 
 @get "/bonito" function()
     app = App() do
-        return DOM.div(DOM.h1("hello world"))
+        return DOM.div(
+            DOM.h1("Random 50x50 Heatmap"), 
+            DOM.div(heatmap(rand(50, 50)))
+        )
     end
-    html(app)
+    return html(app)
 end
 
 serve()

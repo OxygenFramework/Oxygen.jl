@@ -162,6 +162,16 @@ macro delete(path, func)
     :(@route ["DELETE"] $(esc(path)) $(esc(func)))
 end
 
+macro sse(path, func)
+    path, func = adjustparams(path, func)
+    :(@route ["GET"] $(esc(path)) $(esc(func)))
+end
+
+macro ws(path, func)
+    path, func = adjustparams(path, func)
+    :(@route ["GET"] $(esc(path)) $(esc(func)))
+end
+
 
 """
     @route(methods::Array{String}, path::String, func::Function)
@@ -172,14 +182,6 @@ macro route(methods, path, func)
     :(route($(esc(methods)), $(esc(path)), $(esc(func))))
 end
 
-macro events(path, func)
-    path, func = adjustparams(path, func)
-    :(events($(esc(path)), $(esc(func))))
-end
-
-function events(path::String, func::Function)
-    Oxygen.Core.register_sse(CONTEXT[].service.router, path, func)
-end
 
 """
     adjustparams(path, func)
@@ -214,6 +216,12 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 
 get(func::Function, path::String)       = route(["GET"], path, func)
 get(func::Function, path::Function)     = route(["GET"], path, func)
+
+sse(func::Function, path::String)    = route(["GET"], path, func)
+sse(func::Function, path::Function)  = route(["GET"], path, func)
+
+ws(func::Function, path::String)    = route(["GET"], path, func)
+ws(func::Function, path::Function)  = route(["GET"], path, func)
 
 post(func::Function, path::String)      = route(["POST"], path, func)
 post(func::Function, path::Function)    = route(["POST"], path, func)

@@ -179,10 +179,11 @@ end
 This function can be used to add additional usefull metadata to the incoming 
 request context dictionary. At the moment, it just inserts the caller's ip address
 """
-function decorate_request(ip::IPAddr)
+function decorate_request(ip::IPAddr, stream::HTTP.Stream)
     return function(handle)
         return function(req::HTTP.Request)
             req.context[:ip] = ip
+            req.context[:stream] = stream
             handle(req)
         end
     end
@@ -192,16 +193,18 @@ end
 This is our root stream handler used in both serve() and serveparallel().
 This function determines how we handle all incoming requests
 """
+
 function stream_handler(middleware::Function)
     return function (stream::HTTP.Stream)
         # extract the caller's ip address
         ip, _ = Sockets.getpeername(stream)
         # build up a streamhandler to handle our incoming requests
-        handle_stream = HTTP.streamhandler(middleware |> decorate_request(ip))
+        handle_stream = HTTP.streamhandler(middleware |> decorate_request(ip, stream))
         # handle the incoming request
         return handle_stream(stream)
     end
 end
+
 
 """
     parallel_stream_handler(handle_stream::Function)
@@ -274,6 +277,7 @@ function startserver(ctx::Context; host, port, show_banner=false, docs=false, me
     if !async     
         try
             wait(ctx.service)
+        catch
         finally 
             println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end
@@ -521,35 +525,61 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
 
     # case 1.) The request handler is an anonymous function (don't parse out path params)
     if numfields <= 1
-        handle = function (req)
-            func()
-        end
+        handle = (req::HTTP.Request) -> func()
+
     # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
     elseif hasPathParams && numfields > 2
-        handle = function(req::HTTP.Request)
-            # get all path parameters
-            params = HTTP.getparams(req)
-            # convert params to their designated type (if applicable)
-            pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
-            # pass all parameters to handler in the correct order 
-            func(req, pathParams...)
+        first_arg_type = fieldtypes(method.sig)[2]
+
+        if first_arg_type == HTTP.Messages.Request
+            handle = function(req::HTTP.Request)
+                # get all path parameters
+                params = HTTP.getparams(req)
+                # convert params to their designated type (if applicable)
+                pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
+                # pass all parameters to handler in the correct order 
+                func(req, pathParams...)
+            end
+     
+        elseif first_arg_type == HTTP.WebSockets.WebSocket
+            handle = function(req::HTTP.Request)
+                # get all path parameters
+                params = HTTP.getparams(req)
+                # convert params to their designated type (if applicable)
+                pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]
+                # pass all parameters to handler in the correct order
+                HTTP.WebSockets.upgrade(ws -> func(ws, pathParams...), req.context[:stream])
+            end
+
+        elseif first_arg_type == HTTP.Streams.Stream
+            handle = function(req::HTTP.Request)
+                # get all path parameters
+                params = HTTP.getparams(req)
+                # convert params to their designated type (if applicable)
+                pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
+                # pass all parameters to handler in the correct order 
+                func(req.context[:stream], pathParams...)
+            end 
+        else 
+            throw(ArgumentError("Invalid first argument type for a Request Handler: $(first_arg_type)"))
         end
-    # case 3.) This function should only get passed the request object
+        
+    # case 3.) This function should only get passed the request/stream object
     else 
-        handle = function (req) 
-            func(req)
+        first_arg_type = fieldtypes(method.sig)[2]
+
+        if first_arg_type == HTTP.Messages.Request
+            handle = (req::HTTP.Request) -> func(req)
+        elseif first_arg_type == HTTP.WebSockets.WebSocket
+            handle = (req::HTTP.Request) -> HTTP.WebSockets.upgrade(func, req.context[:stream])
+        elseif first_arg_type == HTTP.Streams.Stream
+            handle = (req::HTTP.Request) -> func(req.context[:stream])
+        else
+            throw(ArgumentError("Invalid first argument type for a Request Handler: $(first_arg_type)"))
         end
     end
 
     HTTP.register!(router, httpmethod, route, handle)
-end
-
-function register_sse(router::Router, route::String, func::Function)
-    # Parse & validate path parameters
-    # route = parse_route(httpmethod, route)
-    # hasPathParams, func_param_names, func_param_types = parse_func_params(route, func)
-    # path_params = [param for param in zip(func_param_names, func_param_types)]
-    HTTP.register!(router, route, func)
 end
 
 function setupdocs(ctx::Context)

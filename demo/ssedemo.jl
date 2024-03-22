@@ -20,13 +20,11 @@ using .Oxygen
             evtSource.onmessage = async function (event) {
                 const newElement = document.createElement("li");
                 const eventList = document.getElementById("list");
-                if (parseFloat(event.data) > 0.5) {
-                    const r = await fetch("http://127.0.0.1:8080/api/getItems")
-                    if (r.ok) {
-                        const body = await r.json()
-                        newElement.textContent = body;
-                        eventList.appendChild(newElement);
-                    }
+                const r = await fetch("http://127.0.0.1:8080/api/getItems")
+                if (r.ok) {
+                    const body = await r.json()
+                    newElement.textContent = body;
+                    eventList.appendChild(newElement);
                 }
             }
             evtSource.addEventListener("ping", function(event) {
@@ -37,27 +35,22 @@ using .Oxygen
     """)
 end
 
-@get "/api/getItems" function()
+@get "/text" function()
+    text("Hello, world!")
+end
+
+@get "/api/getItems" function(req)
     json(rand(2))
 end
 
-@events "/api/events" function(stream::HTTP.Stream)
+@sse "/api/events" function(stream::HTTP.Stream)
     HTTP.setheader(stream, "Access-Control-Allow-Origin" => "*")
-    HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET, OPTIONS")
-    HTTP.setheader(stream, "Content-Type" => "text/event-stream")
-
-
-    if HTTP.method(stream.message) == "OPTIONS"
-        return nothing
-    end
-
+    HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET")
     HTTP.setheader(stream, "Content-Type" => "text/event-stream")
     HTTP.setheader(stream, "Cache-Control" => "no-cache")
     while true
         write(stream, "event: ping\ndata: $(round(Int, time()))\n\n")
-        if rand(Bool)
-            write(stream, "data: $(rand())\n\n")
-        end
+        write(stream, "data: $(rand())\n\n")
         sleep(1)
     end
     return nothing
@@ -72,15 +65,19 @@ const CORS_HEADERS = [
 # https://juliaweb.github.io/HTTP.jl/stable/examples/#Cors-Server
 function CorsMiddleware(handler)
     return function(req::HTTP.Request)
-        if HTTP.method(req)=="OPTIONS"
+        if HTTP.method(req) == "OPTIONS"
             return HTTP.Response(200, CORS_HEADERS)
         else 
-            return handler(req)
+            response = handler(req)
+            for (k,v) in CORS_HEADERS
+                HTTP.setheader(response, k => v)
+            end
+            response
         end
     end
 end
 
 
-serve(middleware=[CorsMiddleware])
+serve(middleware=[CorsMiddleware], access_log=nothing)
 
 end

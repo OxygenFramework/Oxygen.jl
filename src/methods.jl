@@ -162,11 +162,21 @@ macro delete(path, func)
     :(@route ["DELETE"] $(esc(path)) $(esc(func)))
 end
 
+"""
+    @sse(path::String, func::Function)
+
+Used to register a function to a specific endpoint to handle Server-Sent-Event requests
+"""
 macro sse(path, func)
     path, func = adjustparams(path, func)
     :(@route ["GET"] $(esc(path)) $(esc(func)))
 end
 
+"""
+    @ws(path::String, func::Function)
+
+Used to register a function to a specific endpoint to handle WebSocket requests
+"""
 macro ws(path, func)
     path, func = adjustparams(path, func)
     :(@route ["GET"] $(esc(path)) $(esc(func)))
@@ -199,7 +209,6 @@ function adjustparams(path, func)
     end
 end
 
-
 ### Core Routing Functions ###
 
 function route(methods::Vector{String}, path::Union{String,Function}, func::Function)
@@ -211,17 +220,18 @@ end
 # This variation supports the do..block syntax
 route(func::Function, methods::Vector{String}, path::Union{String,Function}) = route(methods, path, func)
 
-### Core Routing Functions Support for do..end Syntax ###
-
-
-get(func::Function, path::String)       = route(["GET"], path, func)
-get(func::Function, path::Function)     = route(["GET"], path, func)
+### Special Routing Functions Support for do..end Syntax ###
 
 sse(func::Function, path::String)    = route(["GET"], path, func)
 sse(func::Function, path::Function)  = route(["GET"], path, func)
 
 ws(func::Function, path::String)    = route(["GET"], path, func)
 ws(func::Function, path::Function)  = route(["GET"], path, func)
+
+### Core Routing Functions Support for do..end Syntax ###
+
+get(func::Function, path::String)       = route(["GET"], path, func)
+get(func::Function, path::Function)     = route(["GET"], path, func)
 
 post(func::Function, path::String)      = route(["POST"], path, func)
 post(func::Function, path::Function)    = route(["POST"], path, func)

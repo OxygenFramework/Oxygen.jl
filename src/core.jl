@@ -499,6 +499,60 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
     registerhandler(ctx.service.router, httpmethod, route, func, hasPathParams, (func_param_names, func_param_types, path_params))
 end
 
+"""
+    invoke_with_params(func, arg, req, has_req_kwarg; pathParams)
+
+Invoke the function `func` with the argument `arg` and the request `req`. 
+If `has_req_kwarg` is true, `req` is passed as a keyword argument. 
+If `pathParams` is provided, it is passed as positional arguments to `func`.
+"""
+function invoke_with_params(
+    func::Function, 
+    arg::Union{HTTP.Messages.Request, HTTP.WebSockets.WebSocket, HTTP.Streams.Stream}, 
+    req::HTTP.Messages.Request, 
+    has_req_kwarg::Bool; 
+    pathParams::Nullable{Vector}=nothing)
+
+    if has_req_kwarg
+        isnothing(pathParams) ? func(arg; request=req) : func(arg, pathParams...; request=req)
+    else
+        isnothing(pathParams) ? func(arg) : func(arg, pathParams...)
+    end
+end
+
+
+"""
+    select_handler(::Type{T})
+
+This base case, returns a function that handles a request of type `HTTP.Request`. 
+"""
+function select_handler(::Type{T}) where {T}
+    function (req::HTTP.Request, func::Function, has_req_kwarg::Bool; pathParams::Nullable{Vector}=nothing)
+        invoke_with_params(func, req, req, has_req_kwarg; pathParams=pathParams)
+    end
+end
+
+"""
+    select_handler(::Type{HTTP.Streams.Stream})
+
+Return a function that handles a request of type `HTTP.Streams.Stream`. 
+"""
+function select_handler(::Type{HTTP.Streams.Stream})
+    function (req::HTTP.Request, func::Function, has_req_kwarg::Bool; pathParams::Nullable{Vector}=nothing)
+        invoke_with_params(func, req.context[:stream], req, has_req_kwarg; pathParams=pathParams)
+    end
+end
+
+"""
+    select_handler(::Type{HTTP.WebSockets.WebSocket})
+
+Return a function that handles a request of type `HTTP.WebSockets.WebSocket`. 
+"""
+function select_handler(::Type{HTTP.WebSockets.WebSocket})
+    function (req::HTTP.Request, func::Function, has_req_kwarg::Bool; pathParams::Nullable{Vector}=nothing)
+        HTTP.WebSockets.upgrade(ws -> invoke_with_params(func, ws, req, has_req_kwarg; pathParams=pathParams), req.context[:stream])
+    end
+end
 
 """
 This alternaive registers a route wihout generating any documentation for it. Used primarily for internal routes like 
@@ -522,61 +576,29 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
 
     method = first(methods(func))
     numfields = method.nargs
-
+    has_req_kwarg = :request in Base.kwarg_decl(method)
     # case 1.) The request handler is an anonymous function (don't parse out path params)
     if numfields <= 1
-        handle = (req::HTTP.Request) -> func()
-
-    # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
+        if has_req_kwarg
+            handle = (req::HTTP.Request) -> func(; request=req)
+        else
+            handle = (::HTTP.Request) -> func()
+        end
+    # case 2.) This route has path params, so we need to parse parameters and pass them to the request/websocket/stream handler
     elseif hasPathParams && numfields > 2
         first_arg_type = fieldtypes(method.sig)[2]
+        func_handle = select_handler(first_arg_type)
 
-        if first_arg_type == HTTP.Messages.Request
-            handle = function(req::HTTP.Request)
-                # get all path parameters
-                params = HTTP.getparams(req)
-                # convert params to their designated type (if applicable)
-                pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
-                # pass all parameters to handler in the correct order 
-                func(req, pathParams...)
-            end
-     
-        elseif first_arg_type == HTTP.WebSockets.WebSocket
-            handle = function(req::HTTP.Request)
-                # get all path parameters
-                params = HTTP.getparams(req)
-                # convert params to their designated type (if applicable)
-                pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]
-                # pass all parameters to handler in the correct order
-                HTTP.WebSockets.upgrade(ws -> func(ws, pathParams...), req.context[:stream])
-            end
-
-        elseif first_arg_type == HTTP.Streams.Stream
-            handle = function(req::HTTP.Request)
-                # get all path parameters
-                params = HTTP.getparams(req)
-                # convert params to their designated type (if applicable)
-                pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
-                # pass all parameters to handler in the correct order 
-                func(req.context[:stream], pathParams...)
-            end 
-        else 
-            throw(ArgumentError("Invalid first argument type for a Request Handler: $(first_arg_type)"))
+        handle = function(req::HTTP.Request)
+            params = HTTP.getparams(req)
+            pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]
+            func_handle(req, func, has_req_kwarg; pathParams=pathParams)
         end
-        
-    # case 3.) This function should only get passed the request/stream object
+    # case 3.) This function should only get passed the request/websocket/stream object
     else 
         first_arg_type = fieldtypes(method.sig)[2]
-
-        if first_arg_type == HTTP.Messages.Request
-            handle = (req::HTTP.Request) -> func(req)
-        elseif first_arg_type == HTTP.WebSockets.WebSocket
-            handle = (req::HTTP.Request) -> HTTP.WebSockets.upgrade(func, req.context[:stream])
-        elseif first_arg_type == HTTP.Streams.Stream
-            handle = (req::HTTP.Request) -> func(req.context[:stream])
-        else
-            throw(ArgumentError("Invalid first argument type for a Request Handler: $(first_arg_type)"))
-        end
+        func_handle = select_handler(first_arg_type)
+        handle = (req::HTTP.Request) -> func_handle(req, func, has_req_kwarg)
     end
 
     HTTP.register!(router, httpmethod, route, handle)

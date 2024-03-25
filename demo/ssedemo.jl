@@ -43,7 +43,7 @@ end
     json(rand(2))
 end
 
-@sse "/api/events" function(stream::HTTP.Stream)
+@sse "/api/events" function(stream)
     HTTP.setheader(stream, "Access-Control-Allow-Origin" => "*")
     HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET")
     HTTP.setheader(stream, "Content-Type" => "text/event-stream")

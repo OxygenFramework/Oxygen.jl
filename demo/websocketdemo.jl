@@ -9,12 +9,7 @@ using .Oxygen
     text("hello world")
 end
 
-
-@get "/math/{a}/{b}" function(req, a::Float64, b::Float64;)
-    text("$(a * b)")
-end
-
-@ws "/ws" function(ws::HTTP.WebSocket; request::HTTP.Request)
+@ws "/ws" function(ws; request::HTTP.Request)
     println(">> req: $request")
     for msg in ws
         @info "Received message: $msg"
@@ -24,7 +19,6 @@ end
 
 @ws "/ws/{x}" function(ws::HTTP.WebSocket, x::Int; request)
     println(">> init req: $request")
-
     println("Connected to websocket with x = $x")
     for msg in ws
         @info "Received message from $x: $msg"

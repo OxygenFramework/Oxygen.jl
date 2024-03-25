@@ -555,6 +555,23 @@ function select_handler(::Type{HTTP.WebSockets.WebSocket})
 end
 
 """
+first_arg_type(method::Method, httpmethod::String)
+
+Determine the type of the first argument of a given method.
+If the `httpmethod` is in `Constants.SPECIAL_METHODS`, the function will return the 
+corresponding type from `TYPE_ALIASES` if it exists, or `Type{HTTP.Request}` as a default.
+Otherwise, it will return the type of the second field of the method's signature.
+"""
+function first_arg_type(method::Method, httpmethod::String)
+    if httpmethod in Constants.SPECIAL_METHODS
+        return get(TYPE_ALIASES, httpmethod, Type{HTTP.Request})
+    else
+        return fieldtypes(method.sig)[2]
+    end
+end
+
+
+"""
 This alternaive registers a route wihout generating any documentation for it. Used primarily for internal routes like 
 docs and metrics
 """
@@ -570,13 +587,13 @@ end
 
 function registerhandler(router::Router, httpmethod::String, route::String, func::Function, hasPathParams::Bool, path_params)
     func_param_names, func_param_types, path_params = path_params
-
     # create a map of paramter name to type definition
     func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
 
     method = first(methods(func))
     numfields = method.nargs
     has_req_kwarg = :request in Base.kwarg_decl(method)
+
     # case 1.) The request handler is an anonymous function (don't parse out path params)
     if numfields <= 1
         if has_req_kwarg
@@ -586,20 +603,20 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
         end
     # case 2.) This route has path params, so we need to parse parameters and pass them to the request/websocket/stream handler
     elseif hasPathParams && numfields > 2
-        first_arg_type = fieldtypes(method.sig)[2]
-        func_handle = select_handler(first_arg_type)
-
+        func_handle = first_arg_type(method, httpmethod)|> select_handler
         handle = function(req::HTTP.Request)
             params = HTTP.getparams(req)
             pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]
             func_handle(req, func, has_req_kwarg; pathParams=pathParams)
         end
     # case 3.) This function should only get passed the request/websocket/stream object
-    else 
-        first_arg_type = fieldtypes(method.sig)[2]
-        func_handle = select_handler(first_arg_type)
+    else        
+        func_handle = first_arg_type(method, httpmethod) |> select_handler
         handle = (req::HTTP.Request) -> func_handle(req, func, has_req_kwarg)
     end
+
+    # Use method aliases for special methods
+    httpmethod = get(Constants.METHOD_ALIASES, httpmethod, httpmethod)
 
     HTTP.register!(router, httpmethod, route, handle)
 end
@@ -611,10 +628,10 @@ end
 # add the swagger and swagger/schema routes 
 function setupdocs(router::Router, schema::Dict, docspath::String, schemapath::String)
     full_schema = "$docspath$schemapath"
-    register(router, "GET", "$docspath", () -> swaggerhtml(full_schema))
-    register(router, "GET", "$docspath/swagger", () -> swaggerhtml(full_schema))
-    register(router, "GET", "$docspath/redoc", () -> redochtml(full_schema))
-    register(router, "GET", full_schema, () -> schema)
+    register(router, GET, "$docspath", () -> swaggerhtml(full_schema))
+    register(router, GET, "$docspath/swagger", () -> swaggerhtml(full_schema))
+    register(router, GET, "$docspath/redoc", () -> redochtml(full_schema))
+    register(router, GET, full_schema, () -> schema)
 end
 
 function setupmetrics(context::Context)
@@ -668,7 +685,7 @@ function setupmetrics(router::Router, history::History, docspath::String, histor
         
     end
 
-    register(router, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
+    register(router, GET, "$docspath/metrics/data/{window}/{latest}", metrics)
 end
 
 
@@ -690,7 +707,7 @@ function staticfiles(router::HTTP.Router,
     end
     function addroute(currentroute, filepath)
         resp = file(filepath; loadfile=loadfile, headers=headers)
-        register(router, "GET", currentroute, () -> resp)
+        register(router, GET, currentroute, () -> resp)
     end
     mountfolder(folder, mountdir, addroute)  
 end
@@ -713,7 +730,7 @@ function dynamicfiles(router::Router,
         mountdir = mountdir[2:end]
     end
     function addroute(currentroute, filepath)
-        register(router, "GET", currentroute, () -> file(filepath; loadfile=loadfile, headers=headers))
+        register(router, GET, currentroute, () -> file(filepath; loadfile=loadfile, headers=headers))
     end
     mountfolder(folder, mountdir, addroute)    
 end

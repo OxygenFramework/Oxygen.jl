@@ -35,15 +35,11 @@ using .Oxygen
     """)
 end
 
-@get "/text" function()
-    text("Hello, world!")
-end
-
-@get "/api/getItems" function(req)
+@get "/api/getItems" function()
     json(rand(2))
 end
 
-@sse "/api/events" function(stream)
+@stream "/api/events" function(stream::HTTP.Stream)
     HTTP.setheader(stream, "Access-Control-Allow-Origin" => "*")
     HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET")
     HTTP.setheader(stream, "Content-Type" => "text/event-stream")
@@ -68,6 +64,7 @@ function CorsMiddleware(handler)
         if HTTP.method(req) == "OPTIONS"
             return HTTP.Response(200, CORS_HEADERS)
         else 
+            # Attach CORS headers to all responses
             response = handler(req)
             for (k,v) in CORS_HEADERS
                 HTTP.setheader(response, k => v)
@@ -76,7 +73,6 @@ function CorsMiddleware(handler)
         end
     end
 end
-
 
 serve(middleware=[CorsMiddleware], access_log=nothing)
 

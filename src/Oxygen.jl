@@ -6,6 +6,8 @@ include("extensions/load.jl");
 
 import HTTP: Request, Response
 using .Core: Context, History, Server, Nullable
+using .Core: GET, POST, PUT, DELETE, PATCH
+
 
 const CONTEXT = Ref{Context}(Context())
 
@@ -16,9 +18,8 @@ include("deprecated.jl")
 macro oxidise()
     quote
         import Oxygen
-
-        const Context = Oxygen.Context
-        const Nullable = Oxygen.Core.Types.Nullable
+        import Oxygen: Context, Nullable
+        import Oxygen: GET, POST, PUT, DELETE, PATCH
         
         const CONTEXT = Ref{Context}(Context())
         include(joinpath(dirname(Base.find_package("Oxygen")), "methods.jl"))
@@ -28,8 +29,8 @@ macro oxidise()
 end
 
 export  @oxidise, @get, @post, @put, @patch, @delete, @route, 
-        @staticfiles, @dynamicfiles, @cron, @repeat, @sse, @ws,
-        get, post, put, patch, delete, route, sse, ws,
+        @staticfiles, @dynamicfiles, @cron, @repeat, @stream, @ws,
+        get, post, put, patch, delete, route, stream, ws,
         serve, serveparallel, terminate, internalrequest, 
         resetstate, instance, staticfiles, dynamicfiles,
         # Util

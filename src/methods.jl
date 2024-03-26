@@ -163,11 +163,11 @@ macro delete(path, func)
 end
 
 """
-    @sse(path::String, func::Function)
+    @stream(path::String, func::Function)
 
 Used to register a function to a specific endpoint to handle Server-Sent-Event requests
 """
-macro sse(path, func)
+macro stream(path, func)
     path, func = adjustparams(path, func)
     :(@route [STREAM] $(esc(path)) $(esc(func)))
 end
@@ -222,8 +222,8 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 
 ### Special Routing Functions Support for do..end Syntax ###
 
-sse(func::Function, path::String)    = route([STREAM], path, func)
-sse(func::Function, path::Function)  = route([STREAM], path, func)
+stream(func::Function, path::String)    = route([STREAM], path, func)
+stream(func::Function, path::Function)  = route([STREAM], path, func)
 
 ws(func::Function, path::String)    = route([WEBSOCKET], path, func)
 ws(func::Function, path::Function)  = route([WEBSOCKET], path, func)

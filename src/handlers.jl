@@ -75,7 +75,7 @@ Returns a handler for `HTTP.WebSockets.WebSocket`types
 function select_handler(::Type{HTTP.WebSockets.WebSocket}, has_req_kwarg::Bool, has_path_params::Bool; no_args=false)
     invoker = get_invoker_stategy(has_req_kwarg, has_path_params, no_args)
     function (req::HTTP.Request, func::Function; pathParams::Nullable{Vector}=nothing)
-        HTTP.WebSockets.upgrade(ws -> invoker(func, ws, req, pathParams), req.context[:stream])
+        HTTP.WebSockets.isupgrade(req) && HTTP.WebSockets.upgrade(ws -> invoker(func, ws, req, pathParams), req.context[:stream])
     end
 end
 

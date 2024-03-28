@@ -29,7 +29,7 @@ end
 @post "/create/dict" function(req)
     # this will convert the request body into a Julia Dict
     data = json(req)
-    return "hello $(data['name'])!"
+    return """hello $(data["name"])!"""
 end
 ```
 

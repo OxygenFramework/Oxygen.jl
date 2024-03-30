@@ -19,7 +19,7 @@ macro oxidise()
     quote
         import Oxygen
         import Oxygen: Context, Nullable
-        import Oxygen: GET, POST, PUT, DELETE, PATCH
+        import Oxygen: GET, POST, PUT, DELETE, PATCH, STREAM, WEBSOCKET
         
         const CONTEXT = Ref{Context}(Context())
         include(joinpath(dirname(Base.find_package("Oxygen")), "methods.jl"))
@@ -34,7 +34,7 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route,
         serve, serveparallel, terminate, internalrequest, 
         resetstate, instance, staticfiles, dynamicfiles,
         # Util
-        redirect, queryparams, formdata,
+        redirect, queryparams, formdata, format_sse_message,
         html, text, json, file, xml, js, css, binary,
         # Docs
         configdocs, mergeschema, setschema, getschema, router,

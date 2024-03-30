@@ -278,7 +278,8 @@ function startserver(ctx::Context; host, port, show_banner=false, docs=false, me
     if !async     
         try
             wait(ctx.service)
-        catch
+        catch error
+            !isa(error, InterruptException) && @error "ERROR: " exception=(error, catch_backtrace())
         finally 
             println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end

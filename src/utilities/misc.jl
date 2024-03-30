@@ -4,7 +4,7 @@ using Dates
 
 export countargs, recursive_merge, parseparam, 
     queryparams, redirect, handlerequest,
-    format_response!, set_content_size!
+    format_response!, set_content_size!, format_sse_message
 
 
 ### Request helper functions ###
@@ -36,7 +36,9 @@ function handlerequest(getresponse::Function, catch_errors::Bool; show_errors::B
         try 
             return getresponse()       
         catch error
-            show_errors && @error "ERROR: " exception=(error, catch_backtrace())
+            if show_errors && !isa(error, InterruptException)
+                 @error "ERROR: " exception=(error, catch_backtrace())
+            end
             return json(("message" => "The Server encountered a problem"), status = 500)    
         end  
     end
@@ -171,6 +173,63 @@ function format_response!(req::HTTP.Request, content::Any)
     req.response.body = body    
 end
 
+
+
+"""
+    format_sse_message(data::String; event::Union{String, Nothing} = nothing, id::Union{String, Nothing} = nothing)
+
+Create a properly formatted Server-Sent Event (SSE) string.
+
+# Arguments
+- `data`: The data to send. This should be a string. Newline characters in the data will be replaced with separate "data:" lines.
+- `event`: (optional) The type of event to send. If not provided, no event type will be sent. Should not contain newline characters.
+- `retry`: (optional) The reconnection time for the event in milliseconds. If not provided, no retry time will be sent. Should be an integer.
+- `id`: (optional) The ID of the event. If not provided, no ID will be sent. Should not contain newline characters.
+
+# Notes
+This function follows the Server-Sent Events (SSE) specification for sending events to the client.
+"""
+function format_sse_message(
+    data    :: String; 
+    event   :: Union{String, Nothing}   = nothing,
+    retry   :: Union{Int, Nothing}      = nothing,
+    id      :: Union{String, Nothing}   = nothing) :: String
+
+    has_id = !isnothing(id) 
+    has_retry = !isnothing(retry)
+    has_event = !isnothing(event) 
+
+    # check if event or id contain newline characters
+    if has_id && contains(id, '\n')
+        throw(ArgumentError("ID property cannot contain newline characters: $id"))
+    end
+
+    if has_event && contains(event, '\n')
+        throw(ArgumentError("Event property cannot contain newline characters: $event"))
+    end
+
+    if has_retry && retry <= 0
+        throw(ArgumentError("Retry property must be a positive integer: $retry"))
+    end
+
+    io = IOBuffer()
+    
+    # Make sure we don't send any newlines in the data proptery
+    for line in split(data, '\n')
+        write(io, "data: $line\n")
+    end
+    
+    # Optional properties
+    has_id     && write(io, "id: $id\n")
+    has_retry  && write(io, "retry: $retry\n")
+    has_event  && write(io, "event: $event\n")
+
+    # Terminate the event, by marking it with a doubule newline
+    write(io, "\n")
+
+    # return the content of the buffer as a string
+    return String(take!(io))
+end
 
 """
     set_content_size!(body::Base.CodeUnits{UInt8, String}, headers::Vector; add::Bool, replace::Bool)

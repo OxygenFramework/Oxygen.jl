@@ -11,7 +11,7 @@ PORT = 6060
     return "Hello World"
 end
 
-serve(async=true, port=PORT, show_errors=false, show_banner=false)
+serve(port=PORT, host=HOST, async=true,  show_errors=false, show_banner=false)
 
 r = internalrequest(HTTP.Request("GET", "/test"))
 @test r.status == 200

@@ -2,9 +2,7 @@ module WebSocketDemo
 using Dates
 using HTTP
 using HTTP.WebSockets: send
-
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 
 @get "/" function()
     html("""

@@ -4,9 +4,7 @@ using JSON3
 using Dates
 using HTTP
 using JSON3
-
-include("../src/Oxygen.jl")
-using .Oxygen
+using Oxygen
 
 function chunks(data::Any, nchunks::Int)
     return chunks(JSON3.write(data), nchunks)

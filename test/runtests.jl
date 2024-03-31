@@ -15,6 +15,7 @@ include("extensions/protobuf/protobuftests.jl")
 include("ssetests.jl")
 include("websockettests.jl")
 include("streamingtests.jl")
+include("handlertests.jl")
 
 #### Core Tests ####
 

@@ -5,7 +5,7 @@ using HTTP.WebSockets
 using ..Constants
 using Oxygen; @oxidise
 
-@ws "/ws" function(ws::HTTP.WebSocket)
+ws("/ws") do ws::HTTP.WebSocket
     try 
         for msg in ws
             send(ws, "Received message: $msg")
@@ -16,6 +16,20 @@ using Oxygen; @oxidise
         end
     end
 end
+
+wsrouter = router("/router")
+ws(wsrouter("/ws")) do ws::HTTP.WebSocket
+    try 
+        for msg in ws
+            send(ws, "Received message: $msg")
+        end
+    catch e 
+        if !isa(e, HTTP.WebSockets.WebSocketError)
+            rethrow(e)
+        end
+    end
+end
+
 
 @ws "/ws/{x}" function(ws, x::Int)
     try 
@@ -48,6 +62,14 @@ serve(port=PORT, host=HOST, async=true,  show_errors=false, show_banner=false, a
 
     @testset "/ws route" begin
         WebSockets.open("ws://$HOST:$PORT/ws") do ws
+            send(ws, "Test message")
+            response = receive(ws)
+            @test response == "Received message: Test message"
+        end
+    end
+
+    @testset "/router/ws route" begin
+        WebSockets.open("ws://$HOST:$PORT/router/ws") do ws
             send(ws, "Test message")
             response = receive(ws)
             @test response == "Received message: Test message"

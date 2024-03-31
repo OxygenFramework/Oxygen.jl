@@ -25,8 +25,10 @@ function implicit_stream(stream)
     explicit_stream(stream)
 end
 
+srouter = router("/stream")
+
 @stream "/api/chunked/text" implicit_stream
-stream(implicit_stream, "/api/func/chunked/text")
+stream(implicit_stream, srouter("/api/func/chunked/text"))
 @post "/api/post/chunked/text" explicit_stream
 @get "/api/error" implicit_stream
 
@@ -41,7 +43,7 @@ serve(port=PORT, host=HOST, async=true,  show_errors=false, show_banner=false, a
     end
 
     @testset "function stream handler" begin
-        response = HTTP.get("$localhost/api/func/chunked/text",  headers=Dict("Connection" => "close"))
+        response = HTTP.get("$localhost/stream/api/func/chunked/text",  headers=Dict("Connection" => "close"))
         @test response.status == 200
         @test text(response) == "abc"
     end

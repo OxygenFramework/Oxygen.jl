@@ -2,7 +2,7 @@ module OxidiseTest
 
 using Test
 using HTTP
-
+using ..Constants
 using Oxygen; @oxidise
 
 PORT = 6060

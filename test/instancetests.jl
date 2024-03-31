@@ -29,7 +29,7 @@ end
 
 # start both servers together
 app1.serve(port=PORT, async=true, show_errors=false, show_banner=false)
-app2.serve(port=PORT, async=true, show_errors=false, show_banner=false)
+app2.serve(port=PORT + 1, async=true, show_errors=false, show_banner=false)
 
 @testset "testing unqiue instances" begin
 

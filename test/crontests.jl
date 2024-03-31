@@ -7,12 +7,11 @@ using Sockets
 using Dates 
 
 using Oxygen
-
 using Oxygen.Cron: iscronmatch, isweekday, lastweekdayofmonth, 
             next, sleep_until, lastweekday, nthweekdayofmonth, 
             matchexpression
 
-const PORT = 7070 # 8080 is a very common port and could already be in use
+using ..Constants
 
 @testset "Cron Module Tests" begin
 

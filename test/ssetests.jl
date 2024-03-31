@@ -9,7 +9,7 @@ using Oxygen; @oxidise
     return text("I'm alive")
 end
 
-@stream "/events/{name}" function(stream::HTTP.Stream, name::String)
+stream("/events/{name}") do stream::HTTP.Stream, name::String
     HTTP.setheader(stream, "Access-Control-Allow-Origin" => "*")
     HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET")
     HTTP.setheader(stream, "Content-Type" => "text/event-stream")

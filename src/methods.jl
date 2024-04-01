@@ -173,11 +173,11 @@ macro stream(path, func)
 end
 
 """
-    @ws(path::String, func::Function)
+    @websocket(path::String, func::Function)
 
 Used to register a function to a specific endpoint to handle WebSocket requests
 """
-macro ws(path, func)
+macro websocket(path, func)
     path, func = adjustparams(path, func)
     :(@route [WEBSOCKET] $(esc(path)) $(esc(func)))
 end
@@ -225,8 +225,8 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 stream(func::Function, path::String)    = route([STREAM], path, func)
 stream(func::Function, path::Function)  = route([STREAM], path, func)
 
-ws(func::Function, path::String)    = route([WEBSOCKET], path, func)
-ws(func::Function, path::Function)  = route([WEBSOCKET], path, func)
+websocket(func::Function, path::String)    = route([WEBSOCKET], path, func)
+websocket(func::Function, path::Function)  = route([WEBSOCKET], path, func)
 
 ### Core Routing Functions Support for do..end Syntax ###
 

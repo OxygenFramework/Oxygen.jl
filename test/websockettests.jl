@@ -5,7 +5,7 @@ using HTTP.WebSockets
 using ..Constants
 using Oxygen; @oxidise
 
-ws("/ws") do ws::HTTP.WebSocket
+websocket("/ws") do ws::HTTP.WebSocket
     try 
         for msg in ws
             send(ws, "Received message: $msg")
@@ -18,7 +18,7 @@ ws("/ws") do ws::HTTP.WebSocket
 end
 
 wsrouter = router("/router")
-ws(wsrouter("/ws")) do ws::HTTP.WebSocket
+websocket(wsrouter("/ws")) do ws::HTTP.WebSocket
     try 
         for msg in ws
             send(ws, "Received message: $msg")
@@ -31,7 +31,7 @@ ws(wsrouter("/ws")) do ws::HTTP.WebSocket
 end
 
 
-@ws "/ws/{x}" function(ws, x::Int)
+@websocket "/ws/{x}" function(ws, x::Int)
     try 
         for msg in ws
             send(ws, "Received message from $x: $msg")

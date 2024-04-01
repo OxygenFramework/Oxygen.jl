@@ -39,7 +39,7 @@ using Oxygen
     """)
 end
 
-@ws "/ws" function(ws::HTTP.WebSocket)
+@websocket "/ws" function(ws::HTTP.WebSocket)
     for msg in ws
         @info "Received message: $msg"
         send(ws, "The time is: $(now())")

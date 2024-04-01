@@ -29,8 +29,8 @@ macro oxidise()
 end
 
 export  @oxidise, @get, @post, @put, @patch, @delete, @route, 
-        @staticfiles, @dynamicfiles, @cron, @repeat, @stream, @ws,
-        get, post, put, patch, delete, route, stream, ws,
+        @staticfiles, @dynamicfiles, @cron, @repeat, @stream, @websocket,
+        get, post, put, patch, delete, route, stream, websocket,
         serve, serveparallel, terminate, internalrequest, 
         resetstate, instance, staticfiles, dynamicfiles,
         # Util
@@ -43,5 +43,5 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route,
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 
         # Common HTTP Types
-        Request, Response
+        Request, Response, Stream, WebSocket
 end

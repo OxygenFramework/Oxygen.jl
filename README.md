@@ -29,6 +29,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 - Type definition support for path parameters
 - Multiple Instance Support
 - Multithreading support
+- Websockets, Streaming, and Server-Sent Events
 - Cron Scheduling (on endpoints & functions)
 - Middleware chaining (at the application, router, and route levels)
 - Static & Dynamic file hosting
@@ -58,6 +59,46 @@ end
 # start the web server
 serve()
 ```
+
+## Handler Types
+
+There are 3 types of supported handlers:
+
+- Request Handlers
+- Stream Handlers
+- Websocket Handlers
+
+Each of these handlers has their own macro & function variations.
+
+```julia
+using HTTP
+using Oxygen
+
+# Request Handler
+@get "/" function(req::HTTP.Request)
+    ...
+end
+
+# Stream Handler
+@stream "/stream" function(stream::HTTP.Stream)
+    ...
+end
+
+# Websocket Handler
+@websocket "/ws" function(ws::HTTP.WebSocket)
+    ...
+end
+```
+
+
+### Request Handlers
+Request handlers are used to handle HTTP requests. They are defined using macros or their function equivalents, and accept an `HTTP.Request` object as the first argument. These handlers support both function and do-block syntax.
+
+### Stream Handlers
+Stream handlers are used to stream data. They are defined using the `@stream` macro or the `stream()` function and accept a `HTTP.Stream` object as the first argument. These handlers support both function and do-block syntax.
+
+### Websocket Handlers
+Websocket handlers are used to handle websocket connections. They are defined using the `@websocket` macro or the `websocket()` function and accepts a `HTTP.WebSocket` object as the first argument. These handlers support both function and do-block syntax.
 
 ## Request handlers
 

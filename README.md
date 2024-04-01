@@ -60,15 +60,23 @@ end
 serve()
 ```
 
-## Handler Types
+## Handlers
+
+Handlers are used to connect your code to the server in a clean & straightforward way. 
+They assign a url to a function and invoke the function when an incoming request matches that url.
+
+
+- Handlers can be imported from other modules and distributed across multiple files for better organization and modularity
+- All handlers have equivalent macro & function implementations and support `do..end` block syntax
+- The type of first argument is used to identify what kind of handler is being registered
+- This package assumes it's a `Request` handler by default when no type information is provided
+
 
 There are 3 types of supported handlers:
 
-- Request Handlers
-- Stream Handlers
-- Websocket Handlers
-
-Each of these handlers has their own macro & function variations.
+- `Request` Handlers
+- `Stream` Handlers
+- `Websocket` Handlers
 
 ```julia
 using HTTP
@@ -90,27 +98,8 @@ end
 end
 ```
 
-
-### Request Handlers
-Request handlers are used to handle HTTP requests. They are defined using macros or their function equivalents, and accept an `HTTP.Request` object as the first argument. These handlers support both function and do-block syntax.
-
-### Stream Handlers
-Stream handlers are used to stream data. They are defined using the `@stream` macro or the `stream()` function and accept a `HTTP.Stream` object as the first argument. These handlers support both function and do-block syntax.
-
-### Websocket Handlers
-Websocket handlers are used to handle websocket connections. They are defined using the `@websocket` macro or the `websocket()` function and accepts a `HTTP.WebSocket` object as the first argument. These handlers support both function and do-block syntax.
-
-## Request handlers
-
-Request handlers are just functions, which means there are many valid ways to express them
-
-- Request handlers don't have to be defined where the routes are. They can be imported from other modules and spread across multiple files
-
-- Just like the request handlers, routes can be declared across multiple modules and files
-
+They are just functions which means there are many ways that they can be expressed and defined. Below is an example of several different ways you can express and assign a `Request` handler.
 ```julia
-using Oxygen
-
 @get "/greet" function()
     "hello world!"
 end
@@ -133,10 +122,34 @@ end
 
 # register foreign request handlers like this
 @get "/subtract/{a}/{b}" subtract
-
-# start the web server
-serve()
 ```
+
+<details>
+    <summary><b>More Handler Docs</b></summary>
+    
+### Request Handlers
+Request handlers are used to handle HTTP requests. They are defined using macros or their function equivalents, and accept a `HTTP.Request` object as the first argument. These handlers support both function and do-block syntax.
+
+- The default Handler when no type information is provided
+- Routing Macros: `@get`, `@post`, `@put`, `@patch`, `@delete`, `@route`
+- Routing Functions: `get()`, `post()`, `put()`, `patch()`, `delete()`, `route()`
+
+### Stream Handlers
+Stream handlers are used to stream data. They are defined using the `@stream` macro or the `stream()` function and accept a `HTTP.Stream` object as the first argument. These handlers support both function and do-block syntax.
+
+- `@stream` and `stream()` don't require a type definition on the first argument, they assume it's a stream.
+- `Stream` handlers can be assigned with standard routing macros & functions: `@get`, `@post`, etc
+- You need to explicitly include the type definition so Oxygen can identify this as a `Stream` handler
+
+### Websocket Handlers
+Websocket handlers are used to handle websocket connections. They are defined using the `@websocket` macro or the `websocket()` function and accept a `HTTP.WebSocket` object as the first argument. These handlers support both function and do-block syntax.
+
+- `@websocket` and `websocket()` don't require a type definition on the first argument, they assume it's a websocket.
+- `Websocket` handlers can also be assigned with the `@get` macro or `get()` function, because the websocket protocol requires a `GET` request to initiate the handshake. 
+- You need to explicitly include the type definition so Oxygen can identify this as a `Websocket` handler
+
+</details>
+
 
 ## Routing Macro & Function Syntax
 

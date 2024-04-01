@@ -19,7 +19,7 @@ end
 Configure the default docs and schema endpoints
 """
 function configdocs(docspath::String = "/docs", schemapath::String = "/schema")
-    @warn "This function is deprecated in favour of keyword argument `docspath` and `schemapath` in serve"
+    @warn "This function is deprecated in favour of keyword argument `docs_path` and `schema_path` in serve"
     CONTEXT[].docs.docspath[] = docspath
     CONTEXT[].docs.schemapath[] = schemapath
     return

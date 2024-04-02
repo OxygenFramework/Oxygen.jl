@@ -551,8 +551,8 @@ end
 # add the swagger and swagger/schema routes 
 function setupdocs(router::Router, schema::Dict, docspath::String, schemapath::String)
     full_schema = "$docspath$schemapath"
-    register(router, "GET", "$docspath", () -> swaggerhtml(full_schema))
-    register(router, "GET", "$docspath/swagger", () -> swaggerhtml(full_schema))
+    register(router, "GET", "$docspath", () -> swaggerhtml(full_schema, docspath = docspath))
+    register(router, "GET", "$docspath/swagger", () -> swaggerhtml(full_schema, docspath = docspath))
     register(router, "GET", "$docspath/redoc", () -> redochtml(full_schema))
     register(router, "GET", full_schema, () -> schema)
 end

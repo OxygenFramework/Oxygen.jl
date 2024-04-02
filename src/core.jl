@@ -13,6 +13,7 @@ import Base.Threads: lock
 
 include("types.jl");        @reexport using .Types 
 include("constants.jl");    @reexport using .Constants
+include("handlers.jl");     @reexport using .Handlers
 include("context.jl");      @reexport using .AppContext
 include("util.jl");         @reexport using .Util
 include("cron.jl");         @reexport using .Cron
@@ -179,10 +180,11 @@ end
 This function can be used to add additional usefull metadata to the incoming 
 request context dictionary. At the moment, it just inserts the caller's ip address
 """
-function decorate_request(ip::IPAddr)
+function decorate_request(ip::IPAddr, stream::HTTP.Stream)
     return function(handle)
         return function(req::HTTP.Request)
             req.context[:ip] = ip
+            req.context[:stream] = stream
             handle(req)
         end
     end
@@ -192,16 +194,18 @@ end
 This is our root stream handler used in both serve() and serveparallel().
 This function determines how we handle all incoming requests
 """
+
 function stream_handler(middleware::Function)
     return function (stream::HTTP.Stream)
         # extract the caller's ip address
         ip, _ = Sockets.getpeername(stream)
         # build up a streamhandler to handle our incoming requests
-        handle_stream = HTTP.streamhandler(middleware |> decorate_request(ip))
+        handle_stream = HTTP.streamhandler(middleware |> decorate_request(ip, stream))
         # handle the incoming request
         return handle_stream(stream)
     end
 end
+
 
 """
     parallel_stream_handler(handle_stream::Function)
@@ -274,6 +278,8 @@ function startserver(ctx::Context; host, port, show_banner=false, docs=false, me
     if !async     
         try
             wait(ctx.service)
+        catch error
+            !isa(error, InterruptException) && @error "ERROR: " exception=(error, catch_backtrace())
         finally 
             println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end
@@ -512,36 +518,33 @@ end
 
 function registerhandler(router::Router, httpmethod::String, route::String, func::Function, hasPathParams::Bool, path_params)
     func_param_names, func_param_types, path_params = path_params
-
-    # create a map of paramter name to type definition
     func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
 
+    # Get information about the function's arguments
     method = first(methods(func))
-    numfields = method.nargs
+    no_args = method.nargs == 1
+    has_req_kwarg = :request in Base.kwarg_decl(method)
 
-    # case 1.) The request handler is an anonymous function (don't parse out path params)
-    if numfields <= 1
-        handle = function (req)
-            func()
-        end
-    # case 2.) This route has path params, so we need to parse parameters and pass them to the request handler
-    elseif hasPathParams && numfields > 2
+    # Generate the function handler based on the input types
+    arg_type = first_arg_type(method, httpmethod)
+    func_handle = select_handler(arg_type, has_req_kwarg, hasPathParams; no_args=no_args)
+
+    # Wrap the generated handler so it can be registered with the router
+    if hasPathParams
         handle = function(req::HTTP.Request)
-            # get all path parameters
             params = HTTP.getparams(req)
-            # convert params to their designated type (if applicable)
-            pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]   
-            # pass all parameters to handler in the correct order 
-            func(req, pathParams...)
+            pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]
+            func_handle(req, func; pathParams=pathParams)
         end
-    # case 3.) This function should only get passed the request object
-    else 
-        handle = function (req) 
-            func(req)
+    else
+        handle = function(req::HTTP.Request)
+            func_handle(req, func)
         end
     end
 
-    HTTP.register!(router, httpmethod, route, handle)
+    # Use method aliases for special methods
+    resolved_httpmethod = get(METHOD_ALIASES, httpmethod, httpmethod)
+    HTTP.register!(router, resolved_httpmethod, route, handle)
 end
 
 function setupdocs(ctx::Context)
@@ -608,7 +611,7 @@ function setupmetrics(router::Router, history::History, docspath::String, histor
         
     end
 
-    register(router, "GET", "$docspath/metrics/data/{window}/{latest}", metrics)
+    register(router, GET, "$docspath/metrics/data/{window}/{latest}", metrics)
 end
 
 
@@ -630,7 +633,7 @@ function staticfiles(router::HTTP.Router,
     end
     function addroute(currentroute, filepath)
         resp = file(filepath; loadfile=loadfile, headers=headers)
-        register(router, "GET", currentroute, () -> resp)
+        register(router, GET, currentroute, () -> resp)
     end
     mountfolder(folder, mountdir, addroute)  
 end
@@ -653,7 +656,7 @@ function dynamicfiles(router::Router,
         mountdir = mountdir[2:end]
     end
     function addroute(currentroute, filepath)
-        register(router, "GET", currentroute, () -> file(filepath; loadfile=loadfile, headers=headers))
+        register(router, GET, currentroute, () -> file(filepath; loadfile=loadfile, headers=headers))
     end
     mountfolder(folder, mountdir, addroute)    
 end

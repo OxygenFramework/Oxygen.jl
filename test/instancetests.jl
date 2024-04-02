@@ -3,6 +3,7 @@ module MultiInstanceTests
 using Test
 using HTTP
 using Oxygen
+using ..Constants
 
 # Setup the first app
 app1 = instance()
@@ -27,8 +28,8 @@ app2.get("/add/{a}/{b}") do req, a::Int, b::Int
 end
 
 # start both servers together
-app1.serve(port=8001, async=true, show_errors=false, show_banner=false)
-app2.serve(port=8002, async=true, show_errors=false, show_banner=false)
+app1.serve(port=PORT, async=true, show_errors=false, show_banner=false)
+app2.serve(port=PORT + 1, async=true, show_errors=false, show_banner=false)
 
 @testset "testing unqiue instances" begin
 

@@ -119,7 +119,7 @@ Used to register a function to a specific endpoint to handle GET requests
 """
 macro get(path, func)
     path, func = adjustparams(path, func)
-    :(@route ["GET"] $(esc(path)) $(esc(func)))
+    :(@route [GET] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -129,7 +129,7 @@ Used to register a function to a specific endpoint to handle POST requests
 """
 macro post(path, func)
     path, func = adjustparams(path, func)
-    :(@route ["POST"] $(esc(path)) $(esc(func)))
+    :(@route [POST] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -139,7 +139,7 @@ Used to register a function to a specific endpoint to handle PUT requests
 """
 macro put(path, func)
     path, func = adjustparams(path, func)
-    :(@route ["PUT"] $(esc(path)) $(esc(func)))
+    :(@route [PUT] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -149,7 +149,7 @@ Used to register a function to a specific endpoint to handle PATCH requests
 """
 macro patch(path, func)
     path, func = adjustparams(path, func)
-    :(@route ["PATCH"] $(esc(path)) $(esc(func)))
+    :(@route [PATCH] $(esc(path)) $(esc(func)))
 end
 
 """
@@ -159,7 +159,27 @@ Used to register a function to a specific endpoint to handle DELETE requests
 """
 macro delete(path, func)
     path, func = adjustparams(path, func)
-    :(@route ["DELETE"] $(esc(path)) $(esc(func)))
+    :(@route [DELETE] $(esc(path)) $(esc(func)))
+end
+
+"""
+    @stream(path::String, func::Function)
+
+Used to register a function to a specific endpoint to handle Server-Sent-Event requests
+"""
+macro stream(path, func)
+    path, func = adjustparams(path, func)
+    :(@route [STREAM] $(esc(path)) $(esc(func)))
+end
+
+"""
+    @websocket(path::String, func::Function)
+
+Used to register a function to a specific endpoint to handle WebSocket requests
+"""
+macro websocket(path, func)
+    path, func = adjustparams(path, func)
+    :(@route [WEBSOCKET] $(esc(path)) $(esc(func)))
 end
 
 
@@ -189,7 +209,6 @@ function adjustparams(path, func)
     end
 end
 
-
 ### Core Routing Functions ###
 
 function route(methods::Vector{String}, path::Union{String,Function}, func::Function)
@@ -201,23 +220,30 @@ end
 # This variation supports the do..block syntax
 route(func::Function, methods::Vector{String}, path::Union{String,Function}) = route(methods, path, func)
 
+### Special Routing Functions Support for do..end Syntax ###
+
+stream(func::Function, path::String)    = route([STREAM], path, func)
+stream(func::Function, path::Function)  = route([STREAM], path, func)
+
+websocket(func::Function, path::String)    = route([WEBSOCKET], path, func)
+websocket(func::Function, path::Function)  = route([WEBSOCKET], path, func)
+
 ### Core Routing Functions Support for do..end Syntax ###
 
+get(func::Function, path::String)       = route([GET], path, func)
+get(func::Function, path::Function)     = route([GET], path, func)
 
-get(func::Function, path::String)       = route(["GET"], path, func)
-get(func::Function, path::Function)     = route(["GET"], path, func)
+post(func::Function, path::String)      = route([POST], path, func)
+post(func::Function, path::Function)    = route([POST], path, func)
 
-post(func::Function, path::String)      = route(["POST"], path, func)
-post(func::Function, path::Function)    = route(["POST"], path, func)
+put(func::Function, path::String)       = route([PUT], path, func) 
+put(func::Function, path::Function)     = route([PUT], path, func) 
 
-put(func::Function, path::String)       = route(["PUT"], path, func) 
-put(func::Function, path::Function)     = route(["PUT"], path, func) 
+patch(func::Function, path::String)     = route([PATCH], path, func)
+patch(func::Function, path::Function)   = route([PATCH], path, func)
 
-patch(func::Function, path::String)     = route(["PATCH"], path, func)
-patch(func::Function, path::Function)   = route(["PATCH"], path, func)
-
-delete(func::Function, path::String)    = route(["DELETE"], path, func)
-delete(func::Function, path::Function)  = route(["DELETE"], path, func)
+delete(func::Function, path::String)    = route([DELETE], path, func)
+delete(func::Function, path::Function)  = route([DELETE], path, func)
 
 
 

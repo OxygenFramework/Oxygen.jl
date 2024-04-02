@@ -20,6 +20,13 @@
 Oxygen is a micro-framework built on top of the HTTP.jl library. 
 Breathe easy knowing you can quickly spin up a web server with abstractions you're already familiar with.
 
+## Contact
+
+Need Help? Feel free to reach out on our social media channels.
+
+[![Chat on Discord](https://img.shields.io/badge/chat-Discord-7289DA?logo=discord)](https://discord.gg/g5dmzRkdAR) 
+[![Discuss on GitHub](https://img.shields.io/badge/discussions-GitHub-333333?logo=github)](https://github.com/OxygenFramework/Oxygen.jl/discussions)
+
 ## Features
 
 - Straightforward routing
@@ -59,7 +66,6 @@ end
 # start the web server
 serve()
 ```
-
 ## Handlers
 
 Handlers are used to connect your code to the server in a clean & straightforward way. 

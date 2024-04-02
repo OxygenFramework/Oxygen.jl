@@ -165,7 +165,7 @@ end
 """
     @stream(path::String, func::Function)
 
-Used to register a function to a specific endpoint to handle Server-Sent-Event requests
+Used to register a function to a specific endpoint to handle Streaming requests
 """
 macro stream(path, func)
     path, func = adjustparams(path, func)
@@ -175,7 +175,7 @@ end
 """
     @websocket(path::String, func::Function)
 
-Used to register a function to a specific endpoint to handle WebSocket requests
+Used to register a function to a specific endpoint to handle WebSocket connections
 """
 macro websocket(path, func)
     path, func = adjustparams(path, func)

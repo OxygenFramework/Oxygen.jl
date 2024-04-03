@@ -263,6 +263,34 @@ end
 serve()
 ```
 
+## HTML Forms
+
+Use the `formdata()` function to extract and parse the form data from the body of a request. This function returns a dictionary of key-value pairs from the form
+```julia
+using Oxygen
+
+# Setup a basic form
+@get "/" function()
+    html("""
+    <form action="/form" method="post">
+        <label for="firstname">First name:</label><br>
+        <input type="text" id="firstname" name="firstname"><br>
+        <label for="lastname">Last name:</label><br>
+        <input type="text" id="lastname" name="lastname"><br><br>
+        <input type="submit" value="Submit">
+    </form>
+    """)
+end
+
+# Parse the form data and return it
+@post "/form" function(req)
+    data = formdata(req)
+    return data
+end
+
+serve()
+```
+
 ## Interpolating variables into endpoints
 
 You can interpolate variables directly into the paths, which makes dynamically registering routes a breeze 

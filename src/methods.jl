@@ -252,7 +252,7 @@ delete(func::Function, path::Function)  = route([DELETE], path, func)
 Mount all files inside the /static folder (or user defined mount point)
 """
 macro staticfiles(folder, mountdir="static", headers=[])
-    printstyled("@staticfiles macro is deprecated, please use the staticfiles() fu``nction instead\n", color = :red, bold = true) 
+    printstyled("@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
     quote
         staticfiles($(esc(folder)), $(esc(mountdir)); headers=$(esc(headers))) 
     end

@@ -4,14 +4,13 @@ include("core.jl"); using .Core
 include("instances.jl"); using .Instances
 include("extensions/load.jl");
 
-import HTTP: Request, Response
+using HTTP: Request, Response, Stream, WebSocket
 using .Core: Context, History, Server, Nullable
 using .Core: GET, POST, PUT, DELETE, PATCH
 
-
 const CONTEXT = Ref{Context}(Context())
 
-import Base: get 
+import Base: get
 include("methods.jl")
 include("deprecated.jl")
 

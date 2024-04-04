@@ -19,6 +19,7 @@ include("handlertests.jl")
 
 #### Core Tests ####
 
+include("shadowingtests.jl")
 include("metricstests.jl")
 include("routingfunctionstests.jl")
 include("rendertests.jl")

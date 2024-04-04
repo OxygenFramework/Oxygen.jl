@@ -230,6 +230,7 @@ websocket(func::Function, path::Function)  = route([WEBSOCKET], path, func)
 
 ### Core Routing Functions Support for do..end Syntax ###
 
+get(collection, key, default)           = Base.get(collection, key, default) # pass through other get calls to base.get()
 get(func::Function, path::String)       = route([GET], path, func)
 get(func::Function, path::Function)     = route([GET], path, func)
 
@@ -245,15 +246,13 @@ patch(func::Function, path::Function)   = route([PATCH], path, func)
 delete(func::Function, path::String)    = route([DELETE], path, func)
 delete(func::Function, path::Function)  = route([DELETE], path, func)
 
-
-
 """
     @staticfiles(folder::String, mountdir::String, headers::Vector{Pair{String,String}}=[])
 
 Mount all files inside the /static folder (or user defined mount point)
 """
 macro staticfiles(folder, mountdir="static", headers=[])
-    printstyled("@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
+    printstyled("@staticfiles macro is deprecated, please use the staticfiles() fu``nction instead\n", color = :red, bold = true) 
     quote
         staticfiles($(esc(folder)), $(esc(mountdir)); headers=$(esc(headers))) 
     end

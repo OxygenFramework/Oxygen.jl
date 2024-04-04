@@ -62,7 +62,7 @@ end
 end
 
 
-@testset "Test attaching new get() method to a custom struct" begin
+@testset "Base.get tests for MyStruct" begin
 
     # Define a new custom struct
     struct MyStruct
@@ -72,14 +72,11 @@ end
     # Override the Base.get method for MyStruct
     Base.get(mystruct::MyStruct, key, default) = get(mystruct.data, key, default)
 
-    # Add a test to call the new get method
-    @testset "Base.get tests for MyStruct" begin
-        mystruct = MyStruct(Dict("key1" => "value1", "key2" => "value2"))
-        @test get(mystruct, "key1", "default") == "value1"
-        @test get(mystruct, "key2", "default") == "value2"
-        @test get(mystruct, "key3", "default") == "default"
-    end
-
+    mystruct = MyStruct(Dict("key1" => "value1", "key2" => "value2"))
+    @test get(mystruct, "key1", "default") == "value1"
+    @test get(mystruct, "key2", "default") == "value2"
+    @test get(mystruct, "key3", "default") == "default"
+    
 end
 
 end

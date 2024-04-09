@@ -1,7 +1,12 @@
 module ErgonomicsDemo
 include("../src/Oxygen.jl")
 using .Oxygen
+import .Oxygen: validate
+
+using HTTP
+using JSON3
 using Base: @kwdef
+using BenchmarkTools
 
 @kwdef struct Person2
     name::String
@@ -29,17 +34,78 @@ p2 = Dict(
     "number_of_pets" => "2"
 )
 
-p = build_struct(Person2, p2)
-println(p)
+# gen = @btime struct_builder(Person2)
 
-function add(a::Int, b::Int; c::Float64=4.4)
-    nothing
+# p = @btime gen(p2)
+# println(p)
+
+# function add(a::Int, b::Int; c::Float64=4.4)
+#     nothing
+# end
+
+# info = parse_func_info(add)
+
+# println(info.args)
+# println(info.kwargs |> first |> hasdefault)
+
+struct Person
+    name::String
+    age::Int
 end
 
-info = parse_func_info(add)
+# req = HTTP.Request("GET", "/", [], """{"name": "nathan", "age": 25}""")
 
-println(info.args)
-println(info.kwargs |> first |> hasdefault)
+# # validate(p::Person) = p.age < 3
+
+# p = extract(Json{Person}, :person, req)
+# println(p)
+
+
+
+
+# req = HTTP.Request("GET", "/", [], """3.5""")
+
+# p = extract(Form{Float64}, :value, req)
+# println(p)
+
+
+
+# req = HTTP.Request("GET", "/", [], """name=nathan&age=25""")
+
+# extract = extractor(Form{Person}, :form)
+# extract(req) |> println
+# extract(req) |> println
+
+
+
+# req = HTTP.Request("GET", "/person/nathan/20", [])
+
+# req.context[:params] = Dict(
+#     "name" => "john",
+#     "age" => "20"
+# )
+
+# # validate(p::Person) = p.age < 20
+
+# extract = extractor(Path{Person}, :pathvalues)
+# extract(req) |> println
+
+
+# req = HTTP.Request("GET", "/person?name=joe&age=30", [])
+
+# # validate(p::Person) = p.age < 20
+
+# extract = extractor(Query{Person}, :queryvalues)
+# extract(req) |> println
+
+
+req = HTTP.Request("GET", "/person", ["name" => "joe", "age" => "19"])
+
+# validate(p::Person) = p.age > 20
+
+extract = extractor(Header{Person}, :headervalues)
+extract(req) |> println
+
 
 
 end

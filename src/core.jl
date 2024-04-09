@@ -21,6 +21,7 @@ include("repeattasks.jl");  @reexport using .RepeatTasks
 include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 include("reflection.jl");   @reexport using .Reflection
+include("extractors.jl");   @reexport using .Extractors
 
 export  start, serve, serveparallel, terminate, 
         internalrequest, staticfiles, dynamicfiles

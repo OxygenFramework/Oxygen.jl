@@ -3,8 +3,7 @@ module Reflection
 using ExprTools: splitdef
 using CodeTracking: code_string
 
-export Param, hasdefault, parse_params, parse_func_info, 
-        has_kwarg_constructor, extract_struct_info, build_struct
+export Param, hasdefault, parse_func_info, struct_builder
 
 struct Param{T}
     name::Symbol
@@ -93,21 +92,15 @@ function parse_func_info(f::Function)
 end
 
 """
-    has_kwarg_constructor(T::Type) :: Bool
+    has_kwdef_constructor(T::Type) :: Bool
 
-Checks if the type `T` has a constructor that takes no positional arguments but only keyword arguments. 
-The function returns `true` if such a constructor exists and the keyword arguments match the field names of the type `T`. 
+Returns true if type `T` has a constructor that takes only keyword arguments and matches the order and field names of `T`.
 Otherwise, it returns `false`.
 
-# Arguments
-- `T::Type`: The type to check for the existence of a keyword-only constructor.
-
-# Returns
-- `Bool`: `true` if a keyword-only constructor exists and its keyword arguments match the field names of `T`, `false` otherwise.
+Practically, this check is used to check if `@kwdef` was used to define the struct.
 """
-function has_kwarg_constructor(T::Type) :: Bool
-    constructors = methods(T)
-    for constructor in constructors
+function has_kwdef_constructor(T::Type) :: Bool
+    for constructor in methods(T)
         if length(Base.method_argnames(constructor)) == 1 && 
             Tuple(Base.kwarg_decl(constructor)) == Base.fieldnames(T)
             return true
@@ -119,42 +112,54 @@ end
 # Function to extract field names, types, and default values
 function extract_struct_info(T::Type)
     field_names = fieldnames(T)
-    field_types = [fieldtype(T, name) for name in field_names]
     type_map = Dict(string(name) => fieldtype(T, name) for name in field_names)
-    return (names=string.(field_names), types=field_types, map=type_map)
+    return (names=string.(field_names), map=type_map)
 end
 
 
 """
-    build_struct(TargetType::Type{T}, parameters::Dict{String,String}) where {T}
+    struct_builder(TargetType::Type{T}, parameters::Dict{String,String}) where {T}
 
 Constructs an object of type `T` using the parameters in the dictionary `parameters`.
 """
-function build_struct(TargetType::Type{T}, parameters::Dict{String,String}) where {T}
-    info = extract_struct_info(TargetType)
-    has_kwdef = has_kwarg_constructor(TargetType)
-    
-    param_dict = Dict{Symbol, Any}()
-    casted_params = Vector{Any}()
+function struct_builder(TargetType::Type{T}) :: Function where {T}
 
-    for param_name in info.names
-        # ignore unkown parameters
-        if haskey(parameters, param_name)
-            param_value = parameters[param_name]
-            target_type = info.map[param_name]
-            parsed_value = target_type == Any || target_type == String ? param_value : parse(target_type, param_value)
-            # only add to the dictionary if the constructor is keyword-only
-            if has_kwdef
-                param_dict[Symbol(param_name)] = parsed_value
-            # otherwise, add to the positional arguments
-            else
-                push!(casted_params, parsed_value)
+    # This should run once for setup
+    info = extract_struct_info(TargetType)
+    has_kwdef = has_kwdef_constructor(TargetType)
+
+    # Loops over parameters and converts the value to the correct type
+    function parser(func::Function, parameters::Dict{String,String})
+        for param_name in info.names
+            # ignore unkown parameters
+            if haskey(parameters, param_name)
+                param_value = parameters[param_name]
+                target_type = info.map[param_name]
+                parsed_value = target_type == Any || target_type == String ? param_value : parse(target_type, param_value)
+                func(param_name, parsed_value)
             end
         end
     end
 
-    # return the constructed object
-    return has_kwdef ? TargetType(;param_dict...) : TargetType(casted_params...)
+    # Used to build the struct using keyword args
+    function kwargbuilder(parameters::Dict{String,String}) :: T
+        param_dict = Dict{Symbol, Any}()
+        parser(parameters) do name, value
+            param_dict[Symbol(name)] = value
+        end
+        return TargetType(;param_dict...)
+    end
+
+    # Used to build the struct using positional args
+    function seqbuilder(parameters::Dict{String,String}) :: T
+        casted_params = Vector{Any}()
+        parser(parameters) do _, value
+            push!(casted_params, value)
+        end
+        return TargetType(casted_params...)
+    end
+
+    return has_kwdef ? kwargbuilder : seqbuilder
 end
 
 end

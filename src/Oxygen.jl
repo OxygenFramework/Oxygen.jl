@@ -36,6 +36,9 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route,
         # Util
         redirect, queryparams, formdata, format_sse_message,
         html, text, json, file, xml, js, css, binary,
+        # Reflection
+        Param, hasdefault, parse_params, parse_func_info, 
+        has_kwarg_constructor, extract_struct_info, build_struct,
         # Docs
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 

@@ -1,8 +1,7 @@
 module Reflection
 
-using ExprTools: splitdef
-using CodeTracking: code_string
-# using ..Extractors
+# using ExprTools: splitdef
+# using CodeTracking: code_string
 
 export Param, hasdefault, parse_func_info, struct_builder
 
@@ -27,71 +26,169 @@ function hasdefault(param::Param{T}) :: Bool where T
     return ismissing(param.default) ? Missing <: T : true
 end
 
-
 """
-Parse arguments from a function definition in Julia.
 
-    This function handles four scenarios:
-    
-    1. The argument has no type definition or default value.
-    2. The argument has a type definition but no default value.
-    3. The argument has a default value but no type definition.
-    4. The argument has both a type definition and a default value.    
+
+The args is a vector that follows this shape like This
+[
+    kwarg defaults...,
+    slots..., 
+    positional defaults...
+]
 """
-function parse_params(params::Vector{Union{Symbol,Expr}}) :: Vector{Param}
-    param_info = Vector{Param}()
-    for param in params
-        if isa(param, Expr)
-            if param.head == :kw
-                # Parameter with type and default value
-                name = isa(param.args[1], Expr) ? param.args[1].args[1] : param.args[1]
-                type = isa(param.args[1], Expr) ? eval(param.args[1].args[2]) : Any
-                default = param.args[2]
-                push!(param_info, Param(name, type, default))
-            elseif param.head == :(::)
-                # Parameter with type but no default value
-                name = param.args[1]
-                type = eval(param.args[2])
-                push!(param_info, Param(name, type, missing))
-            elseif param.head == :(=)
-                # Parameter with default value but no type
-                name = param.args[1]
-                default = param.args[2]
-                push!(param_info, Param(name, Any, default))
-            end
+function splitargs(args::Vector)
+    kwarg_defaults = Vector{Any}()
+    param_defaults = Vector{Any}()
+
+    encountered_slot = false
+
+    for arg in args
+        if isa(arg, Core.SlotNumber)
+            encountered_slot = true
+        elseif !encountered_slot
+            push!(kwarg_defaults, arg)
         else
-            # Parameter with no type or default value
-            name = param
-            push!(param_info, Param(name, Any, missing))
+            push!(param_defaults, arg)
         end
     end
-    return param_info
+
+    return kwarg_defaults, param_defaults
 end
 
-
-
 """
-    parse_func_info(f::Function)
+This function extract default values from a list of expressions
 
-Extract information from a function definition.
-This function extracts the name of the function, the arguments, and the keyword arguments from a function definition.
+Example:
+
+[:a, :b, :c]            - positional args
+hi : String             - first kwarg default value
+5 : Int64               - second kwarg default value
+_1 : Core.SlotNumber    - 1st arg (self ref)
+_2 : Core.SlotNumber    - 2nd arg
+_3 : Core.SlotNumber    - 3rd arg
+_4 : Core.SlotNumber    - 4th arg
+
+[:a, :b]                - positional args
+_2 : Core.SlotNumber    - 2nd arg
+_3 : Core.SlotNumber    - 3rd arg
+3.4 : Float64           - default value for the 2nd positional arg "c"
+
+[:a]                    - positional args
+_2 : Core.SlotNumber    - 2nd arg (1st positional arg)
+4 : Int64               - default value for the first positional arg "b"
+3.4 : Float64           - default value for the second positional arg "c"
 """
+function extract_defaults(info, param_names, kwarg_names)
+
+    # store default values
+    param_defaults = Dict()
+    kwarg_defaults = Dict()
+
+    for c in info
+
+        temp_kwarg_defaults = []
+        for expr in c.code
+
+            """
+            If a kwarg has no default value it messes with the expr ordering, which means we 
+            need to extract it early and store it for later use. If we can parse default values
+            normally then the temp values won't get used.
+            """
+            if !isa(expr, Expr) && !isa(expr, Core.ReturnNode)
+                push!(temp_kwarg_defaults, expr)
+            end
+         
+            
+            """
+            1.) skip any non expressions
+            2.) skip any non call expressions
+            3.) skip any Core expressions
+            """
+            if !isa(expr, Expr) || expr.head != :call || startswith(string(expr), "Core.")
+                continue
+            end    
+            
+            # get the default values for this expression
+            kw_defaults, p_defaults = splitargs(expr.args[2:end])
+
+            # store the default values for kwargs
+            if !isempty(kw_defaults)
+                for (name, value) in zip(kwarg_names, kw_defaults)
+                    kwarg_defaults[name] = value
+                end
+            end
+
+            # store the default values for params
+            if !isempty(p_defaults)
+                # we reverse, because each subsequent expression should show more defaults,
+                # so we need to keep updating them as we see them.
+                for (name, value) in zip(reverse(param_names), reverse(p_defaults))
+                    param_defaults[name] = value
+                end
+            end
+
+        end
+
+        """
+        If we haven't found any defaults normally, then that means a kwarg has no default value
+        and is altering the structure of the expressions. When this happens use the temp kwarg values
+        parsed from early and insert these.
+        """
+        if isempty(kwarg_defaults) && !isempty(temp_kwarg_defaults)
+            for (name, value) in zip(kwarg_names, temp_kwarg_defaults)
+                kwarg_defaults[name] = value
+            end
+        end
+    end
+
+    return param_defaults, kwarg_defaults
+
+end
+
 function parse_func_info(f::Function)
-    m = first(methods(f))
-    types = tuple(m.sig.types[2:end]...)
-    str = code_string(f, types)
-    expr = Meta.parse(str)
 
-    info = splitdef(expr)
-    args    :: Vector{Union{Symbol,Expr}} = get(info, :args, [])
-    kwargs  :: Vector{Union{Symbol,Expr}} = get(info, :kwargs, [])
+    method = first(methods(f))
+
+    # Extract parameter names and types
+    param_names = Base.method_argnames(method)[2:end]
+    param_types = fieldtypes(method.sig)[2:end]
+    kwarg_names = Base.kwarg_decl(method) 
+
+    # Convert to low level IR code
+    info = Base.code_lowered(f)
+
+    # Extract default values
+    param_defaults, kwarg_defaults = extract_defaults(info, param_names, kwarg_names)
+
+    # Create a list of Param objects from parameters
+    params = Vector{Param}()
+    for (name, type) in zip(param_names, param_types)
+        if haskey(param_defaults, name)
+            push!(params, Param(name, type, param_defaults[name]))
+        else
+            push!(params, Param(name, type, missing))
+        end
+    end
+
+    # Create a list of Param objects from keyword arguments
+    keyword_args = Vector{Param}()
+    for name in kwarg_names
+        # Don't infer the type of the keyword argument, since julia doesn't support types on kwargs
+        if haskey(kwarg_defaults, name)
+            push!(keyword_args, Param(name, Any, kwarg_defaults[name]))
+        else
+            push!(keyword_args, Param(name, Any, missing))
+        end
+    end
 
     return (
-        name = info[:name],
-        args = parse_params(args), 
-        kwargs = parse_params(kwargs),
+        name = method.name,
+        args = params,
+        kwargs = keyword_args
     )
 end
+
+
 
 """
     has_kwdef_constructor(T::Type) :: Bool
@@ -163,5 +260,76 @@ function struct_builder(TargetType::Type{T}) :: Function where {T}
 
     return has_kwdef ? kwargbuilder : seqbuilder
 end
+
+
+
+
+
+
+# """
+# Parse arguments from a function definition in Julia.
+
+#     This function handles four scenarios:
+    
+#     1. The argument has no type definition or default value.
+#     2. The argument has a type definition but no default value.
+#     3. The argument has a default value but no type definition.
+#     4. The argument has both a type definition and a default value.    
+# """
+# function parse_params(params::Vector{Union{Symbol,Expr}}) :: Vector{Param}
+#     param_info = Vector{Param}()
+#     for param in params
+#         if isa(param, Expr)
+#             if param.head == :kw
+#                 # Parameter with type and default value
+#                 name = isa(param.args[1], Expr) ? param.args[1].args[1] : param.args[1]
+#                 type = isa(param.args[1], Expr) ? eval(param.args[1].args[2]) : Any
+#                 default = param.args[2]
+#                 push!(param_info, Param(name, type, default))
+#             elseif param.head == :(::)
+#                 # Parameter with type but no default value
+#                 name = param.args[1]
+#                 type = eval(param.args[2])
+#                 push!(param_info, Param(name, type, missing))
+#             elseif param.head == :(=)
+#                 # Parameter with default value but no type
+#                 name = param.args[1]
+#                 default = param.args[2]
+#                 push!(param_info, Param(name, Any, default))
+#             end
+#         else
+#             # Parameter with no type or default value
+#             name = param
+#             push!(param_info, Param(name, Any, missing))
+#         end
+#     end
+#     return param_info
+# end
+
+
+
+# """
+#     parse_func_info(f::Function)
+
+# Extract information from a function definition.
+# This function extracts the name of the function, the arguments, and the keyword arguments from a function definition.
+# """
+# function parse_func_info(f::Function)
+#     m = first(methods(f))
+#     types = tuple(m.sig.types[2:end]...)
+#     str = code_string(f, types)
+#     expr = Meta.parse(str)
+
+#     info = splitdef(expr)
+#     args    :: Vector{Union{Symbol,Expr}} = get(info, :args, [])
+#     kwargs  :: Vector{Union{Symbol,Expr}} = get(info, :kwargs, [])
+
+#     return (
+#         name = info[:name],
+#         args = parse_params(args), 
+#         kwargs = parse_params(kwargs),
+#     )
+# end
+
 
 end

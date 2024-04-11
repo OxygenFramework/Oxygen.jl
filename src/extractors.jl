@@ -128,8 +128,8 @@ and convert it into a custom struct
 function extractor(::Type{Header{T}}, name::Symbol) :: Function where {T}
     builder = struct_builder(T)
     return function extract(request::HTTP.Request) :: Header{T} 
-        params = Dict(string(k) => string(v) for (k,v) in HTTP.headers(request))
-        instance = builder(params)
+        headers = Dict(string(k) => string(v) for (k,v) in HTTP.headers(request))
+        instance = builder(headers)
         valid_instance = try_validate(name, instance)
         return Header{T}(valid_instance)
     end

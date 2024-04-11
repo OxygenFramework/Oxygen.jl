@@ -1,7 +1,7 @@
 module ErgonomicsDemo
 include("../src/Oxygen.jl")
 using .Oxygen
-import .Oxygen: validate
+import .Oxygen: validate, Param, hasdefault, parse_func_info
 
 using HTTP
 using JSON3
@@ -17,90 +17,27 @@ struct AddParams
     b::Int
 end
 
-# @get "/add/{a}/{b}" function(req, params::Path{AddParams})
-#     return text("$(params.a + params.b)")
+
+
+
+
+    
+
+
+# f = function (a::Int, b::Int=4, c::Float64=3.0; message="hello", req=234)
+#     println("wow")
 # end
 
-# serve()
-# function wrapexpr(f::Function)
-#     name = gensym()  # Generate a unique symbol
-#     ex = Base.code_lowered(f(1, 2))  # Get the lowered form of the function body
-#     # new_ex = quote
-#     #     function $name(args...; kwargs...)  # Allow any number of arguments of any type
-#     #         $(ex.code)  # Interpolate the function body
-#     #     end
-#     # end
-#     println(ex)
-# end
-
-
-# function func_to_expr(f::Function)
-#     lowered = Base.code_lowered(f)
-#     return [info for info in lowered]  # This will return the code block of the function
-# end
-
-# macro function_to_expr(func_def)
-#     return esc(:(Expr(:function, $(func_def.args...), $(func_def.body))))
-# end
-
-
-# f = function (a::Int, b::Int=4; message::String="hi")
-#     return a + b
-# end
-
-# @function_to_expr(f) |> println
-
-# # case 1
-# splitdef(
-#     :(function(a::Int, b::Int=4; message::String="hi")
-#         a + b
-#     end)
-# ) |> println
-
-# using InteractiveUtils
-
-# case 2
-f = function (a::Int, b::Int=4; message="hi")
+function myfunc(a::Int, b::Int; request=3.3)
     a + b
 end
 
 
-function walk_expr(expr::Expr, values=[])
-    for arg in expr.args
-        if isa(arg, Expr)
-            walk_expr(arg, values)
-        elseif isa(arg, Symbol) && !startswith(string(arg), "_")
-            push!(values, arg)
-        end
-    end
-    return values
-end
+details = @btime parse_func_info(myfunc)
 
 
-function extract_func(f::Function)
 
-    info = Base.code_lowered(f)
 
-    # case 1: no defaults 
-    if length(info) == 1
-
-    # case 2: has default values
-    else
-        for c in info
-            println(c.code)
-            for expr in c.code
-                values = walk_expr(expr)
-                println(values)  # This will print the values with no leading "_"
-            end
-            # println(c.slotnames[2:end])
-            # println(c.code)
-        end
-    end
-  
-
-end
-
-extract_func(f)
 
 # function get_method_definition(f::Function)
 #     m = first(methods(f))
@@ -134,12 +71,6 @@ extract_func(f)
 # println(method.file)
 # println(method.line)
 
-
-ex = Meta.parse("""
-function(a::Int, b::Int=4; message::String="hi")
-    a + b
-end
-""")
 
 # println(splitdef(ex))
 

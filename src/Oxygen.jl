@@ -18,11 +18,11 @@ include("deprecated.jl")
 macro oxidise()
     quote
         import Oxygen
-        import Oxygen: Context, Nullable
+        import Oxygen: PACKAGE_DIR, Context, Nullable
         import Oxygen: GET, POST, PUT, DELETE, PATCH, STREAM, WEBSOCKET
         
         const CONTEXT = Ref{Context}(Context())
-        include(joinpath(dirname(Base.find_package("Oxygen")), "methods.jl"))
+        include(joinpath(PACKAGE_DIR, "methods.jl"))
         
         nothing; # to hide last definition
     end |> esc

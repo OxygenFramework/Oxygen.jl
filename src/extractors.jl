@@ -43,7 +43,7 @@ struct Body{T} <: FromRequestContent
 end
 
 # Generic validation function - if no validate function is defined for a type, return true
-validate(type::T) :: Bool where {T} = true
+validate(type::T) where {T} = true
 
 function try_validate(name::Symbol, instance::T) :: T where {T}
     if validate(instance)
@@ -134,6 +134,7 @@ function extractor(::Type{Header{T}}, name::Symbol) :: Function where {T}
         return Header{T}(valid_instance)
     end
 end
+
 
 
 end

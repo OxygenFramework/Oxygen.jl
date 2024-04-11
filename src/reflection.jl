@@ -2,6 +2,7 @@ module Reflection
 
 using ExprTools: splitdef
 using CodeTracking: code_string
+# using ..Extractors
 
 export Param, hasdefault, parse_func_info, struct_builder
 
@@ -78,11 +79,12 @@ This function extracts the name of the function, the arguments, and the keyword 
 function parse_func_info(f::Function)
     m = first(methods(f))
     types = tuple(m.sig.types[2:end]...)
-    expr = Meta.parse(code_string(f, types))
+    str = code_string(f, types)
+    expr = Meta.parse(str)
 
     info = splitdef(expr)
-    args    :: Vector{Union{Symbol,Expr}} = info[:args]
-    kwargs  :: Vector{Union{Symbol,Expr}} = info[:kwargs]
+    args    :: Vector{Union{Symbol,Expr}} = get(info, :args, [])
+    kwargs  :: Vector{Union{Symbol,Expr}} = get(info, :kwargs, [])
 
     return (
         name = info[:name],

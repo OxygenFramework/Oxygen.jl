@@ -423,7 +423,7 @@ end
 
 
 function parse_func_params(route::String, func::Function)
-    
+
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
     
@@ -491,6 +491,12 @@ end
 Register a request handler function with a path to the ROUTER
 """
 function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
+
+
+    println(parse_func_info(func))
+
+    return 
+
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     hasPathParams, func_param_names, func_param_types = parse_func_params(route, func)

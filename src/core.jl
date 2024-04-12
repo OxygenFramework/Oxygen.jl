@@ -422,7 +422,77 @@ function parse_route(httpmethod::String, route::Union{String,Function}) :: Strin
 end
 
 
+function alt_parse_func_params(route::String, func::Function)
+
+    """
+    Parsing Rules:
+        1. path parameters must be declared first and are detected by their presence in the route string
+        2. query parameters are not in the route string and can have default values
+        3. path extractors can be used instead of traditional path parameters
+    """
+
+    info = parse_func_info(func, start=3) # skip the indentifying first arg
+
+    # collect path param definitions from the route string
+    hasBraces = r"({)|(})"
+    pathparam_names = Vector{Symbol}()
+    for value in HTTP.URIs.splitpath(route)
+        if contains(value, hasBraces)
+            variable = replace(value, hasBraces => "") |> strip
+            push!(pathparam_names, Symbol(variable))
+        end
+    end
+
+    pathparams = Vector{Param}()
+    queryparams = Vector{Param}()
+    extractors = Vector{Param}()
+    kwargs = info.kwargs
+
+    # loop over the functino args from left to right and assign them
+    for param in info.args
+        if param.name in pathparam_names
+            push!(pathparams, param) 
+        elseif param.type <: Extractor
+            push!(extractors, param)
+        else
+            push!(queryparams, param)
+        end
+    end
+
+    println("params: ", [x.name for x in pathparams])
+    println("queryparams: ", [x.name for x in queryparams])
+    println("extractors:  ", [x.name for x in extractors])
+    println("kwargs: ", [x.name for x in info.kwargs])
+
+    #### Validation Rules ####
+
+    has_path_extractor = any(x -> x.type <: Path, extractors)
+    has_path_params = !isempty(pathparams)
+   
+    # case 1: Ether have regular path params, or use Path Extractor
+    if has_path_extractor && has_path_params
+        throw(ArgumentError("You can't mix Path Extractors with regular path parameters in this route: $route"))
+    
+    elseif !has_path_extractor && has_path_params
+
+        # case 2: check missing path params in function handler
+        if !isempty(pathparam_names)
+            missing_params = [name for name in pathparam_names if !any(x -> x.name == name, pathparams)]
+            if !isempty(missing_params)
+                throw(ArgumentError("Your request handler is missing path parameters: {$(join(missing_params, ", "))} defined in this route: $route"))
+            end
+        end
+    end
+
+
+    return (has_path_params=has_path_params, sig=(pathparams, queryparams, extractors, kwargs), map=info.sig_map)
+
+end
+
+
+
 function parse_func_params(route::String, func::Function)
+    alt_parse_func_params(route, func) 
 
     variableRegex = r"{[a-zA-Z0-9_]+}"
     hasBraces = r"({)|(})"
@@ -492,15 +562,10 @@ Register a request handler function with a path to the ROUTER
 """
 function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
 
-
-    println(parse_func_info(func))
-
-    return 
-
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     hasPathParams, func_param_names, func_param_types = parse_func_params(route, func)
-    path_params = [param for param in zip(func_param_names, func_param_types)]
+    path_params = [param for param in zip(func_param_names, func_param_types)] 
 
     # Register the route schema with out autodocs module
     registerschema(ctx.docs, route, httpmethod, path_params, Base.return_types(func))

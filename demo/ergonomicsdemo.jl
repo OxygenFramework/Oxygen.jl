@@ -7,9 +7,6 @@ using HTTP
 using JSON3
 using Base: @kwdef
 using BenchmarkTools
-using ExprTools: splitdef
-using Revise
-using CodeTracking: code_string, code_expr, definition
 
 
 struct AddParams 
@@ -18,22 +15,31 @@ struct AddParams
 end
 
 
-
-
-
-    
-
-
-# f = function (a::Int, b::Int=4, c::Float64=3.0; message="hello", req=234)
-#     println("wow")
-# end
-
-function myfunc(a::Int, b::Int; request=3.3)
-    a + b
+@get "/add/{a}/{b}/{d}/{e}" function(req, a::Int, b::Int, c::Int; request)
+    println(path)
 end
 
 
-details = @btime parse_func_info(myfunc)
+# @get "/add/{a}/{b}" function(req, path::Path{AddParams})
+#     println(path)
+# end
+
+
+
+# serve()
+
+
+
+# # f = function (a::Int, b::Int=4, c::Float64=3.0; message="hello", req=234)
+# #     println("wow")
+# # end
+
+# function myfunc(a::Int, b::Int; request=3.3)
+#     a + b
+# end
+
+
+# details = @btime parse_func_info(myfunc)
 
 
 
@@ -107,31 +113,31 @@ details = @btime parse_func_info(myfunc)
 # println(Path)
 
 
-@kwdef struct Person2
-    name::String
-    age::Int
-    height::Float64
-    weight::Float64
-    is_employed::Bool
-    occupation::String
-    salary::Float64
-    country_of_origin::String
-    favorite_color::String
-    number_of_pets::Int
-end
+# @kwdef struct Person2
+#     name::String
+#     age::Int
+#     height::Float64
+#     weight::Float64
+#     is_employed::Bool
+#     occupation::String
+#     salary::Float64
+#     country_of_origin::String
+#     favorite_color::String
+#     number_of_pets::Int
+# end
 
-p2 = Dict(
-    "name" => "John Doe",
-    "age" => "30",
-    "height" => "6.0",
-    "weight" => "180.0",
-    "is_employed" => "true",
-    "occupation" => "Software Engineer",
-    "salary" => "100000.34532",
-    "country_of_origin" => "USA",
-    "favorite_color" => "blue",
-    "number_of_pets" => "2"
-)
+# p2 = Dict(
+#     "name" => "John Doe",
+#     "age" => "30",
+#     "height" => "6.0",
+#     "weight" => "180.0",
+#     "is_employed" => "true",
+#     "occupation" => "Software Engineer",
+#     "salary" => "100000.34532",
+#     "country_of_origin" => "USA",
+#     "favorite_color" => "blue",
+#     "number_of_pets" => "2"
+# )
 
 # gen = @btime struct_builder(Person2)
 
@@ -147,10 +153,10 @@ p2 = Dict(
 # println(info.args)
 # println(info.kwargs |> first |> hasdefault)
 
-struct Person
-    name::String
-    age::Int
-end
+# struct Person
+#     name::String
+#     age::Int
+# end
 
 # req = HTTP.Request("GET", "/", [], """{"name": "nathan", "age": 25}""")
 

@@ -1,14 +1,16 @@
 module Reflection
 
+using Base: @kwdef
 # using ExprTools: splitdef
 # using CodeTracking: code_string
 
 export Param, hasdefault, parse_func_info, struct_builder
 
-struct Param{T}
+@kwdef struct Param{T}
     name::Symbol
     type::Type{T}
-    default::Union{T, Missing}
+    default::Union{T, Missing} = missing
+    hasdefault::Bool = false
 end
 
 """
@@ -22,8 +24,7 @@ Check if a parameter has a default value.
 - `Boolean`: Returns `true` if the parameter has a default value, `false` otherwise.
 """
 function hasdefault(param::Param{T}) :: Bool where T
-    # Check if Missing is a subtype of T, or if the default is not Missing
-    return ismissing(param.default) ? Missing <: T : true
+    return param.hasdefault
 end
 
 """
@@ -145,13 +146,13 @@ function extract_defaults(info, param_names, kwarg_names)
 
 end
 
-function parse_func_info(f::Function)
+function parse_func_info(f::Function; start=2)
 
     method = first(methods(f))
 
     # Extract parameter names and types
-    param_names = Base.method_argnames(method)[2:end]
-    param_types = fieldtypes(method.sig)[2:end]
+    param_names = Base.method_argnames(method)[start:end]
+    param_types = fieldtypes(method.sig)[start:end]
     kwarg_names = Base.kwarg_decl(method) 
 
     # Convert to low level IR code
@@ -164,9 +165,9 @@ function parse_func_info(f::Function)
     params = Vector{Param}()
     for (name, type) in zip(param_names, param_types)
         if haskey(param_defaults, name)
-            push!(params, Param(name, type, param_defaults[name]))
+            push!(params, Param(name=name, type=type, default=param_defaults[name], hasdefault=true))
         else
-            push!(params, Param(name, type, missing))
+            push!(params, Param(name=name, type=type))
         end
     end
 
@@ -175,16 +176,20 @@ function parse_func_info(f::Function)
     for name in kwarg_names
         # Don't infer the type of the keyword argument, since julia doesn't support types on kwargs
         if haskey(kwarg_defaults, name)
-            push!(keyword_args, Param(name, Any, kwarg_defaults[name]))
+            push!(keyword_args, Param(name=name, type=Any, default=kwarg_defaults[name], hasdefault=true))
         else
-            push!(keyword_args, Param(name, Any, missing))
+            push!(keyword_args, Param(name=name, type=Any))
         end
     end
+
+    sig_params = vcat(params, keyword_args)
 
     return (
         name = method.name,
         args = params,
-        kwargs = keyword_args
+        kwargs = keyword_args,
+        sig = sig_params,
+        sig_map = Dict{Symbol,Param}(param.name => param for param in sig_params)
     )
 end
 

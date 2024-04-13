@@ -2,9 +2,11 @@ module Extractors
 
 using HTTP
 using Dates
-using CodeTracking: code_string
-using ..Util: text, json, parseparam, formdata, queryparams
+using StructTypes
+# using CodeTracking: code_string
+using ..Util: text, json, partialjson, parseparam, formdata, queryparams
 using ..Reflection: struct_builder
+using ..Types
 
 export Extractor, FromRequestParts, FromRequestContent,
         Path, Query, Header, Json, Form, Body,
@@ -34,6 +36,10 @@ struct Json{T} <: FromRequestContent
     payload::T
 end
 
+struct PartialJson{T} <: FromRequestContent
+    payload::T
+end
+
 struct Form{T} <: FromRequestContent
     payload::T
 end
@@ -50,7 +56,7 @@ function try_validate(name::Symbol, instance::T) :: T where {T}
         return instance
     else
         # Figure out which validator failed and convert the function to a string
-        impl = code_string(validate, (T,))
+        impl = Base.which(validate, (T,))
         throw(ArgumentError("Validation failed for $name: $T \n|> $instance \n|> $impl"))
     end
 end
@@ -59,82 +65,71 @@ end
 Returns a function which is used to extract a JSON object from a request
 and convert it into a custom struct
 """
-function extractor(::Type{Json{T}}, name::Symbol) :: Function where {T}
-    return function extract(request::HTTP.Request) :: Json{T} 
-        instance = json(request, T)
-        valid_instance = try_validate(name, instance)
-        return Json{T}(valid_instance)
-    end
+function extractor(param::Param{Json{T}}, request::HTTP.Request) :: Json{T} where {T}
+    instance = json(request, T)
+    valid_instance = try_validate(param.name, instance)
+    return Json{T}(valid_instance)
 end
+
+function extractor(param::Param{PartialJson{T}}, request::HTTP.Request) :: PartialJson{T} where {T}
+    instance = partialjson(request, name, T)
+    valid_instance = try_validate(param.name, instance)
+    return PartialJson{T}(valid_instance)
+end
+
 
 """
 Returns a function which is used to extract the body from a request 
 and convert it into a custom struct
 """
-function extractor(::Type{Body{T}}, name::Symbol) :: Function where {T}
-    return function extract(request::HTTP.Request) :: Body{T} 
-        instance = parseparam(T, text(request); escape=false)
-        valid_instance = try_validate(name, instance)
-        return Body{T}(valid_instance)
-    end
+function extractor(param::Param{Body{T}}, request::HTTP.Request) :: Body{T} where {T}
+    instance = parseparam(T, text(request); escape=false)
+    valid_instance = try_validate(param.name, instance)
+    return Body{T}(valid_instance)
 end
 
 """
 Returns a function which is used to extract a Form from a request
 and convert it into a custom struct
 """
-function extractor(::Type{Form{T}}, name::Symbol) :: Function where {T}
-    builder = struct_builder(T)
-    return function extract(request::HTTP.Request) :: Form{T} 
-        form = formdata(request)
-        instance = builder(form)
-        valid_instance = try_validate(name, instance)
-        return Form{T}(valid_instance)
-    end
+function extractor(param::Param{Form{T}}, request::HTTP.Request) :: Form{T} where {T}
+    form = formdata(request)
+    instance = struct_builder(T, form)
+    valid_instance = try_validate(param.name, instance)
+    return Form{T}(valid_instance) 
 end
 
 """
 Returns a function which is used to extract path parameters from a request
 and convert it into a custom struct
 """
-function extractor(::Type{Path{T}}, name::Symbol) :: Function where {T}
-    builder = struct_builder(T)
-    return function extract(request::HTTP.Request) :: Path{T} 
-        params = HTTP.getparams(request)
-        instance = builder(params)
-        valid_instance = try_validate(name, instance)
-        return Path{T}(valid_instance)
-    end
+function extractor(param::Param{Path{T}}, request::HTTP.Request) :: Path{T} where {T}
+    params = HTTP.getparams(request)
+    instance = struct_builder(T, params)
+    valid_instance = try_validate(param.name, instance)
+    return Path{T}(valid_instance)
 end
 
 """
 Returns a function which is used to extract query parameters from a request
 and convert it into a custom struct
 """
-function extractor(::Type{Query{T}}, name::Symbol) :: Function where {T}
-    builder = struct_builder(T)
-    return function extract(request::HTTP.Request) :: Query{T} 
-        params = queryparams(request)
-        instance = builder(params)
-        valid_instance = try_validate(name, instance)
-        return Query{T}(valid_instance)
-    end
+function extractor(param::Param{Query{T}}, request::HTTP.Request) :: Query{T} where {T}
+    params = queryparams(request)
+    instance = struct_builder(T, params)
+    valid_instance = try_validate(param.name, instance)
+    return Query{T}(valid_instance)
 end
 
 """
 Returns a function which is used to extract Headrs from a request
 and convert it into a custom struct
 """
-function extractor(::Type{Header{T}}, name::Symbol) :: Function where {T}
-    builder = struct_builder(T)
-    return function extract(request::HTTP.Request) :: Header{T} 
-        headers = Dict(string(k) => string(v) for (k,v) in HTTP.headers(request))
-        instance = builder(headers)
-        valid_instance = try_validate(name, instance)
-        return Header{T}(valid_instance)
-    end
+function extractor(param::Param{Header{T}}, headers::HTTP.Request) :: Header{T}  where {T}
+    headers = Dict(string(k) => string(v) for (k,v) in HTTP.headers(request))
+    instance = struct_builder(T, headers)
+    valid_instance = try_validate(param.name, instance)
+    return Header{T}(valid_instance)
 end
-
-
 
 end

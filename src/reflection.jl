@@ -1,31 +1,12 @@
 module Reflection
-
+using StructTypes
 using Base: @kwdef
+using ..Types
 # using ExprTools: splitdef
 # using CodeTracking: code_string
 
-export Param, hasdefault, parse_func_info, struct_builder
+export parse_func_info, struct_builder, extract_struct_info
 
-@kwdef struct Param{T}
-    name::Symbol
-    type::Type{T}
-    default::Union{T, Missing} = missing
-    hasdefault::Bool = false
-end
-
-"""
-    hasdefault(param::Param{T}) where T
-
-Check if a parameter has a default value.
-# Arguments
-- `param::Param{T}`: The parameter to check.
-
-# Returns
-- `Boolean`: Returns `true` if the parameter has a default value, `false` otherwise.
-"""
-function hasdefault(param::Param{T}) :: Bool where T
-    return param.hasdefault
-end
 
 """
 
@@ -161,13 +142,18 @@ function parse_func_info(f::Function; start=2)
     # Extract default values
     param_defaults, kwarg_defaults = extract_defaults(info, param_names, kwarg_names)
 
+
     # Create a list of Param objects from parameters
     params = Vector{Param}()
     for (name, type) in zip(param_names, param_types)
-        if haskey(param_defaults, name)
-            push!(params, Param(name=name, type=type, default=param_defaults[name], hasdefault=true))
-        else
-            push!(params, Param(name=name, type=type))
+        try 
+            if haskey(param_defaults, name)
+                push!(params, Param(name=name, type=type, default=param_defaults[name], hasdefault=true))
+            else
+                push!(params, Param(name=name, type=type))
+            end
+        catch
+            println(name, type, param_defaults, kwarg_defaults)
         end
     end
 
@@ -195,6 +181,27 @@ end
 
 
 
+
+"""
+    struct_builder(::Type{T}, parameters::Dict{String,String}) where {T}
+
+Constructs an object of type `T` using the parameters in the dictionary `parameters`.
+"""
+function struct_builder(::Type{T}, params::Dict{String,String}) :: T where {T}
+    params_with_symbols = Dict(Symbol(k) => v for (k, v) in params)
+
+    # property_names = extract_struct_info(T).names
+    # for name in property_names
+    #     if !haskey(params_with_symbols, name)
+    #         params_with_symbols[name] = missing
+    #     end
+    # end
+
+    return StructTypes.constructfrom(T, params_with_symbols)
+end
+
+
+
 """
     has_kwdef_constructor(T::Type) :: Bool
 
@@ -216,55 +223,54 @@ end
 # Function to extract field names, types, and default values
 function extract_struct_info(T::Type)
     field_names = fieldnames(T)
-    type_map = Dict(string(name) => fieldtype(T, name) for name in field_names)
-    return (names=string.(field_names), map=type_map)
+    type_map = Dict(name => fieldtype(T, name) for name in field_names)
+    return (names=field_names, map=type_map)
 end
 
+# """
+#     struct_builder(TargetType::Type{T}, parameters::Dict{String,String}) where {T}
 
-"""
-    struct_builder(TargetType::Type{T}, parameters::Dict{String,String}) where {T}
+# Constructs an object of type `T` using the parameters in the dictionary `parameters`.
+# """
+# function struct_builder(TargetType::Type{T}, params::Dict{String,String}) where {T}
 
-Constructs an object of type `T` using the parameters in the dictionary `parameters`.
-"""
-function struct_builder(TargetType::Type{T}) :: Function where {T}
+#     # This should run once for setup
+#     info = extract_struct_info(TargetType)
+#     has_kwdef = has_kwdef_constructor(TargetType)
 
-    # This should run once for setup
-    info = extract_struct_info(TargetType)
-    has_kwdef = has_kwdef_constructor(TargetType)
+#     # Loops over parameters and converts the value to the correct type
+#     function parser(func::Function, parameters::Dict{String,String})
+#         for param_name in info.names
+#             # ignore unkown parameters
+#             if haskey(parameters, param_name)
+#                 param_value = parameters[param_name]
+#                 target_type = info.map[param_name]
+#                 parsed_value = target_type == Any || target_type == String ? param_value : parse(target_type, param_value)
+#                 func(param_name, parsed_value)
+#             end
+#         end
+#     end
 
-    # Loops over parameters and converts the value to the correct type
-    function parser(func::Function, parameters::Dict{String,String})
-        for param_name in info.names
-            # ignore unkown parameters
-            if haskey(parameters, param_name)
-                param_value = parameters[param_name]
-                target_type = info.map[param_name]
-                parsed_value = target_type == Any || target_type == String ? param_value : parse(target_type, param_value)
-                func(param_name, parsed_value)
-            end
-        end
-    end
+#     # Used to build the struct using keyword args
+#     function kwargbuilder(parameters::Dict{String,String}) :: T
+#         param_dict = Dict{Symbol, Any}()
+#         parser(parameters) do name, value
+#             param_dict[Symbol(name)] = value
+#         end
+#         return TargetType(;param_dict...)
+#     end
 
-    # Used to build the struct using keyword args
-    function kwargbuilder(parameters::Dict{String,String}) :: T
-        param_dict = Dict{Symbol, Any}()
-        parser(parameters) do name, value
-            param_dict[Symbol(name)] = value
-        end
-        return TargetType(;param_dict...)
-    end
+#     # Used to build the struct using positional args
+#     function seqbuilder(parameters::Dict{String,String}) :: T
+#         casted_params = Vector{Any}()
+#         parser(parameters) do _, value
+#             push!(casted_params, value)
+#         end
+#         return TargetType(casted_params...)
+#     end
 
-    # Used to build the struct using positional args
-    function seqbuilder(parameters::Dict{String,String}) :: T
-        casted_params = Vector{Any}()
-        parser(parameters) do _, value
-            push!(casted_params, value)
-        end
-        return TargetType(casted_params...)
-    end
-
-    return has_kwdef ? kwargbuilder : seqbuilder
-end
+#     return has_kwdef ? kwargbuilder(params) : seqbuilder(params)
+# end
 
 
 

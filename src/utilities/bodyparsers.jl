@@ -1,8 +1,9 @@
 
 using HTTP 
 using JSON3
+using StructTypes
 
-export text, binary, json, formdata
+export text, binary, json, partialjson, formdata
 
 ### Helper functions used to parse the body of a HTTP.Request object
 
@@ -87,7 +88,7 @@ end
 Read the body of a HTTP.Messages.Response as JSON with additional keyword arguments
 """
 function json(response::HTTP.Messages.Response; kwargs...) :: JSON3.Object
-    return JSON3.read(String(response.body); kwargs...)
+    return JSON3.read(response.body; kwargs...)
 end
 
 
@@ -97,5 +98,15 @@ end
 Read the body of a HTTP.Messages.Response as JSON with additional keyword arguments and serialize it into a custom struct
 """
 function json(response::HTTP.Messages.Response, classtype::Type{T}; kwargs...) :: T where {T}
-    return JSON3.read(String(response.body), classtype; kwargs...)
+    return JSON3.read(response.body, classtype; kwargs...)
+end
+
+function partialjson(response::HTTP.Messages.Response, key::String; kwargs...) :: JSON3.Object
+    return JSON3.read(response.body; kwargs...)[key]
+end
+
+function partialjson(response::HTTP.Messages.Response, key::String, classtype::Type{T}; kwargs...) :: T where {T}
+    partial = JSON3.read(response.body; kwargs...)[key]
+    partial_with_symbols = Dict(Symbol(k) => v for (k, v) in partial)
+    return StructTypes.constructfrom(T, partial_with_symbols)
 end

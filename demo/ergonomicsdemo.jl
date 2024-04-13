@@ -1,7 +1,9 @@
 module ErgonomicsDemo
 include("../src/Oxygen.jl")
 using .Oxygen
-import .Oxygen: validate, Param, hasdefault, parse_func_info
+import .Oxygen: validate, Param, hasdefault, parse_func_info, struct_builder
+
+using StructTypes
 
 using HTTP
 using JSON3
@@ -14,10 +16,34 @@ struct AddParams
     b::Int
 end
 
+# s = @btime StructTypes.constructfrom(AddParams, Dict(:a => "32", :b => "3") )
 
-@get "/add/{a}/{b}/{d}/{e}" function(req, a::Int, b::Int, c::Int; request)
-    println(path)
+
+# addbuilder = struct_builder(AddParams)
+
+# @btime addbuilder(Dict("a" => "32", "b" => "3"))
+
+@kwdef struct Sample
+    skip::Int
+    limit::Int = 3
 end
+
+# methods(Sample) |> first |> Base.code_lowered |> println
+
+struct Parameters
+    a::Int
+    b::Int
+end
+
+@get "/add/{a}/{b}" function(req, path::Path{Parameters}, qparams::Query{Sample}, c::Int=3 )
+
+    println(path)
+    println(qparams)
+   
+    return qparams
+end
+
+serve(docs=false, metrics=false)
 
 
 # @get "/add/{a}/{b}" function(req, path::Path{AddParams})
@@ -139,9 +165,16 @@ end
 #     "number_of_pets" => "2"
 # )
 
-# gen = @btime struct_builder(Person2)
 
-# p = @btime gen(p2)
+# x = @btime struct_builder(Person2, p2)
+
+
+
+# @btime begin
+#     p2_symbols = Dict(Symbol(k) => v for (k, v) in p2)
+#     s = StructTypes.constructfrom(Person2, p2_symbols)
+# end
+
 # println(p)
 
 # function add(a::Int, b::Int; c::Float64=4.4)

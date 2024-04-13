@@ -10,7 +10,8 @@ using DataStructures: CircularDeque
 
 export Server, History, HTTPTransaction, TaggedRoute, Nullable, 
     ActiveTask, RegisteredTask, TaskDefinition,
-    ActiveCron, RegisteredCron, CronDefinition
+    ActiveCron, RegisteredCron, CronDefinition,
+    Param, hasdefault, gettype
 
 const Nullable{T} = Union{T, Nothing}
 
@@ -74,5 +75,32 @@ end
 
 const Server = HTTP.Server
 const History = CircularDeque{HTTPTransaction}
+
+
+
+@kwdef struct Param{T}
+    name::Symbol
+    type::Type{T}
+    default::Union{T, Missing} = missing
+    hasdefault::Bool = false
+end
+
+function gettype(param::Param{T}) :: Type{T} where T
+    return T
+end
+
+"""
+    hasdefault(param::Param{T}) where T
+
+Check if a parameter has a default value.
+# Arguments
+- `param::Param{T}`: The parameter to check.
+
+# Returns
+- `Boolean`: Returns `true` if the parameter has a default value, `false` otherwise.
+"""
+function hasdefault(param::Param{T}) :: Bool where T
+    return param.hasdefault
+end
 
 end

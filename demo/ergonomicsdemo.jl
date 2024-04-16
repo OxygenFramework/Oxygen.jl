@@ -11,6 +11,18 @@ using Base: @kwdef
 using BenchmarkTools
 
 
+# Define a function for testing
+function test_func(a::Int, b::Float64; c="default", d=true, request)
+    return a, b, c, d
+end
+
+# Parse the function info
+info = parse_func_info(test_func)
+println("-----------------")
+
+for p in info.kwargs 
+    println(p)
+end
 struct AddParams 
     a::Int
     b::Int
@@ -44,18 +56,18 @@ using Dates
 #     x + y
 # end
 
-@get "/add/{a}/{b}" function(req, a::String, path::Path{Parameters},qparams::Query{Sample}, c::Nullable{Int}=23; request)
-    return (a=a, path=path, query=qparams)
-end
+# @get "/add/{a}/{b}" function(req, a::String, path::Path{Parameters},qparams::Query{Sample}, c::Nullable{Int}=23; request)
+#     return (a=a, path=path, query=qparams)
+# end
 
-@get "/" function(req)
-    "home"
-end
+# @get "/" function(req)
+#     "home"
+# end
 
-@get "/other" function()
-    "other"
-end
-serve()
+# @get "/other" function()
+#     "other"
+# end
+# serve()
 
 # f = do a::Int
 #     a * 2

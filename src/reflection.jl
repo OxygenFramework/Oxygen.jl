@@ -16,14 +16,14 @@ end
 """
 Return all parameter name & types and keyword argument names from a function
 """
-function getsignames(f::Function; start=3)
+function getsignames(f::Function; start=2)
     return getsignames(methods(f), start=start)
 end
 
 """
 Return parameter name & types and keyword argument names from a list of methods
 """
-function getsignames(func_methods::Base.MethodList; start=3)
+function getsignames(func_methods::Base.MethodList; start=2)
     sig = Vector{Symbol}()
     types = Vector{Type}()
     kwarg_names = Vector{Symbol}()
@@ -75,7 +75,6 @@ function splitargs(args::Vector)
             push!(param_defaults, getargvalue(arg))
         end
     end
-
     return param_defaults, kwarg_defaults
 end
 
@@ -118,23 +117,23 @@ function extract_defaults(info, param_names, kwarg_names)
             need to extract it early and store it for later use. If we can parse default values
             normally then the temp values won't get used.
             """
-            if !isa(expr, Expr) && !isa(expr, Core.ReturnNode)
+            if !isa(expr, Expr) && !isa(expr, Core.ReturnNode) && !isa(expr, Core.SlotNumber)
                 push!(temp_kwarg_defaults, expr)
             end
-         
+
             
             """
             1.) skip any non expressions
             2.) skip any non call expressions
             3.) skip any Core expressions
             """
-            if !isa(expr, Expr) || expr.head != :call || startswith(string(expr), "Core.") || !isa(first(expr.args), Core.SlotNumber)
+            if !isa(expr, Expr) || expr.head != :call || startswith(string(expr), "Core.") #|| !isa(first(expr.args), Core.SlotNumber)
                 continue
             end 
   
+
             # get the default values for this expression
             p_defaults, kw_defaults = splitargs(expr.args[2:end])
-
 
             # store the default values for params
             if !isempty(p_defaults)
@@ -176,7 +175,7 @@ function parse_func_info(f::Function; start=2)
     func_methods = methods(f)
 
     # Extract parameter names and types
-    param_names, param_types, kwarg_names = getsignames(func_methods)
+    param_names, param_types, kwarg_names = getsignames(func_methods, start=start)
 
     # Convert to low level IR code
     info = Base.code_lowered(f)

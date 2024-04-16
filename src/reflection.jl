@@ -59,7 +59,6 @@ The args is a vector that follows this shape like This
 ]
 """
 function splitargs(args::Vector)
-
     param_defaults = Vector{Any}()
     kwarg_defaults = Vector{Any}()
 
@@ -117,7 +116,7 @@ function extract_defaults(info, param_names, kwarg_names)
             need to extract it early and store it for later use. If we can parse default values
             normally then the temp values won't get used.
             """
-            if !isa(expr, Expr) && !isa(expr, Core.ReturnNode) && !isa(expr, Core.SlotNumber)
+            if typeof(expr) ∉ [Expr, Core.ReturnNode, Core.GotoNode, Core.SlotNumber, Core.NewvarNode, Core.GotoIfNot]
                 push!(temp_kwarg_defaults, expr)
             end
 
@@ -127,10 +126,9 @@ function extract_defaults(info, param_names, kwarg_names)
             2.) skip any non call expressions
             3.) skip any Core expressions
             """
-            if !isa(expr, Expr) || expr.head != :call || startswith(string(expr), "Core.") #|| !isa(first(expr.args), Core.SlotNumber)
+            if !isa(expr, Expr) || expr.head != :call || !isa(first(expr.args), Core.SlotNumber)
                 continue
-            end 
-  
+            end   
 
             # get the default values for this expression
             p_defaults, kw_defaults = splitargs(expr.args[2:end])

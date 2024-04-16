@@ -2,6 +2,7 @@ module RunTests
 
 include("constants.jl"); using .Constants
 
+include("extractortests.jl")
 include("reflectiontests.jl")
 
 # #### Extension Tests ####

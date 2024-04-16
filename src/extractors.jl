@@ -3,13 +3,13 @@ module Extractors
 using HTTP
 using Dates
 using StructTypes
-# using CodeTracking: code_string
+
 using ..Util: text, json, partialjson, parseparam, formdata, queryparams
 using ..Reflection: struct_builder
 using ..Types
 
 export Extractor, FromRequestParts, FromRequestContent,
-        Path, Query, Header, Json, Form, Body,
+        Path, Query, Header, Json, PartialJson, Form, Body,
         extractor, validate
 
 abstract type Extractor end
@@ -72,7 +72,7 @@ function extractor(param::Param{Json{T}}, request::HTTP.Request) :: Json{T} wher
 end
 
 function extractor(param::Param{PartialJson{T}}, request::HTTP.Request) :: PartialJson{T} where {T}
-    instance = partialjson(request, name, T)
+    instance = partialjson(request, param.name, T)
     valid_instance = try_validate(param.name, instance)
     return PartialJson{T}(valid_instance)
 end
@@ -80,7 +80,7 @@ end
 
 """
 Returns a function which is used to extract the body from a request 
-and convert it into a custom struct
+and convert it into a custom type
 """
 function extractor(param::Param{Body{T}}, request::HTTP.Request) :: Body{T} where {T}
     instance = parseparam(T, text(request); escape=false)
@@ -125,7 +125,7 @@ end
 Returns a function which is used to extract Headrs from a request
 and convert it into a custom struct
 """
-function extractor(param::Param{Header{T}}, headers::HTTP.Request) :: Header{T}  where {T}
+function extractor(param::Param{Header{T}}, request::HTTP.Request) :: Header{T}  where {T}
     headers = Dict(string(k) => string(v) for (k,v) in HTTP.headers(request))
     instance = struct_builder(T, headers)
     valid_instance = try_validate(param.name, instance)

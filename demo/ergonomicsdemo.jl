@@ -1,62 +1,47 @@
 module ErgonomicsDemo
 include("../src/Oxygen.jl")
 using .Oxygen
-import .Oxygen: validate, Param, hasdefault, parse_func_info, struct_builder, Nullable
+import .Oxygen: validate, Param, hasdefault, parse_func_info, struct_builder, Nullable, extractor
 
 using StructTypes
-
+using Dates
 using HTTP
 using JSON3
 using Base: @kwdef
 using BenchmarkTools
 
-
-# Define a function for testing
-function test_func(a::Int, b::Float64; c="default", d=true, request)
-    return a, b, c, d
+struct Person 
+    name::String
+    age::Int
 end
 
-# Parse the function info
-info = parse_func_info(test_func)
-println("-----------------")
 
-for p in info.kwargs 
-    println(p)
-end
-struct AddParams 
-    a::Int
-    b::Int
-end
+req = HTTP.Request("GET", "/", [], """{ "persond": {"name": "joe", "age": 25} }""")
+param = Param(:persond, PartialJson{Person}, missing, false)
+p = extractor(param, req).payload
+println(p)
 
-# s = @btime StructTypes.constructfrom(AddParams, Dict(:a => "32", :b => "3") )
-
-# addbuilder = struct_builder(AddParams)
-
-# @btime addbuilder(Dict("a" => "32", "b" => "3"))
+# struct AddParams 
+#     a::Int
+#     b::Int
+# end
 
 
-# methods(Sample) |> first |> Base.code_lowered |> println
-using Dates
 
-Base.@kwdef struct Sample
-    limit::Int
-    skip::Int = 33
-end
+# Base.@kwdef struct Sample
+#     limit::Int
+#     skip::Int = 33
+# end
 
-struct Parameters
-    b::Int
-end
-using Dates
+# struct Parameters
+#     b::Int
+# end
+
 
 # validate(s::Sample) = s.skip < 10
 
-# inline = router("/inline")
 
-# get(inline("/add/{x}/{y}")) do request::HTTP.Request, x::Int, y::Int
-#     x + y
-# end
-
-# @get "/add/{a}/{b}" function(req, a::String, path::Path{Parameters},qparams::Query{Sample}, c::Nullable{Int}=23; request)
+# @get "/add/{a}/{b}" function(req, a::String, path::Path{Parameters}, qparams::Query{Sample}, c::Nullable{Int}=23)
 #     return (a=a, path=path, query=qparams)
 # end
 
@@ -67,97 +52,8 @@ using Dates
 # @get "/other" function()
 #     "other"
 # end
+
 # serve()
-
-# f = do a::Int
-#     a * 2
-# end
-
-
-
-
-# # f = function (a::Int, b::Int=4, c::Float64=3.0; message="hello", req=234)
-# #     println("wow")
-# # end
-
-# function myfunc(a::Int, b::Int; request=3.3)
-#     a + b
-# end
-
-
-# details = @btime parse_func_info(myfunc)
-
-
-
-
-
-# function get_method_definition(f::Function)
-#     m = first(methods(f))
-#     types = tuple(m.sig.types[2:end]...)
-#     method = which(f, types)
-
-#     # Open the file and read the method definition
-#     open(string(method.file)) do file
-#         lines = readlines(file)
-#         start_line = method.line
-#         # Assuming the method definition ends with 'end'
-#         end_line = findnext(x -> startswith(strip(x), "end"), lines, start_line)
-#         return join(lines[start_line:end_line], "\n")
-#     end
-# end
-
-
-# get_method_definition(f) |> println
-
-
-# m = first(methods(f))
-# types = tuple(m.sig.types[2:end]...)
-
-# code_string(f, types) |> println
-
-
-# m = first(methods(f))
-# types = tuple(m.sig.types[2:end]...)
-# method = which(f,types)
-
-# println(method.file)
-# println(method.line)
-
-
-# println(splitdef(ex))
-
-# splitdef(
-#     :($f)
-# ) |> println
-
-
-
-
-# wrapexpr(mylambda)
-
-
-
-# Base.code_lowered(f) |> println
-# Base.code_typed(f) |> println
-
-
-# println(show(name))
-
-
-# m = first(methods(f))
-# types = tuple(m.sig.types[2:end]...)
-# str = code_string(f, types)
-
-
-# str |> println
-
-# println("here")
-
-# info = parse_func_info(d)
-# println(info)
-
-# println(Path)
-
 
 # @kwdef struct Person2
 #     name::String
@@ -185,17 +81,6 @@ using Dates
 #     "number_of_pets" => "2"
 # )
 
-
-# x = @btime struct_builder(Person2, p2)
-
-
-
-# @btime begin
-#     p2_symbols = Dict(Symbol(k) => v for (k, v) in p2)
-#     s = StructTypes.constructfrom(Person2, p2_symbols)
-# end
-
-# println(p)
 
 # function add(a::Int, b::Int; c::Float64=4.4)
 #     nothing

@@ -27,15 +27,17 @@ function getsignames(func_methods::Base.MethodList; start=3)
     sig = Vector{Symbol}()
     types = Vector{Type}()
     kwarg_names = Vector{Symbol}()
+
+    # track position & types of parameters in the function signature
+    positions = Dict{Symbol, Int}()
     for m in func_methods
-        for argname in Base.method_argnames(m)[start:end]
+        argnames = Base.method_argnames(m)[start:end]
+        argtypes = fieldtypes(m.sig)[start:end]
+        for (i, (argname, type)) in enumerate(zip(argnames, argtypes))
             if argname ∉ sig
                 push!(sig, argname)
-            end
-        end
-        for type in fieldtypes(m.sig)[start:end]
-            if type ∉ types
                 push!(types, type)
+                positions[argname] = i
             end
         end
         for kwarg in Base.kwarg_decl(m)
@@ -46,7 +48,6 @@ function getsignames(func_methods::Base.MethodList; start=3)
     end
     return sig, types, kwarg_names
 end
-
 
 
 """
@@ -214,7 +215,6 @@ function parse_func_info(f::Function; start=2)
         sig_map = Dict{Symbol,Param}(param.name => param for param in sig_params)
     )
 end
-
 
 """
     struct_builder(::Type{T}, parameters::Dict{String,String}) where {T}

@@ -32,19 +32,30 @@ Base.@kwdef struct Sample
 end
 
 struct Parameters
-    a::Int
     b::Int
 end
 using Dates
 
 # validate(s::Sample) = s.skip < 10
 
+# inline = router("/inline")
 
-@get "/add/{a}/{b}" function(req, path::Path{Parameters},qparams::Query{Sample}, c::Nullable{Int}=23 )
-    return (path=path, query=qparams)
+# get(inline("/add/{x}/{y}")) do request::HTTP.Request, x::Int, y::Int
+#     x + y
+# end
+
+@get "/add/{a}/{b}" function(req, a::String, path::Path{Parameters},qparams::Query{Sample}, c::Nullable{Int}=23; request)
+    return (a=a, path=path, query=qparams)
 end
 
-# serve()
+@get "/" function(req)
+    "home"
+end
+
+@get "/other" function()
+    "other"
+end
+serve()
 
 # f = do a::Int
 #     a * 2

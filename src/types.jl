@@ -6,6 +6,7 @@ This module holds Structs that are used throughout the application
 using HTTP
 using Sockets
 using Dates
+using Base: @kwdef
 using DataStructures: CircularDeque
 
 export Server, History, HTTPTransaction, TaggedRoute, Nullable, 
@@ -75,8 +76,6 @@ end
 
 const Server = HTTP.Server
 const History = CircularDeque{HTTPTransaction}
-
-
 
 @kwdef struct Param{T}
     name::Symbol

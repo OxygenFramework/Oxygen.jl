@@ -1,7 +1,7 @@
 module ErgonomicsDemo
 include("../src/Oxygen.jl")
 using .Oxygen
-import .Oxygen: validate, Param, hasdefault, parse_func_info, struct_builder
+import .Oxygen: validate, Param, hasdefault, parse_func_info, struct_builder, Nullable
 
 using StructTypes
 
@@ -18,41 +18,38 @@ end
 
 # s = @btime StructTypes.constructfrom(AddParams, Dict(:a => "32", :b => "3") )
 
-
 # addbuilder = struct_builder(AddParams)
 
 # @btime addbuilder(Dict("a" => "32", "b" => "3"))
 
-@kwdef struct Sample
-    skip::Int
-    limit::Int = 3
-end
 
 # methods(Sample) |> first |> Base.code_lowered |> println
+using Dates
+
+Base.@kwdef struct Sample
+    limit::Int
+    skip::Int = 33
+end
 
 struct Parameters
     a::Int
     b::Int
 end
+using Dates
 
-@get "/add/{a}/{b}" function(req, path::Path{Parameters}, qparams::Query{Sample}, c::Int=3 )
+# validate(s::Sample) = s.skip < 10
 
-    println(path)
-    println(qparams)
-   
-    return qparams
+
+@get "/add/{a}/{b}" function(req, path::Path{Parameters},qparams::Query{Sample}, c::Nullable{Int}=23 )
+    return (path=path, query=qparams)
 end
 
-serve(docs=false, metrics=false)
+# serve()
 
-
-# @get "/add/{a}/{b}" function(req, path::Path{AddParams})
-#     println(path)
+# f = do a::Int
+#     a * 2
 # end
 
-
-
-# serve()
 
 
 

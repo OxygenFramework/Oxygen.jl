@@ -2,15 +2,54 @@ module Reflection
 using StructTypes
 using Base: @kwdef
 using ..Types
-# using ExprTools: splitdef
-# using CodeTracking: code_string
 
 export parse_func_info, struct_builder, extract_struct_info
 
+"""
+Helper function to access the underlying value of any global references
+"""
+function getargvalue(arg)
+    return isa(arg, GlobalRef) ? getfield(arg.mod, arg.name) : arg
+end
+
 
 """
+Return all parameter name & types and keyword argument names from a function
+"""
+function getsignames(f::Function; start=3)
+    return getsignames(methods(f), start=start)
+end
+
+"""
+Return parameter name & types and keyword argument names from a list of methods
+"""
+function getsignames(func_methods::Base.MethodList; start=3)
+    sig = Vector{Symbol}()
+    types = Vector{Type}()
+    kwarg_names = Vector{Symbol}()
+    for m in func_methods
+        for argname in Base.method_argnames(m)[start:end]
+            if argname ∉ sig
+                push!(sig, argname)
+            end
+        end
+        for type in fieldtypes(m.sig)[start:end]
+            if type ∉ types
+                push!(types, type)
+            end
+        end
+        for kwarg in Base.kwarg_decl(m)
+            if kwarg ∉ kwarg_names
+                push!(kwarg_names, kwarg)
+            end
+        end
+    end
+    return sig, types, kwarg_names
+end
 
 
+
+"""
 The args is a vector that follows this shape like This
 [
     kwarg defaults...,
@@ -19,23 +58,26 @@ The args is a vector that follows this shape like This
 ]
 """
 function splitargs(args::Vector)
-    kwarg_defaults = Vector{Any}()
+
     param_defaults = Vector{Any}()
+    kwarg_defaults = Vector{Any}()
 
     encountered_slot = false
-
     for arg in args
-        if isa(arg, Core.SlotNumber)
+        if isa(arg, Core.SSAValue)
+            continue
+        elseif isa(arg, Core.SlotNumber)
             encountered_slot = true
         elseif !encountered_slot
-            push!(kwarg_defaults, arg)
+            push!(kwarg_defaults, getargvalue(arg))
         else
-            push!(param_defaults, arg)
+            push!(param_defaults, getargvalue(arg))
         end
     end
 
-    return kwarg_defaults, param_defaults
+    return param_defaults, kwarg_defaults
 end
+
 
 """
 This function extract default values from a list of expressions
@@ -67,7 +109,6 @@ function extract_defaults(info, param_names, kwarg_names)
     kwarg_defaults = Dict()
 
     for c in info
-
         temp_kwarg_defaults = []
         for expr in c.code
 
@@ -86,19 +127,13 @@ function extract_defaults(info, param_names, kwarg_names)
             2.) skip any non call expressions
             3.) skip any Core expressions
             """
-            if !isa(expr, Expr) || expr.head != :call || startswith(string(expr), "Core.")
+            if !isa(expr, Expr) || expr.head != :call || startswith(string(expr), "Core.") || !isa(first(expr.args), Core.SlotNumber)
                 continue
-            end    
-            
+            end 
+  
             # get the default values for this expression
-            kw_defaults, p_defaults = splitargs(expr.args[2:end])
+            p_defaults, kw_defaults = splitargs(expr.args[2:end])
 
-            # store the default values for kwargs
-            if !isempty(kw_defaults)
-                for (name, value) in zip(kwarg_names, kw_defaults)
-                    kwarg_defaults[name] = value
-                end
-            end
 
             # store the default values for params
             if !isempty(p_defaults)
@@ -106,6 +141,13 @@ function extract_defaults(info, param_names, kwarg_names)
                 # so we need to keep updating them as we see them.
                 for (name, value) in zip(reverse(param_names), reverse(p_defaults))
                     param_defaults[name] = value
+                end
+            end
+
+            # store the default values for kwargs
+            if !isempty(kw_defaults)
+                for (name, value) in zip(kwarg_names, kw_defaults)
+                    kwarg_defaults[name] = value
                 end
             end
 
@@ -121,6 +163,7 @@ function extract_defaults(info, param_names, kwarg_names)
                 kwarg_defaults[name] = value
             end
         end
+
     end
 
     return param_defaults, kwarg_defaults
@@ -129,12 +172,10 @@ end
 
 function parse_func_info(f::Function; start=2)
 
-    method = first(methods(f))
+    func_methods = methods(f)
 
     # Extract parameter names and types
-    param_names = Base.method_argnames(method)[start:end]
-    param_types = fieldtypes(method.sig)[start:end]
-    kwarg_names = Base.kwarg_decl(method) 
+    param_names, param_types, kwarg_names = getsignames(func_methods)
 
     # Convert to low level IR code
     info = Base.code_lowered(f)
@@ -142,18 +183,13 @@ function parse_func_info(f::Function; start=2)
     # Extract default values
     param_defaults, kwarg_defaults = extract_defaults(info, param_names, kwarg_names)
 
-
     # Create a list of Param objects from parameters
     params = Vector{Param}()
     for (name, type) in zip(param_names, param_types)
-        try 
-            if haskey(param_defaults, name)
-                push!(params, Param(name=name, type=type, default=param_defaults[name], hasdefault=true))
-            else
-                push!(params, Param(name=name, type=type))
-            end
-        catch
-            println(name, type, param_defaults, kwarg_defaults)
+        if haskey(param_defaults, name)
+            push!(params, Param(name=name, type=type, default=param_defaults[name], hasdefault=true))
+        else
+            push!(params, Param(name=name, type=type))
         end
     end
 
@@ -171,7 +207,7 @@ function parse_func_info(f::Function; start=2)
     sig_params = vcat(params, keyword_args)
 
     return (
-        name = method.name,
+        name = first(func_methods).name,
         args = params,
         kwargs = keyword_args,
         sig = sig_params,
@@ -180,27 +216,22 @@ function parse_func_info(f::Function; start=2)
 end
 
 
-
-
 """
     struct_builder(::Type{T}, parameters::Dict{String,String}) where {T}
 
 Constructs an object of type `T` using the parameters in the dictionary `parameters`.
 """
 function struct_builder(::Type{T}, params::Dict{String,String}) :: T where {T}
-    params_with_symbols = Dict(Symbol(k) => v for (k, v) in params)
-
-    # property_names = extract_struct_info(T).names
-    # for name in property_names
-    #     if !haskey(params_with_symbols, name)
-    #         params_with_symbols[name] = missing
-    #     end
-    # end
-
-    return StructTypes.constructfrom(T, params_with_symbols)
+    has_kwdef = has_kwdef_constructor(T)
+    params_with_symbols = Dict(Symbol(k) => v for (k, v) in params)    
+    # case 1: Use slower converter to handle structs with keyword args
+    if has_kwdef
+        return kwarg_struct_builder(T, params_with_symbols)
+    # case 2: Use faster converter to handle structs with no defaults
+    else
+        return StructTypes.constructfrom(T, params_with_symbols)
+    end
 end
-
-
 
 """
     has_kwdef_constructor(T::Type) :: Bool
@@ -211,9 +242,10 @@ Otherwise, it returns `false`.
 Practically, this check is used to check if `@kwdef` was used to define the struct.
 """
 function has_kwdef_constructor(T::Type) :: Bool
+    fieldnames = Base.fieldnames(T)
     for constructor in methods(T)
         if length(Base.method_argnames(constructor)) == 1 && 
-            Tuple(Base.kwarg_decl(constructor)) == Base.fieldnames(T)
+            Tuple(Base.kwarg_decl(constructor)) == fieldnames
             return true
         end
     end
@@ -227,120 +259,23 @@ function extract_struct_info(T::Type)
     return (names=field_names, map=type_map)
 end
 
-# """
-#     struct_builder(TargetType::Type{T}, parameters::Dict{String,String}) where {T}
-
-# Constructs an object of type `T` using the parameters in the dictionary `parameters`.
-# """
-# function struct_builder(TargetType::Type{T}, params::Dict{String,String}) where {T}
-
-#     # This should run once for setup
-#     info = extract_struct_info(TargetType)
-#     has_kwdef = has_kwdef_constructor(TargetType)
-
-#     # Loops over parameters and converts the value to the correct type
-#     function parser(func::Function, parameters::Dict{String,String})
-#         for param_name in info.names
-#             # ignore unkown parameters
-#             if haskey(parameters, param_name)
-#                 param_value = parameters[param_name]
-#                 target_type = info.map[param_name]
-#                 parsed_value = target_type == Any || target_type == String ? param_value : parse(target_type, param_value)
-#                 func(param_name, parsed_value)
-#             end
-#         end
-#     end
-
-#     # Used to build the struct using keyword args
-#     function kwargbuilder(parameters::Dict{String,String}) :: T
-#         param_dict = Dict{Symbol, Any}()
-#         parser(parameters) do name, value
-#             param_dict[Symbol(name)] = value
-#         end
-#         return TargetType(;param_dict...)
-#     end
-
-#     # Used to build the struct using positional args
-#     function seqbuilder(parameters::Dict{String,String}) :: T
-#         casted_params = Vector{Any}()
-#         parser(parameters) do _, value
-#             push!(casted_params, value)
-#         end
-#         return TargetType(casted_params...)
-#     end
-
-#     return has_kwdef ? kwargbuilder(params) : seqbuilder(params)
-# end
-
-
-
-
-
-
-# """
-# Parse arguments from a function definition in Julia.
-
-#     This function handles four scenarios:
+function kwarg_struct_builder(TargetType::Type{T}, params::Dict{Symbol,String}) where {T}
     
-#     1. The argument has no type definition or default value.
-#     2. The argument has a type definition but no default value.
-#     3. The argument has a default value but no type definition.
-#     4. The argument has both a type definition and a default value.    
-# """
-# function parse_params(params::Vector{Union{Symbol,Expr}}) :: Vector{Param}
-#     param_info = Vector{Param}()
-#     for param in params
-#         if isa(param, Expr)
-#             if param.head == :kw
-#                 # Parameter with type and default value
-#                 name = isa(param.args[1], Expr) ? param.args[1].args[1] : param.args[1]
-#                 type = isa(param.args[1], Expr) ? eval(param.args[1].args[2]) : Any
-#                 default = param.args[2]
-#                 push!(param_info, Param(name, type, default))
-#             elseif param.head == :(::)
-#                 # Parameter with type but no default value
-#                 name = param.args[1]
-#                 type = eval(param.args[2])
-#                 push!(param_info, Param(name, type, missing))
-#             elseif param.head == :(=)
-#                 # Parameter with default value but no type
-#                 name = param.args[1]
-#                 default = param.args[2]
-#                 push!(param_info, Param(name, Any, default))
-#             end
-#         else
-#             # Parameter with no type or default value
-#             name = param
-#             push!(param_info, Param(name, Any, missing))
-#         end
-#     end
-#     return param_info
-# end
+    # This should run once for setup
+    info = extract_struct_info(TargetType)
+    param_dict = Dict{Symbol, Any}()
 
-
-
-# """
-#     parse_func_info(f::Function)
-
-# Extract information from a function definition.
-# This function extracts the name of the function, the arguments, and the keyword arguments from a function definition.
-# """
-# function parse_func_info(f::Function)
-#     m = first(methods(f))
-#     types = tuple(m.sig.types[2:end]...)
-#     str = code_string(f, types)
-#     expr = Meta.parse(str)
-
-#     info = splitdef(expr)
-#     args    :: Vector{Union{Symbol,Expr}} = get(info, :args, [])
-#     kwargs  :: Vector{Union{Symbol,Expr}} = get(info, :kwargs, [])
-
-#     return (
-#         name = info[:name],
-#         args = parse_params(args), 
-#         kwargs = parse_params(kwargs),
-#     )
-# end
-
+    for param_name in info.names
+        # ignore unkown parameters
+        if haskey(params, param_name)
+            param_value = params[param_name]
+            target_type = info.map[param_name]
+            parsed_value = target_type == Any || target_type == String ? param_value : parse(target_type, param_value)
+            param_dict[param_name] = parsed_value
+        end
+    end
+    
+    return TargetType(;param_dict...)
+end
 
 end

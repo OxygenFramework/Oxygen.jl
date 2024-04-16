@@ -1,5 +1,5 @@
 module Cron
-import Base: @kwdef
+using Base: @kwdef
 using Dates
 
 using ..Types: ActiveCron, RegisteredCron, Nullable

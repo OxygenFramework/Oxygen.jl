@@ -261,10 +261,10 @@ Internal helper function to launch the server in a consistent way
 """
 function startserver(ctx::Context; host, port, show_banner=false, docs=false, metrics=false, parallel=false, async=false, kwargs, start) :: Server
 
-    show_banner && serverwelcome(host, port, docs, metrics, parallel, ctx.docs.docspath[])
-
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
+
+    show_banner && serverwelcome(host, port, docs, metrics, parallel, ctx.docs.docspath[])
 
     # start the HTTP server
     ctx.service.server[] = start(preprocesskwargs(kwargs))
@@ -478,6 +478,8 @@ function alt_parse_func_params(route::String, func::Function)
             if !any(path_param -> path_param == route_param, pathparams)
         ]
         if !isempty(missing_params)
+            println(">> $route: has: $route_params, found: $pathparams")
+            println(">> info: $([p.name for p in info.args])")
             throw(ArgumentError("Your request handler is missing path parameters: {$(join(missing_params, ", "))} defined in this route: $route"))
         end
     end
@@ -487,67 +489,67 @@ end
 
 
 
-function parse_func_params(route::String, func::Function)
+# function parse_func_params(route::String, func::Function)
 
-    variableRegex = r"{[a-zA-Z0-9_]+}"
-    hasBraces = r"({)|(})"
+#     variableRegex = r"{[a-zA-Z0-9_]+}"
+#     hasBraces = r"({)|(})"
     
-    # track which index the params are located in
-    positions = []
-    for (index, value) in enumerate(HTTP.URIs.splitpath(route)) 
-        if contains(value, hasBraces)
-            # extract the variable name
-            variable = replace(value, hasBraces => "") |> x -> split(x, ":") |> first        
-            push!(positions, (index, variable))
-        end
-    end
+#     # track which index the params are located in
+#     positions = []
+#     for (index, value) in enumerate(HTTP.URIs.splitpath(route)) 
+#         if contains(value, hasBraces)
+#             # extract the variable name
+#             variable = replace(value, hasBraces => "") |> x -> split(x, ":") |> first        
+#             push!(positions, (index, variable))
+#         end
+#     end
 
-    method = first(methods(func))
-    numfields = method.nargs
+#     method = first(methods(func))
+#     numfields = method.nargs
 
-    # extract the function handler's field names & types 
-    fields = [x for x in fieldtypes(method.sig)]
-    func_param_names = [String(param) for param in Base.method_argnames(method)[3:end]]
-    func_param_types = splice!(Array(fields), 3:numfields)
+#     # extract the function handler's field names & types 
+#     fields = [x for x in fieldtypes(method.sig)]
+#     func_param_names = [String(param) for param in Base.method_argnames(method)[3:end]]
+#     func_param_types = splice!(Array(fields), 3:numfields)
 
-    # each tuple tracks where the param is refereced (variable, function index, path index)
-    param_positions::Array{Tuple{String, Int, Int}} = []
+#     # each tuple tracks where the param is refereced (variable, function index, path index)
+#     param_positions::Array{Tuple{String, Int, Int}} = []
 
-    # ensure the function params are present inside the path params 
-    for (_, path_param) in positions
-        hasparam = false
-        for (_, func_param) in enumerate(func_param_names)
-            if func_param == path_param 
-                hasparam = true
-                break
-            end
-        end
-        if !hasparam
-            throw("Your request handler is missing a parameter: '$path_param' defined in this route: $route")
-        end
-    end
+#     # ensure the function params are present inside the path params 
+#     for (_, path_param) in positions
+#         hasparam = false
+#         for (_, func_param) in enumerate(func_param_names)
+#             if func_param == path_param 
+#                 hasparam = true
+#                 break
+#             end
+#         end
+#         if !hasparam
+#             throw("Your request handler is missing a parameter: '$path_param' defined in this route: $route")
+#         end
+#     end
 
-    # ensure the path params are present inside the function params 
-    for (func_index, func_param) in enumerate(func_param_names)
-        matched = nothing
-        for (path_index, path_param) in positions
-            if func_param == path_param 
-                matched = (func_param, func_index, path_index)
-                break
-            end
-        end
-        if matched === nothing
-            throw("Your path is missing a parameter: '$func_param' which needs to be added to this route: $route")
-        else 
-            push!(param_positions, matched)
-        end
-    end
+#     # ensure the path params are present inside the function params 
+#     for (func_index, func_param) in enumerate(func_param_names)
+#         matched = nothing
+#         for (path_index, path_param) in positions
+#             if func_param == path_param 
+#                 matched = (func_param, func_index, path_index)
+#                 break
+#             end
+#         end
+#         if matched === nothing
+#             throw("Your path is missing a parameter: '$func_param' which needs to be added to this route: $route")
+#         else 
+#             push!(param_positions, matched)
+#         end
+#     end
 
-    # determine if we have parameters defined in our path
-    hasPathParams = contains(route, variableRegex) # Can this be replaced with !isempty(func_param_names)
+#     # determine if we have parameters defined in our path
+#     hasPathParams = contains(route, variableRegex) # Can this be replaced with !isempty(func_param_names)
 
-    return hasPathParams, func_param_names, func_param_types
-end
+#     return hasPathParams, func_param_names, func_param_types
+# end
 
 
 """
@@ -618,8 +620,6 @@ function parseargs(req::HTTP.Request, func_details) :: Vector
 
     return parameters
 end
-
-
 
 
 function registerhandler(router::Router, httpmethod::String, route::String, func::Function, hasPathParams::Bool, func_details::NamedTuple)
@@ -698,7 +698,7 @@ function setupmetrics(router::Router, history::History, docspath::String, histor
         return transactions
     end
     
-    function metrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
+    function innermetrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
 
         # create a threadsafe copy of the current transactions in our history object
         transactions = safe_get_transactions(history)
@@ -719,7 +719,7 @@ function setupmetrics(router::Router, history::History, docspath::String, histor
         
     end
 
-    register(router, GET, "$docspath/metrics/data/{window}/{latest}", metrics)
+    register(router, GET, "$docspath/metrics/data/{window}/{latest}", innermetrics)
 end
 
 

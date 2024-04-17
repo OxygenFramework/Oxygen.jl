@@ -25,9 +25,12 @@ struct Parameters
     b::Int
 end
 
+@get "/headers" function(req, headers::Header{Sample})
+    return headers.payload
+end
 
 @get "/add/{a}/{b}" function(req, a::String, path::Path{Parameters}, qparams::Query{Sample}, c::Float64=3.6)
-    return (a=a, path=path, query=qparams)
+    return (a=a, c=c, path=path, query=qparams)
 end
 
 @get "/" function(req)

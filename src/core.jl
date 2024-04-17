@@ -559,6 +559,7 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
     # check if handler has a :request kwarg
     info = func_details.info
     has_req_kwarg = any(p.name == :request for p in info.sig)
+    has_path_params = !isempty(info.args)
 
     # Get information about the function's arguments
     method = first(methods(func))
@@ -566,17 +567,17 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
 
     # Generate the function handler based on the input types
     arg_type = first_arg_type(method, httpmethod)
-    func_handle = select_handler(arg_type, has_req_kwarg, hasPathParams; no_args=no_args)
+    func_handle = select_handler(arg_type, has_req_kwarg, has_path_params; no_args=no_args)
 
-    # Wrap the generated handler so it can be registered with the router
-    if hasPathParams
+    # Figure out if we need to include parameter parsing logic for this route
+    if isempty(info.sig)
         handle = function(req::HTTP.Request)
-            path_parameters = extract_params(req, func_details)
-            func_handle(req, func; pathParams=path_parameters)
+            func_handle(req, func)
         end
     else
         handle = function(req::HTTP.Request)
-            func_handle(req, func)
+            path_parameters = extract_params(req, func_details)
+            func_handle(req, func; pathParams=path_parameters)
         end
     end
 

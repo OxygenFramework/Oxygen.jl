@@ -4,81 +4,85 @@ using Base: @kwdef
 using Test
 using HTTP
 using Suppressor
+using ProtoBuf
 using ..Constants
 using Oxygen; @oxidise
-using Oxygen: extractor, Param, LazyRequest
+using Oxygen: extract, Param, LazyRequest
+
+include("extensions/protobuf/messages/test_pb.jl")
+using .test_pb: MyMessage 
 
 struct Person
     name::String
     age::Int
 end
 
-@testset "JSON extractor" begin 
+@testset "JSON extract" begin 
     req = HTTP.Request("GET", "/", [], """{"name": "joe", "age": 25}""")
     param = Param(:person, Json{Person}, missing, false)
-    p = extractor(param, LazyRequest(request=req)).payload
+    p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 25
 end
 
-@testset "Partial JSON extractor" begin 
+@testset "Partial JSON extract" begin 
     req = HTTP.Request("GET", "/", [], """{ "person": {"name": "joe", "age": 25} }""")
-    param = Param(:person, PartialJson{Person}, missing, false)
-    p = extractor(param, LazyRequest(request=req)).payload
+    param = Param(:person, JsonFragment{Person}, missing, false)
+    p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 25
 end
 
 
-@testset "Form extractor" begin 
+@testset "Form extract" begin 
     req = HTTP.Request("GET", "/", [], """name=joe&age=25""")
     param = Param(:form, Form{Person}, missing, false)
-    p = extractor(param, LazyRequest(request=req)).payload
+    p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 25
 end
 
 
-@testset "Path extractor" begin 
+@testset "Path extract" begin 
     req = HTTP.Request("GET", "/person/john/20", [])
     req.context[:params] = Dict("name" => "john", "age" => "20") # simulate path params
 
     param = Param(:path, Path{Person}, missing, false)
-    p = extractor(param, LazyRequest(request=req)).payload
+    p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "john"
     @test p.age == 20
 end
 
 
-@testset "Query extractor" begin 
+@testset "Query extract" begin 
     req = HTTP.Request("GET", "/person?name=joe&age=30", [])
     param = Param(:query, Query{Person}, missing, false)
-    p = extractor(param, LazyRequest(request=req)).payload
+    p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 30
 end
 
-@testset "Header extractor" begin 
+@testset "Header extract" begin 
     req = HTTP.Request("GET", "/person", ["name" => "joe", "age" => "19"])
     param = Param(:header, Header{Person}, missing, false)
-    p = extractor(param, LazyRequest(request=req)).payload
+    p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 19
 end
 
 
-@testset "Body extractor" begin 
+@testset "Body extract" begin 
 
     # Parse Float64 from body
     req = HTTP.Request("GET", "/", [], "3.14")
     param = Param(:form, Body{Float64}, missing, false)
-    value = extractor(param, LazyRequest(request=req)).payload
+    value = extract(param, LazyRequest(request=req)).payload
     @test value == 3.14
 
     # Parse String from body
     req = HTTP.Request("GET", "/", [], "Here's a regular string")
     param = Param(:form, Body{String}, missing, false)
-    value = extractor(param, LazyRequest(request=req)).payload
+    value = extract(param, LazyRequest(request=req)).payload
     @test value == "Here's a regular string"
 end
 
@@ -88,18 +92,23 @@ end
     skip::Int = 33
 end
 
+@kwdef struct PersonWithDefault
+    name::String
+    age::Int
+    value::Float64 = 1.5
+end
+
 struct Parameters
     b::Int
 end
 
-
 @testset "Api tests" begin 
 
-    @get "/" function(req)
-        "home"
+    get("/") do 
+        text("home")
     end
 
-    @get "/headers" function(req, headers::Header{Sample})
+    get("/headers") do req, headers::Header{Sample}
         return headers.payload
     end
 
@@ -122,9 +131,13 @@ end
     get("/json") do req, data::Json{Sample}
         return data.payload
     end
+ 
+    post("/protobuf") do req, data::ProtoBuffer{MyMessage}
+        return  protobuf(data.payload)
+    end
 
-    get("/json/partial") do req, p1::PartialJson{Sample}, p2::PartialJson{Sample}
-        return json(person1=p1, person2=p2)
+    post("/json/partial") do req, p1::JsonFragment{PersonWithDefault}, p2::JsonFragment{PersonWithDefault}
+        return json((p1=p1.payload, p2=p2.payload))
     end
 
     @get "/path/add/{a}/{b}" function(req, a::Int, path::Path{Parameters}, qparams::Query{Sample}, c::Nullable{Int}=23)
@@ -151,6 +164,42 @@ end
     @test data["limit"] == 10
     @test data["skip"] == 33
    
+
+    r = internalrequest(HTTP.Request("POST", "/json/partial", [], """
+    {
+        "p1": {
+            "name": "joe",
+            "age": "24"
+        },
+        "p2": {
+            "name": "kim",
+            "age": "25",
+            "value": 100.0
+        }
+    }
+    """))
+
+    @test r.status == 200
+    data = json(r)
+    p1 = data["p1"]
+    p2 = data["p2"]
+
+    @test p1["name"] == "joe"
+    @test p1["age"] == 24
+    @test p1["value"] == 1.5
+
+    @test p2["name"] == "kim"
+    @test p2["age"] == 25
+    @test p2["value"] == 100
+
+    message = MyMessage(-1, ["a", "b"])
+    r = internalrequest(protobuf(message, "/protobuf"))
+    decoded_msg = protobuf(r, MyMessage)
+
+    @test decoded_msg isa MyMessage
+    @test decoded_msg.a == -1
+    @test decoded_msg.b == ["a", "b"]
+
 end
 
 

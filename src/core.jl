@@ -492,14 +492,13 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
 
-    hasPathParams = !isempty(func_details.pathparams)
     path_params = [(param.name, param.type) for param in func_details.info.sig if param.name in func_details.pathparams]
 
     # Register the route schema with out autodocs module
     registerschema(ctx.docs, route, httpmethod, path_params, Base.return_types(func))
 
     # Register the route with the router
-    registerhandler(ctx.service.router, httpmethod, route, func, hasPathParams, func_details)
+    registerhandler(ctx.service.router, httpmethod, route, func, func_details)
 end
 
 
@@ -510,12 +509,10 @@ docs and metrics
 function register(router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
-
     func_details = parse_func_params(route, func)
-    hasPathParams = !isempty(func_details.pathparams)
 
     # Register the route with the router
-    registerhandler(router, httpmethod, route, func, hasPathParams, func_details)
+    registerhandler(router, httpmethod, route, func, func_details)
 end
 
 
@@ -527,12 +524,12 @@ function extract_params(req::HTTP.Request, func_details) :: Vector{Any}
     info, pathparams, queryparams = func_details
     lazy_req = LazyRequest(request=req)
     parameters = Vector{Any}()
-
+    
     for param in info.sig
         name = string(param.name)
 
         if param.type <: Extractor
-            push!(parameters, extractor(param, lazy_req))
+            push!(parameters, extract(param, lazy_req))
 
         elseif param.name in pathparams
             raw_pathparams = Types.pathparams(lazy_req)
@@ -554,11 +551,11 @@ function extract_params(req::HTTP.Request, func_details) :: Vector{Any}
 end
 
 
-function registerhandler(router::Router, httpmethod::String, route::String, func::Function, hasPathParams::Bool, func_details::NamedTuple)
+function registerhandler(router::Router, httpmethod::String, route::String, func::Function, func_details::NamedTuple)
 
     # check if handler has a :request kwarg
     info = func_details.info
-    has_req_kwarg = any(p.name == :request for p in info.sig)
+    has_req_kwarg = any(p.name == :request for p in info.kwargs)
     has_path_params = !isempty(info.args)
 
     # Get information about the function's arguments

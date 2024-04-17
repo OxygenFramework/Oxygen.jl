@@ -5,6 +5,8 @@ using ..Types
 
 export parse_func_info, struct_builder, extract_struct_info
 
+const IGNORED_TYPES = Set([Expr, Core.ReturnNode, Core.GotoNode, Core.SlotNumber, Core.NewvarNode, Core.GotoIfNot])
+
 """
 Helper function to access the underlying value of any global references
 """
@@ -51,7 +53,9 @@ end
 
 
 """
-The args is a vector that follows this shape like This
+Parses the args in a Expr object and returns any positional and keyword default values
+
+The args parameter is a vector that follows this shape like This
 [
     kwarg defaults...,
     slots..., 
@@ -61,7 +65,6 @@ The args is a vector that follows this shape like This
 function splitargs(args::Vector)
     param_defaults = Vector{Any}()
     kwarg_defaults = Vector{Any}()
-
     encountered_slot = false
     for arg in args
         if isa(arg, Core.SSAValue)
@@ -76,7 +79,6 @@ function splitargs(args::Vector)
     end
     return param_defaults, kwarg_defaults
 end
-
 
 """
 This function extract default values from a list of expressions
@@ -116,7 +118,7 @@ function extract_defaults(info, param_names, kwarg_names)
             need to extract it early and store it for later use. If we can parse default values
             normally then the temp values won't get used.
             """
-            if typeof(expr) ∉ [Expr, Core.ReturnNode, Core.GotoNode, Core.SlotNumber, Core.NewvarNode, Core.GotoIfNot]
+            if typeof(expr) ∉ IGNORED_TYPES
                 push!(temp_kwarg_defaults, expr)
             end
 
@@ -124,7 +126,7 @@ function extract_defaults(info, param_names, kwarg_names)
             """
             1.) skip any non expressions
             2.) skip any non call expressions
-            3.) skip any Core expressions
+            3.) skip any Expr that doesn't have a slotnumber as the first arg
             """
             if !isa(expr, Expr) || expr.head != :call || !isa(first(expr.args), Core.SlotNumber)
                 continue
@@ -213,22 +215,6 @@ function parse_func_info(f::Function; start=2)
     )
 end
 
-"""
-    struct_builder(::Type{T}, parameters::Dict{String,String}) where {T}
-
-Constructs an object of type `T` using the parameters in the dictionary `parameters`.
-"""
-function struct_builder(::Type{T}, params::Dict{String,String}) :: T where {T}
-    has_kwdef = has_kwdef_constructor(T)
-    params_with_symbols = Dict(Symbol(k) => v for (k, v) in params)    
-    # case 1: Use slower converter to handle structs with keyword args
-    if has_kwdef
-        return kwarg_struct_builder(T, params_with_symbols)
-    # case 2: Use faster converter to handle structs with no defaults
-    else
-        return StructTypes.constructfrom(T, params_with_symbols)
-    end
-end
 
 """
     has_kwdef_constructor(T::Type) :: Bool
@@ -256,18 +242,57 @@ function extract_struct_info(T::Type)
     return (names=field_names, map=type_map)
 end
 
-function kwarg_struct_builder(TargetType::Type{T}, params::Dict{Symbol,String}) where {T}
+function parsetype(target_type::Type{T}, value::Any) :: T where {T}
+    if value isa T
+        return value
+    elseif value isa AbstractString
+        return parse(target_type, value)
+    else
+        return convert(target_type, value)
+    end
+end
+
+"""
+    struct_builder(::Type{T}, parameters::Dict{String,String}) where {T}
+
+Constructs an object of type `T` using the parameters in the dictionary `parameters`.
+"""
+function struct_builder(::Type{T}, params::AbstractDict) :: T where {T}
+    has_kwdef = has_kwdef_constructor(T)
+    params_with_symbols = Dict(Symbol(k) => v for (k, v) in params)   
+    if has_kwdef
+        # case 1: Use slower converter to handle structs with default values
+        return kwarg_struct_builder(T, params_with_symbols)
+    else
+        # case 2: Use faster converter to handle structs with no defaults
+        return StructTypes.constructfrom(T, params_with_symbols)
+    end
+end
+
+"""
+    kwarg_struct_builder(TargetType::Type{T}, params::AbstractDict) where {T}
+"""
+function kwarg_struct_builder(TargetType::Type{T}, params::AbstractDict) where {T}
     
-    # This should run once for setup
     info = extract_struct_info(TargetType)
     param_dict = Dict{Symbol, Any}()
 
     for param_name in info.names
+
         # ignore unkown parameters
         if haskey(params, param_name)
             param_value = params[param_name]
             target_type = info.map[param_name]
-            parsed_value = target_type == Any || target_type == String ? param_value : parse(target_type, param_value)
+
+            # Figure out how to parse the current param
+            if target_type == Any || target_type == String
+                parsed_value = param_value
+            elseif isstructtype(target_type)
+                parsed_value = struct_builder(target_type, param_value)
+            else
+                parsed_value = parsetype(target_type, param_value)
+            end
+
             param_dict[param_name] = parsed_value
         end
     end

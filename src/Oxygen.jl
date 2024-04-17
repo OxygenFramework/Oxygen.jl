@@ -37,7 +37,7 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route,
         redirect, queryparams, formdata, format_sse_message,
         html, text, json, file, xml, js, css, binary,
         # Extractors
-        Path, Query, Header, Json, PartialJson, Form, Body, validate,
+        Path, Query, Header, Json, JsonFragment, Form, Body, extract, validate,
         # Docs
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 

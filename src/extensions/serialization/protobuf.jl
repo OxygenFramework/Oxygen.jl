@@ -1,7 +1,8 @@
 import HTTP
 import .ProtoBuf: encode, decode, ProtoDecoder, ProtoEncoder
+import .Core.Extractors: Extractor, extract, try_validate
 
-export protobuf
+export protobuf, ProtoBuffer, extract
 
 """
     protobuf(request::HTTP.Request, type::Type{T}) :: T where {T}
@@ -20,6 +21,10 @@ function protobuf(request::HTTP.Request, type::Type{T}) :: T where {T}
     return decode(ProtoDecoder(io), type)
 end
 
+function protobuf(response::HTTP.Response, type::Type{T}) :: T where {T}
+    io = IOBuffer(response.body)
+    return decode(ProtoDecoder(io), type)
+end
 
 """
     protobuf(content::T, url::String, method::String = "POST") :: HTTP.Request where {T}
@@ -71,3 +76,16 @@ function protobuf(content::T; status = 200, headers = []) :: HTTP.Response where
     return response
 end
 
+
+struct ProtoBuffer{T} <: Extractor{T}
+    payload::T
+end
+
+"""
+Extracts a Protobuf message from a request and converts it into a custom struct
+"""
+function extract(param::Param{ProtoBuffer{T}}, request::LazyRequest) :: ProtoBuffer{T} where {T}
+    instance = protobuf(request.request, T)
+    valid_instance = try_validate(param.name, instance)
+    return ProtoBuffer{T}(valid_instance)
+end

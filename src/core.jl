@@ -1,5 +1,6 @@
 module Core
 
+using Base: @kwdef
 using HTTP
 using HTTP: Router
 using Sockets 
@@ -11,11 +12,11 @@ using RelocatableFolders
 using DataStructures: CircularDeque
 import Base.Threads: lock
 
+include("util.jl");         @reexport using .Util
 include("types.jl");        @reexport using .Types 
 include("constants.jl");    @reexport using .Constants
 include("handlers.jl");     @reexport using .Handlers
 include("context.jl");      @reexport using .AppContext
-include("util.jl");         @reexport using .Util
 include("cron.jl");         @reexport using .Cron
 include("repeattasks.jl");  @reexport using .RepeatTasks
 include("autodoc.jl");      @reexport using .AutoDoc
@@ -454,8 +455,8 @@ function parse_func_params(route::String, func::Function)
             # push the variables from the struct into the params array
             if param.type <: Path
                 inner_type = gettype(param) |> fieldtypes |> first
-                struct_info = extract_struct_info(inner_type)
-                push!(pathparams, struct_info.names...)
+                field_names = fieldnames(inner_type)
+                push!(pathparams, field_names...)
             elseif param.type <: Query
                 push!(queryparams, param.name)
             end
@@ -472,8 +473,6 @@ function parse_func_params(route::String, func::Function)
             if !any(path_param -> path_param == route_param, pathparams)
         ]
         if !isempty(missing_params)
-            println(">> $route: has: $route_params, found: $pathparams")
-            println(">> info: $([p.name for p in info.args])")
             throw(ArgumentError("Your request handler is missing path parameters: {$(join(missing_params, ", "))} defined in this route: $route"))
         end
     end
@@ -520,29 +519,27 @@ function register(router::Router, httpmethod::String, route::Union{String,Functi
 end
 
 
-
 """
 Given an incoming request, parse out each argument and prepare it to get passed to the 
 corresponding handler. 
 """
-function parseargs(req::HTTP.Request, func_details) :: Vector{Any}
+function extract_params(req::HTTP.Request, func_details) :: Vector{Any}
     info, pathparams, queryparams = func_details
-
-    raw_pathparams = HTTP.getparams(req)
-    raw_queryparams = Util.queryparams(req)
-
+    lazy_req = LazyRequest(request=req)
     parameters = Vector{Any}()
 
     for param in info.sig
         name = string(param.name)
 
         if param.type <: Extractor
-            push!(parameters, extractor(param, req))
+            push!(parameters, extractor(param, lazy_req))
 
         elseif param.name in pathparams
+            raw_pathparams = Types.pathparams(lazy_req)
             push!(parameters, parseparam(param.type, raw_pathparams[name]))
 
         elseif param.name in queryparams
+            raw_queryparams = Types.queryvars(lazy_req)
             # if the query parameter is not present, use the default value if available
             if !haskey(raw_queryparams, name) && param.hasdefault
                 push!(parameters, param.default)
@@ -574,7 +571,7 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
     # Wrap the generated handler so it can be registered with the router
     if hasPathParams
         handle = function(req::HTTP.Request)
-            path_parameters = parseargs(req, func_details)
+            path_parameters = extract_params(req, func_details)
             func_handle(req, func; pathParams=path_parameters)
         end
     else

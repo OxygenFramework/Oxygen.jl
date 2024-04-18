@@ -2,7 +2,7 @@
 
 # OAuth2 with Umbrella.jl
 
-[Umbrella.jl](https://github.com/jiachengzhang1/Umbrella.jl) is a simple Julia authentication plugin, it supports Google and GitHub OAuth2 with more to come. Umbrella integrates with Julia web framework such as [Genie.jl](https://github.com/GenieFramework/Genie.jl), [Oxygen.jl](https://github.com/ndortega/Oxygen.jl) or [Mux.jl](https://github.com/JuliaWeb/Mux.jl) effortlessly.
+[Umbrella.jl](https://github.com/jiachengzhang1/Umbrella.jl) is a simple Julia authentication plugin, it supports Google and GitHub OAuth2 with more to come. Umbrella integrates with Julia web framework such as [Genie.jl](https://github.com/GenieFramework/Genie.jl), [Oxygen.jl](https://github.com/OxygenFramework/Oxygen.jl) or [Mux.jl](https://github.com/JuliaWeb/Mux.jl) effortlessly.
 
 ## Prerequisite
 Before using the plugin, you need to obtain OAuth 2 credentials, see [Google Identity Step 1](https://developers.google.com/identity/protocols/oauth2#1.-obtain-oauth-2.0-credentials-from-the-dynamic_data.setvar.console_name-.), [GitHub: Creating an OAuth App](https://docs.github.com/en/developers/apps/building-oauth-apps/creating-an-oauth-app) for details.
@@ -44,7 +44,7 @@ const options = Configuration.Options(;
 oauth2_instance = init(:google, options)
 ```
 
-The examples will use [Oxygen.jl](https://github.com/ndortega/Oxygen.jl) as the web framework, but the concept is the same for other web frameworks.
+The examples will use [Oxygen.jl](https://github.com/OxygenFramework/Oxygen.jl) as the web framework, but the concept is the same for other web frameworks.
 
 ### 2. Handle provider redirection
 

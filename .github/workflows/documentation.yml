@@ -9,13 +9,16 @@ on:
 
 jobs:
   build:
-    permissions: write-all
+    permissions:
+      contents: write  # Required when authenticating with `GITHUB_TOKEN`, not needed when authenticating with SSH deploy keys
+      pull-requests: read  # Required when using `push_preview=true`
+      statuses: write  # Optional, used to report documentation build statuses
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
-          version: '1.6'
+          version: '1'
       - name: Install dependencies
         run: julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
       - name: Build and deploy

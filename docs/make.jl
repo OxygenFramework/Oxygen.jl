@@ -25,7 +25,7 @@ makedocs(
 # See "Hosting Documentation" and deploydocs() in the Documenter manual
 # for more information.
 deploydocs(
-    repo = "https://github.com/OxygenFramework/Oxygen.jl.git",
+    repo = "github.com/OxygenFramework/Oxygen.jl.git",
     push_preview = false
 )
 

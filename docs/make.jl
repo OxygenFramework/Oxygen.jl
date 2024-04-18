@@ -26,6 +26,7 @@ makedocs(
 # for more information.
 deploydocs(
     repo = "https://github.com/OxygenFramework/Oxygen.jl.git",
+    push_preview = false
 )
 
 

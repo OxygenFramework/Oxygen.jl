@@ -754,7 +754,7 @@ mergeschema(Dict(
                     Dict(
                         "name" => "a",
                         "in" => "path",
-                        "required" => "true",
+                        "required" => true,
                         "schema" => Dict(
                             "type" => "number"
                         )
@@ -762,7 +762,7 @@ mergeschema(Dict(
                     Dict(
                         "name" => "b",
                         "in" => "path",
-                        "required" => "true",
+                        "required" => true,
                         "schema" => Dict(
                             "type" => "number"
                         )

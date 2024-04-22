@@ -261,7 +261,7 @@ function registerschema(docs::Documenation, path::String, httpmethod::String, pa
         param = Dict( 
             "in" => "path",
             "name" => "$name", 
-            "required" => "true",
+            "required" => true,
             "schema" => Dict(
                 "type" => gettype(type)
             )

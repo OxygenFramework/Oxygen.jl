@@ -1,5 +1,6 @@
 module Extractors
 
+using Base: @kwdef
 using HTTP
 using Dates
 using StructTypes
@@ -10,40 +11,46 @@ using ..Types
 
 export Extractor, extract, validate, 
     Path, Query, Header, Json, JsonFragment, Form, Body
-      
 
 abstract type Extractor{T} end
 
+"""
+Given a classname, build a new Extractor class
+"""
+macro extractor(class_name)
+    quote
+        struct $(Symbol(class_name)){T} <: Extractor{T} 
+            payload::Union{T, Nothing}
+            validate::Union{Function, Nothing}
+            type::Type{T}
+        
+            # Pass Type for payload
+            $(Symbol(class_name))(::Type{T}) where T = new{T}(nothing, nothing, T)
+        
+            # Pass Type for payload & validator
+            $(Symbol(class_name))(::Type{T}, f::Function) where T = new{T}(nothing, f, T)
+        
+            # Pass object directly
+            $(Symbol(class_name))(payload::T) where {T} = new{T}(payload, nothing, T)
+        
+            # Pass object directly & validator
+            $(Symbol(class_name))(payload::T, f::Function) where {T} = new{T}(payload, f, T)
+        end
+    end |> esc
+end
+
 ## RequestParts Extractors
 
-struct Path{T} <: Extractor{T}
-    payload::T
-end
-
-struct Query{T} <: Extractor{T} 
-    payload::T
-end
-struct Header{T} <: Extractor{T}
-    payload::T
-end
+@extractor Path
+@extractor Query
+@extractor Header
 
 ## RequestContent Extractors
 
-struct Json{T} <: Extractor{T} 
-    payload::T
-end
-
-struct JsonFragment{T} <: Extractor{T}
-    payload::T
-end
-
-struct Form{T} <: Extractor{T}
-    payload::T
-end
-
-struct Body{T} <: Extractor{T} 
-    payload::T
-end
+@extractor Json
+@extractor JsonFragment
+@extractor Form
+@extractor Body
 
 # Generic validation function - if no validate function is defined for a type, return true
 validate(type::T) where {T} = true

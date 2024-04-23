@@ -87,9 +87,10 @@ const History = CircularDeque{HTTPTransaction}
     hasdefault::Bool = false
 end
 
-function gettype(param::Param{T}) :: Type{T} where T
+function gettype(::Param{T}) :: Type{T} where T
     return T
 end
+
 
 """
     hasdefault(param::Param{T}) where T

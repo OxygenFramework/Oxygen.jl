@@ -9,7 +9,7 @@ using ..Util: text, json, partialjson, formdata, parseparam
 using ..Reflection: struct_builder
 using ..Types
 
-export Extractor, extract, validate, 
+export Extractor, extract, validate, extracttype,
     Path, Query, Header, Json, JsonFragment, Form, Body
 
 abstract type Extractor{T} end
@@ -26,17 +26,25 @@ macro extractor(class_name)
         
             # Pass Type for payload
             $(Symbol(class_name))(::Type{T}) where T = new{T}(nothing, nothing, T)
-        
+            $(Symbol(class_name)){T}(::Type{T}) where T = new{T}(nothing, nothing, T)
+
             # Pass Type for payload & validator
             $(Symbol(class_name))(::Type{T}, f::Function) where T = new{T}(nothing, f, T)
-        
+            $(Symbol(class_name)){T}(::Type{T}, f::Function) where T = new{T}(nothing, f, T)
+
             # Pass object directly
-            $(Symbol(class_name))(payload::T) where {T} = new{T}(payload, nothing, T)
-        
+            $(Symbol(class_name))(payload::T) where T = new{T}(payload, nothing, T)
+            $(Symbol(class_name)){T}(payload::T) where T = new{T}(payload, nothing, T)
+
             # Pass object directly & validator
-            $(Symbol(class_name))(payload::T, f::Function) where {T} = new{T}(payload, f, T)
+            $(Symbol(class_name))(payload::T, f::Function) where T = new{T}(payload, f, T)
+            $(Symbol(class_name)){T}(payload::T, f::Function) where T = new{T}(payload, f, T)
         end
     end |> esc
+end
+
+function extracttype(::Type{U}) where {T, U <: Extractor{T}}
+    return T
 end
 
 ## RequestParts Extractors

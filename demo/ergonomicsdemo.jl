@@ -77,40 +77,57 @@ end
     sample::Sample
 end
 
-# f = function(req::HTTP.Request, query = Query(Sample), header = Json(Container{Int}), a=5, b=10; c="wow", d=3.5)
+global thing = 234
 
-#     function dothing(a)
-#         println(a)
-#     end
+f = function myfunc(req::HTTP.Request, query = Query(Sample), header = Json(Container{Int}), a=5, b=10; c="wow", d=thing, request)
 
-#     dothing(3)
-#     function another(a)
-#         println(a)
-#     end
+    function dothing(a)
+        println(a)
+    end
 
-#     another("Hi")
+    dothing(3)
+    function another(a)
+        println(a)
+    end
 
-#     return query.payload |> json
-# end 
+    another("Hi")
+
+    return query.payload |> json
+end 
+
+# for m in methods(f)
+#     Base.kwarg_decl(m) |> println
+# end
+
 
 # info = parse_func_info(f)
-# p = info.sig_map[:query]
+
+# for x in info.kwargs
+#     println(x)
+# end
+# for (k,v) in info.sig_map
+#     println(k, " : ", v)
+# end 
 
 # println(p.default)
 # println(typeof(p.default))
 # println(isstructtype(typeof(p.default)))
 
 a = Query(Sample(10, 20))
-b = Query(Sample)
-c = Query(Sample, x -> x.limit > 10)
-d = Query{Sample}
+# b = Query(Sample)
+# c = Query(Sample, x -> x.limit > 10)
+# d = Query{Sample}
 
-println(a)
-println(b)
-println(c)
-println(d)
 
-c.validate(Sample(11, 20)) |> println
+println(fieldnames(a.type))
+
+
+# println(a)
+# println(b)
+# println(c)
+# println(d)
+
+# c.validate(Sample(11, 20)) |> println
 
 # println(fieldnames(typeof(x)))
 # println(x isa Extractor)

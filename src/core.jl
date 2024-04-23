@@ -454,8 +454,8 @@ function parse_func_params(route::String, func::Function)
         elseif param.type <: Extractor
             # push the variables from the struct into the params array
             if param.type <: Path
-                inner_type = gettype(param) |> fieldtypes |> first
-                field_names = fieldnames(inner_type)
+                innner_type = param.type |> extracttype
+                field_names = fieldnames(innner_type)
                 push!(pathparams, field_names...)
             elseif param.type <: Query
                 push!(queryparams, param.name)

@@ -230,6 +230,7 @@ websocket(func::Function, path::Function)  = route([WEBSOCKET], path, func)
 
 ### Core Routing Functions Support for do..end Syntax ###
 
+get(collection, key, default)           = Base.get(collection, key, default) # pass through other get calls to base.get()
 get(func::Function, path::String)       = route([GET], path, func)
 get(func::Function, path::Function)     = route([GET], path, func)
 
@@ -244,8 +245,6 @@ patch(func::Function, path::Function)   = route([PATCH], path, func)
 
 delete(func::Function, path::String)    = route([DELETE], path, func)
 delete(func::Function, path::Function)  = route([DELETE], path, func)
-
-
 
 """
     @staticfiles(folder::String, mountdir::String, headers::Vector{Pair{String,String}}=[])

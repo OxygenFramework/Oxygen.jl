@@ -19,6 +19,7 @@ include("handlertests.jl")
 
 #### Core Tests ####
 
+include("precompilationtest.jl")
 include("extractortests.jl")
 include("reflectiontests.jl")
 include("metricstests.jl")

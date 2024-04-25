@@ -1,0 +1,7 @@
+name = "TestPackage"
+uuid = "3de84ad7-74ec-4978-af9b-7fbc7fd80352"
+authors = ["Nathan Ortega <nate.ortega95@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+Oxygen = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"

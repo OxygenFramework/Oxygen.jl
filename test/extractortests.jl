@@ -9,6 +9,9 @@ using ..Constants
 using Oxygen; @oxidise
 using Oxygen: extract, Param, LazyRequest, Extractor
 
+# extend the built-in validate function
+import Oxygen: validate
+
 include("extensions/protobuf/messages/test_pb.jl")
 using .test_pb: MyMessage 
 
@@ -17,6 +20,8 @@ struct Person
     age::Int
 end
 
+# Add a lower bound to age with a global validator
+validate(p::Person) = p.age >= 0
 
 @testset "Extactor builder sytnax" begin 
 
@@ -58,6 +63,19 @@ end
     p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 25
+
+
+    # Test that negative age trips the global validator
+    req = HTTP.Request("GET", "/", [], """name=joe&age=-4""")
+    param = Param(:form, Form{Person}, missing, false)
+    @test_throws ArgumentError extract(param, LazyRequest(request=req))
+
+
+    # Test that age < 25 trips the local validator
+    req = HTTP.Request("GET", "/", [], """name=joe&age=10""")
+    default_value = Form(Person, x -> x.age > 25)
+    param = Param(:form, Form{Person}, default_value, true)
+    @test_throws ArgumentError extract(param, LazyRequest(request=req))
 end
 
 
@@ -82,7 +100,7 @@ end
     # test custom instance validator
     req = HTTP.Request("GET", "/person?name=joe&age=30", [])
     default_value = Query(Person, x -> x.age > 25)
-    param = Param(:query, typeof(default_value), default_value, true)
+    param = Param(:query, Query{Person}, default_value, true)
     p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 30

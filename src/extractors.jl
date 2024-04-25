@@ -64,24 +64,27 @@ end
 # Generic validation function - if no validate function is defined for a type, return true
 validate(type::T) where {T} = true
 
+"""
+This function will try to validate an instance of a type using both global and local validators. 
+If both validators pass, the instance is returned. If either fails, an ArgumentError is thrown.
+"""
 function try_validate(param::Param{U}, instance::T) :: T where {T, U <: Extractor{T}}
-    # Case 1: Use custom validate function from an Extractor (if defined)
+
+    # Case 1: Use global validate function - returns true if one isn't defined for this type
+    if !validate(instance)
+        impl = Base.which(validate, (T,))
+        throw(ArgumentError("Validation failed for $(param.name): $T \n|> $instance \n|> $impl"))   
+    end
+
+    # Case 2: Use custom validate function from an Extractor (if defined)
     if param.hasdefault && param.default isa U && !isnothing(param.default.validate)
-        if param.default.validate(instance)
-            return instance
-        else
+        if !param.default.validate(instance)
             impl = Base.which(param.default.validate, (T,))
             throw(ArgumentError("Validation failed for $(param.name): $T \n|> $instance \n|> $impl"))
         end
-    # Case 2: Use global validate function - returns true if one isn't defined for this type
-    else
-        if validate(instance)
-            return instance
-        else
-            impl = Base.which(validate, (T,))
-            throw(ArgumentError("Validation failed for $(param.name): $T \n|> $instance \n|> $impl"))
-        end
     end
+    
+    return instance
 end
 
 """

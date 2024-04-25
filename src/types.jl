@@ -14,8 +14,7 @@ using ..Util
 export Server, History, HTTPTransaction, TaggedRoute, Nullable, 
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition,
-    Param, hasdefault,
-    LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
+    Param, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
 
 const Nullable{T} = Union{T, Nothing}
 
@@ -87,19 +86,6 @@ const History = CircularDeque{HTTPTransaction}
     hasdefault::Bool = false
 end
 
-"""
-    hasdefault(param::Param{T}) where T
-
-Check if a parameter has a default value.
-# Arguments
-- `param::Param{T}`: The parameter to check.
-
-# Returns
-- `Boolean`: Returns `true` if the parameter has a default value, `false` otherwise.
-"""
-function hasdefault(param::Param{T}) :: Bool where T
-    return param.hasdefault
-end
 
 # Lazily init frequently used components of a request to be used between parameters when parsing
 @kwdef struct LazyRequest
@@ -130,7 +116,7 @@ function queryvars(req::LazyRequest) :: Nullable{Dict{String,String}}
     if isnothing(req.queryparams[])
         req.queryparams[] = Util.queryparams(req.request)
     end
-    return req.queryparams[] 
+    return req.queryparams[]
 end
 
 function jsonbody(req::LazyRequest) :: Nullable{JSON3.Object}

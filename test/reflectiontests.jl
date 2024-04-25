@@ -17,10 +17,6 @@ end
     # Parse the function info
     info = splitdef(test_func)
 
-    for s in info.sig
-        println(s.name)
-    end
-
     @testset "Function name" begin
         @test info.name == :test_func
     end

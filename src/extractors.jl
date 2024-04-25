@@ -1,11 +1,12 @@
 module Extractors
 
+using JSON3
 using Base: @kwdef
 using HTTP
 using Dates
 using StructTypes
 
-using ..Util: text, json, partialjson, formdata, parseparam
+using ..Util: text, json, formdata, parseparam
 using ..Reflection: struct_builder, extract_struct_info
 using ..Types
 
@@ -87,7 +88,7 @@ end
 Extracts a JSON object from a request and converts it into a custom struct
 """
 function extract(param::Param{Json{T}}, request::LazyRequest) :: Json{T} where {T}
-    instance = json(request.request, T; content=textbody(request))
+    instance = JSON3.read(textbody(request), T)
     valid_instance = try_validate(param, instance)
     return Json{T}(valid_instance)
 end

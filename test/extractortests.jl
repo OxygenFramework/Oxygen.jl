@@ -7,7 +7,7 @@ using Suppressor
 using ProtoBuf
 using ..Constants
 using Oxygen; @oxidise
-using Oxygen: extract, Param, LazyRequest
+using Oxygen: extract, Param, LazyRequest, Extractor
 
 include("extensions/protobuf/messages/test_pb.jl")
 using .test_pb: MyMessage 
@@ -15,6 +15,24 @@ using .test_pb: MyMessage
 struct Person
     name::String
     age::Int
+end
+
+
+@testset "Extactor builder sytnax" begin 
+
+    @test Json(Person) isa Extractor
+    @test Json{Person}(Person) isa Extractor
+
+    @test Json(Person, x -> x.age >= 25) isa Extractor
+    @test Json{Person}(Person, x -> x.age >= 25) isa Extractor
+
+    p = Person("joe", 25)
+
+    @test Json(p) isa Extractor
+    @test Json{Person}(p) isa Extractor
+
+    @test Json(p, x -> x.age >= 25) isa Extractor
+    @test Json{Person}(p, x -> x.age >= 25) isa Extractor
 end
 
 @testset "JSON extract" begin 

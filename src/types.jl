@@ -14,7 +14,7 @@ using ..Util
 export Server, History, HTTPTransaction, TaggedRoute, Nullable, 
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition,
-    Param, hasdefault, gettype, 
+    Param, hasdefault,
     LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
 
 const Nullable{T} = Union{T, Nothing}
@@ -86,11 +86,6 @@ const History = CircularDeque{HTTPTransaction}
     default::Union{T, Missing} = missing
     hasdefault::Bool = false
 end
-
-function gettype(::Param{T}) :: Type{T} where T
-    return T
-end
-
 
 """
     hasdefault(param::Param{T}) where T

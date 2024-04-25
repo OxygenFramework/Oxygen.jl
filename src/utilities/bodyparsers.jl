@@ -3,7 +3,7 @@ using HTTP
 using JSON3
 using StructTypes
 
-export text, binary, json, partialjson, formdata
+export text, binary, json, formdata
 
 ### Helper functions used to parse the body of a HTTP.Request object
 
@@ -44,10 +44,7 @@ end
 
 Read the body of a HTTP.Request as JSON with additional arguments for the read/serializer.
 """
-function json(req::HTTP.Request; content = nothing, kwargs...)
-    if !isnothing(content)
-        return JSON3.read(content; kwargs...)
-    end
+function json(req::HTTP.Request; kwargs...)
     body = IOBuffer(HTTP.payload(req))
     return eof(body) ? nothing : JSON3.read(body; kwargs...)    
 end
@@ -57,33 +54,11 @@ end
 
 Read the body of a HTTP.Request as JSON with additional arguments for the read/serializer into a custom struct.
 """
-function json(req::HTTP.Request, classtype::Type{T}; content = nothing, kwargs...) :: T where {T}
-    if !isnothing(content)
-        return JSON3.read(content, classtype; kwargs...)
-    end
+function json(req::HTTP.Request, classtype::Type{T}; kwargs...) :: T where {T}
     body = IOBuffer(HTTP.payload(req))
     return eof(body) ? nothing : JSON3.read(body, classtype; kwargs...)    
 end
 
-"""
-    partialjson(request::HTTP.Request, key::Symbol; keyword_arguments...) :: JSON3.Object
-
-Read a specific key from the body of a HTTP.Request as JSON with additional arguments for the read/serializer.
-"""
-function partialjson(request::HTTP.Request, key::Symbol; kwargs...) :: JSON3.Object
-    return JSON3.read(request.body; kwargs...)[key]
-end
-
-"""
-    partialjson(request::HTTP.Request, key::Symbol, classtype::Type{T}; keyword_arguments...) :: T where {T}
-
-Read a specific key from the body of a HTTP.Request as JSON and deserialize it into a custom struct with additional arguments for the read/serializer.
-"""
-function partialjson(request::HTTP.Request, key::Symbol, classtype::Type{T}; kwargs...) :: T where {T}
-    partial = JSON3.read(request.body; kwargs...)[key]
-    partial_with_symbols = Dict(Symbol(k) => v for (k, v) in partial)
-    return StructTypes.constructfrom(T, partial_with_symbols)
-end
 
 ### Helper functions used to parse the body of an HTTP.Response object
 

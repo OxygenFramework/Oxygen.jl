@@ -116,11 +116,11 @@ end
         text("home")
     end
 
-    get("/headers") do req, headers::Header{Sample}
+    @get "/headers" function(req, headers = Header(Sample, s -> s.limit > 5))
         return headers.payload
     end
 
-    get("/form") do req, form::Form{Sample}
+    post("/form") do req, form::Form{Sample}
         return form.payload |> json
     end
 
@@ -128,15 +128,15 @@ end
         return query.payload |> json
     end
 
-    get("/body/string") do req, body::Body{String}
+    post("/body/string") do req, body::Body{String}
         return body.payload
     end
 
-    get("/body/float") do req, body::Body{Float64}
+    post("/body/float") do req, body::Body{Float64}
         return body.payload
     end
 
-    get("/json") do req, data::Json{Sample}
+    @post "/json" function(req, data = Json(PersonWithDefault, s -> s.value < 10))
         return data.payload
     end
  
@@ -160,6 +160,26 @@ end
     @test r.status == 200
     @test text(r) == "10"
 
+    r = internalrequest(HTTP.Request("POST", "/form", [], """limit=10&skip=25"""))
+    @test r.status == 200
+    data = json(r)
+    @test data["limit"] == 10
+    @test data["skip"] == 25
+
+    r = internalrequest(HTTP.Request("GET", "/query?limit=10&skip=25"))
+    @test r.status == 200
+    data = json(r)
+    @test data["limit"] == 10
+    @test data["skip"] == 25
+    
+    r = internalrequest(HTTP.Request("POST", "/body/string", [], """Hello World!"""))
+    @test r.status == 200
+    @test text(r) == "Hello World!"
+
+    r = internalrequest(HTTP.Request("POST", "/body/float", [], """3.14"""))
+    @test r.status == 200
+    @test parse(Float64, text(r)) == 3.14
+
     @suppress_err begin 
         # should fail since we are missing query params
         r = internalrequest(HTTP.Request("GET", "/path/add/3/7"))
@@ -171,7 +191,36 @@ end
     data = json(r)
     @test data["limit"] == 10
     @test data["skip"] == 33
-   
+
+    @suppress_err begin 
+        # should fail since we are missing query params
+        r = internalrequest(HTTP.Request("GET", "/headers", ["limit" => "3"], ""))
+        @test r.status == 500
+    end
+
+    @suppress_err begin 
+        # value is higher than the limit set in the validator
+        r = internalrequest(HTTP.Request("POST", "/json", [], """
+        {
+            "name": "joe",
+            "age": 24,
+            "value": 12.0
+        }
+        """))
+        @test r.status == 500
+    end
+
+    r = internalrequest(HTTP.Request("POST", "/json", [], """
+    {
+        "name": "joe",
+        "age": 24,
+        "value": 4.8
+    }
+    """))
+    data = json(r)
+    @test data["name"] == "joe"
+    @test data["age"] == 24
+    @test data["value"] == 4.8
 
     r = internalrequest(HTTP.Request("POST", "/json/partial", [], """
     {

@@ -3,13 +3,18 @@ using StructTypes
 using Base: @kwdef
 using ..Types
 
-export parse_func_info, struct_builder, extract_struct_info
+export splitdef, struct_builder, extract_struct_info
 
 """
 Helper function to access the underlying value of any global references
 """
 function getargvalue(arg)
     return isa(arg, GlobalRef) ? getfield(arg.mod, arg.name) : arg
+end
+
+
+function checkname(g::GlobalRef, name::Symbol)
+    return g.name == name
 end
 
 """
@@ -91,7 +96,7 @@ end
 3.) If that statement has any SSA values, we lookup those statements
 4.) We continue this process until we reach the end of the expression and evaluate it all
 
-The net result should be a list of default values that correspond to the initial function signature
+The net result should be a list of default values that lines up with the initial function signature
 """
 function build_sig(expression, statements::Dict{Core.SSAValue, Any})
 
@@ -140,6 +145,112 @@ function build_sig(expression, statements::Dict{Core.SSAValue, Any})
 end
 
 
+function walkargs(predicate::Function, expr)
+    if isdefined(expr, :args)
+        for arg in expr.args
+            if predicate(arg)
+                return true
+            end
+            walkargs(predicate, arg)
+        end
+    end
+    return false
+end 
+
+function reconstruct(info::Core.CodeInfo, func_name::Symbol)
+    
+    # Track which index the function signature can be found on
+    sig_index = nothing
+
+    # create a dictionary of statements
+    statements = Dict{Core.SSAValue, Any}()
+    assignments = Dict{Core.SlotNumber, Any}()
+
+    # create a unique flag for each call to mark missing values
+    NO_VALUES = gensym()
+
+    function rebuild!(values::AbstractVector)
+        return rebuild!.(values)
+    end
+
+    function rebuild!(expr::Expr)
+        expr.args = rebuild!.(expr.args)
+        return expr
+    end
+
+    function rebuild!(ssa::Core.SSAValue)
+        return rebuild!(statements[ssa])
+    end
+
+    function rebuild!(slot::Core.SlotNumber)
+        value = get(assignments, slot, NO_VALUES)
+        return value == NO_VALUES ? slot : rebuild!(value)
+    end
+
+    function rebuild!(value::Any)
+        return value
+    end
+    
+    for (index, expr) in enumerate(info.code)
+
+        ssa_index = Core.SSAValue(index)
+        statements[ssa_index] = expr 
+
+        if expr isa Expr
+            if expr.head == :(=)
+                (lhs, rhs) = expr.args  
+                try
+                    assignments[lhs] = eval(rebuild!(rhs))
+                catch 
+                end
+                
+            # identify the function signature
+            elseif isdefined(expr, :args) && expr.head == :call
+                for arg in expr.args
+                    if arg isa Core.SlotNumber && arg.id == 1
+                        sig_index = ssa_index
+                    end
+                end
+            end
+        end     
+    end
+
+
+    # exit early if no sig is found
+    if isnothing(sig_index)
+        # if there is not function signature, then we filter out the values directly
+        return [arg for arg in info.code if !is_lowered(arg)]
+    end 
+
+
+    # Recursively build an expression of the actual type of each argument in the function signature
+    evaled_sig = rebuild!(statements[sig_index])
+
+    default_values = []
+
+    for arg in evaled_sig.args
+
+        contains_func_name = walkargs(arg) do x
+            # Super generic check to see if the function name is in the expression
+            return contains("$x", "$func_name")
+        end
+
+        if contains_func_name || arg == NO_VALUES  || arg isa GlobalRef && contains("$(arg.name)", "$func_name")
+            continue            
+        end
+
+        if  arg isa Expr
+            push!(default_values, eval(arg))
+        else
+            push!(default_values, arg)
+        end
+    end
+
+    return default_values
+end
+
+
+
 """
 Return true if the given object is one of the types found in lowered IR code
 Values were taken from here: https://docs.julialang.org/en/v1/devdocs/ast/#Lowered-form
@@ -155,38 +266,38 @@ function is_lowered(instance::Any) :: Bool
 end
 
 
-function readcodeinfo(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names, kwarg_names; start=2)
+
+"""
+Returns true if the CodeInfo block has an expression where the first arg is a SlotNumber with id 1
+"""
+function has_sig_expr(info::Core.CodeInfo) :: Bool
+    for expr in info.code
+        # identify the function signature
+        if isdefined(expr, :args) && expr.head == :call
+            first_arg = first(expr.args)
+            if first_arg isa Core.SlotNumber && first_arg.id == 1
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names, kwarg_names; start=2)
 
     param_defaults = Dict()
     kwarg_defaults = Dict()
 
     for c in info
 
-        sig_index = nothing
-
-        # create a dictionary of statements
-        statements = Dict{Core.SSAValue, Any}()
-        
-        for (index, expr) in enumerate(c.code)
-            ssa_index = Core.SSAValue(index)
-            # identify the function signature
-            if isdefined(expr, :args) && expr.head == :call
-                first_arg = first(expr.args) 
-                if first_arg isa Core.SlotNumber && first_arg.id == 1
-                    sig_index = ssa_index
-                end
-            end
-            statements[ssa_index] = expr
+        # skip parsing function bodys which normally start with newvarnodes
+        if first(c.code) isa Core.NewvarNode
+            continue
         end
 
-        if !isnothing(sig_index)
-            # if we have a function signature defined in the CodeInfo, then we can rebuild the signature
-            sig_args = build_sig(statements[sig_index], statements)[start:end]
-        else
-            # if there is not function signature, then we filter out the values directly
-            sig_args = [arg for arg in c.code if !is_lowered(arg)]
-        end
-        
+        sig_args = reconstruct(c, func_name)
+
+    
         p_defaults, kw_defaults = splitargs(sig_args, func_name)
 
         # store the default values for params
@@ -211,25 +322,28 @@ function readcodeinfo(info::Vector{Core.CodeInfo}, func_name::Symbol, param_name
 end
 
 
-function parse_func_info(f::Function; start=2)
+function splitdef(f::Function; start=1)
+
+    # Convert to low level IR code
+    info = Base.code_lowered(f)
 
     func_methods = methods(f)
     func_name = first(func_methods).name
 
     # Extract parameter names and types
-    param_names, param_types, kwarg_names = getsignames(func_methods; start=start)
-
-    # Convert to low level IR code
-    info = Base.code_lowered(f)
+    param_names, param_types, kwarg_names = getsignames(func_methods)
 
     # Extract default values
-    param_defaults, kwarg_defaults  = readcodeinfo(info, func_name, param_names, kwarg_names; start=start)
+    param_defaults, kwarg_defaults = extract_defaults(info, func_name, param_names, kwarg_names)
 
     # Create a list of Param objects from parameters
     params = Vector{Param}()
     for (name, type) in zip(param_names, param_types)
         if haskey(param_defaults, name)
-            push!(params, Param(name=name, type=type, default=param_defaults[name], hasdefault=true))
+            # inferr the type of the parameter based on the default value
+            param_default = param_defaults[name]
+            inferred_type = type == Any ? typeof(param_default) : type
+            push!(params, Param(name=name, type=inferred_type, default=param_default, hasdefault=true))
         else
             push!(params, Param(name=name, type=type))
         end
@@ -246,12 +360,12 @@ function parse_func_info(f::Function; start=2)
         end
     end
 
-    sig_params = vcat(params, keyword_args)
+    sig_params = vcat(params, keyword_args)[start:end]
 
     return (
         name = func_name,
-        args = params,
-        kwargs = keyword_args,
+        args = params[start:end],
+        kwargs = keyword_args[start:end],
         sig = sig_params,
         sig_map = Dict{Symbol,Param}(param.name => param for param in sig_params)
     )

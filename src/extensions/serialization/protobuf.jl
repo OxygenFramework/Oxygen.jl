@@ -86,6 +86,6 @@ Extracts a Protobuf message from a request and converts it into a custom struct
 """
 function extract(param::Param{ProtoBuffer{T}}, request::LazyRequest) :: ProtoBuffer{T} where {T}
     instance = protobuf(request.request, T)
-    valid_instance = try_validate(param.name, instance)
+    valid_instance = try_validate(param, instance)
     return ProtoBuffer{T}(valid_instance)
 end

@@ -60,6 +60,14 @@ end
     p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 30
+
+    # test custom instance validator
+    req = HTTP.Request("GET", "/person?name=joe&age=30", [])
+    default_value = Query(Person, x -> x.age > 25)
+    param = Param(:query, typeof(default_value), default_value, true)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p.name == "joe"
+    @test p.age == 30
 end
 
 @testset "Header extract" begin 

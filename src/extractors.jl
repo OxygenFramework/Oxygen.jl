@@ -6,7 +6,7 @@ using Dates
 using StructTypes
 
 using ..Util: text, json, partialjson, formdata, parseparam
-using ..Reflection: struct_builder
+using ..Reflection: struct_builder, extract_struct_info
 using ..Types
 
 export Extractor, extract, validate, extracttype,
@@ -63,13 +63,23 @@ end
 # Generic validation function - if no validate function is defined for a type, return true
 validate(type::T) where {T} = true
 
-function try_validate(name::Symbol, instance::T) :: T where {T}
-    if validate(instance)
-        return instance
+function try_validate(param::Param{U}, instance::T) :: T where {T, U <: Extractor{T}}
+    # Case 1: Use custom validate function from an Extractor (if defined)
+    if param.hasdefault && param.default isa U && !isnothing(param.default.validate)
+        if param.default.validate(instance)
+            return instance
+        else
+            impl = Base.which(param.default.validate, (T,))
+            throw(ArgumentError("Validation failed for $(param.name): $T \n|> $instance \n|> $impl"))
+        end
+    # Case 2: Use global validate function - returns true if one isn't defined for this type
     else
-        # Figure out which validator failed and convert the function to a string
-        impl = Base.which(validate, (T,))
-        throw(ArgumentError("Validation failed for $name: $T \n|> $instance \n|> $impl"))
+        if validate(instance)
+            return instance
+        else
+            impl = Base.which(validate, (T,))
+            throw(ArgumentError("Validation failed for $(param.name): $T \n|> $instance \n|> $impl"))
+        end
     end
 end
 
@@ -78,7 +88,7 @@ Extracts a JSON object from a request and converts it into a custom struct
 """
 function extract(param::Param{Json{T}}, request::LazyRequest) :: Json{T} where {T}
     instance = json(request.request, T; content=textbody(request))
-    valid_instance = try_validate(param.name, instance)
+    valid_instance = try_validate(param, instance)
     return Json{T}(valid_instance)
 end
 
@@ -89,7 +99,7 @@ Extracts a part of a json object from the body of a request and converts it into
 function extract(param::Param{JsonFragment{T}}, request::LazyRequest) :: JsonFragment{T} where {T}
     body = Types.jsonbody(request)[param.name]
     instance = struct_builder(T, body)
-    valid_instance = try_validate(param.name, instance)
+    valid_instance = try_validate(param, instance)
     return JsonFragment{T}(valid_instance)
 end
 
@@ -99,7 +109,7 @@ Extracts the body from a request and convert it into a custom type
 """
 function extract(param::Param{Body{T}}, request::LazyRequest) :: Body{T} where {T}
     instance = parseparam(T, textbody(request); escape=false)
-    valid_instance = try_validate(param.name, instance)
+    valid_instance = try_validate(param, instance)
     return Body{T}(valid_instance)
 end
 
@@ -109,7 +119,7 @@ Extracts a Form from a request and converts it into a custom struct
 function extract(param::Param{Form{T}}, request::LazyRequest) :: Form{T} where {T}
     form = Types.formbody(request)
     instance = struct_builder(T, form)
-    valid_instance = try_validate(param.name, instance)
+    valid_instance = try_validate(param, instance)
     return Form{T}(valid_instance) 
 end
 
@@ -119,7 +129,7 @@ Extracts path parameters from a request and convert it into a custom struct
 function extract(param::Param{Path{T}}, request::LazyRequest) :: Path{T} where {T}
     params = Types.pathparams(request)
     instance = struct_builder(T, params)
-    valid_instance = try_validate(param.name, instance)
+    valid_instance = try_validate(param, instance)
     return Path{T}(valid_instance)
 end
 
@@ -129,7 +139,7 @@ Extracts query parameters from a request and convert it into a custom struct
 function extract(param::Param{Query{T}}, request::LazyRequest) :: Query{T} where {T}
     params = Types.queryvars(request)
     instance = struct_builder(T, params)
-    valid_instance = try_validate(param.name, instance)
+    valid_instance = try_validate(param, instance)
     return Query{T}(valid_instance)
 end
 
@@ -139,7 +149,7 @@ Extracts Headers from a request and convert it into a custom struct
 function extract(param::Param{Header{T}}, request::LazyRequest) :: Header{T}  where {T}
     headers = Types.headers(request)
     instance = struct_builder(T, headers)
-    valid_instance = try_validate(param.name, instance)
+    valid_instance = try_validate(param, instance)
     return Header{T}(valid_instance)
 end
 

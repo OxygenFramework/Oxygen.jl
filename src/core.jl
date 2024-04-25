@@ -432,7 +432,7 @@ function parse_func_params(route::String, func::Function)
         4. extrators can be used alongside traditional path & query params
     """
 
-    info = parse_func_info(func, start=3) # skip the indentifying first arg 
+    info = splitdef(func, start=2) # skip the indentifying first arg 
 
     # collect path param definitions from the route string
     hasBraces = r"({)|(})"
@@ -553,14 +553,14 @@ end
 
 function registerhandler(router::Router, httpmethod::String, route::String, func::Function, func_details::NamedTuple)
 
-    # check if handler has a :request kwarg
-    info = func_details.info
-    has_req_kwarg = any(p.name == :request for p in info.kwargs)
-    has_path_params = !isempty(info.args)
-
     # Get information about the function's arguments
     method = first(methods(func))
     no_args = method.nargs == 1
+
+    # check if handler has a :request kwarg
+    info = func_details.info
+    has_req_kwarg = :request in Base.kwarg_decl(method)
+    has_path_params = !isempty(info.args)
 
     # Generate the function handler based on the input types
     arg_type = first_arg_type(method, httpmethod)

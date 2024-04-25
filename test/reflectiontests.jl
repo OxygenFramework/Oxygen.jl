@@ -1,20 +1,25 @@
 module ReflectionTests
 
 using Test
-using Oxygen: parse_func_info
+using Oxygen: splitdef
 
 function getinfo(f::Function)
-    return parse_func_info(f)
+    return splitdef(f)
 end
 
-@testset "parse_func_info tests" begin
+
+@testset "splitdef tests" begin
     # Define a function for testing
     function test_func(a::Int, b::Float64; c="default", d=true, request)
         return a, b, c, d
     end
 
     # Parse the function info
-    info = getinfo(test_func)
+    info = splitdef(test_func)
+
+    for s in info.sig
+        println(s.name)
+    end
 
     @testset "Function name" begin
         @test info.name == :test_func
@@ -78,7 +83,7 @@ end
 end
 
 
-@testset "parse_func_info anonymous function tests" begin
+@testset "splitdef anonymous function tests" begin
     # Define a function for testing
     
     
@@ -145,11 +150,11 @@ end
     end
 end
 
-@testset "parse_func_info do..end syntax" begin
+@testset "splitdef do..end syntax" begin
 
 
     # Parse the function info
-    info = parse_func_info() do a::Int, b::Float64
+    info = splitdef() do a::Int, b::Float64
         return a, b
     end
 

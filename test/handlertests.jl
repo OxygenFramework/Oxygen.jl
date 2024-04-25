@@ -14,7 +14,7 @@ end
     return text("$(a*2)")
 end
 
-@get "/singlearg" function(req;request)
+@get "/singlearg" function(req; request)
     @test isa(req, HTTP.Request)
     @test isa(request, HTTP.Request)
     return text("Hello World")

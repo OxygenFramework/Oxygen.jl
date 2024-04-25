@@ -13,10 +13,6 @@ function getargvalue(arg)
 end
 
 
-function checkname(g::GlobalRef, name::Symbol)
-    return g.name == name
-end
-
 """
 Return all parameter name & types and keyword argument names from a function
 """
@@ -87,63 +83,6 @@ function splitargs(args::Vector, func_name::Symbol)
     end
     return param_defaults, kwarg_defaults
 end
-
-
-
-"""
-1.) iterate through a top level expression
-2.) If any SSA values are found, we lookup that statement, 
-3.) If that statement has any SSA values, we lookup those statements
-4.) We continue this process until we reach the end of the expression and evaluate it all
-
-The net result should be a list of default values that lines up with the initial function signature
-"""
-function build_sig(expression, statements::Dict{Core.SSAValue, Any})
-
-    # Create a list to store the default values
-    default_values = []
-
-    # helper fucntion to handle Expressions
-    function handle_ssa(expr::Expr)
-        handle_ssa(expr.args)
-    end
-
-    # Define a recursive function to handle the SSA values
-    function handle_ssa(args::Vector{Any})
-        for arg in args
-            if arg isa Core.SSAValue
-                expr = statements[arg]
-
-                # Replace the SSA values in the arguments with their corresponding expressions
-                expr.args = [x isa Core.SSAValue ? statements[x] : x for x in expr.args]
-
-                # Check if the expression has any SSA values
-                has_ssa = !isempty(findall(x -> isa(x, Core.SSAValue), expr.args))
-
-                # If the expression doesn't have any SSA values, evaluate it
-                if !has_ssa
-                    # Evaluate the expression and push the result
-                    push!(default_values, getargvalue(eval(expr)))
-                else
-                    # If the expression has SSA values, handle them recursively
-                    for x in expr.args 
-                        if isa(x, Core.SSAValue)
-                            handle_ssa(x)
-                        else
-                            push!(default_values, getargvalue(x))
-                        end
-                    end
-                end
-            else
-                push!(default_values, getargvalue(arg))
-            end
-        end
-    end
-
-    handle_ssa(expression)
-    return default_values
-end
-
 
 function walkargs(predicate::Function, expr)
     if isdefined(expr, :args)
@@ -296,8 +235,6 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
         end
 
         sig_args = reconstruct(c, func_name)
-
-    
         p_defaults, kw_defaults = splitargs(sig_args, func_name)
 
         # store the default values for params

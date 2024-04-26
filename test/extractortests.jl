@@ -15,9 +15,16 @@ import Oxygen: validate
 include("extensions/protobuf/messages/test_pb.jl")
 using .test_pb: MyMessage 
 
+
+
 struct Person
     name::String
     age::Int
+end
+
+@kwdef struct Home
+    address::String
+    owner::Person
 end
 
 # Add a lower bound to age with a global validator
@@ -46,6 +53,25 @@ end
     p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 25
+end
+
+@testset "kwarg_struct_builder Nested test" begin 
+    req = HTTP.Request("GET", "/", [], """
+    {
+        "address": "123 main street",
+        "owner": {
+            "name": "joe",
+            "age": 25
+        }
+    }
+    """)
+    param = Param(:person, Json{Home}, missing, false)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p isa Home
+    @test p.owner isa Person
+    @test p.address == "123 main street"
+    @test p.owner.name == "joe"
+    @test p.owner.age == 25
 end
 
 @testset "Partial JSON extract" begin 

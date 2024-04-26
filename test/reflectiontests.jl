@@ -1,12 +1,58 @@
 module ReflectionTests
 
 using Test
+using Base: @kwdef
 using Oxygen: splitdef
+using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder
+
+struct Person
+    name::String
+    age::Int
+end
+
+@kwdef struct Home
+    address::String
+    owner::Person
+end
+
 
 function getinfo(f::Function)
     return splitdef(f)
 end
 
+@testset "getsignames tests" begin
+
+    function test_func(a::Int, b::Float64; c="default", d=true, request)
+        return a, b, c, d
+    end
+
+    args, arg_types, kwarg_names = getsignames(test_func)
+
+    @test args == [:a, :b]
+    @test arg_types == [Int, Float64]
+    @test kwarg_names == [:c, :d, :request]
+end
+
+@testset "parsetype tests" begin
+    parsetype(Int, 3) == 3
+    parsetype(Int, "3") == 3
+    parsetype(Float64, "3") == 3.0
+    parsetype(Float64, 3) == 3.0
+end
+
+@testset "JSON Nested extract" begin 
+
+    converted = kwarg_struct_builder(Home, Dict(
+        :address => "123 main street",
+        :owner => Dict(
+            :name => "joe",
+            :age => 25
+        )
+    ))
+
+    @test converted == Home("123 main street", Person("joe", 25))
+
+end
 
 @testset "splitdef tests" begin
     # Define a function for testing

@@ -24,8 +24,8 @@ end
 Return parameter name & types and keyword argument names from a list of methods
 """
 function getsignames(func_methods::Base.MethodList; start=2)
-    sig = Vector{Symbol}()
-    types = Vector{Type}()
+    arg_names = Vector{Symbol}()
+    arg_types = Vector{Type}()
     kwarg_names = Vector{Symbol}()
 
     # track position & types of parameters in the function signature
@@ -34,9 +34,9 @@ function getsignames(func_methods::Base.MethodList; start=2)
         argnames = Base.method_argnames(m)[start:end]
         argtypes = fieldtypes(m.sig)[start:end]
         for (i, (argname, type)) in enumerate(zip(argnames, argtypes))
-            if argname ∉ sig
-                push!(sig, argname)
-                push!(types, type)
+            if argname ∉ arg_names
+                push!(arg_names, argname)
+                push!(arg_types, type)
                 positions[argname] = i
             end
         end
@@ -46,7 +46,7 @@ function getsignames(func_methods::Base.MethodList; start=2)
             end
         end
     end
-    return sig, types, kwarg_names
+    return arg_names, arg_types, kwarg_names
 end
 
 
@@ -68,12 +68,12 @@ function splitargs(args::Vector, func_name::Symbol)
     encountered_slot = false
 
     for arg in args
-        # check if this is a function name
-        if arg isa Core.GlobalRef && startswith(String(arg.name), "$func_name#")
-            continue
-        elseif isa(arg, Core.SSAValue)
-            continue
-        elseif isa(arg, Core.SlotNumber)
+        # # check if this is a function name
+        # if arg isa Core.GlobalRef && startswith(String(arg.name), "$func_name#")
+        #     continue
+        # elseif isa(arg, Core.SSAValue)
+        #     continue
+        if isa(arg, Core.SlotNumber)
             encountered_slot = true
         elseif !encountered_slot
             push!(kwarg_defaults, getargvalue(arg))
@@ -206,21 +206,21 @@ end
 
 
 
-"""
-Returns true if the CodeInfo block has an expression where the first arg is a SlotNumber with id 1
-"""
-function has_sig_expr(info::Core.CodeInfo) :: Bool
-    for expr in info.code
-        # identify the function signature
-        if isdefined(expr, :args) && expr.head == :call
-            first_arg = first(expr.args)
-            if first_arg isa Core.SlotNumber && first_arg.id == 1
-                return true
-            end
-        end
-    end
-    return false
-end
+# """
+# Returns true if the CodeInfo block has an expression where the first arg is a SlotNumber with id 1
+# """
+# function has_sig_expr(info::Core.CodeInfo) :: Bool
+#     for expr in info.code
+#         # identify the function signature
+#         if isdefined(expr, :args) && expr.head == :call
+#             first_arg = first(expr.args)
+#             if first_arg isa Core.SlotNumber && first_arg.id == 1
+#                 return true
+#             end
+#         end
+#     end
+#     return false
+# end
 
 function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names, kwarg_names; start=2)
 

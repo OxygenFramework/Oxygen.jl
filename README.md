@@ -256,7 +256,7 @@ Query parameters can be declared directly inside of your handlers signature. Any
 - If a default value is not provided, it's assumed to be a required parameter
 
 ```julia
-@get "/query" function(req::HTTP.Request, a::Int, message="hello world")
+@get "/query" function(req::HTTP.Request, a::Int, message::String="hello world")
     return (a, message)
 end
 ```
@@ -348,31 +348,63 @@ serve()
 
 ## Extractors
 
-Oxygen comes with several built-in extractors to reduce the amount of boilerplate required to serialize inputs to your function handlers.With this new feature all you need to do is provide a struct definition and choose where to ingest the data from.
+Oxygen comes with several built-in extractors designed to reduce the amount of boilerplate required to serialize inputs to your handler functions. By simply defining a struct and specifying the data source, these extractors streamline the process of data ingestion & validation through a uniform api.
 
+- The serialized data is accessible through the `payload` property
+- Can be used alongside other parameters and extractors
 - Default values can be assigned when defined with the `@kwdef` macro
-- Can be used alongside other extractors and parameters
 - Includes both global and local validators
+- Struct definitions can be deeply nested
 
-Extractors: `Path`, `Query`, `Header`, `Json`, `JsonFragment`, `Form`, `Body`
+Supported Extractors:
 
+- `Path` - extracts from path parameters
+- `Query` - extracts from query parameters, 
+- `Header` - extracts from request headers
+- `Form` - extracts form data from the request body
+- `Body` - serializes the entire request body to a given type (String, Float64, etc..)
+- `ProtoBuffer` - extracts the `ProtoBuf` message from the request body (available through a package extension)
+- `Json` - extracts json from the request body
+- `JsonFragment` - extracts a "fragment" of the json body using the parameter name to identify and extract the corresponding top-level key
+
+
+#### Using Extractors & Parameters
+
+In this example we show that the `Path` extractor can be used alongside regular path parameters. This Also works with regular query parameters and the `Query` extractor.
 
 ```julia
 struct Add
-    a::Int
     b::Int
+    c::Int
 end
 
-@get "/add/{a}/{b}" function(req, pathparams::Path{Add})
+@get "/add/{a}/{b}/{c}" function(req, a::Int, pathparams::Path{Add})
     add = pathparams.payload # access the serialized payload
-    return add.a + add.b
+    return a + add.b + add.c
 end
 ```
 
+#### Default Values
+
+Default values can be setup with structs using the `@kwdef` macro. As you might expect these values do not need to be passed
+
+```julia
+@kwdef struct Pet
+    name::String
+    age::Int = 10
+end
+
+@post "/pet" function(req, params::Json{Pet})
+    return params.payload # access the serialized payload
+end
+```
 
 #### Validation
 
-On top of serializing incoming data, you can also define your own validation rules by using the `validate` function. In the example below we show how to use both `global` and `local` validators in your code
+On top of serializing incoming data, you can also define your own validation rules by using the `validate` function. In the example below we show how to use both `global` and `local` validators in your code.
+
+- Validators are completely optional
+- During the validation phase, oxygen will call the `global` validator before running a `local` validator.
 
 ```julia
 import Oxygen: validate
@@ -391,7 +423,8 @@ validate(p::Person) = p.age >= 0
 end
 
 # In this case, both global and local validators are ran (this also makes sure the person is age 21+)
-@post "/adult" function(req, newperson = Json(Person, p -> p.age >= 21))
+# You can also use this sytnax instead: Json(Person, p -> p.age >= 21)
+@post "/adult" function(req, newperson = Json{Person}(p -> p.age >= 21))
     return newperson.payload
 end
 ```

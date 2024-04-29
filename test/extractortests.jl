@@ -32,19 +32,15 @@ validate(p::Person) = p.age >= 0
 
 @testset "Extactor builder sytnax" begin 
 
-    @test Json(Person) isa Extractor
-    @test Json{Person}(Person) isa Extractor
+    @test Json{Person}(x -> x.age >= 25) isa Extractor
 
+    @test Json(Person) isa Extractor
     @test Json(Person, x -> x.age >= 25) isa Extractor
-    @test Json{Person}(Person, x -> x.age >= 25) isa Extractor
 
     p = Person("joe", 25)
 
     @test Json(p) isa Extractor
-    @test Json{Person}(p) isa Extractor
-
     @test Json(p, x -> x.age >= 25) isa Extractor
-    @test Json{Person}(p, x -> x.age >= 25) isa Extractor
 end
 
 @testset "JSON extract" begin 
@@ -99,7 +95,7 @@ end
 
     # Test that age < 25 trips the local validator
     req = HTTP.Request("GET", "/", [], """name=joe&age=10""")
-    default_value = Form(Person, x -> x.age > 25)
+    default_value = Form{Person}(x -> x.age > 25)
     param = Param(:form, Form{Person}, default_value, true)
     @test_throws ArgumentError extract(param, LazyRequest(request=req))
 end
@@ -125,7 +121,7 @@ end
 
     # test custom instance validator
     req = HTTP.Request("GET", "/person?name=joe&age=30", [])
-    default_value = Query(Person, x -> x.age > 25)
+    default_value = Query{Person}(x -> x.age > 25)
     param = Param(:query, Query{Person}, default_value, true)
     p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
@@ -198,7 +194,7 @@ end
         return body.payload
     end
 
-    @post "/json" function(req, data = Json(PersonWithDefault, s -> s.value < 10))
+    @post "/json" function(req, data = Json{PersonWithDefault}(s -> s.value < 10))
         return data.payload
     end
  

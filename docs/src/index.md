@@ -386,7 +386,7 @@ end
 
 #### Default Values
 
-Default values can be setup with structs using the `@kwdef` macro. As you might expect these values do not need to be passed
+Default values can be setup with structs using the `@kwdef` macro.
 
 ```julia
 @kwdef struct Pet

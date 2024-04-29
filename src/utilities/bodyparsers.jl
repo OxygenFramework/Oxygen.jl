@@ -1,6 +1,7 @@
 
 using HTTP 
 using JSON3
+using StructTypes
 
 export text, binary, json, formdata
 
@@ -59,15 +60,15 @@ function json(req::HTTP.Request, classtype::Type{T}; kwargs...) :: T where {T}
 end
 
 
-### Helper functions used to parse the body of an HTTP.Messages.Response object
+### Helper functions used to parse the body of an HTTP.Response object
 
 
 """
-    text(response::HTTP.Messages.Response)
+    text(response::HTTP.Response)
 
-Read the body of a HTTP.Messages.Response as a String
+Read the body of a HTTP.Response as a String
 """
-function text(response::HTTP.Messages.Response) :: String
+function text(response::HTTP.Response) :: String
     return String(response.body)
 end
 
@@ -82,20 +83,22 @@ end
 
 
 """
-    json(response::HTTP.Messages.Response; keyword_arguments)
+    json(response::HTTP.Response; keyword_arguments)
 
-Read the body of a HTTP.Messages.Response as JSON with additional keyword arguments
+Read the body of a HTTP.Response as JSON with additional keyword arguments
 """
-function json(response::HTTP.Messages.Response; kwargs...) :: JSON3.Object
-    return JSON3.read(String(response.body); kwargs...)
+function json(response::HTTP.Response; kwargs...) :: JSON3.Object
+    return JSON3.read(response.body; kwargs...)
 end
 
 
 """
-    json(response::HTTP.Messages.Response, classtype; keyword_arguments)
+    json(response::HTTP.Response, classtype; keyword_arguments)
 
-Read the body of a HTTP.Messages.Response as JSON with additional keyword arguments and serialize it into a custom struct
+Read the body of a HTTP.Response as JSON with additional keyword arguments and serialize it into a custom struct
 """
-function json(response::HTTP.Messages.Response, classtype::Type{T}; kwargs...) :: T where {T}
-    return JSON3.read(String(response.body), classtype; kwargs...)
+function json(response::HTTP.Response, classtype::Type{T}; kwargs...) :: T where {T}
+    return JSON3.read(response.body, classtype; kwargs...)
 end
+
+

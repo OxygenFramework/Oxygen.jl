@@ -35,6 +35,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Auto-generated swagger documentation
 - Out-of-the-box JSON serialization & deserialization (customizable)
 - Type definition support for path parameters
+- Request Extractors
 - Multiple Instance Support
 - Multithreading support
 - Websockets, Streaming, and Server-Sent Events
@@ -249,19 +250,23 @@ serve()
 
 ## Query parameters
 
-Use the `queryparams()` function to extract and parse parameters from the url
+
+Query parameters can be declared directly inside of your handlers signature. Any parameter that isn't mentioned inside the route path is assumed to be a query parameter.
+
+- If a default value is not provided, it's assumed to be a required parameter
 
 ```julia
-using Oxygen
-using HTTP
+@get "/query" function(req::HTTP.Request, a::Int, message::String="hello world")
+    return (a, message)
+end
+```
 
+Alternatively, you can use the `queryparams()` function to extract the raw values from the url as a dictionary. 
+
+```julia
 @get "/query" function(req::HTTP.Request)
-    # extract & return the query params from the request object
     return queryparams(req)
 end
-
-# start the web server
-serve()
 ```
 
 ## HTML Forms
@@ -289,25 +294,6 @@ end
     return data
 end
 
-serve()
-```
-
-## Interpolating variables into endpoints
-
-You can interpolate variables directly into the paths, which makes dynamically registering routes a breeze 
-
-(Thanks to @anandijain for the idea)
-```julia
-using Oxygen
-
-operations = Dict("add" => +, "multiply" => *)
-for (pathname, operator) in operations
-    @get "/$pathname/{a}/{b}" function (req, a::Float64, b::Float64)
-        return operator(a, b)
-    end
-end
-
-# start the web server
 serve()
 ```
 
@@ -360,6 +346,107 @@ end
 serve()
 ```
 
+## Extractors
+
+Oxygen comes with several built-in extractors designed to reduce the amount of boilerplate required to serialize inputs to your handler functions. By simply defining a struct and specifying the data source, these extractors streamline the process of data ingestion & validation through a uniform api.
+
+- The serialized data is accessible through the `payload` property
+- Can be used alongside other parameters and extractors
+- Default values can be assigned when defined with the `@kwdef` macro
+- Includes both global and local validators
+- Struct definitions can be deeply nested
+
+Supported Extractors:
+
+- `Path` - extracts from path parameters
+- `Query` - extracts from query parameters, 
+- `Header` - extracts from request headers
+- `Form` - extracts form data from the request body
+- `Body` - serializes the entire request body to a given type (String, Float64, etc..)
+- `ProtoBuffer` - extracts the `ProtoBuf` message from the request body (available through a package extension)
+- `Json` - extracts json from the request body
+- `JsonFragment` - extracts a "fragment" of the json body using the parameter name to identify and extract the corresponding top-level key
+
+
+#### Using Extractors & Parameters
+
+In this example we show that the `Path` extractor can be used alongside regular path parameters. This Also works with regular query parameters and the `Query` extractor.
+
+```julia
+struct Add
+    b::Int
+    c::Int
+end
+
+@get "/add/{a}/{b}/{c}" function(req, a::Int, pathparams::Path{Add})
+    add = pathparams.payload # access the serialized payload
+    return a + add.b + add.c
+end
+```
+
+#### Default Values
+
+Default values can be setup with structs using the `@kwdef` macro.
+
+```julia
+@kwdef struct Pet
+    name::String
+    age::Int = 10
+end
+
+@post "/pet" function(req, params::Json{Pet})
+    return params.payload # access the serialized payload
+end
+```
+
+#### Validation
+
+On top of serializing incoming data, you can also define your own validation rules by using the `validate` function. In the example below we show how to use both `global` and `local` validators in your code.
+
+- Validators are completely optional
+- During the validation phase, oxygen will call the `global` validator before running a `local` validator.
+
+```julia
+import Oxygen: validate
+
+struct Person
+    name::String
+    age::Int
+end
+
+# Define a global validator 
+validate(p::Person) = p.age >= 0
+
+# Only the global validator is ran here
+@post "/person" function(req, newperson::Json{Person})
+    return newperson.payload
+end
+
+# In this case, both global and local validators are ran (this also makes sure the person is age 21+)
+# You can also use this sytnax instead: Json(Person, p -> p.age >= 21)
+@post "/adult" function(req, newperson = Json{Person}(p -> p.age >= 21))
+    return newperson.payload
+end
+```
+
+## Interpolating variables into endpoints
+
+You can interpolate variables directly into the paths, which makes dynamically registering routes a breeze 
+
+(Thanks to @anandijain for the idea)
+```julia
+using Oxygen
+
+operations = Dict("add" => +, "multiply" => *)
+for (pathname, operator) in operations
+    @get "/$pathname/{a}/{b}" function (req, a::Float64, b::Float64)
+        return operator(a, b)
+    end
+end
+
+# start the web server
+serve()
+```
 ## Routers
 
 The `router()` function is an HOF (higher order function) that allows you to reuse the same path prefix & properties across multiple endpoints. This is helpful when your api starts to grow and you want to keep your path operations organized.

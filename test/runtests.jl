@@ -19,6 +19,9 @@ include("handlertests.jl")
 
 #### Core Tests ####
 
+include("precompilationtest.jl")
+include("extractortests.jl")
+include("reflectiontests.jl")
 include("metricstests.jl")
 include("routingfunctionstests.jl")
 include("rendertests.jl")

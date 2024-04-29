@@ -1,5 +1,6 @@
 module Core
 
+using Base: @kwdef
 using HTTP
 using HTTP: Router
 using Sockets 
@@ -11,15 +12,17 @@ using RelocatableFolders
 using DataStructures: CircularDeque
 import Base.Threads: lock
 
+include("util.jl");         @reexport using .Util
 include("types.jl");        @reexport using .Types 
 include("constants.jl");    @reexport using .Constants
 include("handlers.jl");     @reexport using .Handlers
 include("context.jl");      @reexport using .AppContext
-include("util.jl");         @reexport using .Util
 include("cron.jl");         @reexport using .Cron
 include("repeattasks.jl");  @reexport using .RepeatTasks
 include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
+include("reflection.jl");   @reexport using .Reflection
+include("extractors.jl");   @reexport using .Extractors
 
 export  start, serve, serveparallel, terminate, 
         internalrequest, staticfiles, dynamicfiles
@@ -259,10 +262,10 @@ Internal helper function to launch the server in a consistent way
 """
 function startserver(ctx::Context; host, port, show_banner=false, docs=false, metrics=false, parallel=false, async=false, kwargs, start) :: Server
 
-    show_banner && serverwelcome(host, port, docs, metrics, parallel, ctx.docs.docspath[])
-
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
+
+    show_banner && serverwelcome(host, port, docs, metrics, parallel, ctx.docs.docspath[])
 
     # start the HTTP server
     ctx.service.server[] = start(preprocesskwargs(kwargs))
@@ -419,68 +422,64 @@ function parse_route(httpmethod::String, route::Union{String,Function}) :: Strin
     return route
 end
 
-
 function parse_func_params(route::String, func::Function)
-    
-    variableRegex = r"{[a-zA-Z0-9_]+}"
+
+    """
+    Parsing Rules:
+        1. path parameters are detected by their presence in the route string
+        2. query parameters are not in the route string and can have default values
+        3. path extractors can be used instead of traditional path parameters
+        4. extrators can be used alongside traditional path & query params
+    """
+
+    info = splitdef(func, start=2) # skip the indentifying first arg 
+
+    # collect path param definitions from the route string
     hasBraces = r"({)|(})"
-    
-    # track which index the params are located in
-    positions = []
-    for (index, value) in enumerate(HTTP.URIs.splitpath(route)) 
+    route_params = Vector{Symbol}()
+    for value in HTTP.URIs.splitpath(route)
         if contains(value, hasBraces)
-            # extract the variable name
-            variable = replace(value, hasBraces => "") |> x -> split(x, ":") |> first        
-            push!(positions, (index, variable))
+            variable = replace(value, hasBraces => "") |> strip
+            push!(route_params, Symbol(variable))
         end
     end
 
-    method = first(methods(func))
-    numfields = method.nargs
+    # Identify all path & query params (can be declared as regular variables or extractors)
+    pathparams = Vector{Symbol}()
+    queryparams = Vector{Symbol}()
 
-    # extract the function handler's field names & types 
-    fields = [x for x in fieldtypes(method.sig)]
-    func_param_names = [String(param) for param in Base.method_argnames(method)[3:end]]
-    func_param_types = splice!(Array(fields), 3:numfields)
-
-    # each tuple tracks where the param is refereced (variable, function index, path index)
-    param_positions::Array{Tuple{String, Int, Int}} = []
-
-    # ensure the function params are present inside the path params 
-    for (_, path_param) in positions
-        hasparam = false
-        for (_, func_param) in enumerate(func_param_names)
-            if func_param == path_param 
-                hasparam = true
-                break
+    for param in info.args
+        if param.name in route_params
+            push!(pathparams, param.name)
+        elseif param.type <: Extractor
+            # push the variables from the struct into the params array
+            if param.type <: Path
+                innner_type = param.type |> extracttype
+                field_names = fieldnames(innner_type)
+                push!(pathparams, field_names...)
+            elseif param.type <: Query
+                push!(queryparams, param.name)
             end
-        end
-        if !hasparam
-            throw("Your request handler is missing a parameter: '$path_param' defined in this route: $route")
-        end
-    end
-
-    # ensure the path params are present inside the function params 
-    for (func_index, func_param) in enumerate(func_param_names)
-        matched = nothing
-        for (path_index, path_param) in positions
-            if func_param == path_param 
-                matched = (func_param, func_index, path_index)
-                break
-            end
-        end
-        if matched === nothing
-            throw("Your path is missing a parameter: '$func_param' which needs to be added to this route: $route")
         else 
-            push!(param_positions, matched)
+            push!(queryparams, param.name)
         end
     end
 
-    # determine if we have parameters defined in our path
-    hasPathParams = contains(route, variableRegex) # Can this be replaced with !isempty(func_param_names)
+    # make sure all the path params are present in the route
+    if !isempty(route_params)
+        missing_params = [
+            route_param 
+            for route_param in route_params 
+            if !any(path_param -> path_param == route_param, pathparams)
+        ]
+        if !isempty(missing_params)
+            throw(ArgumentError("Your request handler is missing path parameters: {$(join(missing_params, ", "))} defined in this route: $route"))
+        end
+    end
 
-    return hasPathParams, func_param_names, func_param_types
+    return (info=info, pathparams=pathparams, queryparams=queryparams)
 end
+
 
 
 """
@@ -491,14 +490,15 @@ Register a request handler function with a path to the ROUTER
 function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
-    hasPathParams, func_param_names, func_param_types = parse_func_params(route, func)
-    path_params = [param for param in zip(func_param_names, func_param_types)]
+    func_details = parse_func_params(route, func)
+
+    path_params = [(param.name, param.type) for param in func_details.info.sig if param.name in func_details.pathparams]
 
     # Register the route schema with out autodocs module
     registerschema(ctx.docs, route, httpmethod, path_params, Base.return_types(func))
 
     # Register the route with the router
-    registerhandler(ctx.service.router, httpmethod, route, func, hasPathParams, (func_param_names, func_param_types, path_params))
+    registerhandler(ctx.service.router, httpmethod, route, func, func_details)
 end
 
 
@@ -509,36 +509,72 @@ docs and metrics
 function register(router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
-    hasPathParams, func_param_names, func_param_types = parse_func_params(route, func)
-    path_params = [param for param in zip(func_param_names, func_param_types)]
+    func_details = parse_func_params(route, func)
 
     # Register the route with the router
-    registerhandler(router, httpmethod, route, func, hasPathParams, (func_param_names, func_param_types, path_params))
+    registerhandler(router, httpmethod, route, func, func_details)
 end
 
-function registerhandler(router::Router, httpmethod::String, route::String, func::Function, hasPathParams::Bool, path_params)
-    func_param_names, func_param_types, path_params = path_params
-    func_map = Dict(name => type for (name, type) in zip(func_param_names, func_param_types))
+
+"""
+Given an incoming request, parse out each argument and prepare it to get passed to the 
+corresponding handler. 
+"""
+function extract_params(req::HTTP.Request, func_details) :: Vector{Any}
+    info, pathparams, queryparams = func_details
+    lazy_req = LazyRequest(request=req)
+    parameters = Vector{Any}()
+    
+    for param in info.sig
+        name = string(param.name)
+
+        if param.type <: Extractor
+            push!(parameters, extract(param, lazy_req))
+
+        elseif param.name in pathparams
+            raw_pathparams = Types.pathparams(lazy_req)
+            push!(parameters, parseparam(param.type, raw_pathparams[name]))
+
+        elseif param.name in queryparams
+            raw_queryparams = Types.queryvars(lazy_req)
+            # if the query parameter is not present, use the default value if available
+            if !haskey(raw_queryparams, name) && param.hasdefault
+                push!(parameters, param.default)
+            else
+                push!(parameters, parseparam(param.type, raw_queryparams[name]))
+            end
+        end
+
+    end
+
+    return parameters
+end
+
+
+function registerhandler(router::Router, httpmethod::String, route::String, func::Function, func_details::NamedTuple)
 
     # Get information about the function's arguments
     method = first(methods(func))
     no_args = method.nargs == 1
+
+    # check if handler has a :request kwarg
+    info = func_details.info
     has_req_kwarg = :request in Base.kwarg_decl(method)
+    has_path_params = !isempty(info.args)
 
     # Generate the function handler based on the input types
     arg_type = first_arg_type(method, httpmethod)
-    func_handle = select_handler(arg_type, has_req_kwarg, hasPathParams; no_args=no_args)
+    func_handle = select_handler(arg_type, has_req_kwarg, has_path_params; no_args=no_args)
 
-    # Wrap the generated handler so it can be registered with the router
-    if hasPathParams
+    # Figure out if we need to include parameter parsing logic for this route
+    if isempty(info.sig)
         handle = function(req::HTTP.Request)
-            params = HTTP.getparams(req)
-            pathParams = [parseparam(func_map[name], params[name]) for name in func_param_names]
-            func_handle(req, func; pathParams=pathParams)
+            func_handle(req, func)
         end
     else
         handle = function(req::HTTP.Request)
-            func_handle(req, func)
+            path_parameters = extract_params(req, func_details)
+            func_handle(req, func; pathParams=path_parameters)
         end
     end
 
@@ -590,7 +626,7 @@ function setupmetrics(router::Router, history::History, docspath::String, histor
         return transactions
     end
     
-    function metrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
+    function innermetrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
 
         # create a threadsafe copy of the current transactions in our history object
         transactions = safe_get_transactions(history)
@@ -611,7 +647,7 @@ function setupmetrics(router::Router, history::History, docspath::String, histor
         
     end
 
-    register(router, GET, "$docspath/metrics/data/{window}/{latest}", metrics)
+    register(router, GET, "$docspath/metrics/data/{window}/{latest}", innermetrics)
 end
 
 

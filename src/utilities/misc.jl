@@ -91,36 +91,36 @@ end
     Path Parameter Parsing functions
 """
 
-function parseparam(type::Type{Any}, rawvalue::String)
-    return HTTP.unescapeuri(rawvalue)
+function parseparam(::Type{Any}, rawvalue::String; escape=true)
+    return escape ? HTTP.unescapeuri(rawvalue) : rawvalue
 end
 
-function parseparam(type::Type{String}, rawvalue::String)
-    return HTTP.unescapeuri(rawvalue)
+function parseparam(::Type{String}, rawvalue::String; escape=true)
+    return escape ? HTTP.unescapeuri(rawvalue) : rawvalue
 end
 
-function parseparam(type::Type{T}, rawvalue::String) where {T <: Enum}
-    return T(parse(Int, HTTP.unescapeuri(rawvalue)))
+function parseparam(::Type{T}, rawvalue::String; escape=true) where {T <: Enum}
+    return T(parse(Int, escape ? HTTP.unescapeuri(rawvalue) : rawvalue))
 end
 
-function parseparam(type::Type{T}, rawvalue::String) where {T <: Union{Date, DateTime}}
-    return parse(T, HTTP.unescapeuri(rawvalue))
+function parseparam(::Type{T}, rawvalue::String; escape=true) where {T <: Union{Date, DateTime}}
+    return parse(T, escape ? HTTP.unescapeuri(rawvalue) : rawvalue)
 end
 
-function parseparam(type::Type{T}, rawvalue::String) where {T <: Union{Number, Char, Bool, Symbol}}
-    return parse(T, HTTP.unescapeuri(rawvalue))
+function parseparam(::Type{T}, rawvalue::String; escape=true) where {T <: Union{Number, Char, Bool, Symbol}}
+    return parse(T, escape ? HTTP.unescapeuri(rawvalue) : rawvalue)
 end
 
-function parseparam(type::Type{T}, rawvalue::String) where {T}
-    return JSON3.read(HTTP.unescapeuri(rawvalue), T)
+function parseparam(::Type{T}, rawvalue::String; escape=true) where {T}
+    return JSON3.read(escape ? HTTP.unescapeuri(rawvalue) : rawvalue, T)
 end
 
 """
 Iterate over the union type and parse the value with the first type that 
 doesn't throw an erorr
 """
-function parseparam(type::Union, rawvalue::String)
-    value::String = HTTP.unescapeuri(rawvalue)
+function parseparam(type::Union, rawvalue::String; escape=true)
+    value::String = escape ? HTTP.unescapeuri(rawvalue) : rawvalue
     result = value 
     for current_type in Base.uniontypes(type)
         try 

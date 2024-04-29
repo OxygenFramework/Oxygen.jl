@@ -205,32 +205,90 @@ function is_lowered(instance::Any) :: Bool
 end
 
 
+"""
+Returns true if the CodeInfo object has a function signature
 
-# """
-# Returns true if the CodeInfo block has an expression where the first arg is a SlotNumber with id 1
-# """
-# function has_sig_expr(info::Core.CodeInfo) :: Bool
-#     for expr in info.code
-#         # identify the function signature
-#         if isdefined(expr, :args) && expr.head == :call
-#             first_arg = first(expr.args)
-#             if first_arg isa Core.SlotNumber && first_arg.id == 1
-#                 return true
-#             end
-#         end
-#     end
-#     return false
-# end
+Most funtion signatures follow this general pattern
+- The second to last expression is used as the function signature
+- The last argument is a Return node 
 
+Below are a couple different examples of this in pattern in action:
+
+# Standard function signature
+
+CodeInfo(
+1 ─ %1 = (#self#)(req, a, path, qparams, 23)
+└──      return %1
+)
+
+# Extractor example (as a default value)
+
+CodeInfo(
+1 ─      #22 = %new(Main.RunTests.ExtractorTests.:(var"#22#37"))
+│   %2 = #22
+│   %3 = Main.RunTests.ExtractorTests.Header(Main.RunTests.ExtractorTests.Sample, %2)
+│   %4 = (#self#)(req, %3)
+└──      return %4
+)
+
+# This kind of function signature happens when a keyword argument is defined without at default value
+
+CodeInfo(
+1 ─ %1  = "default"
+│         c = %1
+│   %3  = true
+│         d = %3
+│   %5  = Core.UndefKeywordError(:request)
+│   %6  = Core.throw(%5)
+│         request = %6
+│   %8  = Core.getfield(#self#, Symbol("#8#9"))
+│   %9  = c
+│   %10 = d
+│   %11 = request
+│   %12 = (%8)(%9, %10, %11, #self#, a, b)
+└──       return %12
+)
+"""
+function has_sig_expr(c::Core.CodeInfo) :: Bool
+
+    statements_length = length(c.code)
+
+    # prevent index out of bounds
+    if statements_length < 2
+        return false
+    end
+
+    # check for our pattern of a function signature followed by a return statement
+    last_expr = c.code[statements_length]
+    second_to_last_expr = c.code[statements_length - 1]
+    
+    if last_expr isa Core.ReturnNode && second_to_last_expr isa Expr && second_to_last_expr.head == :call
+        # recursivley search expression to see if we have a SlotNumber(1) in the args
+        return walkargs(second_to_last_expr) do arg
+            return isa(arg, Core.SlotNumber) && arg.id == 1
+        end    
+    end
+
+    return false
+end
+
+"""
+Given a list of CodeInfo objects, extract any default values assigned to parameters & keyword arguments
+"""
 function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names, kwarg_names; start=2)
 
     param_defaults = Dict()
     kwarg_defaults = Dict()
 
+    # skip parsing if no parameters or keyword arguments are found
+    if isempty(param_names) && isempty(kwarg_names)
+        return param_defaults, kwarg_defaults 
+    end
+
     for c in info
 
-        # skip parsing function bodys which normally start with newvarnodes
-        if first(c.code) isa Core.NewvarNode
+        # skip code info objects that don't have a function signature
+        if !has_sig_expr(c)
             continue
         end
 

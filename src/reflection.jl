@@ -154,14 +154,6 @@ function reconstruct(info::Core.CodeInfo, func_name::Symbol)
         end     
     end
 
-
-    # exit early if no sig is found
-    if isnothing(sig_index)
-        # if there is not function signature, then we filter out the values directly
-        return [arg for arg in info.code if !is_lowered(arg)]
-    end 
-
-
     # Recursively build an expression of the actual type of each argument in the function signature
     evaled_sig = rebuild!(statements[sig_index])
 
@@ -187,23 +179,6 @@ function reconstruct(info::Core.CodeInfo, func_name::Symbol)
 
     return default_values
 end
-
-
-
-"""
-Return true if the given object is one of the types found in lowered IR code
-Values were taken from here: https://docs.julialang.org/en/v1/devdocs/ast/#Lowered-form
-
-I've purposely ignored the Core.GlobalRef type, because we can just lookup the underlying value at runtime
-"""
-function is_lowered(instance::Any) :: Bool
-    return instance isa Union{
-        Expr, Core.SlotNumber, Core.Argument, Core.CodeInfo, 
-        Core.GotoNode, Core.GotoIfNot, Core.ReturnNode, Core.QuoteNode, 
-        Core.SSAValue, Core.NewvarNode
-    }
-end
-
 
 """
 Returns true if the CodeInfo object has a function signature
@@ -277,6 +252,11 @@ Given a list of CodeInfo objects, extract any default values assigned to paramet
 """
 function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names, kwarg_names; start=2)
 
+    # These store the default values for parameters and keyword arguments
+    tmp_params = []
+    tmp_kwargs = []
+
+    # These store the mapping between parameter names and their default values
     param_defaults = Dict()
     kwarg_defaults = Dict()
 
@@ -296,22 +276,25 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
         p_defaults, kw_defaults = splitargs(sig_args, func_name)
 
         # store the default values for params
-        if !isempty(p_defaults)
-            # we reverse, because each subsequent expression should show more defaults,
-            # so we need to keep updating them as we see them.
-            for (name, value) in zip(reverse(param_names), reverse(p_defaults))
-                param_defaults[name] = value
-            end
+        for default in p_defaults
+            push!(tmp_params, default)
         end
-
+    
         # store the default values for kwargs
-        if !isempty(kw_defaults)
-            for (name, value) in zip(kwarg_names, kw_defaults)
-                kwarg_defaults[name] = value
-            end
+        for default in kw_defaults
+            push!(tmp_kwargs, default)
         end
-
+    
     end 
+
+    # reverse both lists to get the correct order
+    for (name, value) in zip(reverse(param_names), reverse(tmp_params))
+        param_defaults[name] = value
+    end
+
+    for (name, value) in zip(kwarg_names, tmp_kwargs)
+        kwarg_defaults[name] = value
+    end
 
     return param_defaults, kwarg_defaults 
 end

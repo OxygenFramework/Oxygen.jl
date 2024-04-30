@@ -5,19 +5,19 @@ include("constants.jl"); using .Constants
 #### Extension Tests ####
 
 include("extensions/templatingtests.jl")
+include("extensions/protobuf/protobuftests.jl")
 include("extensions/cairomakietests.jl")
 include("extensions/wglmakietests.jl")
 include("extensions/bonitotests.jl")
-include("extensions/protobuf/protobuftests.jl")
 
-#### Sepcial Handler Tests ####
+# #### Sepcial Handler Tests ####
 
 include("ssetests.jl")
 include("websockettests.jl")
 include("streamingtests.jl")
 include("handlertests.jl")
 
-#### Core Tests ####
+# #### Core Tests ####
 
 include("precompilationtest.jl")
 include("extractortests.jl")

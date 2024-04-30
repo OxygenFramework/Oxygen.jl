@@ -2,8 +2,11 @@ module ReflectionTests
 
 using Test
 using Base: @kwdef
-using Oxygen: splitdef
+using Oxygen: splitdef, Json
 using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder
+
+
+global message = Dict("message" => "Hello, World!")
 
 struct Person
     name::String
@@ -219,6 +222,66 @@ end
         @test info.sig_map[:a].type == Int
         @test info.sig_map[:b].name == :b
         @test info.sig_map[:b].type == Float64
+    end
+end
+
+
+
+@testset "splitdef extractor default value" begin
+    # Define a function for testing
+    f = function(a::Int, house = Json{Home}(house -> house.owner.age >= 25), msg = message; request)
+        return a, house, msg
+    end
+
+    # Parse the function info
+    info = splitdef(f)
+
+    @testset "counts" begin
+        @test length(info.args) == 3
+        @test length(info.kwargs) == 1
+        @test length(info.sig) == 4
+        @test length(info.sig_map) == 4
+    end
+
+    @testset "Args" begin 
+        @test info.args[1].name == :a
+        @test info.args[1].type == Int
+
+        @test info.args[2].name == :house
+        @test info.args[2].type == Json{Home}
+        @test info.args[2].default isa Json{Home}
+
+        @test info.args[3].name == :msg
+        @test info.args[3].type == Dict{String, String} 
+    end
+
+
+    @testset "Kwargs" begin
+        @test length(info.kwargs) == 1
+        @test info.kwargs[1].name == :request
+        @test info.kwargs[1].type == Any
+        @test info.kwargs[1].default isa Missing
+        @test info.kwargs[1].hasdefault == false
+    end
+
+    @testset "Sig_map" begin
+        @test info.sig_map[:a].name == :a
+        @test info.sig_map[:a].type == Int
+
+        @test info.sig_map[:house].name == :house
+        @test info.sig_map[:house].type == Json{Home}
+        @test info.sig_map[:house].default isa Json{Home}
+        @test info.sig_map[:house].hasdefault == true
+
+        @test info.sig_map[:msg].name == :msg
+        @test info.sig_map[:msg].type == Dict{String, String}
+        @test info.sig_map[:msg].default == Dict("message" => "Hello, World!")
+        @test info.sig_map[:msg].hasdefault == true
+
+        @test info.sig_map[:request].name == :request
+        @test info.sig_map[:request].type == Any
+        @test info.sig_map[:request].default isa Missing
+        @test info.sig_map[:request].hasdefault == false
     end
 end
 

@@ -5,10 +5,10 @@ include("constants.jl"); using .Constants
 #### Extension Tests ####
 
 include("extensions/templatingtests.jl")
+include("extensions/protobuf/protobuftests.jl")
 include("extensions/cairomakietests.jl")
 include("extensions/wglmakietests.jl")
 include("extensions/bonitotests.jl")
-include("extensions/protobuf/protobuftests.jl")
 
 #### Sepcial Handler Tests ####
 

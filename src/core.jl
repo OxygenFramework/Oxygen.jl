@@ -39,7 +39,7 @@ oxygen_title = raw"""
 
 function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
     printstyled(oxygen_title, color = :blue, bold = true)
-    @info "📦 Version 1.5.6 (2024-04-28)"
+    @info "📦 Version 1.5.7 (2024-05-01)"
     @info "✅ Started server: http://$host:$port" 
     docs     && @info "📖 Documentation: http://$host:$port$docspath"
     metrics  && @info "📊 Metrics: http://$host:$port$docspath/metrics"

@@ -10,14 +10,14 @@ include("extensions/cairomakietests.jl")
 include("extensions/wglmakietests.jl")
 include("extensions/bonitotests.jl")
 
-# #### Sepcial Handler Tests ####
+#### Sepcial Handler Tests ####
 
 include("ssetests.jl")
 include("websockettests.jl")
 include("streamingtests.jl")
 include("handlertests.jl")
 
-# #### Core Tests ####
+#### Core Tests ####
 
 include("precompilationtest.jl")
 include("extractortests.jl")

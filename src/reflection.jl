@@ -12,7 +12,6 @@ function getargvalue(arg)
     return isa(arg, GlobalRef) ? getfield(arg.mod, arg.name) : arg
 end
 
-
 """
 Return all parameter name & types and keyword argument names from a function
 """
@@ -47,41 +46,6 @@ function getsignames(func_methods::Base.MethodList; start=2)
         end
     end
     return arg_names, arg_types, kwarg_names
-end
-
-
-"""
-This function extract default values from a list of expressions
-
-The args parameter is a vector that follows this shape like This
-[
-    function_name...,
-    UnionTypes...,
-    kwarg defaults...,
-    slots..., 
-    positional defaults...
-]
-"""
-function splitargs(args::Vector, func_name::Symbol)
-    param_defaults = Vector{Any}()
-    kwarg_defaults = Vector{Any}()
-    encountered_slot = false
-
-    for arg in args
-        # # check if this is a function name
-        # if arg isa Core.GlobalRef && startswith(String(arg.name), "$func_name#")
-        #     continue
-        # elseif isa(arg, Core.SSAValue)
-        #     continue
-        if isa(arg, Core.SlotNumber)
-            encountered_slot = true
-        elseif !encountered_slot
-            push!(kwarg_defaults, getargvalue(arg))
-        else
-            push!(param_defaults, getargvalue(arg))
-        end
-    end
-    return param_defaults, kwarg_defaults
 end
 
 function walkargs(predicate::Function, expr)
@@ -250,15 +214,14 @@ end
 """
 Given a list of CodeInfo objects, extract any default values assigned to parameters & keyword arguments
 """
-function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names, kwarg_names; start=2)
-
-    # These store the default values for parameters and keyword arguments
-    tmp_params = []
-    tmp_kwargs = []
+function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names::Vector{Symbol}, kwarg_names::Vector{Symbol}; start=2)
 
     # These store the mapping between parameter names and their default values
     param_defaults = Dict()
     kwarg_defaults = Dict()
+
+    # Given the params, we can take an educated guess and map the slot number to the parameter name
+    slot_mapping = Dict(i + 1 => p for (i, p) in enumerate(vcat(param_names, kwarg_names)))
 
     # skip parsing if no parameters or keyword arguments are found
     if isempty(param_names) && isempty(kwarg_names)
@@ -272,29 +235,43 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
             continue
         end
 
+        # rebuild the function signature with the default values included
         sig_args = reconstruct(c, func_name)
-        p_defaults, kw_defaults = splitargs(sig_args, func_name)
 
-        # store the default values for params
-        for default in p_defaults
-            push!(tmp_params, default)
+        sig_length = length(sig_args)
+        self_index = findfirst([isa(x, Core.SlotNumber) && x.id == 1 for x in sig_args])
+
+        for (index, arg) in enumerate(sig_args)
+
+            # for keyword arguments
+            if index < self_index  
+
+                # derive the current slot name
+                slot_number = sig_length - abs(self_index - index) + 1
+                slot_name = slot_mapping[slot_number]
+
+                # don't store slot numbers when no default is given
+                value = getargvalue(arg)
+                if !isa(value, Core.SlotNumber)
+                    kwarg_defaults[slot_name] = value
+                end
+
+            # for regular arguments
+            elseif index > self_index 
+                  
+                # derive the current slot name
+                slot_number = abs(self_index - index) + 1
+                slot_name = slot_mapping[slot_number]
+
+                # don't store slot numbers when no default is given
+                value = getargvalue(arg)
+                if !isa(value, Core.SlotNumber)
+                    param_defaults[slot_name] = value
+                end
+            end
+
         end
-    
-        # store the default values for kwargs
-        for default in kw_defaults
-            push!(tmp_kwargs, default)
-        end
-    
     end 
-
-    # reverse both lists to get the correct order
-    for (name, value) in zip(reverse(param_names), reverse(tmp_params))
-        param_defaults[name] = value
-    end
-
-    for (name, value) in zip(kwarg_names, tmp_kwargs)
-        kwarg_defaults[name] = value
-    end
 
     return param_defaults, kwarg_defaults 
 end

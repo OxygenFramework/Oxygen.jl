@@ -229,7 +229,7 @@ end
 
 @testset "splitdef extractor default value" begin
     # Define a function for testing
-    f = function(a::Int, house = Json{Home}(house -> house.owner.age >= 25), msg = message; request)
+    f = function(a::Int, house = Json{Home}(house -> house.owner.age >= 25), msg = message; request, b = 3.0)
         return a, house, msg
     end
 
@@ -238,9 +238,9 @@ end
 
     @testset "counts" begin
         @test length(info.args) == 3
-        @test length(info.kwargs) == 1
-        @test length(info.sig) == 4
-        @test length(info.sig_map) == 4
+        @test length(info.kwargs) == 2
+        @test length(info.sig) == 5
+        @test length(info.sig_map) == 5
     end
 
     @testset "Args" begin 
@@ -255,18 +255,23 @@ end
         @test info.args[3].type == Dict{String, String} 
     end
 
-
     @testset "Kwargs" begin
-        @test length(info.kwargs) == 1
         @test info.kwargs[1].name == :request
         @test info.kwargs[1].type == Any
         @test info.kwargs[1].default isa Missing
         @test info.kwargs[1].hasdefault == false
+
+        @test info.kwargs[2].name == :b
+        @test info.kwargs[2].type == Any
+        @test info.kwargs[2].default == 3.0
+        @test info.kwargs[2].hasdefault == true
     end
 
     @testset "Sig_map" begin
         @test info.sig_map[:a].name == :a
         @test info.sig_map[:a].type == Int
+        @test info.sig_map[:a].default isa Missing
+        @test info.sig_map[:a].hasdefault == false
 
         @test info.sig_map[:house].name == :house
         @test info.sig_map[:house].type == Json{Home}
@@ -282,6 +287,11 @@ end
         @test info.sig_map[:request].type == Any
         @test info.sig_map[:request].default isa Missing
         @test info.sig_map[:request].hasdefault == false
+
+        @test info.sig_map[:b].name == :b
+        @test info.sig_map[:b].type == Any
+        @test info.sig_map[:b].default == 3.0
+        @test info.sig_map[:b].hasdefault == true
     end
 end
 

@@ -500,6 +500,50 @@ function next(cron_expr::String, start_time::DateTime)::DateTime
     # loop until candidate time matches all fields of cron expression 
     while true
 
+        # check if candidate time matches second field
+        if !match_seconds(seconds_expression, candidate_time)
+            # increment candidate time by one second
+            candidate_time += Second(1)
+            continue
+        end
+
+        # check if candidate time matches minute field
+        if !match_minutes(minute_expression, candidate_time)
+            # increment candidate time by one minute and reset second
+            # to minimum value
+            candidate_time += Minute(1) - Second(second(candidate_time)) + Second(0)
+            continue
+        end
+
+        # check if candidate time matches hour field 
+        if !match_hour(hour_expression, candidate_time)
+            # increment candidate time by one hour and reset minute
+            # and second to minimum values 
+            candidate_time += Hour(1) - Minute(minute(candidate_time)) + Minute(0) -
+                                Second(second(candidate_time)) + Second(0)
+            continue 
+        end
+
+        # check if candidate time matches day of week field 
+        if !match_dayofweek(dayofweek_expression, candidate_time)
+            # increment candidate time by one day and reset hour,
+            # minute and second to minimum values 
+            candidate_time += Day(1) - Hour(hour(candidate_time)) + Hour(0) -
+                                Minute(minute(candidate_time)) + Minute(0) -
+                                Second(second(candidate_time)) + Second(0)
+            continue 
+        end
+
+        # check if candidate time matches day of month field 
+        if !match_dayofmonth(dayofmonth_expression, candidate_time)
+            # increment candidate time by one day and reset hour,
+            # minute and second to minimum values 
+            candidate_time += Day(1) - Hour(hour(candidate_time)) + Hour(0) -
+                                Minute(minute(candidate_time)) + Minute(0) -
+                                Second(second(candidate_time)) + Second(0)
+            continue 
+        end
+
         # check if candidate time matches month field 
         if !match_month(month_expression, candidate_time)
             # increment candidate time by one month and reset day, hour,
@@ -511,57 +555,8 @@ function next(cron_expr::String, start_time::DateTime)::DateTime
             continue 
         end
 
-        # check if candidate time matches day of month field 
-        if !match_dayofmonth(dayofmonth_expression, candidate_time)
-            # increment candidate time by one day and reset hour,
-            # minute and second to minimum values 
-            candidate_time += Day(1) - Hour(hour(candidate_time)) +
-                                Hour(0) - Minute(minute(candidate_time)) +
-                                Minute(0) - Second(second(candidate_time)) +
-                                Second(0)
-            continue 
-        end
-
-        # check if candidate time matches day of week field 
-        if !match_dayofweek(dayofweek_expression, candidate_time)
-            # increment candidate time by one day and reset hour,
-            # minute and second to minimum values 
-            candidate_time += Day(1) - Hour(hour(candidate_time)) +
-                                Hour(0) - Minute(minute(candidate_time)) +
-                                Minute(0) - Second(second(candidate_time)) +
-                                Second(0)
-            continue 
-        end
-
-        # check if candidate time matches hour field 
-        if !match_hour(hour_expression, candidate_time)
-            # increment candidate time by one hour and reset minute
-            # and second to minimum values 
-            candidate_time += Hour(1) - Minute(minute(candidate_time))
-                            + Minute(0) - Second(second(candidate_time))
-                            + Second(0)
-            continue 
-        end
-
-        # check if candidate time matches minute field
-        if !match_minutes(minute_expression, candidate_time)
-            # increment candidate time by one minute and reset second
-            # to minimum value
-            candidate_time += Minute(1) - Second(second(candidate_time))
-                            + Second(0)
-            continue
-        end
-
-        # check if candidatet ime matches second field
-        if !match_seconds(seconds_expression, candidate_time)
-            # increment candidatet ime by one second
-            candidate_time += Second(1)
-            continue
-        end
-
         break # exit the loop as all fields match
     end 
-
     return remove_milliseconds(candidate_time) # return the next matching tme
 end 
 

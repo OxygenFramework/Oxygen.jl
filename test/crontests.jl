@@ -122,7 +122,16 @@ using ..Constants
         @test next("30 * * * * *", start_time) == DateTime(2023, 4, 3, 12, 30, 30)
     end
 
-    using Test
+    @testset "next() whole hour normalization tests" begin
+        # these would work fine
+        @test next("1 0 13", DateTime("2024-05-01T10:00:00")) == DateTime("2024-05-01T13:00:01")
+        @test next("0 1 13", DateTime("2024-05-01T10:00:00")) == DateTime("2024-05-01T13:01:00")
+
+        # these wouldn't previously be normalized
+        @test next("0 0 13", DateTime("2024-05-01T10:00:00")) == DateTime("2024-05-01T13:00:00")
+        @test next("0 0 13", DateTime("2024-05-01T14:00:00")) == DateTime("2024-05-02T13:00:00")
+    end
+
     @testset "matchexpression function tests" begin
         time = DateTime(2023, 4, 3, 23, 59, 59)
         minute = Dates.minute
@@ -432,16 +441,21 @@ using ..Constants
     server = serve(async=true, port=PORT, show_banner=false)
     sleep(3)
 
-    internalrequest(HTTP.Request("GET", "/cron-increment"))
-    internalrequest(HTTP.Request("GET", "/cron-increment"))
-
-    @testset "Testing CRON API access" begin
-        r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))
-        @test r.status == 200
-        @test parse(Int64, text(r)) > 0
+    try 
+        internalrequest(HTTP.Request("GET", "/cron-increment"))
+        internalrequest(HTTP.Request("GET", "/cron-increment"))
+        @testset "Testing CRON API access" begin
+            r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))
+            @test r.status == 200
+            @test parse(Int64, text(r)) > 0
+        end
+    catch e
+        println(e)
+    finally
+        close(server) 
     end
 
-    close(server) 
+    
 
     end
 

@@ -141,7 +141,7 @@ monthnames = Dict(
     "DEC" => 12
 )
 
-function translate(input::SubString)
+function translate(input::AbstractString)
     if haskey(weeknames, input)
         return weeknames[input]
     elseif haskey(monthnames, input)
@@ -202,9 +202,7 @@ function nthweekdayofmonth(time::DateTime, n::Int64)
         elseif isweekday(after) && month(after) == current_month
             return after
         end
-        if day(before) > 1
-            before -= Day(1)
-        elseif day(after) < Dates.daysinmonth(time)
+        if day(after) < Dates.daysinmonth(time)
             after += Day(1)
         else
             break
@@ -248,7 +246,7 @@ function getoccurance(time::DateTime, daynumber::Int64, occurance::Int64)
 end
 
 
-function matchexpression(input::Nullable{SubString}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
+function matchexpression(input::Nullable{AbstractString}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
     try 
             
         # base case: return true if 
@@ -325,7 +323,7 @@ function matchexpression(input::Nullable{SubString}, time::DateTime, converter, 
 end
 
 
-function match_special(input::Nullable{SubString}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
+function match_special(input::Nullable{AbstractString}, time::DateTime, converter, maxvalue, adjustedmax=nothing) :: Bool
     
     # base case: return true if 
     if isnothing(input)
@@ -411,7 +409,7 @@ end
 
 
 function iscronmatch(expression::String, time::DateTime) :: Bool
-    parsed_expression::Vector{Nullable{SubString{String}}} = split(strip(expression), " ")
+    parsed_expression::Vector{Nullable{AbstractString}} = split(strip(expression), " ")
 
     # fill in any missing arguments with nothing, so the array is always 
     fill_length = 6 - length(parsed_expression)
@@ -482,7 +480,7 @@ expression
 """
 function next(cron_expr::String, start_time::DateTime)::DateTime
 
-    parsed_expression::Vector{Nullable{SubString{String}}} = split(strip(cron_expr), " ")
+    parsed_expression::Vector{Nullable{AbstractString}} = split(strip(cron_expr), " ")
 
     # fill in any missing arguments with nothing, so the array is always 
     fill_length = 6 - length(parsed_expression)
@@ -500,47 +498,11 @@ function next(cron_expr::String, start_time::DateTime)::DateTime
     # loop until candidate time matches all fields of cron expression 
     while true
 
-        # check if candidate time matches month field 
-        if !match_month(month_expression, candidate_time)
-            # increment candidate time by one month and reset day, hour,
-            # minute and second to minimum values 
-            candidate_time += Month(1) - Day(day(candidate_time)) + Day(1) -
-                                Hour(hour(candidate_time)) + Hour(0) -
-                                Minute(minute(candidate_time)) + Minute(0) -
-                                Second(second(candidate_time)) + Second(0)
-            continue 
-        end
-
-        # check if candidate time matches day of month field 
-        if !match_dayofmonth(dayofmonth_expression, candidate_time)
-            # increment candidate time by one day and reset hour,
-            # minute and second to minimum values 
-            candidate_time += Day(1) - Hour(hour(candidate_time)) +
-                                Hour(0) - Minute(minute(candidate_time)) +
-                                Minute(0) - Second(second(candidate_time)) +
-                                Second(0)
-            continue 
-        end
-
-        # check if candidate time matches day of week field 
-        if !match_dayofweek(dayofweek_expression, candidate_time)
-            # increment candidate time by one day and reset hour,
-            # minute and second to minimum values 
-            candidate_time += Day(1) - Hour(hour(candidate_time)) +
-                                Hour(0) - Minute(minute(candidate_time)) +
-                                Minute(0) - Second(second(candidate_time)) +
-                                Second(0)
-            continue 
-        end
-
-        # check if candidate time matches hour field 
-        if !match_hour(hour_expression, candidate_time)
-            # increment candidate time by one hour and reset minute
-            # and second to minimum values 
-            candidate_time += Hour(1) - Minute(minute(candidate_time))
-                            + Minute(0) - Second(second(candidate_time))
-                            + Second(0)
-            continue 
+        # check if candidate time matches second field
+        if !match_seconds(seconds_expression, candidate_time)
+            # increment candidate time by one second
+            candidate_time += Second(1)
+            continue
         end
 
         # check if candidate time matches minute field
@@ -548,20 +510,51 @@ function next(cron_expr::String, start_time::DateTime)::DateTime
             # increment candidate time by one minute and reset second
             # to minimum value
             candidate_time += Minute(1) - Second(second(candidate_time))
-                            + Second(0)
             continue
         end
 
-        # check if candidatet ime matches second field
-        if !match_seconds(seconds_expression, candidate_time)
-            # increment candidatet ime by one second
-            candidate_time += Second(1)
-            continue
+        # check if candidate time matches hour field 
+        if !match_hour(hour_expression, candidate_time)
+            # increment candidate time by one hour and reset minute
+            # and second to minimum values 
+            candidate_time += Hour(1) - Minute(minute(candidate_time)) -
+                                Second(second(candidate_time))
+            continue 
+        end
+
+        # check if candidate time matches day of week field 
+        if !match_dayofweek(dayofweek_expression, candidate_time)
+            # increment candidate time by one day and reset hour,
+            # minute and second to minimum values 
+            candidate_time += Day(1) - Hour(hour(candidate_time)) -
+                                Minute(minute(candidate_time)) -
+                                Second(second(candidate_time))
+            continue 
+        end
+
+        # check if candidate time matches day of month field 
+        if !match_dayofmonth(dayofmonth_expression, candidate_time)
+            # increment candidate time by one day and reset hour,
+            # minute and second to minimum values 
+            candidate_time += Day(1) - Hour(hour(candidate_time)) -
+                                Minute(minute(candidate_time)) -
+                                Second(second(candidate_time))
+            continue 
+        end
+
+        # check if candidate time matches month field 
+        if !match_month(month_expression, candidate_time)
+            # increment candidate time by one month and reset day, hour,
+            # minute and second to minimum values 
+            candidate_time += Month(1) - Day(day(candidate_time)) + Day(1) -
+                                Hour(hour(candidate_time)) -
+                                Minute(minute(candidate_time)) -
+                                Second(second(candidate_time))
+            continue 
         end
 
         break # exit the loop as all fields match
     end 
-
     return remove_milliseconds(candidate_time) # return the next matching tme
 end 
 

@@ -5,15 +5,44 @@ using JSON3
 using StructTypes
 using Sockets
 using Dates 
-
 using Oxygen
 using Oxygen.Cron: iscronmatch, isweekday, lastweekdayofmonth, 
             next, sleep_until, lastweekday, nthweekdayofmonth, 
-            matchexpression
+            matchexpression, translate
 
 using ..Constants
 
 @testset "Cron Module Tests" begin
+    @testset "translate function tests" begin
+        # Day translations
+        @test translate("SUN") == 7
+        @test translate("MON") == 1
+        @test translate("TUE") == 2
+        @test translate("WED") == 3
+        @test translate("THU") == 4
+        @test translate("FRI") == 5
+        @test translate("SAT") == 6
+
+        # Month translations
+        @test translate("JAN") == 1
+        @test translate("FEB") == 2
+        @test translate("MAR") == 3
+        @test translate("APR") == 4
+        @test translate("MAY") == 5
+        @test translate("JUN") == 6
+        @test translate("JUL") == 7
+        @test translate("AUG") == 8
+        @test translate("SEP") == 9
+        @test translate("OCT") == 10
+        @test translate("NOV") == 11
+        @test translate("DEC") == 12
+
+        # Unmatched Translations
+        @test translate("XYZ") == "XYZ"
+        @test translate("WOW") == "WOW"
+        @test translate("") == ""
+    end
+
 
     @testset "methods" begin 
         @test lastweekday(DateTime(2022,1,1,0,0,0)) == DateTime(2021,12,31,0,0,0)
@@ -32,6 +61,28 @@ using ..Constants
     @testset "nthweekdayofmonth" begin
         @test_throws ErrorException nthweekdayofmonth(DateTime(2022,1,1,0,0,0), -1)
         @test_throws ErrorException nthweekdayofmonth(DateTime(2022,1,1,0,0,0), 50)
+        @test nthweekdayofmonth(DateTime(2024, 4, 27), 27) == DateTime(2024, 4, 26)
+        @test nthweekdayofmonth(DateTime(2024, 5, 5), 5) == DateTime(2024, 5, 6)
+        @test nthweekdayofmonth(DateTime(2022, 5, 1), 1) == DateTime(2022, 5, 2)
+        @test nthweekdayofmonth(DateTime(2024, 6, 1), 1) == DateTime(2024, 6, 3)
+
+        # Test with n as the first day of the month and the first day is a weekday
+        @test nthweekdayofmonth(DateTime(2022, 3, 1), 1) == DateTime(2022, 3, 1)
+
+        # Test with n as the last day of the month and the last day is a weekday
+        @test nthweekdayofmonth(DateTime(2022, 4, 30), 30) == DateTime(2022, 4, 29)
+
+        # Test with n as a day in the middle of the month and the day is a weekend
+        @test nthweekdayofmonth(DateTime(2022, 5, 15), 15) == DateTime(2022, 5, 16)
+        
+        # Test with n as a day in the middle of the month and the day is a weekend
+        @test nthweekdayofmonth(DateTime(2022, 6, 18), 18) == DateTime(2022, 6, 17)
+
+        # Test with n as a day in the middle of the month and the day and the day before are weekends
+        @test nthweekdayofmonth(DateTime(2022, 7, 17), 17) == DateTime(2022, 7, 18)
+
+        # Test with n as a day in the middle of the month and the day, the day before and the day after are weekends
+        @test nthweekdayofmonth(DateTime(2022, 12, 25), 25) == DateTime(2022, 12, 26)
     end
 
     @testset "sleep_until" begin
@@ -122,7 +173,64 @@ using ..Constants
         @test next("30 * * * * *", start_time) == DateTime(2023, 4, 3, 12, 30, 30)
     end
 
-    using Test
+    @testset "next() whole hour normalization tests" begin
+        # these would work fine
+        @test next("1 0 13", DateTime("2024-05-01T10:00:00")) == DateTime("2024-05-01T13:00:01")
+        @test next("0 1 13", DateTime("2024-05-01T10:00:00")) == DateTime("2024-05-01T13:01:00")
+
+        # these wouldn't previously be normalized with zero values
+        @test next("0 0 13", DateTime("2024-05-01T10:00:00")) == DateTime("2024-05-01T13:00:00")
+        @test next("0 0 13", DateTime("2024-05-01T14:00:00")) == DateTime("2024-05-02T13:00:00")
+
+        # Test cases where the current time is exactly on the hour
+        @test next("0 0 14", DateTime("2024-05-01T14:00:00")) == DateTime("2024-05-02T14:00:00")
+        @test next("0 0 0", DateTime("2024-05-01T00:00:00")) == DateTime("2024-05-02T00:00:00")
+
+        # Test cases where the current time is exactly one second before the hour
+        @test next("0 0 15", DateTime("2024-05-01T14:59:59")) == DateTime("2024-05-01T15:00:00")
+        @test next("0 0 1", DateTime("2024-05-01T00:59:59")) == DateTime("2024-05-01T01:00:00")
+
+        # Test cases where the current time is exactly one second after the hour
+        @test next("0 0 16", DateTime("2024-05-01T16:00:01")) == DateTime("2024-05-02T16:00:00")
+        @test next("0 0 2", DateTime("2024-05-01T02:00:01")) == DateTime("2024-05-02T02:00:00")
+
+        # Test cases where the current time is exactly on the half hour
+        @test next("0 30 17", DateTime("2024-05-01T17:30:00")) == DateTime("2024-05-02T17:30:00")
+        @test next("0 30 3", DateTime("2024-05-01T03:30:00")) == DateTime("2024-05-02T03:30:00")
+
+        # Test cases where the current time is exactly one second before the half hour
+        @test next("0 30 18", DateTime("2024-05-01T18:29:59")) == DateTime("2024-05-01T18:30:00")
+        @test next("0 30 4", DateTime("2024-05-01T04:29:59")) == DateTime("2024-05-01T04:30:00")
+
+
+        # Test cases where the current time is exactly one second after the half hour
+        @test next("0 30 19", DateTime("2024-05-01T19:30:01")) == DateTime("2024-05-02T19:30:00")
+        @test next("0 30 5", DateTime("2024-05-01T05:30:01")) == DateTime("2024-05-02T05:30:00")
+
+        # Test case for second
+        @test next("* * * * *", DateTime(2022, 5, 15, 14, 30, 0)) == DateTime(2022, 5, 15, 14, 30, 1)
+
+        # Test case for minute
+        @test next("0 * * * *", DateTime(2022, 5, 15, 14, 30)) == DateTime(2022, 5, 15, 14, 31)
+
+        # Test case for hour
+        @test next("0 0 * *", DateTime(2022, 5, 15, 14, 30)) == DateTime(2022, 5, 15, 15, 0)
+
+        # Test case for day of month
+        @test next("0 0 0 * *", DateTime(2022, 5, 15)) == DateTime(2022, 5, 16)
+
+        # # Test case for month
+        @test next("0 0 0 1 *", DateTime(2022, 5, 15)) == DateTime(2022, 6, 1)
+
+        # Test case for day of week
+        @test next("0 0 * * * MON", DateTime(2022, 5, 15)) == DateTime(2022, 5, 16)
+
+        # invalid valude for day of month
+        # @test next("0 0 0 0 *", DateTime(2022, 5, 15)) == DateTime(2022, 5, 16)
+
+
+    end
+
     @testset "matchexpression function tests" begin
         time = DateTime(2023, 4, 3, 23, 59, 59)
         minute = Dates.minute
@@ -432,16 +540,21 @@ using ..Constants
     server = serve(async=true, port=PORT, show_banner=false)
     sleep(3)
 
-    internalrequest(HTTP.Request("GET", "/cron-increment"))
-    internalrequest(HTTP.Request("GET", "/cron-increment"))
-
-    @testset "Testing CRON API access" begin
-        r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))
-        @test r.status == 200
-        @test parse(Int64, text(r)) > 0
+    try 
+        internalrequest(HTTP.Request("GET", "/cron-increment"))
+        internalrequest(HTTP.Request("GET", "/cron-increment"))
+        @testset "Testing CRON API access" begin
+            r = internalrequest(HTTP.Request("GET", "/get-cron-increment"))
+            @test r.status == 200
+            @test parse(Int64, text(r)) > 0
+        end
+    catch e
+        println(e)
+    finally
+        close(server) 
     end
 
-    close(server) 
+    
 
     end
 

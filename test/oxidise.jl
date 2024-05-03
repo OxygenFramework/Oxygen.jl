@@ -5,8 +5,6 @@ using HTTP
 using ..Constants
 using Oxygen; @oxidise
 
-PORT = 6060
-
 @get "/test" function(req)
     return "Hello World"
 end

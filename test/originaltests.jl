@@ -695,35 +695,7 @@ r = internalrequest(HTTP.Request("GET", "/docs/metrics"), metrics=true)
 r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"), metrics=true)
 @test r.status == 200
 
-invocation = []
-
-function handler1(handler)
-    return function(req::HTTP.Request)
-        push!(invocation, 1)
-        handler(req)
-    end
-end
-
-function handler2(handler)
-    return function(req::HTTP.Request)
-        push!(invocation, 2)
-        handler(req)
-    end
-end
-
-function handler3(handler)
-    return function(req::HTTP.Request)
-        push!(invocation, 3)
-        handler(req)
-    end
-end
-
-r = internalrequest(HTTP.Request("GET", "/multiply/3/6"), middleware=[handler1, handler2, handler3])
-@test r.status == 200
-@test invocation == [1,2,3] # enusre the handlers are called in the correct order
-@test text(r) == "18.0" 
-
-r = internalrequest(HTTP.Request("GET", "/docs"), middleware=[handler1])
+r = internalrequest(HTTP.Request("GET", "/docs"), middleware=[middleware1])
 @test r.status == 200
 
 r = internalrequest(HTTP.Request("GET", "/docs/schema"))
@@ -794,7 +766,7 @@ setschema(data)
 
 terminate()
 
-@async serve(middleware=[handler1, handler2, handler3], port=PORT, show_errors=false, show_banner=false)
+@async serve(middleware=[middleware1, middleware2, middleware3], port=PORT, show_errors=false, show_banner=false)
 sleep(1)
 
 r = internalrequest(HTTP.Request("GET", "/get"))

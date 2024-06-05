@@ -299,7 +299,7 @@ function router(prefix::String = "";
                 interval::Nullable{Real} = nothing,
                 cron::Nullable{String} = nothing)
 
-    return Oxygen.Core.AutoDoc.router(CONTEXT[], prefix; tags, middleware, interval, cron)
+    return Oxygen.Core.router(CONTEXT[], prefix; tags, middleware, interval, cron)
 end
 
 

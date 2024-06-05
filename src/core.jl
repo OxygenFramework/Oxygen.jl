@@ -17,6 +17,8 @@ include("types.jl");        @reexport using .Types
 include("constants.jl");    @reexport using .Constants
 include("handlers.jl");     @reexport using .Handlers
 include("context.jl");      @reexport using .AppContext
+include("middleware.jl");   @reexport using .Middleware
+include("routing.jl");      @reexport using .Routing
 include("cron.jl");         @reexport using .Cron
 include("repeattasks.jl");  @reexport using .RepeatTasks
 include("autodoc.jl");      @reexport using .AutoDoc
@@ -24,7 +26,8 @@ include("metrics.jl");      @reexport using .Metrics
 include("reflection.jl");   @reexport using .Reflection
 include("extractors.jl");   @reexport using .Extractors
 
-export  start, serve, serveparallel, terminate, 
+
+export start, serve, serveparallel, terminate, 
         internalrequest, staticfiles, dynamicfiles
                         
 oxygen_title = raw"""

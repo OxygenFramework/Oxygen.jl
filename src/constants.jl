@@ -6,7 +6,8 @@ export PACKAGE_DIR, DATA_PATH,
     GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, CONNECT, TRACE, 
     HTTP_METHODS,
     WEBSOCKET, STREAM,
-    SPECIAL_METHODS, METHOD_ALIASES, TYPE_ALIASES
+    SPECIAL_METHODS, METHOD_ALIASES, TYPE_ALIASES,
+    SWAGGER_VERSION, REDOC_VERSION
 
 # Generate a reliable path to our package directory
 const PACKAGE_DIR = @path @__DIR__
@@ -44,5 +45,8 @@ const TYPE_ALIASES = Dict{String, Type}(
     WEBSOCKET => HTTP.WebSockets.WebSocket,
     STREAM => HTTP.Streams.Stream
 )
+
+const SWAGGER_VERSION = "swagger@5.7.2"
+const REDOC_VERSION = "redoc@2.1.2"
 
 end

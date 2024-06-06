@@ -32,6 +32,7 @@ include("instancetests.jl")
 include("paralleltests.jl")
 include("taskmanagement.jl")
 include("cronmanagement.jl")
+include("middlewaretests.jl")
 include("originaltests.jl")
 
 end 

@@ -43,6 +43,7 @@ end
     server              :: Ref{Nullable{Server}}    = Ref{Nullable{Server}}(nothing)
     router              :: Router                   = Router()
     custommiddleware    :: Dict{String, Tuple}      = Dict{String, Tuple}()
+    middleware_cache    :: Dict{String, Function}   = Dict{String, Function}()
     history             :: History                  = History(1_000_000)
     history_lock        :: ReentrantLock            = ReentrantLock()
 end

@@ -16,9 +16,6 @@ This function is used to build up the middleware chain for all our endpoints
 """
 function buildmiddleware(key::String, handler::Function, globalmiddleware::Vector, custommiddleware::Dict) :: Function
 
-    # initialize our middleware layers
-    layers::Vector{Function} = [handler]
-
     # lookup the middleware for this path
     routermiddleware, routemiddleware = get(custommiddleware, key, (nothing, nothing))
 
@@ -26,8 +23,13 @@ function buildmiddleware(key::String, handler::Function, globalmiddleware::Vecto
     routermiddleware = isnothing(routermiddleware) ? [] : routermiddleware
     routemiddleware = isnothing(routemiddleware) ? [] : routemiddleware
 
+    # initialize our middleware layers
+    layers::Vector{Function} = [handler]
+
     # append the middleware in reverse order (so when we reduce over it, it's in the correct order)
-    append!(layers, reverse([globalmiddleware..., routermiddleware..., routemiddleware...]))
+    append!(layers, routemiddleware)
+    append!(layers, routermiddleware)
+    append!(layers, globalmiddleware)
 
     # combine all the middleware functions together
     return reduce(|>, layers)

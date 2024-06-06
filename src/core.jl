@@ -18,7 +18,7 @@ include("constants.jl");    @reexport using .Constants
 include("handlers.jl");     @reexport using .Handlers
 include("context.jl");      @reexport using .AppContext
 include("middleware.jl");   @reexport using .Middleware
-include("routing.jl");      @reexport using .Routing
+include("routerhof.jl");    @reexport using .RouterHOF
 include("cron.jl");         @reexport using .Cron
 include("repeattasks.jl");  @reexport using .RepeatTasks
 include("autodoc.jl");      @reexport using .AutoDoc

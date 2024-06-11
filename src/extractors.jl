@@ -10,7 +10,7 @@ using ..Util: text, json, formdata, parseparam
 using ..Reflection: struct_builder, extract_struct_info
 using ..Types
 
-export Extractor, extract, validate, extracttype,
+export Extractor, extract, validate, extracttype, isextractor, isreqparam, isbodyparam,
     Path, Query, Header, Json, JsonFragment, Form, Body
 
 abstract type Extractor{T} end
@@ -44,10 +44,6 @@ macro extractor(class_name)
     end |> esc
 end
 
-function extracttype(::Type{U}) where {T, U <: Extractor{T}}
-    return T
-end
-
 ## RequestParts Extractors
 
 @extractor Path
@@ -60,6 +56,22 @@ end
 @extractor JsonFragment
 @extractor Form
 @extractor Body
+
+function extracttype(::Type{U}) where {T, U <: Extractor{T}}
+    return T
+end
+
+function isextractor(::Param{T}) where {T}
+    return T <: Extractor
+end
+
+function isreqparam(::Param{U}) where {T, U <: Extractor{T}}
+    return U <: Union{Path{T}, Query{T}, Header{T}}
+end
+
+function isbodyparam(::Param{U}) where {T, U <: Extractor{T}}
+    return U <: Union{Json{T}, JsonFragment{T}, Form{T}, Body{T}}
+end
 
 # Generic validation function - if no validate function is defined for a type, return true
 validate(type::T) where {T} = true
@@ -156,5 +168,6 @@ function extract(param::Param{Header{T}}, request::LazyRequest) :: Header{T}  wh
     valid_instance = try_validate(param, instance)
     return Header(valid_instance)
 end
+
 
 end

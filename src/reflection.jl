@@ -214,7 +214,7 @@ end
 """
 Given a list of CodeInfo objects, extract any default values assigned to parameters & keyword arguments
 """
-function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names::Vector{Symbol}, kwarg_names::Vector{Symbol}; start=2)
+function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names::Vector{Symbol}, kwarg_names::Vector{Symbol}; debug=false)
 
     # These store the mapping between parameter names and their default values
     param_defaults = Dict()
@@ -234,6 +234,8 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
         if !has_sig_expr(c)
             continue
         end
+
+        debug && println(c)
 
         # rebuild the function signature with the default values included
         sig_args = reconstruct(c, func_name)
@@ -277,7 +279,7 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
 end
 
 
-function splitdef(f::Function; start=1)
+function splitdef(f::Union{Function,DataType}; start=1, debug=false)
 
     # Convert to low level IR code
     info = Base.code_lowered(f)
@@ -289,7 +291,7 @@ function splitdef(f::Function; start=1)
     param_names, param_types, kwarg_names = getsignames(func_methods)
 
     # Extract default values
-    param_defaults, kwarg_defaults = extract_defaults(info, func_name, param_names, kwarg_names)
+    param_defaults, kwarg_defaults = extract_defaults(info, func_name, param_names, kwarg_names; debug=debug)
 
     # Create a list of Param objects from parameters
     params = Vector{Param}()
@@ -317,12 +319,44 @@ function splitdef(f::Function; start=1)
 
     sig_params = vcat(params, keyword_args)[start:end]
 
+    sig_map = Dict{Symbol,Param}()
+    for param in sig_params
+        # merge parameters with the same name
+        if haskey(sig_map, param.name)
+            sig_map[param.name] = mergeparams(sig_map[param.name], param)
+        # add unique parameter to the map
+        else
+            sig_map[param.name] = param
+        end
+    end
+    
     return (
         name = func_name,
         args = params[start:end],
         kwargs = keyword_args[start:end],
         sig = sig_params,
-        sig_map = Dict{Symbol,Param}(param.name => param for param in sig_params)
+        sig_map = sig_map
+    )
+end
+
+# Return the more specific type, or the first type if they are equal
+function select_type(t1::Type, t2::Type)
+    if t1 <: t2
+        return t1
+    elseif t2 <: t1
+        return t2
+    else
+        return t1
+    end
+end
+
+# Merge two parameter objects, defaultint to the original params value
+function mergeparams(p1::Param, p2::Param) :: Param
+    return Param(
+        name    = p1.name,
+        type    = select_type(p1.type, p2.type),
+        default = coalesce(p1.default, p2.default),
+        hasdefault = p1.hasdefault || p2.hasdefault
     )
 end
 

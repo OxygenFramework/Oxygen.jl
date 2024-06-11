@@ -1,7 +1,7 @@
 module ErgonomicsDemo
-using Oxygen
-import Oxygen: validate, Param, hasdefault, splitdef, struct_builder, Nullable, LazyRequest, Extractor
 
+include("../src/Oxygen.jl")
+using .Oxygen
 using Base: @kwdef
 using StructTypes
 using Dates

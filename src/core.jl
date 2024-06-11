@@ -21,10 +21,10 @@ include("middleware.jl");   @reexport using .Middleware
 include("routerhof.jl");    @reexport using .RouterHOF
 include("cron.jl");         @reexport using .Cron
 include("repeattasks.jl");  @reexport using .RepeatTasks
-include("autodoc.jl");      @reexport using .AutoDoc
 include("metrics.jl");      @reexport using .Metrics
 include("reflection.jl");   @reexport using .Reflection
 include("extractors.jl");   @reexport using .Extractors
+include("autodoc.jl");      @reexport using .AutoDoc
 
 
 export start, serve, serveparallel, terminate, 
@@ -448,23 +448,44 @@ function parse_func_params(route::String, func::Function)
     end
 
     # Identify all path & query params (can be declared as regular variables or extractors)
-    pathparams = Vector{Symbol}()
+    pathparams  = Vector{Symbol}()
     queryparams = Vector{Symbol}()
+    headers     = Vector{Symbol}()
+    bodyargs    = Vector{Symbol}()
+
+    path_params = []
+    query_params = []
+    header_params = []
+    body_params = []    
 
     for param in info.args
-        if param.name in route_params
-            push!(pathparams, param.name)
-        elseif param.type <: Extractor
+        # case 1: it's an extractor type
+        if param.type <: Extractor
+            innner_type = param.type |> extracttype
             # push the variables from the struct into the params array
             if param.type <: Path
-                innner_type = param.type |> extracttype
-                field_names = fieldnames(innner_type)
-                push!(pathparams, field_names...)
+                append!(pathparams, fieldnames(innner_type))
+                push!(path_params, param)
             elseif param.type <: Query
-                push!(queryparams, param.name)
+                append!(queryparams, fieldnames(innner_type))
+                push!(query_params, param)
+            elseif param.type <: Header
+                append!(headers, fieldnames(innner_type))
+                push!(header_params, param)
+            else
+                append!(bodyargs, fieldnames(innner_type))
+                push!(body_params, param)
             end
+
+        # case 2: It's a path parameter
+        elseif param.name in route_params
+            push!(pathparams, param.name)
+            push!(path_params, param)
+
+        # Case 3: It's a query parameter
         else 
             push!(queryparams, param.name)
+            push!(query_params, param)
         end
     end
 
@@ -480,7 +501,13 @@ function parse_func_params(route::String, func::Function)
         end
     end
 
-    return (info=info, pathparams=pathparams, queryparams=queryparams)
+    return (
+        info        = info, 
+        pathparams  = path_params, 
+        queryparams = query_params, 
+        headers     = header_params,
+        bodyargs    = body_params,
+    )
 end
 
 
@@ -495,10 +522,13 @@ function register(ctx::Context, httpmethod::String, route::Union{String,Function
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
 
-    path_params = [(param.name, param.type) for param in func_details.info.sig if param.name in func_details.pathparams]
+    queryparams = func_details.queryparams
+    pathparams = func_details.pathparams
+    headers = func_details.headers
+    bodyparams = func_details.bodyargs
 
     # Register the route schema with out autodocs module
-    registerschema(ctx.docs, route, httpmethod, path_params, Base.return_types(func))
+    registerschema(ctx.docs, route, httpmethod, pathparams, queryparams, headers, bodyparams, Base.return_types(func))
 
     # Register the route with the router
     registerhandler(ctx.service.router, httpmethod, route, func, func_details)

@@ -8,7 +8,9 @@ using RelocatableFolders
 using ..Util: html, recursive_merge
 using ..Constants
 using ..AppContext: Context, Documenation
-using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable
+using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, Param, isrequired
+using ..Extractors: isextractor, extracttype, isreqparam
+using ..Reflection: splitdef
 
 export registerschema, swaggerhtml, redochtml, mergeschema
 
@@ -58,7 +60,7 @@ end
 Returns the specific format type for a given parameter
 ex.) DateTime(2022,1,1) => "date-time"
 """
-function getformat(type::Type)::Nullable{String}
+function getformat(type::Type) :: Nullable{String}
     if type <: AbstractFloat
         if type == Float32
             return "float"
@@ -79,27 +81,80 @@ function getformat(type::Type)::Nullable{String}
     return nothing
 end
 
+function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
+    param = Dict(
+        "in" => paramtype,          # path, query, header (where the parameter is located)
+        "name" => String(p.name),
+        "required" => paramtype == "path" ? true : isrequired(p), # path params are always required
+        "schema" => Dict(
+            "type" => gettype(p.type)
+        )
+    )
+    format = getformat(p.type)
+    if !isnothing(format)
+        param["schema"]["format"] = format
+    end
+    return param
+end
+
 
 """
 Used to generate & register schema related for a specific endpoint 
 """
-function registerschema(docs::Documenation, path::String, httpmethod::String, parameters, returntype::Array)
+function registerschema(
+    docs::Documenation,
+    path::String,
+    httpmethod::String,
+    parameters::Vector,
+    queryparams::Vector,
+    headers::Vector,
+    bodyparams::Vector,
+    returntype::Vector)
+
+    ##### Add all the body parameters to the schema #####
+
+    schemas = Dict()
+    for p in bodyparams
+        inner_type = p.type |> extracttype
+        convertobject!(inner_type, schemas)
+    end
+
+    components = Dict("components" => Dict("schemas" => schemas))
+    if !isempty(schemas)
+        mergeschema(docs.schema, components)
+    end
+
+    ##### Create the parameters for the route #####
 
     params = []
-    for (name, type) in parameters
-        format = getformat(type)
-        param = Dict(
-            "in" => "path",
-            "name" => "$name",
-            "required" => true,
-            "schema" => Dict(
-                "type" => gettype(type)
-            )
-        )
-        if !isnothing(format)
-            param["schema"]["format"] = format
+
+    function formatparam(p::Param{T}, paramtype::String) where {T}
+        # Will need to flatten request extrators & append all properties to the schema
+        if isextractor(p) && isreqparam(p)
+            type = extracttype(p.type)
+            info = splitdef(type; debug=false)
+            sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
+            for name in sig_names
+                p = info.sig_map[name]
+                param = createparam(p, paramtype)
+                push!(params, param)
+            end
+        else
+            param = createparam(p, paramtype)
+            push!(params, param)
         end
-        push!(params, param)
+    end
+    
+    for p in parameters
+        formatparam(p, "path")
+    end
+
+    for p in queryparams
+        formatparam(p, "query")
+    end
+
+    for p in headers
+        formatparam(p, "header")
     end
 
     # lookup if this route has any registered tags
@@ -119,6 +174,7 @@ function registerschema(docs::Documenation, path::String, httpmethod::String, pa
             )
         )
     )
+
 
     # Add a request body to the route if it's a POST, PUT, or PATCH request
     if httpmethod in ["POST", "PUT", "PATCH"]
@@ -159,8 +215,41 @@ function registerschema(docs::Documenation, path::String, httpmethod::String, pa
     # remove any special regex patterns from the path before adding this path to the schema
     cleanedpath = replace(path, r"(?=:)(.*?)(?=}/)" => "")
     mergeschema(docs.schema, cleanedpath, route)
+
+
 end
 
+function is_custom_struct(T::Type)
+    return isstructtype(T) && T.name.module ∉ (Base, Core)
+end
+
+# takes a struct and converts it into an openapi 3.0 compliant dictionary
+function convertobject!(type::Type, schemas::Dict) :: Dict
+
+    typename = string(nameof(type))
+
+    # intilaize this entry
+    obj = Dict("type" => "object", "properties" => Dict())
+
+    # iterate over fieldnames
+    for field in fieldnames(type)
+        current_type = fieldtype(type, field)
+        current_name = string(nameof(current_type))
+        if is_custom_struct(current_type) && !haskey(schemas, current_name)
+            # Set the field to be a reference to the custom struct
+            obj["properties"][string(field)] = Dict("\$ref" => "#/components/schemas/$current_name")
+            # Recursively convert nested structs
+            convertobject!(current_type, schemas)
+        else
+            # convert the current field
+            obj["properties"][string(field)] = Dict("type" => gettype(current_type))
+        end
+    end
+
+    schemas[typename] = obj
+
+    return schemas
+end
 
 """
 Read in a static file from the /data folder

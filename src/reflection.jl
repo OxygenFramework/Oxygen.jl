@@ -214,7 +214,7 @@ end
 """
 Given a list of CodeInfo objects, extract any default values assigned to parameters & keyword arguments
 """
-function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names::Vector{Symbol}, kwarg_names::Vector{Symbol}; debug=false)
+function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names::Vector{Symbol}, kwarg_names::Vector{Symbol})
 
     # These store the mapping between parameter names and their default values
     param_defaults = Dict()
@@ -234,8 +234,6 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
         if !has_sig_expr(c)
             continue
         end
-
-        debug && println(c)
 
         # rebuild the function signature with the default values included
         sig_args = reconstruct(c, func_name)
@@ -279,7 +277,7 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
 end
 
 
-function splitdef(f::Union{Function,DataType}; start=1, debug=false)
+function splitdef(f::Union{Function,DataType}; start=1)
 
     # Convert to low level IR code
     info = Base.code_lowered(f)
@@ -291,7 +289,7 @@ function splitdef(f::Union{Function,DataType}; start=1, debug=false)
     param_names, param_types, kwarg_names = getsignames(func_methods)
 
     # Extract default values
-    param_defaults, kwarg_defaults = extract_defaults(info, func_name, param_names, kwarg_names; debug=debug)
+    param_defaults, kwarg_defaults = extract_defaults(info, func_name, param_names, kwarg_names)
 
     # Create a list of Param objects from parameters
     params = Vector{Param}()

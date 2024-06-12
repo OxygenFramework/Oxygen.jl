@@ -132,7 +132,7 @@ function registerschema(
         # Will need to flatten request extrators & append all properties to the schema
         if isextractor(p) && isreqparam(p)
             type = extracttype(p.type)
-            info = splitdef(type; debug=false)
+            info = splitdef(type)
             sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
             for name in sig_names
                 p = info.sig_map[name]
@@ -174,50 +174,103 @@ function registerschema(
             )
         )
     )
+   
+    # collect a list of all references to the body parameters
+    body_refs = Dict{String,Vector{String}}()
+    for p in bodyparams
+        inner_type = p.type |> extracttype |> nameof |> string
+        extractor_name = p.type |> nameof |> string
 
+        if !haskey(body_refs, extractor_name)
+            body_refs[extractor_name] = []
+        end
+
+        body_refs[extractor_name] = vcat(body_refs[extractor_name], "#/components/schemas/$inner_type")
+        # push!(refs, "#/components/schemas/$inner_type")
+    end
+
+    jsonschema = collectschemarefs(body_refs, ["Json", "JsonFragment"])
+    jsonschema = merge(jsonschema, Dict("type" => "object"))
+
+    textschema = collectschemarefs(body_refs, ["Body"])
+    textschema = merge(textschema, Dict("type" => "number"))
+
+    formschema = collectschemarefs(body_refs, ["Form"])
+    formschema = merge(formschema, Dict("type" => "object"))
+
+    content = Dict(
+        "application/json" => Dict(
+            "schema" => jsonschema
+        ),
+        "text/plain" => Dict(
+            "schema" => textschema
+        ),
+        "application/x-www-form-urlencoded" => Dict(
+            "schema" => formschema
+        ),
+        "application/xml" => Dict(
+            "schema" => Dict(
+                "type" => "object"
+            )
+        ),
+        "multipart/form-data" => Dict(
+            "schema" => Dict(
+                "type" => "object",
+                "properties" => Dict(
+                    "file" => Dict(
+                        "type" => "string",
+                        "format" => "binary"
+                    )
+                ),
+                "required" => ["file"]
+            )
+        )
+    )
+
+    ordered_content = OrderedDict()
+
+    if !isempty(jsonschema["allOf"])
+        ordered_content["application/json"] = Dict("schema" => jsonschema)
+    end
+
+    if !isempty(textschema["allOf"])
+        ordered_content["text/plain"] = Dict("schema" => textschema)
+    end
+
+    if !isempty(formschema["allOf"])
+        ordered_content["application/x-www-form-urlencoded"] = Dict("schema" => formschema)
+    end
+
+    # Add in missing keys
+    for (key, value) in content
+        if !haskey(ordered_content, key)
+            ordered_content[key] = value
+        end
+    end
 
     # Add a request body to the route if it's a POST, PUT, or PATCH request
-    if httpmethod in ["POST", "PUT", "PATCH"]
+    if httpmethod in ["POST", "PUT", "PATCH"] || !isempty(bodyparams)
         route[lowercase(httpmethod)]["requestBody"] = Dict(
             "required" => false,
-            "content" => OrderedDict(
-                "application/json" => Dict(
-                    "schema" => Dict(
-                        "type" => "object"
-                    )
-                ),
-                "application/xml" => Dict(
-                    "schema" => Dict(
-                        "type" => "object"
-                    )
-                ),
-                "text/plain" => Dict(
-                    "schema" => Dict(
-                        "type" => "string"
-                    )
-                ),
-                "multipart/form-data" => Dict(
-                    "schema" => Dict(
-                        "type" => "object",
-                        "properties" => Dict(
-                            "file" => Dict(
-                                "type" => "string",
-                                "format" => "binary"
-                            )
-                        ),
-                        "required" => ["file"]
-                    )
-                )
-            )
+            "content" => ordered_content
         )
     end
 
     # remove any special regex patterns from the path before adding this path to the schema
     cleanedpath = replace(path, r"(?=:)(.*?)(?=}/)" => "")
     mergeschema(docs.schema, cleanedpath, route)
-
-
 end
+
+function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
+    refs = []
+    for key in keys
+        if haskey(data, key)
+            append!(refs, data[key])
+        end
+    end
+    return Dict("$schematype" => [ Dict("\$ref" => ref) for ref in refs ])
+end
+
 
 function is_custom_struct(T::Type)
     return isstructtype(T) && T.name.module ∉ (Base, Core)
@@ -226,7 +279,7 @@ end
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
 function convertobject!(type::Type, schemas::Dict) :: Dict
 
-    typename = string(nameof(type))
+    typename = type |> nameof |> string
 
     # intilaize this entry
     obj = Dict("type" => "object", "properties" => Dict())

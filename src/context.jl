@@ -32,6 +32,7 @@ end
 end
 
 @kwdef struct Documenation
+    enabled         :: Ref{Bool}                    = Ref{Bool}(true)
     router          :: Ref{Nullable{Router}}        = Ref{Nullable{Router}}(nothing)    # used for docs & metrics internal endpoints
     docspath        :: Ref{String}                  = Ref{String}("/docs")
     schemapath      :: Ref{String}                  = Ref{String}("/schema")

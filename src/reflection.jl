@@ -277,22 +277,56 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
 end
 
 
-function splitdef(f::Function; start=1)
-    # Convert to low level IR code
-    info = Base.code_lowered(f)
-    func_methods = methods(f)
-    func_name = first(func_methods).name
-    return splitdef(info, func_methods, func_name, start=start)
+# Return the more specific type
+function select_type(t1::Type, t2::Type)
+    # case 1: only t1 is any
+    if t1 == Any && t2 != Any
+        return t2
+
+    # case 2: only t2 is any
+    elseif t2 == Any && t1 != Any
+        return t1
+
+    # case 3: Niether / Both types are Any, chose the more specific type
+    else
+        if t1 <: t2
+            return t1
+        elseif t2 <: t1
+            return t2
+        else
+            # if the types are the same, return the first type
+            return t1
+        end
+    end
+end
+
+# Merge two parameter objects, defaultint to the original params value
+function mergeparams(p1::Param, p2::Param) :: Param
+    return Param(
+        name    = p1.name,
+        type    = select_type(p1.type, p2.type),
+        default = coalesce(p1.default, p2.default),
+        hasdefault = p1.hasdefault || p2.hasdefault
+    )
 end
 
 
-function splitdef(t::DataType; start=1)
-    # Convert to low level IR code
-    info = Base.code_lowered(t)
-    func_methods = methods(t)
-    func_name = first(func_methods).name
-    results = splitdef(info, func_methods, func_name, start=start)
+"""
+Used to extract the function signature from regular Julia functions.
+"""
+function splitdef(f::Function; start=1)
+    return splitdef(Base.code_lowered(f), methods(f), start=start)
+end
 
+
+"""
+Used to extract the function signature from regular Julia Structs.
+This function merges the signature map at the end, because it's common
+for structs to have multiple constructors with the same parameter names as both
+keyword args and regular args.
+"""
+function splitdef(t::DataType; start=1)
+    results = splitdef(Base.code_lowered(t), methods(t), start=start)
     sig_map = Dict{Symbol,Param}()
     for param in results.sig
         # merge parameters with the same name
@@ -303,16 +337,18 @@ function splitdef(t::DataType; start=1)
             sig_map[param.name] = param
         end
     end
-
-    mergewith!(results.sig_map, sig_map)
+    merge!(results.sig_map, sig_map)
     return results
 end
 
 
-function splitdef(info::Vector{Core.CodeInfo}, func_methods, func_name; start=1)
+function splitdef(info::Vector{Core.CodeInfo}, method_defs::Base.MethodList; start=1)
+
+    # Get the function name from the first constructor
+    func_name = first(method_defs).name
 
     # Extract parameter names and types
-    param_names, param_types, kwarg_names = getsignames(func_methods)
+    param_names, param_types, kwarg_names = getsignames(method_defs)
 
     # Extract default values
     param_defaults, kwarg_defaults = extract_defaults(info, func_name, param_names, kwarg_names)
@@ -349,27 +385,6 @@ function splitdef(info::Vector{Core.CodeInfo}, func_methods, func_name; start=1)
         kwargs = keyword_args[start:end],
         sig = sig_params,
         sig_map = Dict{Symbol,Param}(param.name => param for param in sig_params)
-    )
-end
-
-# Return the more specific type, or the first type if they are equal
-function select_type(t1::Type, t2::Type)
-    if t1 <: t2
-        return t1
-    elseif t2 <: t1
-        return t2
-    else
-        return t1
-    end
-end
-
-# Merge two parameter objects, defaultint to the original params value
-function mergeparams(p1::Param, p2::Param) :: Param
-    return Param(
-        name    = p1.name,
-        type    = select_type(p1.type, p2.type),
-        default = coalesce(p1.default, p2.default),
-        hasdefault = p1.hasdefault || p2.hasdefault
     )
 end
 

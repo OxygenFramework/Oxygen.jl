@@ -1,8 +1,6 @@
 module ErgonomicsDemo
 
-include("../src/Oxygen.jl")
-using .Oxygen
-using Base: @kwdef
+using Oxygen
 using StructTypes
 using Dates
 using HTTP
@@ -66,6 +64,6 @@ end
     "home"
 end
 
-serve()
+serve(docs=true, metrics=true)
 
 end

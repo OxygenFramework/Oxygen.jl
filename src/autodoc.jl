@@ -98,6 +98,24 @@ function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
 end
 
 
+function formatparam!(params::Vector{Any}, p::Param{T}, paramtype::String) where T
+    # Will need to flatten request extrators & append all properties to the schema
+    if isextractor(p) && isreqparam(p)
+        type = extracttype(p.type)
+        info = splitdef(type)
+        sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
+        for name in sig_names
+            p = info.sig_map[name]
+            param = createparam(p, paramtype)
+            push!(params, param)
+        end
+    else
+        param = createparam(p, paramtype)
+        push!(params, param)
+    end
+end
+
+
 """
 Used to generate & register schema related for a specific endpoint 
 """
@@ -116,7 +134,9 @@ function registerschema(
     schemas = Dict()
     for p in bodyparams
         inner_type = p.type |> extracttype
-        convertobject!(inner_type, schemas)
+        if is_custom_struct(inner_type)
+            convertobject!(inner_type, schemas)
+        end
     end
 
     components = Dict("components" => Dict("schemas" => schemas))
@@ -124,76 +144,43 @@ function registerschema(
         mergeschema(docs.schema, components)
     end
 
-    ##### Create the parameters for the route #####
+    ##### Append the parameter schema for the route #####
 
     params = []
-
-    function formatparam(p::Param{T}, paramtype::String) where {T}
-        # Will need to flatten request extrators & append all properties to the schema
-        if isextractor(p) && isreqparam(p)
-            type = extracttype(p.type)
-            info = splitdef(type)
-            sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
-            for name in sig_names
-                p = info.sig_map[name]
-                param = createparam(p, paramtype)
-                push!(params, param)
-            end
-        else
-            param = createparam(p, paramtype)
-            push!(params, param)
+    
+    for (param_list, location) in [(parameters, "path"), (queryparams, "query"), (headers, "header")]
+        for p in param_list
+            formatparam!(params, p, location)
         end
     end
+
+    ##### Set the schema for the body parameters #####
     
-    for p in parameters
-        formatparam(p, "path")
-    end
-
-    for p in queryparams
-        formatparam(p, "query")
-    end
-
-    for p in headers
-        formatparam(p, "header")
-    end
-
-    # lookup if this route has any registered tags
-    if haskey(docs.taggedroutes, path) && httpmethod in docs.taggedroutes[path].httpmethods
-        tags = docs.taggedroutes[path].tags
-    else
-        tags = []
-    end
-
-    route = Dict(
-        "$(lowercase(httpmethod))" => Dict(
-            "tags" => tags,
-            "parameters" => params,
-            "responses" => Dict(
-                "200" => Dict("description" => "200 response"),
-                "500" => Dict("description" => "500 Server encountered a problem")
-            )
-        )
-    )
-   
-    # collect a list of all references to the body parameters
     body_refs = Dict{String,Vector{String}}()
+    body_types = Dict()
     for p in bodyparams
-        inner_type = p.type |> extracttype |> nameof |> string
-        extractor_name = p.type |> nameof |> string
+        inner_type      = p.type |> extracttype
+        inner_type_name = inner_type |> nameof |> string
+        extractor_name  = p.type |> nameof |> string
+        body_types[extractor_name] = gettype(inner_type)
+
+        if !is_custom_struct(inner_type)
+            continue
+        end
 
         if !haskey(body_refs, extractor_name)
             body_refs[extractor_name] = []
         end
 
-        body_refs[extractor_name] = vcat(body_refs[extractor_name], "#/components/schemas/$inner_type")
-        # push!(refs, "#/components/schemas/$inner_type")
+        body_refs[extractor_name] = vcat(body_refs[extractor_name], "#/components/schemas/$inner_type_name")
     end
 
     jsonschema = collectschemarefs(body_refs, ["Json", "JsonFragment"])
     jsonschema = merge(jsonschema, Dict("type" => "object"))
 
+    # The schema type for text/plain can vary unlike the other types
     textschema = collectschemarefs(body_refs, ["Body"])
-    textschema = merge(textschema, Dict("type" => "number"))
+    textschema = merge(textschema, Dict("type" => get(body_types, "Body", "string")))
 
     formschema = collectschemarefs(body_refs, ["Form"])
     formschema = merge(formschema, Dict("type" => "object"))
@@ -227,6 +214,7 @@ function registerschema(
         )
     )
 
+    ##### Add Schemas to this route, with the preferred content type first #####
     ordered_content = OrderedDict()
 
     if !isempty(jsonschema["allOf"])
@@ -241,17 +229,38 @@ function registerschema(
         ordered_content["application/x-www-form-urlencoded"] = Dict("schema" => formschema)
     end
 
-    # Add in missing keys
+    # Add all other content types (won't default to these, but they are available)
     for (key, value) in content
         if !haskey(ordered_content, key)
             ordered_content[key] = value
         end
     end
 
+
+    # lookup if this route has any registered tags
+    if haskey(docs.taggedroutes, path) && httpmethod in docs.taggedroutes[path].httpmethods
+        tags = docs.taggedroutes[path].tags
+    else
+        tags = []
+    end
+
+    # Build the route schema
+    route = Dict(
+        "$(lowercase(httpmethod))" => Dict(
+            "tags" => tags,
+            "parameters" => params,
+            "responses" => Dict(
+                "200" => Dict("description" => "200 response"),
+                "500" => Dict("description" => "500 Server encountered a problem")
+            )
+        )
+    )
+    
     # Add a request body to the route if it's a POST, PUT, or PATCH request
     if httpmethod in ["POST", "PUT", "PATCH"] || !isempty(bodyparams)
         route[lowercase(httpmethod)]["requestBody"] = Dict(
-            "required" => false,
+            # if any body param is required, mark the entire body as required
+            "required" => any(p -> isrequired(p), bodyparams),
             "content" => ordered_content
         )
     end
@@ -284,18 +293,37 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
     # intilaize this entry
     obj = Dict("type" => "object", "properties" => Dict())
 
-    # iterate over fieldnames
-    for field in fieldnames(type)
-        current_type = fieldtype(type, field)
+    # parse out the fields of the type
+    info = splitdef(type)
+
+    # Make sure we have a unique set of names (in case of duplicate field names when parsing types)
+    # The same field names can show up as regular parameters and keyword parameters when the type is used with @kwdef
+    sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
+
+    # loop over all unique fields
+    for name in sig_names
+        
+        p = info.sig_map[name]
+        field_name = string(p.name)
+        current_type = p.type
         current_name = string(nameof(current_type))
+
         if is_custom_struct(current_type) && !haskey(schemas, current_name)
             # Set the field to be a reference to the custom struct
-            obj["properties"][string(field)] = Dict("\$ref" => "#/components/schemas/$current_name")
+            obj["properties"][field_name] = Dict("\$ref" => "#/components/schemas/$current_name")
             # Recursively convert nested structs
             convertobject!(current_type, schemas)
         else
+            current_field = Dict("type" => gettype(current_type), "required" => isrequired(p))
+
+            # Add format if it exists
+            format = getformat(current_type)
+            if !isnothing(format)
+                current_field["format"] = format
+            end
+
             # convert the current field
-            obj["properties"][string(field)] = Dict("type" => gettype(current_type))
+            obj["properties"][field_name] = current_field
         end
     end
 

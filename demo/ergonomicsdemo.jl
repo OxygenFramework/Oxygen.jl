@@ -58,6 +58,10 @@ end
     return data.payload
 end
 
+@get "/get" function(req, data::Json{Sample})
+    return data.payload
+end
+
 @get "/" function(req)
     "home"
 end

@@ -1,8 +1,11 @@
 module SSEDemo
+
 using JSON3
 using Dates
 using HTTP
-using Oxygen
+
+include("../src/Oxygen.jl")
+using .Oxygen
 
 @get "/" function()
     html("""

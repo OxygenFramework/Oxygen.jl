@@ -277,13 +277,39 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
 end
 
 
-function splitdef(f::Union{Function,DataType}; start=1)
-
+function splitdef(f::Function; start=1)
     # Convert to low level IR code
     info = Base.code_lowered(f)
-
     func_methods = methods(f)
     func_name = first(func_methods).name
+    return splitdef(info, func_methods, func_name, start=start)
+end
+
+
+function splitdef(t::DataType; start=1)
+    # Convert to low level IR code
+    info = Base.code_lowered(t)
+    func_methods = methods(t)
+    func_name = first(func_methods).name
+    results = splitdef(info, func_methods, func_name, start=start)
+
+    sig_map = Dict{Symbol,Param}()
+    for param in results.sig
+        # merge parameters with the same name
+        if haskey(sig_map, param.name)
+            sig_map[param.name] = mergeparams(sig_map[param.name], param)
+        # add unique parameter to the map
+        else
+            sig_map[param.name] = param
+        end
+    end
+
+    mergewith!(results.sig_map, sig_map)
+    return results
+end
+
+
+function splitdef(info::Vector{Core.CodeInfo}, func_methods, func_name; start=1)
 
     # Extract parameter names and types
     param_names, param_types, kwarg_names = getsignames(func_methods)
@@ -317,23 +343,12 @@ function splitdef(f::Union{Function,DataType}; start=1)
 
     sig_params = vcat(params, keyword_args)[start:end]
 
-    sig_map = Dict{Symbol,Param}()
-    for param in sig_params
-        # merge parameters with the same name
-        if haskey(sig_map, param.name)
-            sig_map[param.name] = mergeparams(sig_map[param.name], param)
-        # add unique parameter to the map
-        else
-            sig_map[param.name] = param
-        end
-    end
-    
     return (
         name = func_name,
         args = params[start:end],
         kwargs = keyword_args[start:end],
         sig = sig_params,
-        sig_map = sig_map
+        sig_map = Dict{Symbol,Param}(param.name => param for param in sig_params)
     )
 end
 

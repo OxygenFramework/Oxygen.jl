@@ -1,8 +1,6 @@
 module ErgonomicsDemo
-using Oxygen
-import Oxygen: validate, Param, hasdefault, splitdef, struct_builder, Nullable, LazyRequest, Extractor
 
-using Base: @kwdef
+using Oxygen
 using StructTypes
 using Dates
 using HTTP
@@ -38,7 +36,6 @@ end
     address::Address = Address("123 Main Street", "Orlando", "FL", "32810")
 end
 
-
 @get "/add/{a}/{b}" function(req, a::String, path::Path{Parameters}, qparams::Query{Sample}, c::Float64=3.6)
     return (a=a, c=c, path=path, query=qparams)
 end
@@ -47,7 +44,19 @@ end
     return headers.payload
 end
 
-@post "/json" function(req, data = Json(PersonWithDefault, p -> p.value < 10 ))
+@post "/json" function(req, data = Json(PersonWithDefault, p -> p.money < 1000 ))
+    return data.payload
+end
+
+@post "/form" function(req, data::Form{PersonWithDefault})
+    return data.payload
+end
+
+@post "/body" function(req, data::Body{Int64})
+    return data.payload
+end
+
+@get "/get" function(req, data::Json{Sample})
     return data.payload
 end
 
@@ -55,6 +64,6 @@ end
     "home"
 end
 
-serve()
+serve(docs=true, metrics=true)
 
 end

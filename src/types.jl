@@ -14,7 +14,7 @@ using ..Util
 export Server, History, HTTPTransaction, TaggedRoute, Nullable, 
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition,
-    Param, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
+    Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
 
 const Nullable{T} = Union{T, Nothing}
 
@@ -86,6 +86,9 @@ const History = CircularDeque{HTTPTransaction}
     hasdefault::Bool = false
 end
 
+function isrequired(p::Param{T}) where T
+    return !p.hasdefault || (ismissing(p.default) && !(T <: Missing))
+end
 
 # Lazily init frequently used components of a request to be used between parameters when parsing
 @kwdef struct LazyRequest

@@ -12,101 +12,28 @@ function resetstate()
     end
 end
 
-function serve(; 
-    middleware  = [], 
-    handler     = Oxygen.Core.stream_handler, 
-    host        = "127.0.0.1", 
-    port        = 8080, 
-    serialize   = true, 
-    async       = false, 
-    catch_errors= true, 
-    docs        = true,
-    metrics     = true, 
-    show_errors = true,
-    show_banner  = true,
-    docs_path    = "/docs",
-    schema_path  = "/schema",
-    kwargs...) 
-
+function serve(; kwargs...) 
+    async = Base.get(kwargs, :async, false)
     try
-        server = Oxygen.Core.serve(CONTEXT[]; 
-            middleware  = middleware,
-            handler     = handler,
-            host        = host, 
-            port        = port, 
-            serialize   = serialize, 
-            async       = async, 
-            catch_errors= catch_errors, 
-            docs        = docs,
-            metrics     = metrics,
-            show_errors = show_errors,
-            show_banner = show_banner,
-            docs_path   = docs_path,
-            schema_path = schema_path,
-            kwargs...
-        )
-
         # return the resulting HTTP.Server object
-        return server
-
+        return Oxygen.Core.serve(CONTEXT[]; kwargs...)
     finally
-        
         # close server on exit if we aren't running asynchronously
         if !async 
             terminate()
             # only reset state on exit if we aren't running asynchronously & are running it interactively 
             isinteractive() && resetstate()
         end
-
     end
 end
 
 
-function serveparallel(; 
-    middleware  = [], 
-    handler     = Oxygen.Core.stream_handler, 
-    host        = "127.0.0.1", 
-    port        = 8080, 
-    serialize   = true, 
-    async       = false, 
-    catch_errors= true,
-    docs        = true,
-    metrics     = true, 
-    show_errors = true,
-    show_banner  = true,
-    docs_path    = "/docs",
-    schema_path  = "/schema",
-    kwargs...)
+"""
+    serveparallel(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
 
-    try
-        server = Oxygen.Core.serveparallel(CONTEXT[];
-            middleware  = middleware,
-            handler     = handler, 
-            host        = host,
-            port        = port,
-            serialize   = serialize, 
-            async       = async, 
-            catch_errors= catch_errors,
-            docs        = docs,
-            metrics     = metrics, 
-            show_errors = show_errors,
-            show_banner = show_banner,
-            docs_path   = docs_path,
-            schema_path = schema_path,
-            kwargs...
-        )
-
-        # return the resulting HTTP.Server object
-        return server
-
-    finally 
-        # close server on exit if we aren't running asynchronously
-        if !async 
-            terminate()
-            # only reset state on exit if we aren't running asynchronously & are running it interactively 
-            isinteractive() && resetstate()
-        end
-    end
+"""
+function serveparallel(; kwargs...)
+    serve(; parallel = true, kwargs...)
 end
 
 
@@ -419,7 +346,7 @@ terminate() = terminate(CONTEXT[])
 ### Setup Docs Strings ###
 
 
-for method in [:serve, :serveparallel, :terminate, :staticfiles, :dynamicfiles,  :internalrequest]
+for method in [:serve, :terminate, :staticfiles, :dynamicfiles,  :internalrequest]
     eval(quote
         @doc (@doc(Oxygen.Core.$method)) $method
     end)

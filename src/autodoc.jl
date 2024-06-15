@@ -97,7 +97,9 @@ function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
     return param
 end
 
-
+"""
+This function helps format the individual parameters for each route in the openapi schema
+"""
 function formatparam!(params::Vector{Any}, p::Param{T}, paramtype::String) where T
     # Will need to flatten request extrators & append all properties to the schema
     if isextractor(p) && isreqparam(p)
@@ -105,60 +107,29 @@ function formatparam!(params::Vector{Any}, p::Param{T}, paramtype::String) where
         info = splitdef(type)
         sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
         for name in sig_names
-            p = info.sig_map[name]
-            param = createparam(p, paramtype)
-            push!(params, param)
+            push!(params, createparam(info.sig_map[name], paramtype))
         end
     else
-        param = createparam(p, paramtype)
-        push!(params, param)
+        push!(params, createparam(p, paramtype))
     end
 end
 
 
 """
-Used to generate & register schema related for a specific endpoint 
+This function helps format the content object for each route in the openapi schema.
+
+If similar body extractors are used, all schema's are included using an "allOf" relation.
+The only exception to this is the text/plain case, which excepts the Body extractor. 
+If there are more than one Body extractor, the type defaults to string - since this is 
+the only way to represent multiple formats at the same time.
 """
-function registerschema(
-    docs::Documenation,
-    path::String,
-    httpmethod::String,
-    parameters::Vector,
-    queryparams::Vector,
-    headers::Vector,
-    bodyparams::Vector,
-    returntype::Vector)
+function formatcontent(bodyparams::Vector) :: Dict
 
-    ##### Add all the body parameters to the schema #####
-
-    schemas = Dict()
-    for p in bodyparams
-        inner_type = p.type |> extracttype
-        if is_custom_struct(inner_type)
-            convertobject!(inner_type, schemas)
-        end
-    end
-
-    components = Dict("components" => Dict("schemas" => schemas))
-    if !isempty(schemas)
-        mergeschema(docs.schema, components)
-    end
-
-    ##### Append the parameter schema for the route #####
-
-    params = []
-    
-    for (param_list, location) in [(parameters, "path"), (queryparams, "query"), (headers, "header")]
-        for p in param_list
-            formatparam!(params, p, location)
-        end
-    end
-
-    ##### Set the schema for the body parameters #####
-    
     body_refs = Dict{String,Vector{String}}()
     body_types = Dict()
+
     for p in bodyparams
+
         inner_type      = p.type |> extracttype
         inner_type_name = inner_type |> nameof |> string
         extractor_name  = p.type |> nameof |> string
@@ -180,7 +151,9 @@ function registerschema(
 
     # The schema type for text/plain can vary unlike the other types
     textschema = collectschemarefs(body_refs, ["Body"])
-    textschema = merge(textschema, Dict("type" => get(body_types, "Body", "string")))
+    # If there are multiple Body extractors, default to string type
+    textschema_type = length(textschema["allOf"]) > 1 ? "string" : get(body_types, "Body", "string") 
+    textschema = merge(textschema, Dict("type" => textschema_type))
 
     formschema = collectschemarefs(body_refs, ["Form"])
     formschema = merge(formschema, Dict("type" => "object"))
@@ -236,7 +209,49 @@ function registerschema(
         end
     end
 
+    return ordered_content
+end
 
+"""
+Used to generate & register schema related for a specific endpoint 
+"""
+function registerschema(
+    docs::Documenation,
+    path::String,
+    httpmethod::String,
+    parameters::Vector,
+    queryparams::Vector,
+    headers::Vector,
+    bodyparams::Vector,
+    returntype::Vector)
+
+    ##### Add all the body parameters to the schema #####
+
+    schemas = Dict()
+    for p in bodyparams
+        inner_type = p.type |> extracttype
+        if is_custom_struct(inner_type)
+            convertobject!(inner_type, schemas)
+        end
+    end
+
+    components = Dict("components" => Dict("schemas" => schemas))
+    if !isempty(schemas)
+        mergeschema(docs.schema, components)
+    end
+
+    ##### Append the parameter schema for the route #####
+    params = []
+
+    for (param_list, location) in [(parameters, "path"), (queryparams, "query"), (headers, "header")]
+        for p in param_list
+            formatparam!(params, p, location)
+        end
+    end
+
+    ##### Set the schema for the body parameters #####   
+    content = formatcontent(bodyparams)
+ 
     # lookup if this route has any registered tags
     if haskey(docs.taggedroutes, path) && httpmethod in docs.taggedroutes[path].httpmethods
         tags = docs.taggedroutes[path].tags
@@ -261,7 +276,7 @@ function registerschema(
         route[lowercase(httpmethod)]["requestBody"] = Dict(
             # if any body param is required, mark the entire body as required
             "required" => any(p -> isrequired(p), bodyparams),
-            "content" => ordered_content
+            "content" => content
         )
     end
 

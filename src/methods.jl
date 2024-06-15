@@ -15,9 +15,8 @@ end
 function serve(; kwargs...) 
     async = Base.get(kwargs, :async, false)
     try
-        server = Oxygen.Core.serve(CONTEXT[]; kwargs...)
         # return the resulting HTTP.Server object
-        return server
+        return Oxygen.Core.serve(CONTEXT[]; kwargs...)
     finally
         # close server on exit if we aren't running asynchronously
         if !async 

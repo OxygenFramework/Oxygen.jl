@@ -56,7 +56,7 @@ end
 
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, serialize=true, async=false, catch_errors=true, docs=true, metrics=true, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -75,7 +75,7 @@ function serve(ctx::Context;
     show_banner = true,
     docs_path   = "/docs",
     schema_path = "/schema",
-    kwargs...)::Server
+    kwargs...) :: Server
 
     # overwrite docs & schema paths
     ctx.docs.enabled[] = docs

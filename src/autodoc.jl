@@ -105,7 +105,7 @@ function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
     end
 
     # path params are always required
-    param_required = paramtype == "path" ? true : isrequired(p), 
+    param_required = paramtype == "path" ? true : isrequired(p)
 
     param = Dict(
         "in" => paramtype, # path, query, header (where the parameter is located)

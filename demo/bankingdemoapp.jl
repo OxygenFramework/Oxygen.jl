@@ -1,9 +1,5 @@
 module BankingAppDemo
-using JSON3
-
-include("../src/Oxygen.jl")
-using .Oxygen
-using StructTypes
+using Oxygen
 
 struct Address
     street::String

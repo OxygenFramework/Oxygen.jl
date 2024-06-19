@@ -8,7 +8,7 @@
     <strong>A breath of fresh air for programming web apps in Julia.</strong>
   </p>
   <p align="center">
-    <a href='https://juliahub.com/ui/Packages/Oxygen/JtS3f'><img src='https://juliahub.com/docs/Oxygen/version.svg?token=7GV8X1C98M' alt='Version' /></a>
+    <a href='https://juliahub.com/ui/Packages/General/Oxygen'><img src='https://juliahub.com/docs/General/Oxygen/stable/version.svg' alt='Version' /></a>
     <a href='https://oxygenframework.github.io/Oxygen.jl/stable/'><img src='https://img.shields.io/badge/docs-stable-blue.svg' alt='documentation stable' /></a>
     <a href='https://github.com/OxygenFramework/Oxygen.jl/actions/workflows/ci.yml'><img src='https://github.com/OxygenFramework/Oxygen.jl/actions/workflows/ci.yml/badge.svg' alt='Build Status' /></a>
     <a href='https://coveralls.io/github/OxygenFramework/Oxygen.jl?branch=master'><img src='https://coveralls.io/repos/github/OxygenFramework/Oxygen.jl/badge.svg?branch=master' alt='Coverage Status' /></a>

@@ -104,6 +104,11 @@ function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
         schema["format"] = format
     end
 
+    # Add default value if it exists
+    if p.hasdefault
+        schema["default"] = string(p.default)
+    end
+
     # path params are always required
     param_required = paramtype == "path" ? true : isrequired(p)
 
@@ -358,6 +363,11 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             format = getformat(current_type)
             if !isnothing(format)
                 current_field["format"] = format
+            end
+
+            # Add default value if it exists
+            if p.hasdefault
+                current_field["default"] = string(p.default)
             end
 
             # convert the current field

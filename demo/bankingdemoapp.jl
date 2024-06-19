@@ -1,4 +1,5 @@
 module BankingAppDemo
+using Base: @kwdef
 using Oxygen
 
 struct Address
@@ -17,10 +18,10 @@ struct User
     address::Address
 end
 
-struct BankAccount
+@kwdef struct BankAccount
     id::Int
     account_number::String
-    account_type::String
+    account_type::String = "checking"
     balance::Float64
     user::User
 end

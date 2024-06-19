@@ -315,7 +315,9 @@ end
 Used to extract the function signature from regular Julia functions.
 """
 function splitdef(f::Function; start=1)
-    return splitdef(Base.code_lowered(f), methods(f), start=start)
+    method_defs = methods(f)
+    func_name = first(method_defs).name
+    return splitdef(Base.code_lowered(f), methods(f), func_name, start=start)
 end
 
 
@@ -326,7 +328,7 @@ for structs to have multiple constructors with the same parameter names as both
 keyword args and regular args.
 """
 function splitdef(t::DataType; start=1)
-    results = splitdef(Base.code_lowered(t), methods(t), start=start)
+    results = splitdef(Base.code_lowered(t), methods(t), nameof(t), start=start)
     sig_map = Dict{Symbol,Param}()
     for param in results.sig
         # merge parameters with the same name
@@ -342,10 +344,7 @@ function splitdef(t::DataType; start=1)
 end
 
 
-function splitdef(info::Vector{Core.CodeInfo}, method_defs::Base.MethodList; start=1)
-
-    # Get the function name from the first constructor
-    func_name = first(method_defs).name
+function splitdef(info::Vector{Core.CodeInfo}, method_defs::Base.MethodList, func_name::Symbol; start=1)
 
     # Extract parameter names and types
     param_names, param_types, kwarg_names = getsignames(method_defs)

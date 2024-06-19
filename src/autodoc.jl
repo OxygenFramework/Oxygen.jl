@@ -81,19 +81,44 @@ function getformat(type::Type) :: Nullable{String}
     return nothing
 end
 
+function getcomponent(name::AbstractString) :: String
+    return "#/components/schemas/$name"
+end
+
+function getcomponent(t::DataType) :: String
+    return getcomponent(string(nameof(t)))
+end
+
 function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
-    param = Dict(
-        "in" => paramtype,          # path, query, header (where the parameter is located)
-        "name" => String(p.name),
-        "required" => paramtype == "path" ? true : isrequired(p), # path params are always required
-        "schema" => Dict(
-            "type" => gettype(p.type)
-        )
-    )
+
+    schema = Dict("type" => gettype(p.type))
+
+    # Add ref if the type is a custom struct
+    if schema["type"] == "object"
+        schema["\$ref"] = getcomponent(p.type)
+    end
+
+    # Add optional format if it's relevant
     format = getformat(p.type)
     if !isnothing(format)
-        param["schema"]["format"] = format
+        schema["format"] = format
     end
+
+    # Add default value if it exists
+    if p.hasdefault
+        schema["default"] = string(p.default)
+    end
+
+    # path params are always required
+    param_required = paramtype == "path" ? true : isrequired(p)
+
+    param = Dict(
+        "in" => paramtype, # path, query, header (where the parameter is located)
+        "name" => String(p.name),
+        "required" => param_required,
+        "schema" => schema
+    )
+
     return param
 end
 
@@ -123,7 +148,7 @@ The only exception to this is the text/plain case, which excepts the Body extrac
 If there are more than one Body extractor, the type defaults to string - since this is 
 the only way to represent multiple formats at the same time.
 """
-function formatcontent(bodyparams::Vector) :: Dict
+function formatcontent(bodyparams::Vector) :: OrderedDict
 
     body_refs = Dict{String,Vector{String}}()
     body_types = Dict()
@@ -143,7 +168,7 @@ function formatcontent(bodyparams::Vector) :: Dict
             body_refs[extractor_name] = []
         end
 
-        body_refs[extractor_name] = vcat(body_refs[extractor_name], "#/components/schemas/$inner_type_name")
+        body_refs[extractor_name] = vcat(body_refs[extractor_name], getcomponent(inner_type_name))
     end
 
     jsonschema = collectschemarefs(body_refs, ["Json", "JsonFragment"])
@@ -297,7 +322,7 @@ end
 
 
 function is_custom_struct(T::Type)
-    return isstructtype(T) && T.name.module ∉ (Base, Core)
+    return T.name.module ∉ (Base, Core) && (isstructtype(T) || isabstracttype(T))
 end
 
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
@@ -326,7 +351,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         # Case 1: Recursively convert nested structs & register schemas
         if is_custom_struct(current_type) && !haskey(schemas, current_name)
             # Set the field to be a reference to the custom struct
-            obj["properties"][field_name] = Dict("\$ref" => "#/components/schemas/$current_name")
+            obj["properties"][field_name] = Dict("\$ref" => getcomponent(current_name))
             # Recursively convert nested structs
             convertobject!(current_type, schemas)
 
@@ -338,6 +363,11 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             format = getformat(current_type)
             if !isnothing(format)
                 current_field["format"] = format
+            end
+
+            # Add default value if it exists
+            if p.hasdefault
+                current_field["default"] = string(p.default)
             end
 
             # convert the current field

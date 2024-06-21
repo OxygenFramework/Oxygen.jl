@@ -49,9 +49,6 @@ tasks on whichever threadpool that has more resources available (:default vs :in
 macro adaptive_spawn(defaultpool, f) 
     if VERSION >= v"1.9"
         thread_pool = isnothing(defaultpool) ? @get_threadpool() : defaultpool
-        if !isnothing(defaultpool)
-            println(defaultpool)
-        end
         return :(Threads.@spawn $thread_pool $f) |> esc
     else
         return :(Threads.@spawn $f) |> esc

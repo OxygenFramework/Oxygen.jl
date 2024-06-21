@@ -6,5 +6,6 @@ include("utilities/bodyparsers.jl");
 include("utilities/render.jl");
 include("utilities/misc.jl");
 include("utilities/fileutil.jl");
+include("utilities/versioned.jl");
 
 end

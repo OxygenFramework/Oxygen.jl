@@ -50,7 +50,7 @@ function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool, paral
         @info "📊 Metrics: http://$host:$port$docspath/metrics"
     end
     if parallel
-        @info "🚀 Running in parallel mode with $(Threads.nthreads()) threads"
+        @info "🚀 Running in parallel mode with $(@get_pool_size()) threads: $(@get_pool_counts)"
     end
 end
 
@@ -73,6 +73,7 @@ function serve(ctx::Context;
     metrics     = true,
     show_errors = true,
     show_banner = true,
+    thread_pool  = nothing,
     docs_path   = "/docs",
     schema_path = "/schema",
     kwargs...) :: Server
@@ -93,7 +94,7 @@ function serve(ctx::Context;
 
     if parallel
 
-        if Threads.nthreads() <= 1
+        if @get_pool_size() <= 1
             @warn "serveparallel() only has 1 thread available to use, try launching julia like this: \"julia -t auto\" to leverage multiple threads"
         end
 
@@ -102,7 +103,7 @@ function serve(ctx::Context;
         end
 
         # wrap top level handler with parallel handler
-        handle_stream = parallel_stream_handler(handle_stream)
+        handle_stream = parallel_stream_handler(handle_stream, thread_pool)
     end
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
@@ -184,22 +185,22 @@ function stream_handler(middleware::Function)
     end
 end
 
-
 """
     parallel_stream_handler(handle_stream::Function)
 
 This function uses `Threads.@spawn` to schedule a new task on any available thread. 
 Inside this task, `@async` is used for cooperative multitasking, allowing the task to yield during I/O operations. 
 """
-function parallel_stream_handler(handle_stream::Function)
+function parallel_stream_handler(handle_stream::Function, threadpool::Union{Symbol,Nothing})
     function (stream::HTTP.Stream)
-        task = Threads.@spawn begin
+        task = @adaptive_spawn threadpool begin
             handle = @async handle_stream(stream)
             wait(handle)
         end
         wait(task)
     end
 end
+
 
 
 """

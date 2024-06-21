@@ -46,11 +46,16 @@ tasks on whichever threadpool that has more resources available (:default vs :in
 - If a non-null threadpool is provided, we use that threadpool instead.
 - In the case of a tie, we default to the :default threadpool.
 """
-macro adaptive_spawn(defaultpool, f) 
+macro adaptive_spawn(defaultpool, f)
     if VERSION >= v"1.9"
-        thread_pool = isnothing(defaultpool) ? @get_threadpool() : defaultpool
-        return :(Threads.@spawn $thread_pool $f) |> esc
+        quote
+            local defaultpool = $(esc(defaultpool))
+            thread_pool = isnothing(defaultpool) ? @get_threadpool() : defaultpool
+            Threads.@spawn thread_pool $(esc(f))
+        end
     else
-        return :(Threads.@spawn $f) |> esc
+        quote 
+            Threads.@spawn $(esc(f))
+        end
     end
 end

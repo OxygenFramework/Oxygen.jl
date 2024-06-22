@@ -194,8 +194,7 @@ Inside this task, `@async` is used for cooperative multitasking, allowing the ta
 function parallel_stream_handler(handle_stream::Function)
     function (stream::HTTP.Stream)
         task = Threads.@spawn begin
-            handle = @async handle_stream(stream)
-            wait(handle)
+            handle_stream(stream)
         end
         wait(task)
     end

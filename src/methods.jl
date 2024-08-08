@@ -216,6 +216,18 @@ dynamicfiles(
     loadfile::Nullable{Function}=nothing
 ) = Oxygen.Core.dynamicfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
 
+"""
+    getexternalurl()
+
+Return the external URL of the service
+"""
+function getexternalurl()::String
+    external_url = CONTEXT[].service.external_url[]
+    if isnothing(external_url)
+        error("getexternalurl() is only available when the service is running")
+    end
+    return external_url
+end
 
 internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true) = 
     Oxygen.Core.internalrequest(CONTEXT[], req; middleware, metrics, serialize, catch_errors)

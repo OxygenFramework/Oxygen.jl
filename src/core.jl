@@ -39,15 +39,15 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(host::String, port::Int, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
+function serverwelcome(external_url::String, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
     printstyled(oxygen_title, color=:blue, bold=true)
     @info "📦 Version 1.5.12 (2024-06-18)"
-    @info "✅ Started server: http://$host:$port"
+    @info "✅ Started server: $external_url"
     if docs
-        @info "📖 Documentation: http://$host:$port$docspath"
+        @info "📖 Documentation: $external_url$docspath"
     end
     if docs && metrics
-        @info "📊 Metrics: http://$host:$port$docspath/metrics"
+        @info "📊 Metrics: $external_url$docspath/metrics"
     end
     if parallel
         @info "🚀 Running in parallel mode with $(Threads.nthreads()) threads"
@@ -56,7 +56,7 @@ end
 
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -75,7 +75,15 @@ function serve(ctx::Context;
     show_banner = true,
     docs_path   = "/docs",
     schema_path = "/schema",
+    external_url = nothing,
     kwargs...) :: Server
+
+    # set the external url if it's passed
+    if !isnothing(external_url)
+        ctx.service.external_url[] = external_url
+    else
+        ctx.service.external_url[] = "http://$host:$port"
+    end
 
     # overwrite docs & schema paths
     ctx.docs.enabled[] = docs
@@ -240,7 +248,7 @@ function startserver(ctx::Context; host, port, show_banner=false, docs=false, me
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
 
-    show_banner && serverwelcome(host, port, docs, metrics, parallel, ctx.docs.docspath[])
+    show_banner && serverwelcome(ctx.service.external_url[], docs, metrics, parallel, ctx.docs.docspath[])
 
     # start the HTTP server
     ctx.service.server[] = start(preprocesskwargs(kwargs))

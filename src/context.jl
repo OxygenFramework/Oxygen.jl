@@ -47,6 +47,7 @@ end
     middleware_cache    :: Dict{String, Function}   = Dict{String, Function}()
     history             :: History                  = History(1_000_000)
     history_lock        :: ReentrantLock            = ReentrantLock()
+    external_url        :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
 end
 
 @kwdef struct Context

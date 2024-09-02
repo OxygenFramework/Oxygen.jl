@@ -12,6 +12,7 @@ using RelocatableFolders
 using DataStructures: CircularDeque
 import Base.Threads: lock, nthreads
 
+include("errors.jl");       @reexport using .Errors
 include("util.jl");         @reexport using .Util
 include("types.jl");        @reexport using .Types 
 include("constants.jl");    @reexport using .Constants

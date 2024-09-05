@@ -55,6 +55,7 @@ end
     docs    :: Documenation     = Documenation()
     cron    :: CronContext      = CronContext()
     tasks   :: TasksContext     = TasksContext()
+    ext     :: Dict{Symbol, Any} = Dict{Symbol, Any}()
 end
 
 Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])

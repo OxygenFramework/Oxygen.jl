@@ -2,10 +2,11 @@ using HTTP
 using JSON3
 using Dates
 
+using ..Errors: ValidationError
+
 export countargs, recursive_merge, parseparam, 
     queryparams, redirect, handlerequest,
     format_response!, set_content_size!, format_sse_message
-
 
 ### Request helper functions ###
 
@@ -19,7 +20,6 @@ function queryparams(req::HTTP.Request) :: Dict
     return HTTP.queryparams(uri.query)
 end
 
-
 """
     redirect(path::String; code = 308)
 
@@ -27,6 +27,14 @@ return a redirect response
 """
 function redirect(path::String; code = 307) :: HTTP.Response
     return HTTP.Response(code, ["Location" => path])
+end
+
+function handle_error(::ValidationError)
+    return json(("message" => "400: Bad Request"), status = 400)    
+end
+
+function handle_error(::Any)
+    return json(("message" => "500: Internal Server Error"), status = 500)    
 end
 
 function handlerequest(getresponse::Function, catch_errors::Bool; show_errors::Bool = true)
@@ -37,9 +45,9 @@ function handlerequest(getresponse::Function, catch_errors::Bool; show_errors::B
             return getresponse()       
         catch error
             if show_errors && !isa(error, InterruptException)
-                 @error "ERROR: " exception=(error, catch_backtrace())
+                @error "ERROR: " exception=(error, catch_backtrace())
             end
-            return json(("message" => "The Server encountered a problem"), status = 500)    
+            return handle_error(error)
         end  
     end
 end

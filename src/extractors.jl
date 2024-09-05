@@ -8,6 +8,7 @@ using StructTypes
 
 using ..Util: text, json, formdata, parseparam
 using ..Reflection: struct_builder, extract_struct_info
+using ..Errors: ValidationError
 using ..Types
 
 export Extractor, extract, validate, extracttype, isextractor, isreqparam, isbodyparam,
@@ -85,14 +86,14 @@ function try_validate(param::Param{U}, instance::T) :: T where {T, U <: Extracto
     # Case 1: Use global validate function - returns true if one isn't defined for this type
     if !validate(instance)
         impl = Base.which(validate, (T,))
-        throw(ArgumentError("Validation failed for $(param.name): $T \n|> $instance \n|> $impl"))   
+        throw(ValidationError("Validation failed for $(param.name): $T \n|> $instance \n|> $impl"))   
     end
 
     # Case 2: Use custom validate function from an Extractor (if defined)
     if param.hasdefault && param.default isa U && !isnothing(param.default.validate)
         if !param.default.validate(instance)
             impl = Base.which(param.default.validate, (T,))
-            throw(ArgumentError("Validation failed for $(param.name): $T \n|> $instance \n|> $impl"))
+            throw(ValidationError("Validation failed for $(param.name): $T \n|> $instance \n|> $impl"))
         end
     end
     

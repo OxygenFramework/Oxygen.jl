@@ -90,14 +90,14 @@ end
     # Test that negative age trips the global validator
     req = HTTP.Request("GET", "/", [], """name=joe&age=-4""")
     param = Param(:form, Form{Person}, missing, false)
-    @test_throws ArgumentError extract(param, LazyRequest(request=req))
+    @test_throws Oxygen.Core.Errors.ValidationError extract(param, LazyRequest(request=req))
 
 
     # Test that age < 25 trips the local validator
     req = HTTP.Request("GET", "/", [], """name=joe&age=10""")
     default_value = Form{Person}(x -> x.age > 25)
     param = Param(:form, Form{Person}, default_value, true)
-    @test_throws ArgumentError extract(param, LazyRequest(request=req))
+    @test_throws Oxygen.Core.Errors.ValidationError extract(param, LazyRequest(request=req))
 end
 
 
@@ -253,7 +253,7 @@ end
     @suppress_err begin 
         # should fail since we are missing query params
         r = internalrequest(HTTP.Request("GET", "/headers", ["limit" => "3"], ""))
-        @test r.status == 500
+        @test r.status == 400
     end
 
     @suppress_err begin 
@@ -265,7 +265,7 @@ end
             "value": 12.0
         }
         """))
-        @test r.status == 500
+        @test r.status == 400
     end
 
     r = internalrequest(HTTP.Request("POST", "/json", [], """

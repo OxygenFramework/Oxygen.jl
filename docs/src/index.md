@@ -827,6 +827,52 @@ end
 serve()
 ```
 
+In case you need the client side component, Bonito needs an asset server. A convenient option here is to use `NoServer`, which tells Bonito to include all assets inline in the html.
+
+```julia
+force_asset_server!(NoServer())
+```
+
+In case you need to server side component, Bonito will use its own `WebSocketConnection` by default. In this case Bonito will start another HTTP server on another port and serve. While this may work fine locally, in production you will typically want to have the websocket endpoint served by Oxygen so that it will be easily handled by any infastructure you have configured such as reverse proxies, load balancers, and firewall. For this case, you can use `OxygenWebSocketConnection`.
+
+*Note that the following part of the Bonito instructions is currently experimental and the API may change outside normal semver guarantees.*
+
+In order to make use the following functions defined in the Bonito extension, you must load `Bonito` before first loading `Oxygen`.
+
+```julia
+using Bonito
+using Oxygen
+'''
+
+There are two parts to integrating Bonito with Oxygen:
+
+ 1. Registering a websocket handler to pass requests to Bonito's ahndler
+ 3. Forcing Bonito to use this connection object `OxygenWebSocketConnection` object which points to the correct Oxygen context and URL
+
+To do both you can simply use the following command:
+
+```julia
+function __init__()
+    # This must be done in __init__ so that functions from the Oxygen Bonito extension are available
+    Oxygen.setup_bonito_connection(CONTEXT[]; setup_all=true)
+end
+```
+
+In case you want to change the url of the Bonito websocket route, you can do so via the `route_base` keyword argument, which defaults to `"/bonito_websocket/"`.
+
+You may like to add some custom behaviour to the route such as authentication. In this case, you will need to setup the route yourself like so:
+
+```julia
+function __init__()
+    const route_base = "/foobar/"
+    oxygen_bonito = Oxygen.setup_bonito_connection(CONTEXT[]; setup_force_connection=true, route_base=foobar)
+    route_pattern = route_base * "{session_id}"
+    @websocket route_pattern function mybonitohandler(websocket::HTTP.WebSocket, session_id::String)
+        # Add custom behaviour here
+        oxygen_bonito.handler(websocket, session_id)
+    end
+end
+```
 
 ## Templating
 

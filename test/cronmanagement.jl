@@ -13,6 +13,11 @@ end
     iterations[] += 1
 end
 
+# make sure we can see errors in the logs
+@cron "*/3" function()
+    throw("Here's a custom error")
+end
+
 @cron "*/5" function()
     iterations[] += 1
 end

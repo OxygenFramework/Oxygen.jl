@@ -100,10 +100,12 @@ function startcronjobs(cron::CronContext)
                     end
                     # Execute the function if it's time and if we are still running
                     if ms_to_wait <= 0 && cron.run[]
-                        try 
-                            @async func() # for ordinary functions
-                        catch error 
-                            @error "ERROR in CRON job { id: $job_id, expr: $expression, name: $name }: " exception=(error, catch_backtrace())
+                        @async begin 
+                            try
+                                func() # for ordinary functions
+                            catch error 
+                                @error "ERROR in CRON job { id: $job_id, expr: $expression, name: $name }: " exception=(error, catch_backtrace())
+                            end
                         end
                     end
                 end

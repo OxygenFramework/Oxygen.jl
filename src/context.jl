@@ -5,7 +5,7 @@ using HTTP
 using HTTP: Server, Router
 using ..Types
 
-export Context, CronContext, TasksContext, Documenation, Service, history, wait, close, isopen
+export Context, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen
 
 function defaultSchema() :: Dict
     Dict(
@@ -40,6 +40,16 @@ end
     taggedroutes    :: Dict{String, TaggedRoute}    = Dict{String, TaggedRoute}()       # used to group routes by tag
 end
 
+@kwdef struct EagerReviseService
+    task::Task
+    lock::ReentrantLock
+    done::Ref{Bool}
+end
+
+function Base.close(revise_service::EagerReviseService)
+    revise_service.done[] = true
+end
+
 @kwdef struct Service
     server              :: Ref{Nullable{Server}}    = Ref{Nullable{Server}}(nothing)
     router              :: Router                   = Router()
@@ -48,6 +58,7 @@ end
     history             :: History                  = History(1_000_000)
     history_lock        :: ReentrantLock            = ReentrantLock()
     external_url        :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
+    eager_revise        :: Ref{Nullable{EagerReviseService}} = Ref{Nullable{EagerReviseService}}(nothing)
 end
 
 @kwdef struct Context
@@ -55,11 +66,15 @@ end
     docs    :: Documenation     = Documenation()
     cron    :: CronContext      = CronContext()
     tasks   :: TasksContext     = TasksContext()
+    mod     :: Nullable{Module} = nothing
 end
 
 Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])
-Base.close(service::Service)    = !isnothing(service.server[]) && close(service.server[])
 Base.wait(service::Service)     = !isnothing(service.server[]) && wait(service.server[])
+function Base.close(service::Service)
+    !isnothing(service.server[]) && close(service.server[])
+    !isnothing(service.eager_revise[]) && close(service.eager_revise[])
+end
 
 
 # @eval begin

@@ -603,6 +603,40 @@ end
 
 When the server is ran, all tasks are started automatically. But the module also provides utilities to have more fine-grained control over the running tasks using the following functions: `starttasks()`, `stoptasks()`, and `cleartasks()`
 
+## Hot reloads with Revise
+
+Oxygen can interoperates with Revise to provide hot reloads, speeding up development. Since Revise recommends keeping all code to be revised in a package, you first need to move to this type of a layout.
+
+[First make sure your `Project.toml` has the required fields such as `name` to work on a package rather than a project.](https://pkgdocs.julialang.org/v1/toml-files/)
+
+Next, write the main code for you routes in a module `src/MyModule.jl`:
+
+```
+module MyModule
+
+using Oxygen; @oxidise
+
+@get "/greet" function(req::HTTP.Request)
+    return "hello world!"
+end
+
+end
+```
+
+Then you can make a `debug.jl` entrypoint script:
+
+```
+using Revise
+using Oxygen
+using MyModule
+
+MyModule.serve(revise=:eager)
+```
+
+The `revise` option can also be set to `:prerequest`, in which case revisions will always be left to just before a request is served, rather than being attempted eagerly when source files change on disk.
+
+Note that you should run another entrypoint script without Revise in production.
+
 ## Multiple Instances
 
 In some advanced scenarios, you might need to spin up multiple web severs within the same module on different ports. Oxygen provides both a static and dynamic way to create multiple instances of a web server.

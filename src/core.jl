@@ -113,7 +113,7 @@ function serve(ctx::Context;
     docs_path   = "/docs",
     schema_path = "/schema",
     external_url = nothing,
-    revise      = :none, # :none, :prerequest, :eager
+    revise      = :none, # :none, :lazy, :eager
     kwargs...) :: Server
 
     # set the external url if it's passed
@@ -132,7 +132,7 @@ function serve(ctx::Context;
     ctx.docs.router[] = Router()
 
     # setup revise if requested
-    if revise == :prerequest || revise == :eager
+    if revise == :lazy || revise == :eager
         if !WAS_LOADED_AFTER_REVISE[]
             error("You must load Revise.jl before Oxygen.jl to use the `revise` option")
         end

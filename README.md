@@ -633,7 +633,7 @@ using MyModule
 MyModule.serve(revise=:eager)
 ```
 
-The `revise` option can also be set to `:prerequest`, in which case revisions will always be left to just before a request is served, rather than being attempted eagerly when source files change on disk.
+The `revise` option can also be set to `:lazy`, in which case revisions will always be left to just before a request is served, rather than being attempted eagerly when source files change on disk.
 
 Note that you should run another entrypoint script without Revise in production.
 

@@ -73,20 +73,10 @@ end
 function (handler::ReviseHandler)(handle)
     req -> begin
         Revise = Main.Revise
-        eager_revise = handler.ctx.service.eager_revise[]
-        if eager_revise !== nothing
-            lock(eager_revise.lock)
-        end
-        try
-            if !isempty(Revise.revision_queue)
-                @info "🗘  Starting pre-request revision"
-                Revise.revise()
-                @info "👍 Pre-request revision finished"
-            end
-        finally
-            if eager_revise !== nothing
-                unlock(eager_revise.lock)
-            end
+        if !isempty(Revise.revision_queue)
+            @info "🗘  Starting pre-request revision"
+            Revise.revise()
+            @info "👍 Pre-request revision finished"
         end
         invokelatest(handle, req)
     end
@@ -178,7 +168,6 @@ function serve(ctx::Context;
 end
 
 function start_revise_service()
-    revise_lock = ReentrantLock()
     revise_task_done = Ref(false)
     revise_task = @async begin
         Revise = Main.Revise
@@ -190,17 +179,12 @@ function start_revise_service()
             if revise_task_done[]
                 break
             end
-            lock(revise_lock)
             @info "🗘  Starting eager revision"
-            try
-                Revise.revise()
-            finally
-                unlock(revise_lock)
-            end
+            Revise.revise()
             @info "👍 Eager revision finished"
         end
     end
-    EagerReviseService(revise_task, revise_lock, revise_task_done)
+    EagerReviseService(revise_task, revise_task_done)
 end
 
 

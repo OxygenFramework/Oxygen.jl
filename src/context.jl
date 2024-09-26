@@ -42,7 +42,6 @@ end
 
 @kwdef struct EagerReviseService
     task::Task
-    lock::ReentrantLock
     done::Ref{Bool}
 end
 

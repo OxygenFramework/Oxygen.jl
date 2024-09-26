@@ -23,7 +23,7 @@ function response(content::String, status=200, headers=[]; detect=true) :: HTTP.
     return response
 end
 
-function __init__()
+function do_requires()
 
 
     ################################################################

@@ -11,6 +11,7 @@ using Reexport
 using RelocatableFolders
 using DataStructures: CircularDeque
 import Base.Threads: lock, nthreads
+import ..WAS_LOADED_AFTER_REVISE
 
 include("errors.jl");       @reexport using .Errors
 include("util.jl");         @reexport using .Util
@@ -65,9 +66,24 @@ function serverwelcome(external_url::String, docs::Bool, metrics::Bool, parallel
     end
 end
 
+struct ReviseHandler
+    ctx::Context
+end
+
+function (handler::ReviseHandler)(handle)
+    req -> begin
+        Revise = Main.Revise
+        if !isempty(Revise.revision_queue)
+            @info "🗘  Starting pre-request revision"
+            Revise.revise()
+            @info "👍 Pre-request revision finished"
+        end
+        invokelatest(handle, req)
+    end
+end
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, revise, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -87,6 +103,7 @@ function serve(ctx::Context;
     docs_path   = "/docs",
     schema_path = "/schema",
     external_url = nothing,
+    revise      = :none, # :none, :lazy, :eager
     kwargs...) :: Server
 
     # set the external url if it's passed
@@ -103,6 +120,20 @@ function serve(ctx::Context;
 
     # intitialize documenation router (used by docs and metrics)
     ctx.docs.router[] = Router()
+
+    # setup revise if requested
+    if revise == :lazy || revise == :eager
+        if parallel
+            @warn "You are attempting to use Revise with multiple threads. Please note that Revise 3.5.18 and earlier are not threadsafe."
+        end
+        if !WAS_LOADED_AFTER_REVISE[]
+            error("You must load Revise.jl before Oxygen.jl to use the `revise` option")
+        end
+        if ctx.mod === nothing
+            @warn "You are trying to use the `revise` option without @oxidise. Code in the `Main` module, which likely includes your routes, will not be tracked and revised."
+        end
+        insert!(middleware, 1, ReviseHandler(ctx))
+    end
 
     # compose our middleware ahead of time (so it only has to be built up once)
     configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors)
@@ -124,9 +155,39 @@ function serve(ctx::Context;
         handle_stream = parallel_stream_handler(handle_stream)
     end
 
+    if revise == :eager
+        ctx.service.eager_revise[] = start_revise_service()
+    end
+
     # The cleanup of resources are put at the topmost level in `methods.jl`
-    return startserver(ctx; host, port, show_banner, docs, metrics, parallel, async, kwargs, start=(kwargs) ->
-        HTTP.serve!(handle_stream, host, port; kwargs...))
+    try
+        return startserver(ctx; host, port, show_banner, docs, metrics, parallel, async, kwargs, start=(kwargs) ->
+            HTTP.serve!(handle_stream, host, port; kwargs...))
+    finally
+        if ctx.service.eager_revise[] !== nothing && async == false
+            close(ctx.service.eager_revise[])
+        end
+    end
+end
+
+function start_revise_service()
+    revise_task_done = Ref(false)
+    revise_task = @async begin
+        Revise = Main.Revise
+        while true
+            if revise_task_done[]
+                break
+            end
+            wait(Revise.revision_event)
+            if revise_task_done[]
+                break
+            end
+            @info "🗘  Starting eager revision"
+            Revise.revise()
+            @info "👍 Eager revision finished"
+        end
+    end
+    EagerReviseService(revise_task, revise_task_done)
 end
 
 

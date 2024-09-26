@@ -123,6 +123,9 @@ function serve(ctx::Context;
 
     # setup revise if requested
     if revise == :lazy || revise == :eager
+        if parallel
+            @warn "You are attempting to use Revise with multiple threads. Please note that Revise 3.5.18 and earlier are not threadsafe."
+        end
         if !WAS_LOADED_AFTER_REVISE[]
             error("You must load Revise.jl before Oxygen.jl to use the `revise` option")
         end

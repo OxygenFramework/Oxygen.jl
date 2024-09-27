@@ -87,6 +87,7 @@ function serve(ctx::Context;
     docs_path   = "/docs",
     schema_path = "/schema",
     external_url = nothing,
+    is_prioritized = nothing,
     kwargs...) :: Server
 
     # set the external url if it's passed
@@ -121,7 +122,7 @@ function serve(ctx::Context;
         end
 
         # wrap top level handler with parallel handler
-        handle_stream = parallel_stream_handler(handle_stream)
+        handle_stream = parallel_stream_handler(handle_stream, is_prioritized)
     end
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
@@ -212,7 +213,7 @@ end
 This function uses `Threads.@spawn` to schedule a new task on any available thread. 
 Inside this task, `@async` is used for cooperative multitasking, allowing the task to yield during I/O operations. 
 """
-function parallel_stream_handler(handle_stream::Function)
+function parallel_stream_handler(handle_stream::Function, is_prioritized::Function)
     function (stream::HTTP.Stream)
         # parse request before spawning handler
         @debug "parallel_stream_handler threadid=$(Threads.threadid())"
@@ -220,7 +221,7 @@ function parallel_stream_handler(handle_stream::Function)
         req::HTTP.Request = stream.message
 
         # if prioritized path
-        if (req.target == "/health")
+        if (is_prioritized(req))
             @debug "prioritized request to $(req.target), running in Main interactive thread"
             handle_stream(stream)
         else

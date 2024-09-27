@@ -2,6 +2,7 @@ using Base.Threads
 using Infiltrator
 using Revise
 using Oxygen
+using HTTP
 ENV["JULIA_DEBUG"] = "Oxygen"
 
 # Run this with -t 1,1
@@ -37,7 +38,9 @@ end
 end
 
 function start()
-    serveparallel()
+    serveparallel(
+        is_prioritized = (req::HTTP.Request) -> req.target == "/health"
+    )
 end
 
 start()

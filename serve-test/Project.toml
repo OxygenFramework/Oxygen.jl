@@ -1,0 +1,5 @@
+[deps]
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+Infiltrator = "5903a43b-9cc3-4c30-8d17-598619ec4e9b"
+Oxygen = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"

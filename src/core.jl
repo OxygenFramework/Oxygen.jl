@@ -197,6 +197,8 @@ function stream_handler(middleware::Function)
         # extract the caller's ip address
         ip, _ = Sockets.getpeername(stream)
         # build up a streamhandler to handle our incoming requests
+        @debug "decorating with $ip"
+
         handle_stream = HTTP.streamhandler(middleware |> decorate_request(ip, stream))
         # handle the incoming request
         return handle_stream(stream)
@@ -212,11 +214,27 @@ Inside this task, `@async` is used for cooperative multitasking, allowing the ta
 """
 function parallel_stream_handler(handle_stream::Function)
     function (stream::HTTP.Stream)
-        task = Threads.@spawn begin
-            handle = @async handle_stream(stream)
-            wait(handle)
+        # parse request before spawning handler
+        @debug "parallel_stream_handler threadid=$(Threads.threadid())"
+
+        req::HTTP.Request = stream.message
+
+        # if prioritized path
+        if (req.target == "/health")
+            @debug "prioritized request to $(req.target), running in Main interactive thread"
+            handle_stream(stream)
+        else
+            task = Threads.@spawn begin
+                @debug "within @spawn begin threadid=$(Threads.threadid())"
+                handle = @async handle_stream(stream)
+                @debug "wait on @async handle_stream threadid=$(Threads.threadid())"
+                wait(handle)
+                @debug "after wait threadid=$(Threads.threadid())"
+            end
+            @debug "root wait threadid=$(Threads.threadid())"
+            wait(task)
+            @debug "after root wait threadid=$(Threads.threadid())"
         end
-        wait(task)
     end
 end
 
@@ -227,6 +245,7 @@ users to 'chain' middleware functions like `serve(handler1, handler2, handler3)`
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
 function setupmiddleware(ctx::Context; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true)::Function
+    @debug "setupmiddleware"
 
     # determine if we have any special router or route-specific middleware
     custom_middleware = !isempty(ctx.service.custommiddleware) ? [compose(ctx.service.router, middleware, ctx.service.custommiddleware, ctx.service.middleware_cache)] : reverse(middleware)
@@ -337,6 +356,7 @@ Create a default serializer function that handles HTTP requests and formats the 
 function DefaultSerializer(catch_errors::Bool; show_errors::Bool)
     return function (handle)
         return function (req::HTTP.Request)
+            @debug "default serializer impl $(string(req.target)) tid=$(Threads.threadid())"
             return handlerequest(catch_errors; show_errors) do
                 response = handle(req)
                 format_response!(req, response)

@@ -26,7 +26,7 @@ Base.close(ws::OxygenWebSocketConnection) = close(ws.handler)
 
 mutable struct BonitoConnectionContext
     cleanup_policy::CleanupPolicy
-    open_connections::Dict{String, Session{OxygenWebSocketConnection}}
+    open_connections::Dict{String, OxygenWebSocketConnection}
     cleanup_task::Union{Task, Nothing}
     lock::ReentrantLock
 end
@@ -75,11 +75,12 @@ function mk_bonito_websocket_handler(context::Context)
     end
     bonito_context = context.ext[:bonito_connection]
     function bonito_websocket_handler(websocket::HTTP.WebSocket, session_id::String)
-        local session
+        local connection
         lock(bonito_context.lock) do
-            session = bonito_context.open_connections[session_id]
+            connection = bonito_context.open_connections[session_id]
         end
-        handler = session.connection.handler
+        session = connection.session
+        handler = connection.handler
 
         @debug("opening ws connection for session: $(session.id)")
         try
@@ -104,9 +105,9 @@ end
 function cleanup_bonito_context(bonito_context)
     remove = Set{OxygenWebSocketConnection}()
     lock(bonito_context.lock) do
-        for (session_id, session) in bonito_context.open_connections
-            if should_cleanup(bonito_context.cleanup_policy, session)
-                push!(remove, session.connection)
+        for (session_id, connection) in bonito_context.open_connections
+            if should_cleanup(bonito_context.cleanup_policy, connection.session)
+                push!(remove, connection)
             end
         end
         for connection in remove
@@ -132,8 +133,9 @@ function cleanup_loop(bonito_context)
     end
 end
 
-function setup_connection(session::Session{OxygenWebSocketConnection})
-    context = session.connection.context
+function setup_connection(session::Session, connection::OxygenWebSocketConnection)
+    connection.session = session
+    context = connection.context
     if !(:bonito_connection in keys(context.ext))
         error("bonito_connection not setup in context (did you call setup_bonito_connection(...)?)")
     end
@@ -146,8 +148,12 @@ function setup_connection(session::Session{OxygenWebSocketConnection})
         if bonito_context.cleanup_task === nothing
             bonito_context.cleanup_task = Threads.@spawn cleanup_loop(bonito_context)
         end
-        bonito_context.open_connections[session.id] = session
+        bonito_context.open_connections[session.id] = connection
     end
     external_url = external_url_base * session.connection.endpoint
     return setup_websocket_connection_js(external_url, session)
+end
+
+function setup_connection(session::Session{OxygenWebSocketConnection})
+    return setup_connection(session, session.connection)
 end

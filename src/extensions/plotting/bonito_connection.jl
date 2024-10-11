@@ -140,7 +140,7 @@ function setup_connection(session::Session, connection::OxygenWebSocketConnectio
         error("bonito_connection not setup in context (did you call setup_bonito_connection(...)?)")
     end
     bonito_context = context.ext[:bonito_connection]
-    if context.service.external_url[] == nothing
+    if context.service.external_url[] === nothing
         error("external_url not set in context (did you call start the server yet?)")
     end
     external_url_base = context.service.external_url[]

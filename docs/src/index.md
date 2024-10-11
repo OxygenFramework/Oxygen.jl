@@ -865,7 +865,7 @@ You may like to add some custom behaviour to the route such as authentication. I
 ```julia
 function __init__()
     const route_base = "/foobar/"
-    oxygen_bonito = Oxygen.setup_bonito_connection(CONTEXT[]; setup_force_connection=true, route_base=foobar)
+    oxygen_bonito = Oxygen.setup_bonito_connection(CONTEXT[]; setup_register_connection=true, route_base=route_base)
     route_pattern = route_base * "{session_id}"
     @websocket route_pattern function mybonitohandler(websocket::HTTP.WebSocket, session_id::String)
         # Add custom behaviour here

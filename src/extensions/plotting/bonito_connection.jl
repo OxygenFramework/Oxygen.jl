@@ -4,7 +4,7 @@ using HTTP.WebSockets
 
 import .Bonito: setup_connection
 using .Bonito: FrontendConnection, WebSocketHandler, Session, setup_websocket_connection_js
-using .Bonito: run_connection_loop, force_connection!
+using .Bonito: run_connection_loop, register_connection!
 using .Bonito: CleanupPolicy, DefaultCleanupPolicy, allow_soft_close, soft_close, should_cleanup
 
 export OxygenWebSocketConnection, mk_bonito_websocket_handler, setup_bonito_connection
@@ -38,7 +38,7 @@ BonitoConnectionContext(policy=DefaultCleanupPolicy()) = BonitoConnectionContext
         context::Context;
         setup_all=false,
         setup_route=setup_all,
-        setup_force_connection=setup_all,
+        setup_register_connection=setup_all,
         route_base="/bonito_websocket/"
     )
 
@@ -50,20 +50,22 @@ function setup_bonito_connection(
     context::Context;
     setup_all=false,
     setup_route=setup_all,
-    setup_force_connection=setup_all,
-    route_base="/bonito_websocket/"
+    setup_register_connection=setup_all,
+    route_base="/bonito-websocket/"
 )
     context.ext[:bonito_connection] = BonitoConnectionContext()
     handler = mk_bonito_websocket_handler(context)
-    connection = OxygenWebSocketConnection(context, route_base)
     if setup_route
         Oxygen.Core.register(context, WEBSOCKET, route_base * "{session_id}", handler)
     end
-    if setup_force_connection
-        force_connection!(connection)
+    function mk_connection()
+        return OxygenWebSocketConnection(context, route_base)
+    end
+    if setup_register_connection
+        register_connection!(mk_connection, OxygenWebSocketConnection)
     end
     return (;
-        connection,
+        mk_connection,
         handler
     )
 end

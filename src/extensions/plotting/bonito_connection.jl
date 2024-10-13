@@ -53,6 +53,7 @@ function setup_bonito_connection(
     setup_register_connection=setup_all,
     route_base="/bonito-websocket/"
 )
+    BONITO_OFFLINE[] = false
     context.ext[:bonito_connection] = BonitoConnectionContext()
     handler = mk_bonito_websocket_handler(context)
     if setup_route

@@ -58,6 +58,7 @@ end
     history_lock        :: ReentrantLock            = ReentrantLock()
     external_url        :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
     eager_revise        :: Ref{Nullable{EagerReviseService}} = Ref{Nullable{EagerReviseService}}(nothing)
+    middleware_cache_lock :: ReentrantLock          = ReentrantLock()
 end
 
 @kwdef struct Context

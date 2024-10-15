@@ -1,6 +1,6 @@
 import HTTP
 import .ProtoBuf: encode, decode, ProtoDecoder, ProtoEncoder
-import .Core.Extractors: Extractor, extract, try_validate
+import .Core.Extractors: Extractor, extract, try_validate, safe_extract
 
 export protobuf, ProtoBuffer, extract
 
@@ -85,7 +85,9 @@ end
 Extracts a Protobuf message from a request and converts it into a custom struct
 """
 function extract(param::Param{ProtoBuffer{T}}, request::LazyRequest) :: ProtoBuffer{T} where {T}
-    instance = protobuf(request.request, T)
+    instance = safe_extract(param) do 
+        protobuf(request.request, T)
+    end
     valid_instance = try_validate(param, instance)
     return ProtoBuffer(valid_instance)
 end

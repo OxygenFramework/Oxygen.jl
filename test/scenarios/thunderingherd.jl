@@ -25,9 +25,9 @@ function CorsHandler(handle)
     end
 end
 
-route = router(middleware=[CorsHandler])
+index = router(middleware=[CorsHandler])
 
-@get route("/") function(req)
+@get index("/") function(req)
     return "Hello World"
 end
 

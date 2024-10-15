@@ -58,17 +58,23 @@ function compose(router::HTTP.Router, cache_lock::ReentrantLock, globalmiddlewar
 
                 # Combine all the middleware functions together 
                 strategy = buildmiddleware(key, handler, globalmiddleware, custommiddleware)
-
-                # double check if the middleware function was already added to the cache before locking
+                
+                ## Below Double-checked locking to reduce the overhead of acquiring a lock
+                # Check if the middleware function is in the cache before locking.
                 if !haskey(middleware_cache, key)
+                    # Lock to ensure only one thread adds to the cache.
                     lock(cache_lock) do 
-                        middleware_cache[key] = strategy
+                        # Double-check if the function is still not in the cache.
+                        if !haskey(middleware_cache, key)
+                            # Add the function to the cache.
+                            middleware_cache[key] = strategy
+                        end
                     end
                 end
                 
                 return strategy(req)
             end
-
+    
             return handler(req)
         end
     end

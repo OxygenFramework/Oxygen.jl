@@ -101,31 +101,47 @@ function try_validate(param::Param{U}, instance::T) :: T where {T, U <: Extracto
 end
 
 """
+A helper utility function to safely extract data from a function. If the function fails, a ValidationError is thrown
+which is caught and results with a 400 status code.
+"""
+function safe_extract(f::Function, param::Param{U}) :: T where {T, U <: Extractor{T}} 
+    try 
+        return f()
+    catch
+        throw(ValidationError("Failed to serialize data for | parameter: $(param.name) | extractor: $U | type: $T"))
+    end
+end
+
+"""
 Extracts a JSON object from a request and converts it into a custom struct
 """
 function extract(param::Param{Json{T}}, request::LazyRequest) :: Json{T} where {T}
-    instance = JSON3.read(textbody(request), T)
+    instance = safe_extract(param) do 
+        JSON3.read(textbody(request), T) 
+    end
     valid_instance = try_validate(param, instance)
     return Json(valid_instance)
 end
-
 
 """
 Extracts a part of a json object from the body of a request and converts it into a custom struct
 """
 function extract(param::Param{JsonFragment{T}}, request::LazyRequest) :: JsonFragment{T} where {T}
     body = Types.jsonbody(request)[param.name]
-    instance = struct_builder(T, body)
+    instance = safe_extract(param) do 
+        struct_builder(T, body) 
+    end
     valid_instance = try_validate(param, instance)
     return JsonFragment(valid_instance)
 end
-
 
 """
 Extracts the body from a request and convert it into a custom type
 """
 function extract(param::Param{Body{T}}, request::LazyRequest) :: Body{T} where {T}
-    instance = parseparam(T, textbody(request); escape=false)
+    instance = safe_extract(param) do 
+        parseparam(T, textbody(request); escape=false) 
+    end
     valid_instance = try_validate(param, instance)
     return Body(valid_instance)
 end
@@ -135,7 +151,9 @@ Extracts a Form from a request and converts it into a custom struct
 """
 function extract(param::Param{Form{T}}, request::LazyRequest) :: Form{T} where {T}
     form = Types.formbody(request)
-    instance = struct_builder(T, form)
+    instance = safe_extract(param) do 
+        struct_builder(T, form) 
+    end
     valid_instance = try_validate(param, instance)
     return Form(valid_instance) 
 end
@@ -145,7 +163,9 @@ Extracts path parameters from a request and convert it into a custom struct
 """
 function extract(param::Param{Path{T}}, request::LazyRequest) :: Path{T} where {T}
     params = Types.pathparams(request)
-    instance = struct_builder(T, params)
+    instance = safe_extract(param) do 
+        struct_builder(T, params) 
+    end
     valid_instance = try_validate(param, instance)
     return Path(valid_instance)
 end
@@ -155,7 +175,9 @@ Extracts query parameters from a request and convert it into a custom struct
 """
 function extract(param::Param{Query{T}}, request::LazyRequest) :: Query{T} where {T}
     params = Types.queryvars(request)
-    instance = struct_builder(T, params)
+    instance = safe_extract(param) do 
+        struct_builder(T, params) 
+    end
     valid_instance = try_validate(param, instance)
     return Query(valid_instance)
 end
@@ -165,10 +187,11 @@ Extracts Headers from a request and convert it into a custom struct
 """
 function extract(param::Param{Header{T}}, request::LazyRequest) :: Header{T}  where {T}
     headers = Types.headers(request)
-    instance = struct_builder(T, headers)
+    instance = safe_extract(param) do 
+        struct_builder(T, headers) 
+    end
     valid_instance = try_validate(param, instance)
     return Header(valid_instance)
 end
-
 
 end

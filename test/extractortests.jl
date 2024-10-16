@@ -241,7 +241,7 @@ end
     @suppress_err begin 
         # should fail since we are missing query params
         r = internalrequest(HTTP.Request("GET", "/path/add/3/7"))
-        @test r.status == 500
+        @test r.status == 400
     end
 
     r = internalrequest(HTTP.Request("GET", "/headers", ["limit" => "10"], ""))

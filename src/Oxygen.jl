@@ -13,10 +13,9 @@ include("core.jl"); using .Core
 include("instances.jl"); using .Instances
 include("extensions/load.jl");
 
-import HTTP: Request, Response
+import HTTP: Request, Response, Stream, WebSocket, queryparams
 using .Core: Context, History, Server, Nullable
 using .Core: GET, POST, PUT, DELETE, PATCH
-
 
 const CONTEXT = Ref{Context}(Context())
 
@@ -43,7 +42,7 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route,
         serve, serveparallel, terminate, internalrequest, 
         resetstate, instance, staticfiles, dynamicfiles,
         # Util
-        redirect, queryparams, formdata, format_sse_message,
+        redirect, formdata, format_sse_message,
         html, text, json, file, xml, js, css, binary,
         # Extractors
         Path, Query, Header, Json, JsonFragment, Form, Body, extract, validate,
@@ -54,5 +53,5 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route,
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 
         # Common HTTP Types
-        Request, Response, Stream, WebSocket
+        Request, Response, Stream, WebSocket, queryparams
 end

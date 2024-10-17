@@ -5,20 +5,10 @@ using Dates
 using ..Errors: ValidationError
 
 export countargs, recursive_merge, parseparam, 
-    queryparams, redirect, handlerequest,
+    redirect, handlerequest,
     format_response!, set_content_size!, format_sse_message
 
 ### Request helper functions ###
-
-"""
-    queryparams(request::HTTP.Request)
-
-Parse's the query parameters from the Requests URL and return them as a Dict
-"""
-function queryparams(req::HTTP.Request) :: Dict
-    local uri = HTTP.URI(req.target)
-    return HTTP.queryparams(uri.query)
-end
 
 """
     redirect(path::String; code = 308)

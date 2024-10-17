@@ -117,7 +117,7 @@ end
 
 function queryvars(req::LazyRequest) :: Nullable{Dict{String,String}}
     if isnothing(req.queryparams[])
-        req.queryparams[] = Util.queryparams(req.request)
+        req.queryparams[] = HTTP.queryparams(req.request)
     end
     return req.queryparams[]
 end

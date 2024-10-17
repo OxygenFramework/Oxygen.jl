@@ -24,7 +24,7 @@ end
 Read the html form data from the body of a HTTP.Request
 """
 function formdata(req::HTTP.Request) :: Dict
-    return HTTP.URIs.queryparams(text(req))
+    return HTTP.queryparams(text(req))
 end
 
 
@@ -78,7 +78,7 @@ end
 Read the html form data from the body of a HTTP.Response
 """
 function formdata(response::HTTP.Response) :: Dict
-    return HTTP.URIs.queryparams(text(response))
+    return HTTP.queryparams(text(response))
 end
 
 

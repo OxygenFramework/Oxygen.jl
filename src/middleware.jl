@@ -40,7 +40,7 @@ This function dynamically determines which middleware functions to apply to a re
 If router or route specific middleware is defined, then it's used instead of the globally defined
 middleware. 
 """
-function compose(router::HTTP.Router, globalmiddleware::Vector, custommiddleware::Dict, middleware_cache::Dict)
+function compose(router::HTTP.Router, cache_lock::ReentrantLock, globalmiddleware::Vector, custommiddleware::Dict, middleware_cache::Dict)
     return function (handler)
         return function (req::HTTP.Request)
 
@@ -58,10 +58,19 @@ function compose(router::HTTP.Router, globalmiddleware::Vector, custommiddleware
 
                 # Combine all the middleware functions together 
                 strategy = buildmiddleware(key, handler, globalmiddleware, custommiddleware)
-                middleware_cache[key] = strategy
+                
+                ## Below Double-checked locking is used to reduce the overhead of acquiring a lock
+                if !haskey(middleware_cache, key)
+                    lock(cache_lock) do 
+                        if !haskey(middleware_cache, key)
+                            middleware_cache[key] = strategy
+                        end
+                    end
+                end
+                
                 return strategy(req)
             end
-
+    
             return handler(req)
         end
     end

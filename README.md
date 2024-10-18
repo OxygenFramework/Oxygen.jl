@@ -42,6 +42,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Cron Scheduling (on endpoints & functions)
 - Middleware chaining (at the application, router, and route levels)
 - Static & Dynamic file hosting
+- Hot reloads with Revise.jl
 - Templating Support
 - Plotting Support
 - Protocol Buffer Support
@@ -605,7 +606,7 @@ When the server is ran, all tasks are started automatically. But the module also
 
 ## Hot reloads with Revise
 
-Oxygen can interoperates with Revise to provide hot reloads, speeding up development. Since Revise recommends keeping all code to be revised in a package, you first need to move to this type of a layout.
+Oxygen can integrate with Revise to provide hot reloads, speeding up development. Since Revise recommends keeping all code to be revised in a package, you first need to move to this type of a layout.
 
 [First make sure your `Project.toml` has the required fields such as `name` to work on a package rather than a project.](https://pkgdocs.julialang.org/v1/toml-files/)
 

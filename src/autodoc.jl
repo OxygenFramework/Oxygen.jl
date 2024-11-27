@@ -442,7 +442,7 @@ function swaggerhtml(schemapath::String, docspath::String) :: HTTP.Response
             <script>
                 window.onload = () => {
                     window.ui = SwaggerUIBundle({
-                        url: window.location.origin + "$schemapath",
+                        url: "$schemapath",
                         dom_id: '#swagger-ui',
                     });
                 };

@@ -45,5 +45,5 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route,
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 
         # Common HTTP Types
-        Request, Response, Stream, WebSocket
+        Request, Response, Stream, WebSocket, AppContext
 end

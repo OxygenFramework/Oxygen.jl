@@ -216,15 +216,15 @@ staticfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Nullable{Function}=nothing
-) = Oxygen.Core.staticfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
+) = Oxygen.Core.staticfiles(CONTEXT[].service.router, CONTEXT[], folder, mountdir; headers, loadfile)
 
 
 dynamicfiles(
-    folder::String, 
+    folder::String,
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Nullable{Function}=nothing
-) = Oxygen.Core.dynamicfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
+) = Oxygen.Core.dynamicfiles(CONTEXT[].service.router, CONTEXT[], folder, mountdir; headers, loadfile)
 
 """
     getexternalurl()

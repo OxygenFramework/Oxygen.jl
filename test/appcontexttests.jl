@@ -18,7 +18,13 @@ end
     return json(context())
 end
 
+@get "/injected" function(req, ctx::AppContext{Person})
+    return json(ctx.context)
+end
+
 serve(port=PORT, host=HOST, async=true,  show_errors=false, show_banner=false, access_log=nothing)
+
+terminate()
 
 @testset "null context tests" begin
     @test context() isa Nothing
@@ -40,6 +46,12 @@ end
 
 @testset "accessing context from a function handler" begin 
     response = HTTP.get("$localhost/ctx")
+    @test response.status == 200
+    @test json(response, Person) == person
+end
+
+@testset "accessing injected context from a function handler" begin 
+    response = HTTP.get("$localhost/injected")
     @test response.status == 200
     @test json(response, Person) == person
 end

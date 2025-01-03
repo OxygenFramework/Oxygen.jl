@@ -33,6 +33,7 @@ include("paralleltests.jl")
 include("taskmanagement.jl")
 include("cronmanagement.jl")
 include("middlewaretests.jl")
+include("./appcontexttests.jl")
 include("originaltests.jl")
 
 #### Scenario Tests ####

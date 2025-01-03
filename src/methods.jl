@@ -8,8 +8,17 @@ Reset all the internal state variables
 function resetstate()
     # prevent context reset when created at compile-time
     if (@__MODULE__) == Oxygen
-        CONTEXT[] = Oxygen.Core.SeverContext()
+        CONTEXT[] = Oxygen.Core.ServerContext()
     end
+end
+
+"""
+This function ruturns the current application context object. This method does not
+provide any locks or synchronization, so it should be used with caution in multi-threaded environments.
+"""
+function context()
+    app_context = CONTEXT[].app_context[]
+    return ismissing(app_context) ? missing : app_context.context
 end
 
 function serve(; kwargs...) 
@@ -206,7 +215,7 @@ staticfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Nullable{Function}=nothing
-) = Oxygen.Core.staticfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
+) = Oxygen.Core.staticfiles(CONTEXT[], CONTEXT[].service.router, folder, mountdir; headers, loadfile)
 
 
 dynamicfiles(
@@ -214,7 +223,7 @@ dynamicfiles(
     mountdir::String="static"; 
     headers::Vector=[], 
     loadfile::Nullable{Function}=nothing
-) = Oxygen.Core.dynamicfiles(CONTEXT[].service.router, folder, mountdir; headers, loadfile)
+) = Oxygen.Core.dynamicfiles(CONTEXT[], CONTEXT[].service.router, folder, mountdir; headers, loadfile)
 
 """
     getexternalurl()
@@ -319,22 +328,22 @@ end
 
 ## Cron Job Functions ##
 
-function startcronjobs(ctx::SeverContext)
+function startcronjobs(ctx::ServerContext)
     Oxygen.Core.registercronjobs(ctx)
     Oxygen.Core.startcronjobs(ctx.cron)
 end
 
 startcronjobs() = startcronjobs(CONTEXT[])
 
-stopcronjobs(ctx::SeverContext) = Oxygen.Core.stopcronjobs(ctx.cron)
+stopcronjobs(ctx::ServerContext) = Oxygen.Core.stopcronjobs(ctx.cron)
 stopcronjobs() = stopcronjobs(CONTEXT[])
 
-clearcronjobs(ctx::SeverContext) = Oxygen.Core.clearcronjobs(ctx.cron)
+clearcronjobs(ctx::ServerContext) = Oxygen.Core.clearcronjobs(ctx.cron)
 clearcronjobs() = clearcronjobs(CONTEXT[])
 
 ### Repeat Task Functions ###
 
-function starttasks(context::SeverContext) 
+function starttasks(context::ServerContext) 
     Oxygen.Core.registertasks(context)
     Oxygen.Core.starttasks(context.tasks)
 end
@@ -342,16 +351,16 @@ end
 starttasks() = starttasks(CONTEXT[])
 
 
-stoptasks(context::SeverContext) = Oxygen.Core.stoptasks(context.tasks)
+stoptasks(context::ServerContext) = Oxygen.Core.stoptasks(context.tasks)
 stoptasks() = stoptasks(CONTEXT[])
 
-cleartasks(context::SeverContext) = Oxygen.Core.cleartasks(context.tasks)
+cleartasks(context::ServerContext) = Oxygen.Core.cleartasks(context.tasks)
 cleartasks() = cleartasks(CONTEXT[])
 
 
 ### Terminate Function ###
 
-terminate(context::SeverContext) = Oxygen.Core.terminate(context)
+terminate(context::ServerContext) = Oxygen.Core.terminate(context)
 terminate() = terminate(CONTEXT[])
 
 

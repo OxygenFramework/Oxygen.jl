@@ -14,10 +14,10 @@ include("instances.jl"); using .Instances
 include("extensions/load.jl");
 
 import HTTP: Request, Response, Stream, WebSocket, queryparams
-using .Core: Context, History, Server, Nullable
+using .Core: SeverContext, History, Server, Nullable
 using .Core: GET, POST, PUT, DELETE, PATCH
 
-const CONTEXT = Ref{Context}(Context())
+const CONTEXT = Ref{SeverContext}(SeverContext())
 
 import Base: get 
 include("methods.jl")
@@ -26,10 +26,10 @@ include("deprecated.jl")
 macro oxidise()
     quote
         import Oxygen
-        import Oxygen: PACKAGE_DIR, Context, Nullable
+        import Oxygen: PACKAGE_DIR, SeverContext, Nullable
         import Oxygen: GET, POST, PUT, DELETE, PATCH, STREAM, WEBSOCKET
 
-        const CONTEXT = Ref{Context}(Context(; mod=$(__module__)))
+        const CONTEXT = Ref{SeverContext}(SeverContext(; mod=$(__module__)))
         include(joinpath(PACKAGE_DIR, "methods.jl"))
         
         nothing; # to hide last definition

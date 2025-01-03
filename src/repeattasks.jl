@@ -75,7 +75,7 @@ end
 
 
 """
-    cleartasks(ct::Context)
+    cleartasks(ct::SeverContext)
 
 Clear any stored repeat task definitions
 """

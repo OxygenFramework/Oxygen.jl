@@ -5,7 +5,7 @@ using HTTP
 using HTTP: Server, Router
 using ..Types
 
-export Context, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen
+export SeverContext, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen
 
 function defaultSchema() :: Dict
     Dict(
@@ -61,7 +61,7 @@ end
     middleware_cache_lock :: ReentrantLock          = ReentrantLock()
 end
 
-@kwdef struct Context
+@kwdef struct SeverContext
     service :: Service          = Service()    
     docs    :: Documenation     = Documenation()
     cron    :: CronContext      = CronContext()
@@ -79,12 +79,12 @@ end
 
 # @eval begin
 #     """
-#         Context(ctx::Context; kwargs...)
+#         SeverContext(ctx::SeverContext; kwargs...)
 
-#     Create a new `Context` object by copying an existing one and optionally overriding some of its fields with keyword arguments.
+#     Create a new `SeverContext` object by copying an existing one and optionally overriding some of its fields with keyword arguments.
 #     """
-#     function Context(ctx::Context; $([Expr(:kw ,k, :(ctx.$k)) for k in fieldnames(Context)]...))
-#         return Context($(fieldnames(Context)...))
+#     function SeverContext(ctx::SeverContext; $([Expr(:kw ,k, :(ctx.$k)) for k in fieldnames(SeverContext)]...))
+#         return SeverContext($(fieldnames(SeverContext)...))
 #     end
 # end
 

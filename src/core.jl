@@ -67,7 +67,7 @@ function serverwelcome(external_url::String, docs::Bool, metrics::Bool, parallel
 end
 
 struct ReviseHandler
-    ctx::Context
+    ctx::SeverContext
 end
 
 function (handler::ReviseHandler)(handle)
@@ -87,7 +87,7 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(ctx::Context;
+function serve(ctx::SeverContext;
     middleware  = [],
     handler     = stream_handler,
     host        = "127.0.0.1",
@@ -197,7 +197,7 @@ end
 
 stops the webserver immediately
 """
-function terminate(context::Context)
+function terminate(context::SeverContext)
     if isopen(context.service)
         # stop background cron jobs
         stopcronjobs(context.cron)
@@ -216,7 +216,7 @@ end
 """
 Register all cron jobs defined through our router() HOF
 """
-function registercronjobs(ctx::Context)
+function registercronjobs(ctx::SeverContext)
     for job in ctx.cron.job_definitions
         path, httpmethod, expression = job.path, job.httpmethod, job.expression
         cron(ctx.cron.registered_jobs, expression, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
@@ -226,7 +226,7 @@ end
 """
 Register all repeat tasks defined through our router() HOF
 """
-function registertasks(ctx::Context)
+function registertasks(ctx::SeverContext)
     for task_def in ctx.tasks.task_definitions
         path, httpmethod, interval = task_def.path, task_def.httpmethod, task_def.interval
         task(ctx.tasks.registered_tasks, interval, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
@@ -288,7 +288,7 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(ctx::Context; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true)::Function
+function setupmiddleware(ctx::SeverContext; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true)::Function
 
     # determine if we have any special router or route-specific middleware
     custom_middleware = if !isempty(ctx.service.custommiddleware)
@@ -320,7 +320,7 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(ctx::Context; host, port, show_banner=false, docs=false, metrics=false, parallel=false, async=false, kwargs, start)::Server
+function startserver(ctx::SeverContext; host, port, show_banner=false, docs=false, metrics=false, parallel=false, async=false, kwargs, start)::Server
 
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
@@ -376,7 +376,7 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(ctx::Context, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true)::HTTP.Response
+function internalrequest(ctx::SeverContext, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true)::HTTP.Response
     req.context[:ip] = "INTERNAL" # label internal requests
     return req |> setupmiddleware(ctx; middleware, metrics, serialize, catch_errors)
 end
@@ -570,11 +570,11 @@ end
 
 
 """
-    register(ctx::Context, httpmethod::String, route::String, func::Function)
+    register(ctx::SeverContext, httpmethod::String, route::String, func::Function)
 
 Register a request handler function with a path to the ROUTER
 """
-function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
+function register(ctx::SeverContext, httpmethod::String, route::Union{String,Function}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
@@ -681,7 +681,7 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
     HTTP.register!(router, resolved_httpmethod, route, handle)
 end
 
-function setupdocs(ctx::Context)
+function setupdocs(ctx::SeverContext)
     setupdocs(ctx.docs.router[], ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[])
 end
 
@@ -694,7 +694,7 @@ function setupdocs(router::Router, schema::Dict, docspath::String, schemapath::S
     register(router, "GET", full_schema, () -> schema)
 end
 
-function setupmetrics(context::Context)
+function setupmetrics(context::SeverContext)
     setupmetrics(context.docs.router[], context.service.history, context.docs.docspath[], context.service.history_lock)
 end
 

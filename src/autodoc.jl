@@ -7,7 +7,7 @@ using RelocatableFolders
 
 using ..Util: html, recursive_merge
 using ..Constants
-using ..AppContext: Context, Documenation
+using ..AppContext: SeverContext, Documenation
 using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, Param, isrequired
 using ..Extractors: isextractor, extracttype, isreqparam
 using ..Reflection: splitdef

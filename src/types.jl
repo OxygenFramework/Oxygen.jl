@@ -11,12 +11,17 @@ using Base: @kwdef
 using DataStructures: CircularDeque
 using ..Util
 
-export Server, History, HTTPTransaction, TaggedRoute, Nullable, 
+export Server, History, HTTPTransaction, TaggedRoute, Nullable, Context,
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition,
     Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
 
 const Nullable{T} = Union{T, Nothing}
+
+# Represents the application context 
+struct Context{T}
+    payload::T
+end
 
 # Represents a running task
 struct ActiveTask

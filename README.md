@@ -886,7 +886,7 @@ using Mustache
 using Oxygen
 
 # Load the Mustache template from a file and create a render function
-render = mustache("./templates/greeting.txt", from_file=false)
+render = mustache("./templates/greeting.txt", from_file=true)
 
 @get "/mustache/file" function()
     data = Dict("name" => "Chris")

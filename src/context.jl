@@ -5,7 +5,7 @@ using HTTP
 using HTTP: Server, Router
 using ..Types
 
-export Context, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen
+export ServerContext, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen
 
 function defaultSchema() :: Dict
     Dict(
@@ -61,12 +61,13 @@ end
     middleware_cache_lock :: ReentrantLock          = ReentrantLock()
 end
 
-@kwdef struct Context
+@kwdef struct ServerContext
     service :: Service          = Service()    
     docs    :: Documenation     = Documenation()
     cron    :: CronContext      = CronContext()
     tasks   :: TasksContext     = TasksContext()
     mod     :: Nullable{Module} = nothing
+    app_context :: Ref{Any}     = Ref{Any}(missing) # This stores a reference to an Context{T} object
 end
 
 Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])
@@ -79,12 +80,12 @@ end
 
 # @eval begin
 #     """
-#         Context(ctx::Context; kwargs...)
+#         ServerContext(ctx::ServerContext; kwargs...)
 
-#     Create a new `Context` object by copying an existing one and optionally overriding some of its fields with keyword arguments.
+#     Create a new `ServerContext` object by copying an existing one and optionally overriding some of its fields with keyword arguments.
 #     """
-#     function Context(ctx::Context; $([Expr(:kw ,k, :(ctx.$k)) for k in fieldnames(Context)]...))
-#         return Context($(fieldnames(Context)...))
+#     function ServerContext(ctx::ServerContext; $([Expr(:kw ,k, :(ctx.$k)) for k in fieldnames(ServerContext)]...))
+#         return ServerContext($(fieldnames(ServerContext)...))
 #     end
 # end
 

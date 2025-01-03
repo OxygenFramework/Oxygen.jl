@@ -608,7 +608,7 @@ end
 
 
 """
-This alternaive registers a route wihout generating any documentation for it. Used primarily for internal routes like 
+This registers a route wihout generating any documentation for it. Used primarily for internal routes like 
 docs and metrics
 """
 function register_internal(ctx::ServerContext, router::Router, httpmethod::String, route::Union{String,Function}, func::Function)

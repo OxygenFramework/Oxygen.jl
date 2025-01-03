@@ -7,15 +7,13 @@ using Suppressor
 using ProtoBuf
 using ..Constants
 using Oxygen; @oxidise
-using Oxygen: extract, Param, LazyRequest, Extractor
+using Oxygen: extract, Param, LazyRequest, Extractor, ProtoBuffer
 
 # extend the built-in validate function
 import Oxygen: validate
 
 include("extensions/protobuf/messages/test_pb.jl")
 using .test_pb: MyMessage 
-
-
 
 struct Person
     name::String

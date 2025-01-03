@@ -1,6 +1,11 @@
+module OteraEngineExt
+
 using HTTP
 using MIMEs
-using .OteraEngine
+using OteraEngine
+
+import Oxygen: otera
+import Oxygen.Util: response
 
 export otera
 
@@ -66,4 +71,6 @@ function otera(file::IO; mime_type=nothing, kwargs...)
         resp_headers = mime_is_known ? [["Content-Type" => mime_type]; headers] : headers
         response(content, status, resp_headers; detect=!mime_is_known)
     end
+end
+
 end

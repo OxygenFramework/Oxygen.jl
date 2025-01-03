@@ -6,12 +6,11 @@ function __init__()
     if isdefined(Main, :Revise)
         WAS_LOADED_AFTER_REVISE[] = true
     end
-    do_requires()
 end
 
 include("core.jl"); using .Core
 include("instances.jl"); using .Instances
-include("extensions/load.jl");
+include("exts.jl")
 
 import HTTP: Request, Response, Stream, WebSocket, queryparams
 using .Core: Context, History, Server, Nullable

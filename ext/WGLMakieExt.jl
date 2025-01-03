@@ -1,9 +1,13 @@
+module WGLMakieExt
+
 import HTTP
-import .Core.Util: html # import the html function from util so we can override it
-import .WGLMakie.Makie: FigureLike
-import .Bonito: Page, App
+import Oxygen.Util: html # import the html function from util so we can override it
+import WGLMakie.Makie: FigureLike
+import Bonito: Page, App
 
 export html
+
+const HTML  = MIME"text/html"()
 
 """
 Converts a Figure object to the designated MIME type and wraps it inside an HTTP response.
@@ -32,3 +36,4 @@ Convert a Makie figure to HTML and wrap it inside an HTTP response.
 """
 html(fig::FigureLike, status=200, headers=[]) :: HTTP.Response = response(fig, HTML, status, headers)
 
+end

@@ -579,7 +579,6 @@ function parse_func_params(route::String, func::Function)
 end
 
 
-
 """
     register(ctx::ServerContext, httpmethod::String, route::String, func::Function)
 
@@ -612,7 +611,7 @@ end
 This alternaive registers a route wihout generating any documentation for it. Used primarily for internal routes like 
 docs and metrics
 """
-function register_internal(ctx, router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
+function register_internal(ctx::ServerContext, router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)

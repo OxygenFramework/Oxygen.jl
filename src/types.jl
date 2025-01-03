@@ -20,7 +20,7 @@ const Nullable{T} = Union{T, Nothing}
 
 # Represents the application context 
 struct Context{T}
-    context::T
+    payload::T
 end
 
 # Represents a running task

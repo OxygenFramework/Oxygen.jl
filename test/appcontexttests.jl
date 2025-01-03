@@ -18,7 +18,7 @@ end
     return json(context())
 end
 
-@get "/injected" function(req, ctx::AppContext{Person})
+@get "/injected" function(req, ctx::Context{Person})
     return json(ctx.context)
 end
 

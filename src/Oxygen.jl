@@ -5,11 +5,11 @@ include("instances.jl"); using .Instances
 include("extensions/load.jl");
 
 import HTTP: Request, Response
-using .Core: Context, History, Server, Nullable
+using .Core: ServerContext, History, Server, Nullable
 using .Core: GET, POST, PUT, DELETE, PATCH
 
 
-const CONTEXT = Ref{Context}(Context())
+const CONTEXT = Ref{ServerContext}(ServerContext())
 
 import Base: get 
 include("methods.jl")
@@ -18,10 +18,10 @@ include("deprecated.jl")
 macro oxidise()
     quote
         import Oxygen
-        import Oxygen: PACKAGE_DIR, Context, Nullable
+        import Oxygen: PACKAGE_DIR, ServerContext, Nullable
         import Oxygen: GET, POST, PUT, DELETE, PATCH, STREAM, WEBSOCKET
         
-        const CONTEXT = Ref{Context}(Context())
+        const CONTEXT = Ref{ServerContext}(ServerContext())
         include(joinpath(PACKAGE_DIR, "methods.jl"))
         
         nothing; # to hide last definition
@@ -45,5 +45,5 @@ export  @oxidise, @get, @post, @put, @patch, @delete, @route,
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 
         # Common HTTP Types
-        Request, Response, Stream, WebSocket, AppContext
+        Request, Response, Stream, WebSocket, Context
 end

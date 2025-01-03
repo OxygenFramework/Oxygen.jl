@@ -5,7 +5,7 @@ using HTTP
 using HTTP: Server, Router
 using ..Types
 
-export Context, CronContext, TasksContext, Documenation, Service, history, wait, close, isopen
+export ServerContext, CronContext, TasksContext, Documenation, Service, history, wait, close, isopen
 
 function defaultSchema() :: Dict
     Dict(
@@ -50,12 +50,12 @@ end
     external_url        :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
 end
 
-@kwdef struct Context
+@kwdef struct ServerContext
     service :: Service          = Service()    
     docs    :: Documenation     = Documenation()
     cron    :: CronContext      = CronContext()
     tasks   :: TasksContext     = TasksContext()
-    app_context :: Ref{Any} = Ref{Any}(nothing) # This stores a reference to an AppContext{T} object
+    app_context :: Ref{Any} = Ref{Any}(nothing) # This stores a reference to an Context{T} object
 end
 
 Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])
@@ -65,12 +65,12 @@ Base.wait(service::Service)     = !isnothing(service.server[]) && wait(service.s
 
 # @eval begin
 #     """
-#         Context(ctx::Context; kwargs...)
+#         ServerContext(ctx::ServerContext; kwargs...)
 
-#     Create a new `Context` object by copying an existing one and optionally overriding some of its fields with keyword arguments.
+#     Create a new `ServerContext` object by copying an existing one and optionally overriding some of its fields with keyword arguments.
 #     """
-#     function Context(ctx::Context; $([Expr(:kw ,k, :(ctx.$k)) for k in fieldnames(Context)]...))
-#         return Context($(fieldnames(Context)...))
+#     function ServerContext(ctx::ServerContext; $([Expr(:kw ,k, :(ctx.$k)) for k in fieldnames(ServerContext)]...))
+#         return ServerContext($(fieldnames(ServerContext)...))
 #     end
 # end
 

@@ -16,12 +16,12 @@ export Server, History, HTTPTransaction, TaggedRoute, Nullable,
     ActiveCron, RegisteredCron, CronDefinition,
     Param, isrequired, LazyRequest, 
     headers, pathparams, queryvars, jsonbody, formbody, textbody,
-    AppContext
+    Context
 
 const Nullable{T} = Union{T, Nothing}
 
 # Represents the application context 
-struct AppContext{T}
+struct Context{T}
     context::T
 end
 

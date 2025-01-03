@@ -75,7 +75,7 @@ end
 
 
 """
-    cleartasks(ct::Context)
+    cleartasks(ct::ServerContext)
 
 Clear any stored repeat task definitions
 """

@@ -8,7 +8,7 @@ Reset all the internal state variables
 function resetstate()
     # prevent context reset when created at compile-time
     if (@__MODULE__) == Oxygen
-        CONTEXT[] = Oxygen.Core.Context()
+        CONTEXT[] = Oxygen.Core.ServerContext()
     end
 end
 
@@ -329,22 +329,22 @@ end
 
 ## Cron Job Functions ##
 
-function startcronjobs(ctx::Context)
+function startcronjobs(ctx::ServerContext)
     Oxygen.Core.registercronjobs(ctx)
     Oxygen.Core.startcronjobs(ctx.cron)
 end
 
 startcronjobs() = startcronjobs(CONTEXT[])
 
-stopcronjobs(ctx::Context) = Oxygen.Core.stopcronjobs(ctx.cron)
+stopcronjobs(ctx::ServerContext) = Oxygen.Core.stopcronjobs(ctx.cron)
 stopcronjobs() = stopcronjobs(CONTEXT[])
 
-clearcronjobs(ctx::Context) = Oxygen.Core.clearcronjobs(ctx.cron)
+clearcronjobs(ctx::ServerContext) = Oxygen.Core.clearcronjobs(ctx.cron)
 clearcronjobs() = clearcronjobs(CONTEXT[])
 
 ### Repeat Task Functions ###
 
-function starttasks(context::Context) 
+function starttasks(context::ServerContext) 
     Oxygen.Core.registertasks(context)
     Oxygen.Core.starttasks(context.tasks)
 end
@@ -352,16 +352,16 @@ end
 starttasks() = starttasks(CONTEXT[])
 
 
-stoptasks(context::Context) = Oxygen.Core.stoptasks(context.tasks)
+stoptasks(context::ServerContext) = Oxygen.Core.stoptasks(context.tasks)
 stoptasks() = stoptasks(CONTEXT[])
 
-cleartasks(context::Context) = Oxygen.Core.cleartasks(context.tasks)
+cleartasks(context::ServerContext) = Oxygen.Core.cleartasks(context.tasks)
 cleartasks() = cleartasks(CONTEXT[])
 
 
 ### Terminate Function ###
 
-terminate(context::Context) = Oxygen.Core.terminate(context)
+terminate(context::ServerContext) = Oxygen.Core.terminate(context)
 terminate() = terminate(CONTEXT[])
 
 

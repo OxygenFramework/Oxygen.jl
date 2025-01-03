@@ -71,7 +71,7 @@ end
 
 Start the webserver with your own custom request handler
 """
-function serve(ctx::Context;
+function serve(ctx::ServerContext;
     middleware  = [],
     handler     = stream_handler,
     host        = "127.0.0.1",
@@ -91,7 +91,7 @@ function serve(ctx::Context;
     kwargs...) :: Server
 
     if !isnothing(context)
-        ctx.app_context[] = AppContext(context)
+        ctx.app_context[] = Context(context)
     end
 
     # set the external url if it's passed
@@ -140,7 +140,7 @@ end
 
 stops the webserver immediately
 """
-function terminate(context::Context)
+function terminate(context::ServerContext)
     if isopen(context.service)
         # stop background cron jobs
         stopcronjobs(context.cron)
@@ -159,7 +159,7 @@ end
 """
 Register all cron jobs defined through our router() HOF
 """
-function registercronjobs(ctx::Context)
+function registercronjobs(ctx::ServerContext)
     for job in ctx.cron.job_definitions
         path, httpmethod, expression = job.path, job.httpmethod, job.expression
         cron(ctx.cron.registered_jobs, expression, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
@@ -169,7 +169,7 @@ end
 """
 Register all repeat tasks defined through our router() HOF
 """
-function registertasks(ctx::Context)
+function registertasks(ctx::ServerContext)
     for task_def in ctx.tasks.task_definitions
         path, httpmethod, interval = task_def.path, task_def.httpmethod, task_def.interval
         task(ctx.tasks.registered_tasks, interval, path, () -> internalrequest(ctx, HTTP.Request(httpmethod, path)))
@@ -231,7 +231,7 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(ctx::Context; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true)::Function
+function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true)::Function
 
     # determine if we have any special router or route-specific middleware
     custom_middleware = !isempty(ctx.service.custommiddleware) ? [compose(ctx.service.router, middleware, ctx.service.custommiddleware, ctx.service.middleware_cache)] : reverse(middleware)
@@ -259,7 +259,7 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(ctx::Context; host, port, show_banner=false, docs=false, metrics=false, parallel=false, async=false, kwargs, start)::Server
+function startserver(ctx::ServerContext; host, port, show_banner=false, docs=false, metrics=false, parallel=false, async=false, kwargs, start)::Server
 
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
@@ -315,7 +315,7 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(ctx::Context, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true)::HTTP.Response
+function internalrequest(ctx::ServerContext, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true)::HTTP.Response
     req.context[:ip] = "INTERNAL" # label internal requests
     return req |> setupmiddleware(ctx; middleware, metrics, serialize, catch_errors)
 end
@@ -456,8 +456,8 @@ function parse_func_params(route::String, func::Function)
 
     for param in info.args
 
-        # case 1: it's an AppContext type which will be injected by the framework
-        if param.type <: AppContext
+        # case 1: it's an Context type which will be injected by the framework
+        if param.type <: Context
             continue
         
         # case 2: it's an extractor type
@@ -514,11 +514,11 @@ end
 
 
 """
-    register(ctx::Context, httpmethod::String, route::String, func::Function)
+    register(ctx::ServerContext, httpmethod::String, route::String, func::Function)
 
 Register a request handler function with a path to the ROUTER
 """
-function register(ctx::Context, httpmethod::String, route::Union{String,Function}, func::Function)
+function register(ctx::ServerContext, httpmethod::String, route::Union{String,Function}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
@@ -545,7 +545,7 @@ end
 This alternaive registers a route wihout generating any documentation for it. Used primarily for internal routes like 
 docs and metrics
 """
-function register_internal(router::Router, httpmethod::String, route::Union{String,Function}, func::Function; ctx::Context)
+function register_internal(router::Router, httpmethod::String, route::Union{String,Function}, func::Function; ctx::ServerContext)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
@@ -559,7 +559,7 @@ end
 Given an incoming request, parse out each argument and prepare it to get passed to the 
 corresponding handler. 
 """
-function extract_params(req::HTTP.Request, func_details, ctx::Context) :: Vector{Any}
+function extract_params(req::HTTP.Request, func_details, ctx::ServerContext) :: Vector{Any}
     info = func_details.info
     pathparams = func_details.pathnames
     queryparams = func_details.querynames
@@ -570,7 +570,7 @@ function extract_params(req::HTTP.Request, func_details, ctx::Context) :: Vector
     for param in info.sig
         name = string(param.name)
 
-        if param.type <: AppContext
+        if param.type <: Context
             push!(parameters, ctx.app_context[])
 
         elseif param.type <: Extractor
@@ -596,7 +596,7 @@ function extract_params(req::HTTP.Request, func_details, ctx::Context) :: Vector
 end
 
 
-function registerhandler(router::Router, httpmethod::String, route::String, func::Function, func_details::NamedTuple; ctx::Context)
+function registerhandler(router::Router, httpmethod::String, route::String, func::Function, func_details::NamedTuple; ctx::ServerContext)
 
     # Get information about the function's arguments
     method = first(methods(func))
@@ -628,12 +628,12 @@ function registerhandler(router::Router, httpmethod::String, route::String, func
     HTTP.register!(router, resolved_httpmethod, route, handle)
 end
 
-function setupdocs(ctx::Context)
+function setupdocs(ctx::ServerContext)
     setupdocs(ctx.docs.router[], ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[]; ctx)
 end
 
 # add the swagger and swagger/schema routes 
-function setupdocs(router::Router, schema::Dict, docspath::String, schemapath::String; ctx::Context)
+function setupdocs(router::Router, schema::Dict, docspath::String, schemapath::String; ctx::ServerContext)
     full_schema = "$docspath$schemapath"
     register_internal(router, "GET", "$docspath", () -> swaggerhtml(full_schema, docspath); ctx)
     register_internal(router, "GET", "$docspath/swagger", () -> swaggerhtml(full_schema, docspath); ctx)
@@ -641,12 +641,12 @@ function setupdocs(router::Router, schema::Dict, docspath::String, schemapath::S
     register_internal(router, "GET", full_schema, () -> schema; ctx)
 end
 
-function setupmetrics(context::Context)
+function setupmetrics(context::ServerContext)
     setupmetrics(context.docs.router[], context.service.history, context.docs.docspath[], context.service.history_lock; ctx=context)
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(router::Router, history::History, docspath::String, history_lock::ReentrantLock; ctx::Context)
+function setupmetrics(router::Router, history::History, docspath::String, history_lock::ReentrantLock; ctx::ServerContext)
 
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath)::String
@@ -703,7 +703,7 @@ Mount all files inside the /static folder (or user defined mount point).
 The `headers` array will get applied to all mounted files
 """
 function staticfiles(router::HTTP.Router,
-    ctx::Context,
+    ctx::ServerContext,
     folder::String,
     mountdir::String="static";
     headers::Vector=[],
@@ -728,7 +728,7 @@ Mount all files inside the /static folder (or user defined mount point),
 but files are re-read on each request. The `headers` array will get applied to all mounted files
 """
 function dynamicfiles(router::Router,
-    ctx::Context,
+    ctx::ServerContext,
     folder::String,
     mountdir::String="static";
     headers::Vector=[],

@@ -36,6 +36,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Out-of-the-box JSON serialization & deserialization (customizable)
 - Type definition support for path parameters
 - Request Extractors
+- Application Context
 - Multiple Instance Support
 - Multithreading support
 - Websockets, Streaming, and Server-Sent Events
@@ -428,6 +429,42 @@ end
 @post "/adult" function(req, newperson = Json{Person}(p -> p.age >= 21))
     return newperson.payload
 end
+```
+
+## Application Context
+
+Most applications at some point will need to rely on some shared global state across the codebase. 
+This usually comes in the form of a shared database connection pool or some other in memory store. 
+Oxygen provides a `context` argument which acts as a free spot for developers to store whatever they want.
+
+This `context` object can then be injected into any request handler using the `Context` struct. This 
+struct acts a box which can store whatever type of object you need. 
+
+*There are no built-in data race protections*, but this is intentional. Not all applications have the same requirements, 
+so it's up to the developer to decide how to best handle this. For those who need to share mutable state across multiple
+threads I'd recommend looking into using `Actors`, `Channels`, or `ReentrantLocks` to handle this quickly.
+
+Below is a simplified example where we store a `Person` as the application context to show how things are 
+connected and shared.
+
+```julia
+using Oxygen
+
+struct Person
+    name::String
+end
+
+# The ctx argument here is injected by the framework when the endpoint is called
+@get "/greet" function(req, ctx::Context{Person})
+    person :: Person = ctx.payload # access the underlying value
+    return "Hello $(person.name)!"
+end
+
+# This represents the application context shared between all handlers
+person = Person("John")
+
+# Here is how we set the application context in our server
+serve(context=person)
 ```
 
 ## Interpolating variables into endpoints

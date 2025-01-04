@@ -766,8 +766,19 @@ setschema(data)
 
 terminate()
 
+try
+    # This should throw an error now that serivce isn't running
+    url = getexternalurl()
+    @test false
+catch e
+    @test true
+end
+
 @async serve(middleware=[middleware1, middleware2, middleware3], port=PORT, show_errors=false, show_banner=false)
 sleep(1)
+
+# This should be a non-empty string now that the service is running
+@test getexternalurl() == "http://127.0.0.1:6060"
 
 r = internalrequest(HTTP.Request("GET", "/get"))
 @test r.status == 200

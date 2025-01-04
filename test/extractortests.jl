@@ -7,15 +7,13 @@ using Suppressor
 using ProtoBuf
 using ..Constants
 using Oxygen; @oxidise
-using Oxygen: extract, Param, LazyRequest, Extractor
+using Oxygen: extract, Param, LazyRequest, Extractor, isbodyparam
 
 # extend the built-in validate function
 import Oxygen: validate
 
 include("extensions/protobuf/messages/test_pb.jl")
 using .test_pb: MyMessage 
-
-
 
 struct Person
     name::String
@@ -68,6 +66,11 @@ end
     @test p.address == "123 main street"
     @test p.owner.name == "joe"
     @test p.owner.age == 25
+end
+
+@testset "isbodyparam tests" begin 
+    param = Param(:person, Json{Home}, missing, false)
+    @test isbodyparam(param) == true
 end
 
 @testset "Partial JSON extract" begin 

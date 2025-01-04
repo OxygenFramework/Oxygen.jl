@@ -12,15 +12,6 @@ function resetstate()
     end
 end
 
-"""
-This function ruturns the current application context object. This method does not
-provide any locks or synchronization, so it should be used with caution in multi-threaded environments.
-"""
-function context()
-    app_context = CONTEXT[].app_context[]
-    return ismissing(app_context) ? missing : app_context.context
-end
-
 function serve(; kwargs...) 
     async = Base.get(kwargs, :async, false)
     try
@@ -230,7 +221,7 @@ dynamicfiles(
 
 Return the external URL of the service
 """
-function getexternalurl()::String
+function getexternalurl() :: String
     external_url = CONTEXT[].service.external_url[]
     if isnothing(external_url)
         error("getexternalurl() is only available when the service is running")

@@ -1,3 +1,6 @@
+"""
+This module holds all the partial function & struct definitions for all package extensions
+"""
 
 export ProtoBuffer, protobuf
 export mustache, otera

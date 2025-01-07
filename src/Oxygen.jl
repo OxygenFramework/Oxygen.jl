@@ -1,6 +1,6 @@
 module Oxygen
 
-const WAS_LOADED_AFTER_REVISE = Ref(false)
+const WAS_LOADED_AFTER_REVISE :: Ref{Bool} = Ref(false)
 
 function __init__()
     if isdefined(Main, :Revise)
@@ -10,15 +10,15 @@ end
 
 include("core.jl"); using .Core
 include("instances.jl"); using .Instances
-include("exts.jl")
 
 import HTTP: Request, Response, Stream, WebSocket, queryparams
 using .Core: ServerContext, History, Server, Nullable
 using .Core: GET, POST, PUT, DELETE, PATCH
 
-const CONTEXT = Ref{ServerContext}(ServerContext())
+const CONTEXT :: Ref{ServerContext} = Ref(ServerContext())
 
 import Base: get 
+include("exts.jl")
 include("methods.jl")
 include("deprecated.jl")
 
@@ -28,7 +28,7 @@ macro oxidise()
         import Oxygen: PACKAGE_DIR, ServerContext, Nullable
         import Oxygen: GET, POST, PUT, DELETE, PATCH, STREAM, WEBSOCKET
 
-        const CONTEXT = Ref{ServerContext}(ServerContext(; mod=$(__module__)))
+        const CONTEXT :: Ref{ServerContext}  = Ref(ServerContext(; mod=$(__module__)))
         include(joinpath(PACKAGE_DIR, "methods.jl"))
         
         nothing; # to hide last definition

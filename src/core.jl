@@ -53,16 +53,13 @@ function serverwelcome(external_url::String, docs::Bool, metrics::Bool, parallel
     end
     if parallel
         @info "🚀 Running in parallel mode with $(Threads.nthreads()) threads"
-        # Check if the current julia version supports interactive threadpools
-        if hasmethod(getfield(Threads, Symbol("@spawn")), Tuple{LineNumberNode, Module, Symbol, Expr})
-            # Add a warnign if the interactive threadpool is empty when running in parallel mode
-            if nthreads(:interactive) == 0
-                @warn """
-                🚨 Interactive threadpool is empty. This can hurt performance when running in parallel mode.
-                Try launching julia like \"julia --threads 3,1\" to add 1 thread to the interactive threadpool.
-                """
-            end
-        end
+        # Add a warning if the interactive threadpool is empty when running in parallel mode
+        if nthreads(:interactive) == 0
+            @warn """
+            🚨 Interactive threadpool is empty. This can hurt performance when running in parallel mode.
+            Try launching julia like \"julia --threads 3,1\" to add 1 thread to the interactive threadpool.
+            """
+        end  
     end
 end
 

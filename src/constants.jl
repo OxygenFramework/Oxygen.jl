@@ -10,43 +10,43 @@ export PACKAGE_DIR, DATA_PATH,
     SWAGGER_VERSION, REDOC_VERSION
 
 # Generate a reliable path to our package directory
-const PACKAGE_DIR = @path @__DIR__
+const PACKAGE_DIR :: String = @path @__DIR__
 
 # Generate a reliable path to our internal data folder that works when the 
 # package is used with PackageCompiler.jl
-const DATA_PATH = @path joinpath(@__DIR__, "..", "data")
+const DATA_PATH :: String = @path joinpath(@__DIR__, "..", "data")
 
 # HTTP Methods
-const GET       = "GET"
-const POST      = "POST"
-const PUT       = "PUT"
-const DELETE    = "DELETE"
-const PATCH     = "PATCH"
-const HEAD      = "HEAD"
-const OPTIONS   = "OPTIONS"
-const CONNECT   = "CONNECT"
-const TRACE     = "TRACE"
+const GET       :: String   = "GET"
+const POST      :: String   = "POST"
+const PUT       :: String   = "PUT"
+const DELETE    :: String   = "DELETE"
+const PATCH     :: String   = "PATCH"
+const HEAD      :: String   = "HEAD"
+const OPTIONS   :: String   = "OPTIONS"
+const CONNECT   :: String   = "CONNECT"
+const TRACE     :: String   = "TRACE"
 
-const HTTP_METHODS = Set{String}([GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, CONNECT, TRACE])
+const HTTP_METHODS :: Set{String} = Set([GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, CONNECT, TRACE])
 
 # Special Methods
-const WEBSOCKET = "WEBSOCKET"
-const STREAM    = "STREAM"
+const WEBSOCKET :: String = "WEBSOCKET"
+const STREAM    :: String = "STREAM"
 
-const SPECIAL_METHODS = Set{String}([WEBSOCKET, STREAM])
+const SPECIAL_METHODS :: Set{String} = Set([WEBSOCKET, STREAM])
 
 # Sepcial Method Aliases
-const METHOD_ALIASES = Dict{String,String}(
-    WEBSOCKET => GET,
-    STREAM => GET
+const METHOD_ALIASES :: Dict{String,String} = Dict(
+    WEBSOCKET   => GET,
+    STREAM      => GET
 )
 
-const TYPE_ALIASES = Dict{String, Type}(
-    WEBSOCKET => HTTP.WebSockets.WebSocket,
-    STREAM => HTTP.Streams.Stream
+const TYPE_ALIASES :: Dict{String, Type} = Dict(
+    WEBSOCKET   => HTTP.WebSockets.WebSocket,
+    STREAM      => HTTP.Streams.Stream
 )
 
-const SWAGGER_VERSION = "swagger@5.7.2"
-const REDOC_VERSION = "redoc@2.1.2"
+const SWAGGER_VERSION   :: String = "swagger@5.7.2"
+const REDOC_VERSION     :: String = "redoc@2.1.2"
 
 end

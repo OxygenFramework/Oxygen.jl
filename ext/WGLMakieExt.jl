@@ -1,9 +1,9 @@
 module WGLMakieExt
 
 import HTTP
-import Oxygen.Util: html # import the html function from util so we can override it
+import Oxygen: html # import the html function from util so we can override it
+import Bonito: Page
 import WGLMakie.Makie: FigureLike
-import Bonito: Page, App
 
 export html
 

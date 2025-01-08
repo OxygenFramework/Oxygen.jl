@@ -17,7 +17,7 @@ include("websockettests.jl")
 include("streamingtests.jl")
 include("handlertests.jl")
 
-# #### Core Tests ####
+#### Core Tests ####
 include("test_reexports.jl")
 include("precompilationtest.jl")
 include("extractortests.jl")

@@ -35,6 +35,7 @@ include("cronmanagement.jl")
 include("middlewaretests.jl")
 include("appcontexttests.jl")
 include("originaltests.jl")
+include("revise.jl")
 
 #### Scenario Tests ####
 include("./scenarios/thunderingherd.jl")

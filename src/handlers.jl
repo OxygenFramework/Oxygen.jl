@@ -18,8 +18,8 @@ function get_invoker_stategy(has_req_kwarg::Bool, has_path_params::Bool, no_args
                 func(; request=req)
             end
         elseif has_path_params
-            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, pathParams::Nullable{Vector})
-                func(arg, pathParams...; request=req)
+            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, parameters::Nullable{Vector})
+                func(arg, parameters...; request=req)
             end
         else
             return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
@@ -32,8 +32,8 @@ function get_invoker_stategy(has_req_kwarg::Bool, has_path_params::Bool, no_args
                 func()
             end
         elseif has_path_params
-            return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, pathParams::Nullable{Vector})
-                func(arg, pathParams...)
+            return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, parameters::Nullable{Vector})
+                func(arg, parameters...)
             end
         else
             return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, _::Nullable{Vector})
@@ -50,8 +50,8 @@ This base case, returns a handler for `HTTP.Request` objects.
 """
 function select_handler(::Type{T}, has_req_kwarg::Bool, has_path_params::Bool; no_args=false) where {T}
     invoker = get_invoker_stategy(has_req_kwarg, has_path_params, no_args)
-    function (req::HTTP.Request, func::Function; pathParams::Nullable{Vector}=nothing)
-        invoker(func, req, req, pathParams)
+    function (req::HTTP.Request, func::Function; parameters::Nullable{Vector}=nothing)
+        invoker(func, req, req, parameters)
     end
 end
 
@@ -62,8 +62,8 @@ Returns a handler for `HTTP.Streams.Stream` types
 """
 function select_handler(::Type{HTTP.Streams.Stream}, has_req_kwarg::Bool, has_path_params::Bool; no_args=false)
     invoker = get_invoker_stategy(has_req_kwarg, has_path_params, no_args)
-    function (req::HTTP.Request, func::Function; pathParams::Nullable{Vector}=nothing)
-        invoker(func, req.context[:stream], req, pathParams)
+    function (req::HTTP.Request, func::Function; parameters::Nullable{Vector}=nothing)
+        invoker(func, req.context[:stream], req, parameters)
     end
 end
 
@@ -74,8 +74,8 @@ Returns a handler for `HTTP.WebSockets.WebSocket`types
 """
 function select_handler(::Type{HTTP.WebSockets.WebSocket}, has_req_kwarg::Bool, has_path_params::Bool; no_args=false)
     invoker = get_invoker_stategy(has_req_kwarg, has_path_params, no_args)
-    function (req::HTTP.Request, func::Function; pathParams::Nullable{Vector}=nothing)
-        HTTP.WebSockets.isupgrade(req) && HTTP.WebSockets.upgrade(ws -> invoker(func, ws, req, pathParams), req.context[:stream])
+    function (req::HTTP.Request, func::Function; parameters::Nullable{Vector}=nothing)
+        HTTP.WebSockets.isupgrade(req) && HTTP.WebSockets.upgrade(ws -> invoker(func, ws, req, parameters), req.context[:stream])
     end
 end
 

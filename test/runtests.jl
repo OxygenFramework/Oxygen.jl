@@ -12,12 +12,12 @@ include("extensions/bonitotests.jl")
 
 #### Sepcial Handler Tests ####
 
-include("ssetests.jl") # Causing issues
+include("ssetests.jl")
 include("websockettests.jl")
 include("streamingtests.jl")
 include("handlertests.jl")
 
-# #### Core Tests ####
+#### Core Tests ####
 include("test_reexports.jl")
 include("precompilationtest.jl")
 include("extractortests.jl")

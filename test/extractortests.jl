@@ -7,7 +7,7 @@ using Suppressor
 using ProtoBuf
 using ..Constants
 using Oxygen; @oxidise
-using Oxygen: extract, Param, LazyRequest, Extractor, isbodyparam
+using Oxygen: extract, Param, LazyRequest, Extractor, ProtoBuffer, isbodyparam
 
 # extend the built-in validate function
 import Oxygen: validate

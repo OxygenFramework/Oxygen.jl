@@ -53,16 +53,13 @@ function serverwelcome(external_url::String, docs::Bool, metrics::Bool, parallel
     end
     if parallel
         @info "🚀 Running in parallel mode with $(Threads.nthreads()) threads"
-        # Check if the current julia version supports interactive threadpools
-        if hasmethod(getfield(Threads, Symbol("@spawn")), Tuple{LineNumberNode, Module, Symbol, Expr})
-            # Add a warnign if the interactive threadpool is empty when running in parallel mode
-            if nthreads(:interactive) == 0
-                @warn """
-                🚨 Interactive threadpool is empty. This can hurt performance when running in parallel mode.
-                Try launching julia like \"julia --threads 3,1\" to add 1 thread to the interactive threadpool.
-                """
-            end
-        end
+        # Add a warning if the interactive threadpool is empty when running in parallel mode
+        if nthreads(:interactive) == 0
+            @warn """
+            🚨 Interactive threadpool is empty. This can hurt performance when running in parallel mode.
+            Try launching julia like \"julia --threads 3,1\" to add 1 thread to the interactive threadpool.
+            """
+        end  
     end
 end
 
@@ -497,10 +494,10 @@ function parse_func_params(route::String, func::Function)
         1. path parameters are detected by their presence in the route string
         2. query parameters are not in the route string and can have default values
         3. path extractors can be used instead of traditional path parameters
-        4. extrators can be used alongside traditional path & query params
+        4. extractors can be used alongside traditional path & query params
     """
 
-    info = splitdef(func, start=2) # skip the indentifying first arg 
+    info = splitdef(func, start=2) # skip the identifying first arg 
 
     # collect path param definitions from the route string
     hasBraces = r"({)|(})"
@@ -625,45 +622,79 @@ end
 
 
 """
-Given an incoming request, parse out each argument and prepare it to get passed to the 
-corresponding handler. 
+Generate the parser strategy to apply to incoming requests. It will return a function 
+which accepts a HTTP.Request and returns a Vector of the parsed parameters
 """
-function extract_params(ctx::ServerContext, req::HTTP.Request, func_details)::Vector{Any}
+function create_param_parser(ctx::ServerContext, func_details)
     info = func_details.info
     pathparams = func_details.pathnames
     queryparams = func_details.querynames
 
-    lazy_req = LazyRequest(request=req)
-    parameters = Vector{Any}()
+    strategies = Vector{Function}()
 
-    for param in info.sig
-        name = string(param.name)
+    """
+    Listed below are the different parsing strategies that can 
+    be used on incoming HTTP Requests
+    """
 
-        if param.type <: Context
-            push!(parameters, ctx.app_context[])
-
-        elseif param.type <: Extractor
-            push!(parameters, extract(param, lazy_req))
-
-        elseif param.name in pathparams
-            raw_pathparams = Types.pathparams(lazy_req)
-            push!(parameters, parseparam(param.type, raw_pathparams[name]))
-
-        elseif param.name in queryparams
-            raw_queryparams = Types.queryvars(lazy_req)
-            # if the query parameter is not present, use the default value if available
-            if !haskey(raw_queryparams, name) && param.hasdefault
-                push!(parameters, param.default)
-            else
-                push!(parameters, parseparam(param.type, raw_queryparams[name]))
-            end
-        end
-
+    function context_strategy(_::LazyRequest)
+        return ctx.app_context[]
     end
 
-    return parameters
-end
+    function extractor_strategy(lr::LazyRequest, param::Param{T}) where T
+        return extract(param, lr)
+    end
 
+    function pathparam_strategy(lr::LazyRequest, param::Param{T}, name::String) where T
+        raw_pathparams = Types.pathparams(lr)
+        return parseparam(param.type, raw_pathparams[name])
+    end
+
+    function queryparam_strategy(lr::LazyRequest, param::Param{T}, name::String) where T
+        raw_queryparams = Types.queryvars(lr)
+        if !haskey(raw_queryparams, name) && param.hasdefault
+            return param.default
+        else
+            return parseparam(param.type, raw_queryparams[name])
+        end
+    end
+
+    function queryparam_strategy_no_default(lr::LazyRequest, param::Param{T}, name::String) where T
+        raw_queryparams = Types.queryvars(lr)
+        return parseparam(param.type, raw_queryparams[name])
+    end
+
+    """
+    Figure out which strategy to use for each parameter, 
+    based on the parameter's type, name, and position
+    """
+    for param in info.sig
+        name = param.name
+        str_name = String(name)
+        if param.type <: Context
+            push!(strategies, context_strategy)
+        elseif param.type <: Extractor
+            push!(strategies, lr -> extractor_strategy(lr, param))
+        elseif name in pathparams
+            push!(strategies, lr -> pathparam_strategy(lr, param, str_name))
+        elseif name in queryparams
+            query_parsing_strat = param.hasdefault ? queryparam_strategy : queryparam_strategy_no_default
+            push!(strategies, lr -> query_parsing_strat(lr, param, str_name))
+        end
+    end
+
+    strat_length = length(strategies)
+
+    # The final function is used to apply the strategies and extract the parameters
+    return function(req::HTTP.Request)
+        lr = LazyRequest(request=req)
+        results = Vector{Any}(undef, strat_length)
+        @inbounds for i in 1:strat_length
+            results[i] = strategies[i](lr)
+        end
+        return results
+    end
+end
 
 function registerhandler(ctx::ServerContext, router::Router, httpmethod::String, route::String, func::Function, func_details::NamedTuple)
 
@@ -680,6 +711,9 @@ function registerhandler(ctx::ServerContext, router::Router, httpmethod::String,
     arg_type = first_arg_type(method, httpmethod)
     func_handle = select_handler(arg_type, has_req_kwarg, has_path_params; no_args=no_args)
 
+    # Generate the parameter parsing strategy for each endpoint
+    parse_params = create_param_parser(ctx, func_details)
+
     # Figure out if we need to include parameter parsing logic for this route
     if isempty(info.sig)
         handle = function (req::HTTP.Request)
@@ -687,8 +721,8 @@ function registerhandler(ctx::ServerContext, router::Router, httpmethod::String,
         end
     else
         handle = function (req::HTTP.Request)
-            path_parameters = extract_params(ctx, req, func_details)
-            func_handle(req, func; pathParams=path_parameters)
+            params = parse_params(req)
+            func_handle(req, func; parameters=params)
         end
     end
 

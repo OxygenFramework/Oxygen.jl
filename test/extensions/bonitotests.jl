@@ -19,7 +19,7 @@ using ..Constants
     @test parse(Int, HTTP.header(response, "Content-Length")) >= 0
 end
 
-@testset "WGLMakie server tests" begin
+@testset "Bonito server tests" begin
 
     get("/") do 
         text("hello world")

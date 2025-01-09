@@ -1,8 +1,16 @@
+module CairoMakieExt
+
 import HTTP
-import .CairoMakie: Figure
-import .Core.Util: html # import the html function from util so we can override it
+import CairoMakie: Figure
+import Oxygen.Util: html # import the html function from util so we can override it
+import Oxygen: png, svg, pdf
 
 export png, svg, pdf, html
+
+const PNG   = MIME"image/png"()
+const SVG   = MIME"image/svg+xml"()
+const PDF   = MIME"application/pdf"()
+const HTML  = MIME"text/html"()
 
 """
 Converts a Figure object to the designated MIME type and wraps it inside an HTTP response.
@@ -48,3 +56,5 @@ pdf(fig::Figure, status=200, headers=[]) :: HTTP.Response = response(fig, PDF, s
 Convert a figure to HTML and wrap it inside an HTTP response.
 """
 html(fig::Figure, status=200, headers=[]) :: HTTP.Response = response(fig, HTML, status, headers)
+
+end

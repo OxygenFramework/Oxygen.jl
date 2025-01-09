@@ -1,8 +1,12 @@
-import HTTP
-import .ProtoBuf: encode, decode, ProtoDecoder, ProtoEncoder
-import .Core.Extractors: Extractor, extract, try_validate, safe_extract
+module ProtoBufExt
 
-export protobuf, ProtoBuffer, extract
+import HTTP
+import Oxygen: ProtoBuffer, protobuf
+import Oxygen.Types: Param, LazyRequest
+import Oxygen.Extractors: Extractor, extract, try_validate, safe_extract
+import ProtoBuf: encode, decode, ProtoDecoder, ProtoEncoder
+
+export protobuf, extract
 
 """
     protobuf(request::HTTP.Request, type::Type{T}) :: T where {T}
@@ -76,11 +80,6 @@ function protobuf(content::T; status = 200, headers = []) :: HTTP.Response where
     return response
 end
 
-
-struct ProtoBuffer{T} <: Extractor{T}
-    payload::T
-end
-
 """
 Extracts a Protobuf message from a request and converts it into a custom struct
 """
@@ -90,4 +89,7 @@ function extract(param::Param{ProtoBuffer{T}}, request::LazyRequest) :: ProtoBuf
     end
     valid_instance = try_validate(param, instance)
     return ProtoBuffer(valid_instance)
+end
+
+
 end

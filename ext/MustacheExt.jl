@@ -1,6 +1,11 @@
+module MustacheExt
+
 using HTTP
 using MIMEs
-using .Mustache
+using Mustache
+
+import Oxygen: mustache
+import Oxygen.Util: response
 
 export mustache
 
@@ -71,4 +76,7 @@ function mustache(file::IO; mime_type=nothing, kwargs...)
         resp_headers = mime_is_known ? [["Content-Type" => mime_type]; headers] : headers
         response(content, status, resp_headers; detect=!mime_is_known)
     end
+end
+
+
 end

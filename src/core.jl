@@ -17,8 +17,8 @@ include("errors.jl");       @reexport using .Errors
 include("util.jl");         @reexport using .Util
 include("types.jl");        @reexport using .Types 
 include("constants.jl");    @reexport using .Constants
-include("handlers.jl");     @reexport using .Handlers
 include("context.jl");      @reexport using .AppContext
+include("handlers.jl");     @reexport using .Handlers
 include("middleware.jl");   @reexport using .Middleware
 include("routerhof.jl");    @reexport using .RouterHOF
 include("cron.jl");         @reexport using .Cron
@@ -705,11 +705,13 @@ function registerhandler(ctx::ServerContext, router::Router, httpmethod::String,
     # check if handler has a :request kwarg
     info = func_details.info
     has_req_kwarg = :request in Base.kwarg_decl(method)
+    has_ctx_kwarg = :context in Base.kwarg_decl(method)
+
     has_path_params = !isempty(info.args)
 
     # Generate the function handler based on the input types
     arg_type = first_arg_type(method, httpmethod)
-    func_handle = select_handler(arg_type, has_req_kwarg, has_path_params; no_args=no_args)
+    func_handle = select_handler(arg_type, has_ctx_kwarg, has_req_kwarg, has_path_params, ctx; no_args=no_args)
 
     # Generate the parameter parsing strategy for each endpoint
     parse_params = create_param_parser(ctx, func_details)

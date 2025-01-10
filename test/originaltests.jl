@@ -84,7 +84,7 @@ end
 end
 
 try 
-    @get "/mismatched-params/{a}/{b}" function (a,c; request; context)
+    @get "/mismatched-params/{a}/{b}" function (a,c; request, context)
         return "$a, $c"
     end
 catch e

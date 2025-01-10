@@ -716,6 +716,9 @@ function registerhandler(ctx::ServerContext, router::Router, httpmethod::String,
     # Generate the parameter parsing strategy for each endpoint
     parse_params = create_param_parser(ctx, func_details)
 
+    # Generate the parameter parsing strategy for each endpoint
+    parse_params = create_param_parser(ctx, func_details)
+
     # Figure out if we need to include parameter parsing logic for this route
     if isempty(info.sig)
         handle = function (req::HTTP.Request)

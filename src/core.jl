@@ -214,6 +214,9 @@ function terminate(context::ServerContext)
 
         # Set the external url to nothing when the server is terminated
         context.service.external_url[] = nothing
+
+        # close our service on termination
+        close(context.service)
     end
 end
 

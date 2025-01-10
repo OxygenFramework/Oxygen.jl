@@ -435,10 +435,13 @@ end
 
 Most applications at some point will need to rely on some shared global state across the codebase. 
 This usually comes in the form of a shared database connection pool or some other in memory store. 
-Oxygen provides a `context` argument which acts as a free spot for developers to store whatever they want.
+Oxygen provides a `context` argument which acts as a free spot for developers to store any objects that 
+should be available throughout the lifetime of an application.
 
-This `context` object can then be injected into any request handler using the `Context` struct. This 
-struct acts a box which can store whatever type of object you need. 
+There are three primary ways to get access to your application context
+- Injected into any request handler using the `Context` struct.
+- The `context` keyword argument in a function handler
+- Through the `context()` function 
 
 *There are no built-in data race protections*, but this is intentional. Not all applications have the same requirements, 
 so it's up to the developer to decide how to best handle this. For those who need to share mutable state across multiple
@@ -454,9 +457,21 @@ struct Person
     name::String
 end
 
-# The ctx argument here is injected by the framework when the endpoint is called
-@get "/greet" function(req, ctx::Context{Person})
+# The ctx argument here is injected through the Context class
+@get "/ctx-Injection" function(req, ctx::Context{Person})
     person :: Person = ctx.payload # access the underlying value
+    return "Hello $(person.name)!"
+end
+
+# Access the context through the 'context' keyword argument 
+@get "/ctx-kwarg" function(req; context)
+    person :: Person = context 
+    return "Hello $(person.name)!"
+end
+
+# Access context through the 'context()' function
+@get "/ctx-function" function(req)
+    person :: Person = context()
     return "Hello $(person.name)!"
 end
 

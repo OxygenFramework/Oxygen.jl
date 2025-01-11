@@ -95,7 +95,7 @@ end
     return a + b
 end
 
-@get "/divide/{a}/{b}" function (req, a, b)
+@get "/divide/{a}/{b}" function (req, a, b; request, context)
     return parse(Float64, a) / parse(Float64, b)
 end
 
@@ -191,7 +191,7 @@ end
 StructTypes.StructType(::Type{Student}) = StructTypes.Struct()
 StructTypes.StructType(::Type{Complex{Float64}}) = StructTypes.Struct()
 
-@get "/fruit/{fruit}" function(req, fruit::Fruit)
+@get "/fruit/{fruit}" function(req, fruit::Fruit; request, context)
   return fruit
 end
 

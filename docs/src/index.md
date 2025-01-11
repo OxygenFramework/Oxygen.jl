@@ -458,7 +458,7 @@ struct Person
 end
 
 # The ctx argument here is injected through the Context class
-@get "/ctx-Injection" function(req, ctx::Context{Person})
+@get "/ctx-injection" function(req, ctx::Context{Person})
     person :: Person = ctx.payload # access the underlying value
     return "Hello $(person.name)!"
 end

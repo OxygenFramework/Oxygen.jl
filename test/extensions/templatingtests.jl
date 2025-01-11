@@ -89,8 +89,6 @@ Well, 6000.0 dollars, after taxes.
         @test response.body |> String |> clean_output == expected_output
     end
 
-
-
     @testset "mustache() from file with no content type" begin 
         render = open(mustache, "./content/mustache_template.txt")
         response = render(data)

@@ -33,15 +33,15 @@ staticfiles("content")
 #@dynamicfiles "content" "/dynamic"
 dynamicfiles("content", "/dynamic")
 
-@get "/killserver" function ()
+@get "/killserver" function (; context)
     terminate()
 end
 
-@get "/anonymous" function()
+@get "/anonymous" function(; request, context)
     return "no args"
 end
 
-@get "/anyparams/{message}" function(req, message::Any)
+@get "/anyparams/{message}" function(req, message::Any; context)
     return message
 end
 
@@ -84,7 +84,7 @@ end
 end
 
 try 
-    @get "/mismatched-params/{a}/{b}" function (a,c)
+    @get "/mismatched-params/{a}/{b}" function (a,c; request, context)
         return "$a, $c"
     end
 catch e

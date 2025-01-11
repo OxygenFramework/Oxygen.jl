@@ -1,39 +1,74 @@
 module Handlers
 using HTTP
 using ..Types: Nullable
-using ..Core: SPECIAL_METHODS, TYPE_ALIASES
+using ..Constants: SPECIAL_METHODS, TYPE_ALIASES
+using ..AppContext: ServerContext
 
 export select_handler, first_arg_type
 
 # Union type of supported Handlers
 HandlerArgType = Union{HTTP.Messages.Request, HTTP.WebSockets.WebSocket, HTTP.Streams.Stream}
 
+function get_context(ctx::ServerContext)
+    app_ctx = ctx.app_context[]
+    return ismissing(app_ctx) ? nothing : app_ctx.payload
+end
+
 """ 
 Determine how to call each handler based on the arguments it takes.
+
+These branches are hardcoded because this invoker code is called on each and every 
+request. This is a performance critical path and should be as fast as possible.
 """
-function get_invoker_stategy(has_req_kwarg::Bool, has_path_params::Bool, no_args::Bool)
-    if has_req_kwarg
-        if no_args
+function get_invoker_strategy(has_ctx_kwarg::Bool, has_req_kwarg::Bool, has_path_params::Bool, no_args::Bool, ctx::ServerContext)
+    if no_args
+        if has_req_kwarg && has_ctx_kwarg
+            return function (func::Function, _::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
+                func(; request=req, context=get_context(ctx))
+            end
+        elseif has_req_kwarg
             return function (func::Function, _::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
                 func(; request=req)
             end
-        elseif has_path_params
-            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, parameters::Nullable{Vector})
-                func(arg, parameters...; request=req)
+        elseif has_ctx_kwarg
+            return function (func::Function, _::HandlerArgType, _::HTTP.Messages.Request, _::Nullable{Vector})
+                func(; context=get_context(ctx))
             end
         else
-            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
-                func(arg; request=req)
-            end
-        end
-    else
-        if no_args
             return function (func::Function, _::HandlerArgType, _::HTTP.Messages.Request, _::Nullable{Vector})
                 func()
             end
-        elseif has_path_params
+        end
+    elseif has_path_params
+        if has_req_kwarg && has_ctx_kwarg
+            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, parameters::Nullable{Vector})
+                func(arg, parameters...; request=req, context=get_context(ctx))
+            end
+        elseif has_req_kwarg
+            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, parameters::Nullable{Vector})
+                func(arg, parameters...; request=req)
+            end
+        elseif has_ctx_kwarg
+            return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, parameters::Nullable{Vector})
+                func(arg, parameters...; context=get_context(ctx))
+            end
+        else
             return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, parameters::Nullable{Vector})
                 func(arg, parameters...)
+            end
+        end
+    else
+        if has_req_kwarg && has_ctx_kwarg
+            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
+                func(arg; request=req, context=get_context(ctx))
+            end
+        elseif has_req_kwarg
+            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
+                func(arg; request=req)
+            end
+        elseif has_ctx_kwarg
+            return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, _::Nullable{Vector})
+                func(arg; context=get_context(ctx))
             end
         else
             return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, _::Nullable{Vector})
@@ -43,13 +78,15 @@ function get_invoker_stategy(has_req_kwarg::Bool, has_path_params::Bool, no_args
     end
 end
 
+
+
 """
     select_handler(::Type{T})
 
 This base case, returns a handler for `HTTP.Request` objects.
 """
-function select_handler(::Type{T}, has_req_kwarg::Bool, has_path_params::Bool; no_args=false) where {T}
-    invoker = get_invoker_stategy(has_req_kwarg, has_path_params, no_args)
+function select_handler(::Type{T}, has_ctx_kwarg::Bool, has_req_kwarg::Bool, has_path_params::Bool, ctx::ServerContext; no_args=false) where {T}
+    invoker = get_invoker_strategy(has_ctx_kwarg, has_req_kwarg, has_path_params, no_args, ctx)
     function (req::HTTP.Request, func::Function; parameters::Nullable{Vector}=nothing)
         invoker(func, req, req, parameters)
     end
@@ -60,8 +97,8 @@ end
 
 Returns a handler for `HTTP.Streams.Stream` types
 """
-function select_handler(::Type{HTTP.Streams.Stream}, has_req_kwarg::Bool, has_path_params::Bool; no_args=false)
-    invoker = get_invoker_stategy(has_req_kwarg, has_path_params, no_args)
+function select_handler(::Type{HTTP.Streams.Stream}, has_ctx_kwarg::Bool, has_req_kwarg::Bool, has_path_params::Bool, ctx::ServerContext; no_args=false)
+    invoker = get_invoker_strategy(has_ctx_kwarg, has_req_kwarg, has_path_params, no_args, ctx)
     function (req::HTTP.Request, func::Function; parameters::Nullable{Vector}=nothing)
         invoker(func, req.context[:stream], req, parameters)
     end
@@ -72,8 +109,8 @@ end
 
 Returns a handler for `HTTP.WebSockets.WebSocket`types
 """
-function select_handler(::Type{HTTP.WebSockets.WebSocket}, has_req_kwarg::Bool, has_path_params::Bool; no_args=false)
-    invoker = get_invoker_stategy(has_req_kwarg, has_path_params, no_args)
+function select_handler(::Type{HTTP.WebSockets.WebSocket}, has_ctx_kwarg::Bool, has_req_kwarg::Bool, has_path_params::Bool, ctx::ServerContext; no_args=false)
+    invoker = get_invoker_strategy(has_ctx_kwarg, has_req_kwarg, has_path_params, no_args, ctx)
     function (req::HTTP.Request, func::Function; parameters::Nullable{Vector}=nothing)
         HTTP.WebSockets.isupgrade(req) && HTTP.WebSockets.upgrade(ws -> invoker(func, ws, req, parameters), req.context[:stream])
     end

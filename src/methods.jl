@@ -12,6 +12,11 @@ function resetstate()
     end
 end
 
+function context()
+    app_ctx = CONTEXT[].app_context[]
+    return ismissing(app_ctx) ? missing : app_ctx.payload
+end
+
 function serve(; kwargs...) 
     async = Base.get(kwargs, :async, false)
     try

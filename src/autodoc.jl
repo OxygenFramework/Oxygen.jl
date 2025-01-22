@@ -237,6 +237,7 @@ function formatcontent(bodyparams::Vector) :: OrderedDict
     return ordered_content
 end
 
+
 """
 Used to generate & register schema related for a specific endpoint 
 """
@@ -320,7 +321,6 @@ function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
     return Dict("$schematype" => [ Dict("\$ref" => ref) for ref in refs ])
 end
 
-
 function is_custom_struct(T::Type)
     return T.name.module ∉ (Base, Core) && (isstructtype(T) || isabstracttype(T))
 end
@@ -335,7 +335,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
     # parse out the fields of the type
     info = splitdef(type)
-
+    
     # Make sure we have a unique set of names (in case of duplicate field names when parsing types)
     # The same field names can show up as regular parameters and keyword parameters when the type is used with @kwdef
     sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
@@ -348,8 +348,37 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         current_type = p.type
         current_name = string(nameof(current_type))
 
+        if current_type <: AbstractVector
+
+            current_field = Dict("type" => "array", "required" => isrequired(p))
+            nested_type = current_type.parameters[1]
+
+            if is_custom_struct(nested_type) && !haskey(schemas, string(nameof(nested_type)))
+                # Set the field to be a reference to the custom struct
+                current_field["items"] = Dict("\$ref" => getcomponent(string(nameof(nested_type))))
+                # Recursively convert nested structs
+                convertobject!(nested_type, schemas)
+            else
+
+                # Handle non-custom nested types
+                current_field["items"] = Dict("type" => gettype(nested_type))
+                format = getformat(nested_type)
+                if !isnothing(format)
+                    current_field["items"]["format"] = format
+                end
+            end
+
+            # Add default value if it exists
+            if p.hasdefault
+                current_field["default"] = string(p.default)
+            end
+
+            # convert the current field
+            obj["properties"][field_name] = current_field
+
         # Case 1: Recursively convert nested structs & register schemas
-        if is_custom_struct(current_type) && !haskey(schemas, current_name)
+        elseif is_custom_struct(current_type) && !haskey(schemas, current_name)
+
             # Set the field to be a reference to the custom struct
             obj["properties"][field_name] = Dict("\$ref" => getcomponent(current_name))
             # Recursively convert nested structs
@@ -357,8 +386,9 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
         # Case 2: Convert the individual fields of the current type to it's openapi equivalent
         else
+            
             current_field = Dict("type" => gettype(current_type), "required" => isrequired(p))
-
+            
             # Add format if it exists
             format = getformat(current_type)
             if !isnothing(format)

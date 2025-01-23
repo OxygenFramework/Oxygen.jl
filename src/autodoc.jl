@@ -349,12 +349,13 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         current_type = p.type
         current_name = string(nameof(current_type))
 
+        # Skip if the field is already registered
+        if haskey(schemas, current_name)
+            continue
+        
         # Case 1: Recursively convert nested structs & register schemas
-        if is_custom_struct(current_type) && !haskey(schemas, current_name)
-
-            # Set the field to be a reference to the custom struct
+        elseif is_custom_struct(current_type) && !haskey(schemas, current_name)
             obj["properties"][field_name] = Dict("\$ref" => getcomponent(current_name))
-            # Recursively convert nested structs
             convertobject!(current_type, schemas)
 
         # Case 2: The custom type is wrapped inside an array or vector 
@@ -362,14 +363,19 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
             current_field = Dict("type" => "array", "required" => isrequired(p))
             nested_type = current_type.parameters[1]
+            nested_type_name = string(nameof(nested_type))
 
-            if is_custom_struct(nested_type) && !haskey(schemas, string(nameof(nested_type)))
-                # Set the field to be a reference to the custom struct
-                current_field["items"] = Dict("\$ref" => getcomponent(string(nameof(nested_type))))
-                # Recursively convert nested structs
+            # Skip if the field is already registered
+            if haskey(schemas, nested_type_name)
+                continue
+            
+            # Handle custom structs
+            elseif is_custom_struct(nested_type)
+                current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
                 convertobject!(nested_type, schemas)
+            
+            # Handle non-custom nested types
             else
-                # Handle non-custom nested types
                 current_field["items"] = Dict("type" => gettype(nested_type))
                 format = getformat(nested_type)
                 if !isnothing(format)

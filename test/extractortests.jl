@@ -28,132 +28,132 @@ end
 # Add a lower bound to age with a global validator
 validate(p::Person) = p.age >= 0
 
-# @testset "Extactor builder sytnax" begin 
+@testset "Extactor builder sytnax" begin 
 
-#     @test Json{Person}(x -> x.age >= 25) isa Extractor
+    @test Json{Person}(x -> x.age >= 25) isa Extractor
 
-#     @test Json(Person) isa Extractor
-#     @test Json(Person, x -> x.age >= 25) isa Extractor
+    @test Json(Person) isa Extractor
+    @test Json(Person, x -> x.age >= 25) isa Extractor
 
-#     p = Person("joe", 25)
+    p = Person("joe", 25)
 
-#     @test Json(p) isa Extractor
-#     @test Json(p, x -> x.age >= 25) isa Extractor
-# end
+    @test Json(p) isa Extractor
+    @test Json(p, x -> x.age >= 25) isa Extractor
+end
 
-# @testset "JSON extract" begin 
-#     req = HTTP.Request("GET", "/", [], """{"name": "joe", "age": 25}""")
-#     param = Param(:person, Json{Person}, missing, false)
-#     p = extract(param, LazyRequest(request=req)).payload
-#     @test p.name == "joe"
-#     @test p.age == 25
-# end
+@testset "JSON extract" begin 
+    req = HTTP.Request("GET", "/", [], """{"name": "joe", "age": 25}""")
+    param = Param(:person, Json{Person}, missing, false)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p.name == "joe"
+    @test p.age == 25
+end
 
-# @testset "kwarg_struct_builder Nested test" begin 
-#     req = HTTP.Request("GET", "/", [], """
-#     {
-#         "address": "123 main street",
-#         "owner": {
-#             "name": "joe",
-#             "age": 25
-#         }
-#     }
-#     """)
-#     param = Param(:person, Json{Home}, missing, false)
-#     p = extract(param, LazyRequest(request=req)).payload
-#     @test p isa Home
-#     @test p.owner isa Person
-#     @test p.address == "123 main street"
-#     @test p.owner.name == "joe"
-#     @test p.owner.age == 25
-# end
+@testset "kwarg_struct_builder Nested test" begin 
+    req = HTTP.Request("GET", "/", [], """
+    {
+        "address": "123 main street",
+        "owner": {
+            "name": "joe",
+            "age": 25
+        }
+    }
+    """)
+    param = Param(:person, Json{Home}, missing, false)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p isa Home
+    @test p.owner isa Person
+    @test p.address == "123 main street"
+    @test p.owner.name == "joe"
+    @test p.owner.age == 25
+end
 
-# @testset "isbodyparam tests" begin 
-#     param = Param(:person, Json{Home}, missing, false)
-#     @test isbodyparam(param) == true
-# end
+@testset "isbodyparam tests" begin 
+    param = Param(:person, Json{Home}, missing, false)
+    @test isbodyparam(param) == true
+end
 
-# @testset "Partial JSON extract" begin 
-#     req = HTTP.Request("GET", "/", [], """{ "person": {"name": "joe", "age": 25} }""")
-#     param = Param(:person, JsonFragment{Person}, missing, false)
-#     p = extract(param, LazyRequest(request=req)).payload
-#     @test p.name == "joe"
-#     @test p.age == 25
-# end
-
-
-# @testset "Form extract" begin 
-#     req = HTTP.Request("GET", "/", [], """name=joe&age=25""")
-#     param = Param(:form, Form{Person}, missing, false)
-#     p = extract(param, LazyRequest(request=req)).payload
-#     @test p.name == "joe"
-#     @test p.age == 25
+@testset "Partial JSON extract" begin 
+    req = HTTP.Request("GET", "/", [], """{ "person": {"name": "joe", "age": 25} }""")
+    param = Param(:person, JsonFragment{Person}, missing, false)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p.name == "joe"
+    @test p.age == 25
+end
 
 
-#     # Test that negative age trips the global validator
-#     req = HTTP.Request("GET", "/", [], """name=joe&age=-4""")
-#     param = Param(:form, Form{Person}, missing, false)
-#     @test_throws Oxygen.Core.Errors.ValidationError extract(param, LazyRequest(request=req))
+@testset "Form extract" begin 
+    req = HTTP.Request("GET", "/", [], """name=joe&age=25""")
+    param = Param(:form, Form{Person}, missing, false)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p.name == "joe"
+    @test p.age == 25
 
 
-#     # Test that age < 25 trips the local validator
-#     req = HTTP.Request("GET", "/", [], """name=joe&age=10""")
-#     default_value = Form{Person}(x -> x.age > 25)
-#     param = Param(:form, Form{Person}, default_value, true)
-#     @test_throws Oxygen.Core.Errors.ValidationError extract(param, LazyRequest(request=req))
-# end
+    # Test that negative age trips the global validator
+    req = HTTP.Request("GET", "/", [], """name=joe&age=-4""")
+    param = Param(:form, Form{Person}, missing, false)
+    @test_throws Oxygen.Core.Errors.ValidationError extract(param, LazyRequest(request=req))
 
 
-# @testset "Path extract" begin 
-#     req = HTTP.Request("GET", "/person/john/20", [])
-#     req.context[:params] = Dict("name" => "john", "age" => "20") # simulate path params
-
-#     param = Param(:path, Path{Person}, missing, false)
-#     p = extract(param, LazyRequest(request=req)).payload
-#     @test p.name == "john"
-#     @test p.age == 20
-# end
+    # Test that age < 25 trips the local validator
+    req = HTTP.Request("GET", "/", [], """name=joe&age=10""")
+    default_value = Form{Person}(x -> x.age > 25)
+    param = Param(:form, Form{Person}, default_value, true)
+    @test_throws Oxygen.Core.Errors.ValidationError extract(param, LazyRequest(request=req))
+end
 
 
-# @testset "Query extract" begin 
-#     req = HTTP.Request("GET", "/person?name=joe&age=30", [])
-#     param = Param(:query, Query{Person}, missing, false)
-#     p = extract(param, LazyRequest(request=req)).payload
-#     @test p.name == "joe"
-#     @test p.age == 30
+@testset "Path extract" begin 
+    req = HTTP.Request("GET", "/person/john/20", [])
+    req.context[:params] = Dict("name" => "john", "age" => "20") # simulate path params
 
-#     # test custom instance validator
-#     req = HTTP.Request("GET", "/person?name=joe&age=30", [])
-#     default_value = Query{Person}(x -> x.age > 25)
-#     param = Param(:query, Query{Person}, default_value, true)
-#     p = extract(param, LazyRequest(request=req)).payload
-#     @test p.name == "joe"
-#     @test p.age == 30
-# end
-
-# @testset "Header extract" begin 
-#     req = HTTP.Request("GET", "/person", ["name" => "joe", "age" => "19"])
-#     param = Param(:header, Header{Person}, missing, false)
-#     p = extract(param, LazyRequest(request=req)).payload
-#     @test p.name == "joe"
-#     @test p.age == 19
-# end
+    param = Param(:path, Path{Person}, missing, false)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p.name == "john"
+    @test p.age == 20
+end
 
 
-# @testset "Body extract" begin 
+@testset "Query extract" begin 
+    req = HTTP.Request("GET", "/person?name=joe&age=30", [])
+    param = Param(:query, Query{Person}, missing, false)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p.name == "joe"
+    @test p.age == 30
 
-#     # Parse Float64 from body
-#     req = HTTP.Request("GET", "/", [], "3.14")
-#     param = Param(:form, Body{Float64}, missing, false)
-#     value = extract(param, LazyRequest(request=req)).payload
-#     @test value == 3.14
+    # test custom instance validator
+    req = HTTP.Request("GET", "/person?name=joe&age=30", [])
+    default_value = Query{Person}(x -> x.age > 25)
+    param = Param(:query, Query{Person}, default_value, true)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p.name == "joe"
+    @test p.age == 30
+end
 
-#     # Parse String from body
-#     req = HTTP.Request("GET", "/", [], "Here's a regular string")
-#     param = Param(:form, Body{String}, missing, false)
-#     value = extract(param, LazyRequest(request=req)).payload
-#     @test value == "Here's a regular string"
-# end
+@testset "Header extract" begin 
+    req = HTTP.Request("GET", "/person", ["name" => "joe", "age" => "19"])
+    param = Param(:header, Header{Person}, missing, false)
+    p = extract(param, LazyRequest(request=req)).payload
+    @test p.name == "joe"
+    @test p.age == 19
+end
+
+
+@testset "Body extract" begin 
+
+    # Parse Float64 from body
+    req = HTTP.Request("GET", "/", [], "3.14")
+    param = Param(:form, Body{Float64}, missing, false)
+    value = extract(param, LazyRequest(request=req)).payload
+    @test value == 3.14
+
+    # Parse String from body
+    req = HTTP.Request("GET", "/", [], "Here's a regular string")
+    param = Param(:form, Body{String}, missing, false)
+    value = extract(param, LazyRequest(request=req)).payload
+    @test value == "Here's a regular string"
+end
 
 
 @kwdef struct Sample

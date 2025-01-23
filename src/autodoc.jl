@@ -1,5 +1,6 @@
 module AutoDoc
 using HTTP
+using JSON3
 using Dates
 using DataStructures
 using Reexport
@@ -237,6 +238,7 @@ function formatcontent(bodyparams::Vector) :: OrderedDict
     return ordered_content
 end
 
+
 """
 Used to generate & register schema related for a specific endpoint 
 """
@@ -320,7 +322,6 @@ function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
     return Dict("$schematype" => [ Dict("\$ref" => ref) for ref in refs ])
 end
 
-
 function is_custom_struct(T::Type)
     return T.name.module ∉ (Base, Core) && (isstructtype(T) || isabstracttype(T))
 end
@@ -335,7 +336,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
     # parse out the fields of the type
     info = splitdef(type)
-
+    
     # Make sure we have a unique set of names (in case of duplicate field names when parsing types)
     # The same field names can show up as regular parameters and keyword parameters when the type is used with @kwdef
     sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
@@ -348,17 +349,53 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         current_type = p.type
         current_name = string(nameof(current_type))
 
+        # Skip if the field is already registered
+        if haskey(schemas, current_name)
+            continue
+        
         # Case 1: Recursively convert nested structs & register schemas
-        if is_custom_struct(current_type) && !haskey(schemas, current_name)
-            # Set the field to be a reference to the custom struct
+        elseif is_custom_struct(current_type) && !haskey(schemas, current_name)
             obj["properties"][field_name] = Dict("\$ref" => getcomponent(current_name))
-            # Recursively convert nested structs
             convertobject!(current_type, schemas)
 
-        # Case 2: Convert the individual fields of the current type to it's openapi equivalent
-        else
-            current_field = Dict("type" => gettype(current_type), "required" => isrequired(p))
+        # Case 2: The custom type is wrapped inside an array or vector 
+        elseif current_type <: AbstractVector
 
+            current_field = Dict("type" => "array", "required" => isrequired(p))
+            nested_type = current_type.parameters[1]
+            nested_type_name = string(nameof(nested_type))
+
+            # Skip if the field is already registered
+            if haskey(schemas, nested_type_name)
+                continue
+            
+            # Handle custom structs
+            elseif is_custom_struct(nested_type)
+                current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
+                convertobject!(nested_type, schemas)
+            
+            # Handle non-custom nested types
+            else
+                current_field["items"] = Dict("type" => gettype(nested_type))
+                format = getformat(nested_type)
+                if !isnothing(format)
+                    current_field["items"]["format"] = format
+                end
+            end
+
+            # Add default value if it exists
+            if p.hasdefault
+                current_field["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
+            end
+
+            # convert the current field
+            obj["properties"][field_name] = current_field
+
+        # Case 3: Convert the individual fields of the current type to it's openapi equivalent
+        else
+            
+            current_field = Dict("type" => gettype(current_type), "required" => isrequired(p))
+            
             # Add format if it exists
             format = getformat(current_type)
             if !isnothing(format)

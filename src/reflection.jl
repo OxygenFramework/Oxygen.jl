@@ -134,7 +134,7 @@ function reconstruct(info::Core.CodeInfo, func_name::Symbol)
             continue            
         end
 
-        if  arg isa Expr
+        if arg isa Expr
             push!(default_values, eval(arg))
         else
             push!(default_values, arg)

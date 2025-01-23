@@ -13,8 +13,8 @@ struct Person
     car::Car
 end
 
-struct Party
-    guests::Vector{Person}
+@kwdef struct Party
+    guests::Vector{Person} = [Person("Alice", Car("Toyota")), Person("Bob", Car("Honda"))]
 end
 
 # This will do a recursive dive on the 'Party' type and generate the schema for all structs
@@ -48,9 +48,10 @@ schemas = ctx.docs.schema["components"]["schemas"]
     # ensure the generated Party schema aligns
     party = schemas["Party"]
     @test party["type"] == "object"
-    @test party["properties"]["guests"]["required"] == true
+    @test party["properties"]["guests"]["required"] == false
     @test party["properties"]["guests"]["type"] == "array"
     @test party["properties"]["guests"]["items"]["\$ref"] == "#/components/schemas/Person"
+    @test party["properties"]["guests"]["default"] == "[{\"name\":\"Alice\",\"car\":{\"name\":\"Toyota\"}},{\"name\":\"Bob\",\"car\":{\"name\":\"Honda\"}}]"
 
 end
 

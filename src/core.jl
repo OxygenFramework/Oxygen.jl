@@ -71,9 +71,9 @@ function (handler::ReviseHandler)(handle)
     req -> begin
         Revise = Main.Revise
         if !isempty(Revise.revision_queue)
-            @info "🗘  Starting pre-request revision"
+            @info "🔴 Starting pre-request revision"
             Revise.revise()
-            @info "👍 Pre-request revision finished"
+            @info "🟢 Pre-request revision finished"
         end
         invokelatest(handle, req)
     end
@@ -601,8 +601,13 @@ function register(ctx::ServerContext, httpmethod::String, route::Union{String,Fu
         headers = func_details.headers
         bodyparams = func_details.bodyargs
 
-        # Register the route schema with out autodocs module
-        registerschema(ctx.docs, route, httpmethod, pathparams, queryparams, headers, bodyparams, Base.return_types(func))
+        try
+            # Register the route schema with out autodocs module
+            registerschema(ctx.docs, route, httpmethod, pathparams, queryparams, headers, bodyparams, Base.return_types(func))
+        catch error
+            @warn "Failed to generate schema for route: $route"
+            @warn error
+        end
     end
 
     # Register the route with the router

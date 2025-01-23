@@ -1,5 +1,6 @@
 module AutoDoc
 using HTTP
+using JSON3
 using Dates
 using DataStructures
 using Reexport
@@ -348,7 +349,16 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         current_type = p.type
         current_name = string(nameof(current_type))
 
-        if current_type <: AbstractVector
+        # Case 1: Recursively convert nested structs & register schemas
+        if is_custom_struct(current_type) && !haskey(schemas, current_name)
+
+            # Set the field to be a reference to the custom struct
+            obj["properties"][field_name] = Dict("\$ref" => getcomponent(current_name))
+            # Recursively convert nested structs
+            convertobject!(current_type, schemas)
+
+        # Case 2: The custom type is wrapped inside an array or vector 
+        elseif current_type <: AbstractVector
 
             current_field = Dict("type" => "array", "required" => isrequired(p))
             nested_type = current_type.parameters[1]
@@ -359,7 +369,6 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
                 # Recursively convert nested structs
                 convertobject!(nested_type, schemas)
             else
-
                 # Handle non-custom nested types
                 current_field["items"] = Dict("type" => gettype(nested_type))
                 format = getformat(nested_type)
@@ -370,21 +379,13 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
             # Add default value if it exists
             if p.hasdefault
-                current_field["default"] = string(p.default)
+                current_field["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
             end
 
             # convert the current field
             obj["properties"][field_name] = current_field
 
-        # Case 1: Recursively convert nested structs & register schemas
-        elseif is_custom_struct(current_type) && !haskey(schemas, current_name)
-
-            # Set the field to be a reference to the custom struct
-            obj["properties"][field_name] = Dict("\$ref" => getcomponent(current_name))
-            # Recursively convert nested structs
-            convertobject!(current_type, schemas)
-
-        # Case 2: Convert the individual fields of the current type to it's openapi equivalent
+        # Case 3: Convert the individual fields of the current type to it's openapi equivalent
         else
             
             current_field = Dict("type" => gettype(current_type), "required" => isrequired(p))

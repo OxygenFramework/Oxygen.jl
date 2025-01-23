@@ -34,7 +34,7 @@ WGLMakieExt = ["WGLMakie", "Bonito"]
 
 [compat]
 Bonito = "^4"
-CairoMakie = "^0.11"
+CairoMakie = "^0.13"
 DataStructures = "^0.18.15"
 Dates = "^1"
 HTTP = "^1.8"

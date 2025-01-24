@@ -101,6 +101,9 @@ function parseparam(::Type{T}, rawvalue::String; escape=true) where {T <: Enum}
     return T(parse(Int, escape ? HTTP.unescapeuri(rawvalue) : rawvalue))
 end
 
+# patch to accept ISO datetime strings both on top level and inside structs
+Dates.default_format(::Type{DateTime}) = dateformat"yyyy-mm-dd\THH:MM:SS.s\Z"
+
 function parseparam(::Type{T}, rawvalue::String; escape=true) where {T <: Union{Date, DateTime}}
     return parse(T, escape ? HTTP.unescapeuri(rawvalue) : rawvalue)
 end

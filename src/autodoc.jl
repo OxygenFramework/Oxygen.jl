@@ -323,7 +323,11 @@ function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
 end
 
 function is_custom_struct(T::Type)
-    return T.name.module ∉ (Base, Core) && (isstructtype(T) || isabstracttype(T))
+    return (
+        T.name.module ∉ (Base, Core) &&
+        T ∉ (Date, DateTime) &&
+        (isstructtype(T) || isabstracttype(T))
+    )
 end
 
 # takes a struct and converts it into an openapi 3.0 compliant dictionary

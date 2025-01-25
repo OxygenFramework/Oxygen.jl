@@ -178,7 +178,7 @@ function formatcontent(bodyparams::Vector) :: OrderedDict
     # The schema type for text/plain can vary unlike the other types
     textschema = collectschemarefs(body_refs, ["Body"])
     # If there are multiple Body extractors, default to string type
-    textschema_type = length(textschema["allOf"]) > 1 ? "string" : get(body_types, "Body", "string") 
+    textschema_type = length(textschema["allOf"]) > 1 ? "string" : get(body_types, "Body", "string")
     textschema = merge(textschema, Dict("type" => textschema_type))
 
     formschema = collectschemarefs(body_refs, ["Form"])
@@ -276,9 +276,9 @@ function registerschema(
         end
     end
 
-    ##### Set the schema for the body parameters #####   
+    ##### Set the schema for the body parameters #####
     content = formatcontent(bodyparams)
- 
+
     # lookup if this route has any registered tags
     if haskey(docs.taggedroutes, path) && httpmethod in docs.taggedroutes[path].httpmethods
         tags = docs.taggedroutes[path].tags
@@ -297,7 +297,7 @@ function registerschema(
             )
         )
     )
-    
+
     # Add a request body to the route if it's a POST, PUT, or PATCH request
     if httpmethod in ["POST", "PUT", "PATCH"] || !isempty(bodyparams)
         route[lowercase(httpmethod)]["requestBody"] = Dict(
@@ -323,7 +323,7 @@ function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
 end
 
 function is_custom_struct(T::Type)
-    return T.name.module ∉ (Base, Core) && (isstructtype(T) || isabstracttype(T))
+    return T.name.module ∉ (Base, Core, Dates) && (isstructtype(T) || isabstracttype(T))
 end
 
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
@@ -336,14 +336,14 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
     # parse out the fields of the type
     info = splitdef(type)
-    
+
     # Make sure we have a unique set of names (in case of duplicate field names when parsing types)
     # The same field names can show up as regular parameters and keyword parameters when the type is used with @kwdef
     sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
 
     # loop over all unique fields
     for name in sig_names
-        
+
         p = info.sig_map[name]
         field_name = string(p.name)
         current_type = p.type
@@ -352,13 +352,13 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         # Skip if the field is already registered
         if haskey(schemas, current_name)
             continue
-        
+
         # Case 1: Recursively convert nested structs & register schemas
         elseif is_custom_struct(current_type) && !haskey(schemas, current_name)
             obj["properties"][field_name] = Dict("\$ref" => getcomponent(current_name))
             convertobject!(current_type, schemas)
 
-        # Case 2: The custom type is wrapped inside an array or vector 
+            # Case 2: The custom type is wrapped inside an array or vector
         elseif current_type <: AbstractVector
 
             current_field = Dict("type" => "array", "required" => isrequired(p))
@@ -368,12 +368,12 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             # Skip if the field is already registered
             if haskey(schemas, nested_type_name)
                 continue
-            
+
             # Handle custom structs
             elseif is_custom_struct(nested_type)
                 current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
                 convertobject!(nested_type, schemas)
-            
+
             # Handle non-custom nested types
             else
                 current_field["items"] = Dict("type" => gettype(nested_type))
@@ -393,9 +393,9 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
         # Case 3: Convert the individual fields of the current type to it's openapi equivalent
         else
-            
+
             current_field = Dict("type" => gettype(current_type), "required" => isrequired(p))
-            
+
             # Add format if it exists
             format = getformat(current_type)
             if !isnothing(format)

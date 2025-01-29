@@ -322,8 +322,20 @@ function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
     return Dict("$schematype" => [ Dict("\$ref" => ref) for ref in refs ])
 end
 
+"""
+Helper function used to determine if a type is a custom struct and whethere or not
+we should do a recurive dive and convertion to openapi schema.
+"""
 function is_custom_struct(T::Type)
     return T.name.module ∉ (Base, Core, Dates) && (isstructtype(T) || isabstracttype(T))
+end
+
+"""
+Generate a sample datetime string that's compatible with julia. The one provided
+by the openapi spec includes timezone information which is not supported by DateTime objects.
+"""
+function example_datetime() :: String
+    return Dates.format(now(), "yyyy-mm-ddTHH:MM:SS.sss")
 end
 
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
@@ -384,7 +396,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
                 # Add compatible example format for datetime objects within a vector
                 if nested_type <: DateTime
-                    current_field["items"]["example"] = "2025-01-01T00:00:00"
+                    current_field["items"]["example"] = example_datetime()
                 end
 
             end
@@ -404,7 +416,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
             # Add compatible example format for datetime objects
             if current_type <: DateTime
-                current_field["example"] = "2025-01-01T00:00:00"
+                current_field["example"] = example_datetime()
             end
 
             # Add format if it exists

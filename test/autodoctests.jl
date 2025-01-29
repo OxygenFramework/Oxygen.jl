@@ -1,6 +1,7 @@
 module AutoDocTests
 
 using Test
+using Dates
 using Oxygen; @oxidise
 using ..Constants
 
@@ -15,6 +16,28 @@ end
 
 @kwdef struct Party
     guests::Vector{Person} = [Person("Alice", Car("Toyota")), Person("Bob", Car("Honda"))]
+end
+
+struct PartyInvite 
+    party::Party
+    time::DateTime
+end
+
+struct EventInvite 
+    party::Party
+    times::Vector{DateTime}
+end
+
+@post "/party-invite" function(req, party::Json{PartyInvite})
+    return text("added $(length(party.payload.party.guests)) guests")
+end
+
+@post "/event-invite" function(req, event::Json{EventInvite})
+    return text("added $(length(event.payload.party.guests)) guests")
+end
+
+@post "/party-invite" function(req, party::Json{PartyInvite})
+    return text("added $(length(party.payload.guests)) guests")
 end
 
 # This will do a recursive dive on the 'Party' type and generate the schema for all structs
@@ -52,7 +75,24 @@ schemas = ctx.docs.schema["components"]["schemas"]
     @test party["properties"]["guests"]["type"] == "array"
     @test party["properties"]["guests"]["items"]["\$ref"] == "#/components/schemas/Person"
     @test party["properties"]["guests"]["default"] == "[{\"name\":\"Alice\",\"car\":{\"name\":\"Toyota\"}},{\"name\":\"Bob\",\"car\":{\"name\":\"Honda\"}}]"
+    
+    # ensure the generated PartyInvite schema aligns
+    party_invite = schemas["PartyInvite"]
+    @test party_invite["type"] == "object"
+    @test party_invite["properties"]["time"]["required"] == true
+    @test party_invite["properties"]["time"]["type"] == "string"
+    @test party_invite["properties"]["time"]["format"] == "date-time"
 
-end
+    # ensure the generated PartyInvite schema aligns
+    event_invite = schemas["EventInvite"]
+    @test event_invite["type"] == "object"
+    @test event_invite["properties"]["times"]["required"] == true
+    @test event_invite["properties"]["times"]["type"] == "array"
+    @test event_invite["properties"]["times"]["items"]["format"] == "date-time"
+    @test event_invite["properties"]["times"]["items"]["type"] == "string"
+    @test event_invite["properties"]["times"]["items"]["example"] |> !isempty
+
+end 
+
 
 end

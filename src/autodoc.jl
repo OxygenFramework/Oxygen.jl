@@ -381,6 +381,12 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
                 if !isnothing(format)
                     current_field["items"]["format"] = format
                 end
+
+                # Add compatible example format for datetime objects within a vector
+                if nested_type <: DateTime
+                    current_field["items"]["example"] = "2025-01-01T00:00:00"
+                end
+
             end
 
             # Add default value if it exists
@@ -395,6 +401,11 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         else
 
             current_field = Dict("type" => gettype(current_type), "required" => isrequired(p))
+
+            # Add compatible example format for datetime objects
+            if current_type <: DateTime
+                current_field["example"] = "2025-01-01T00:00:00"
+            end
 
             # Add format if it exists
             format = getformat(current_type)

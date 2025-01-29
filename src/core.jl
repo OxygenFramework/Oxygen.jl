@@ -43,7 +43,7 @@ oxygen_title = raw"""
 
 function serverwelcome(external_url::String, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
     printstyled(oxygen_title, color=:blue, bold=true)
-    @info "📦 Version 1.6.0 (2025-01-10)"
+    @info "📦 Version 1.6.1 (2025-01-29)"
     @info "✅ Started server: $external_url"
     if docs
         @info "📖 Documentation: $external_url" * docspath

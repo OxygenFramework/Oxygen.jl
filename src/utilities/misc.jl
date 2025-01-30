@@ -89,36 +89,36 @@ end
     Path Parameter Parsing functions
 """
 
-function parseparam(::Type{Any}, rawvalue::String; escape=true)
-    return escape ? HTTP.unescapeuri(rawvalue) : rawvalue
+function parseparam(::Type{Any}, str::String; escape=true)
+    return escape ? HTTP.unescapeuri(str) : str
 end
 
-function parseparam(::Type{String}, rawvalue::String; escape=true)
-    return escape ? HTTP.unescapeuri(rawvalue) : rawvalue
+function parseparam(::Type{String}, str::String; escape=true)
+    return escape ? HTTP.unescapeuri(str) : str
 end
 
-function parseparam(::Type{T}, rawvalue::String; escape=true) where {T <: Enum}
-    return T(parse(Int, escape ? HTTP.unescapeuri(rawvalue) : rawvalue))
+function parseparam(::Type{T}, str::String; escape=true) where {T <: Enum}
+    return T(parse(Int, escape ? HTTP.unescapeuri(str) : str))
 end
 
-function parseparam(::Type{T}, rawvalue::String; escape=true) where {T <: Union{Date, DateTime}}
-    return parse(T, escape ? HTTP.unescapeuri(rawvalue) : rawvalue)
+function parseparam(::Type{T}, str::String; escape=true) where {T <: Union{Date, DateTime}}
+    return parse(T, escape ? HTTP.unescapeuri(str) : str)
 end
 
-function parseparam(::Type{T}, rawvalue::String; escape=true) where {T <: Union{Number, Char, Bool, Symbol}}
-    return parse(T, escape ? HTTP.unescapeuri(rawvalue) : rawvalue)
+function parseparam(::Type{T}, str::String; escape=true) where {T <: Union{Number, Char, Bool, Symbol}}
+    return parse(T, escape ? HTTP.unescapeuri(str) : str)
 end
 
-function parseparam(::Type{T}, rawvalue::String; escape=true) where {T}
-    return JSON3.read(escape ? HTTP.unescapeuri(rawvalue) : rawvalue, T)
+function parseparam(::Type{T}, str::String; escape=true) where {T}
+    return JSON3.read(escape ? HTTP.unescapeuri(str) : str, T)
 end
 
 """
 Iterate over the union type and parse the value with the first type that 
 doesn't throw an erorr
 """
-function parseparam(type::Union, rawvalue::String; escape=true)
-    value::String = escape ? HTTP.unescapeuri(rawvalue) : rawvalue
+function parseparam(type::Union, str::String; escape=true)
+    value::String = escape ? HTTP.unescapeuri(str) : str
     result = value 
     for current_type in Base.uniontypes(type)
         try 

@@ -4,6 +4,7 @@ include("constants.jl"); using .Constants
 
 #### Extension Tests ####
 
+include("./extensions/timezonetests.jl")
 include("extensions/templatingtests.jl")
 include("extensions/protobuf/protobuftests.jl")
 include("extensions/cairomakietests.jl")

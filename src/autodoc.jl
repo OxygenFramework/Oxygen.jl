@@ -90,6 +90,10 @@ function getcomponent(t::DataType) :: String
     return getcomponent(string(nameof(t)))
 end
 
+function datetime_hint() :: String
+    return "Note: Julia's DateTime object does not natively support timezone information. Consider using the TimeZones.jl package for timezone-aware datetime handling."
+end
+
 function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
 
     schema = Dict("type" => gettype(p.type))
@@ -119,6 +123,12 @@ function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
         "required" => param_required,
         "schema" => schema
     )
+
+    # Add a string formatting hint & example for DateTime objects
+    if p.type <: DateTime 
+        param["example"] = example_datetime()
+        param["description"] = datetime_hint()
+    end
 
     return param
 end
@@ -326,16 +336,18 @@ end
 Helper function used to determine if a type is a custom struct and whethere or not
 we should do a recurive dive and convertion to openapi schema.
 """
-function is_custom_struct(T::Type)
+function is_custom_struct(T::Type) :: Bool
     return T.name.module ∉ (Base, Core, Dates) && (isstructtype(T) || isabstracttype(T))
 end
 
 """
 Generate a sample datetime string that's compatible with julia. The one provided
 by the openapi spec includes timezone information which is not supported by DateTime objects.
+
+- only make the current year dynamic to avoid giving away information about the server start time.
 """
 function example_datetime() :: String
-    return Dates.format(now(), "yyyy-mm-ddTHH:MM:SS.sss")
+    return Dates.format(now(), "yyyy") * "-01-01T00:00:00.000"
 end
 
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
@@ -397,6 +409,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
                 # Add compatible example format for datetime objects within a vector
                 if nested_type <: DateTime
                     current_field["items"]["example"] = example_datetime()
+                    current_field["items"]["description"] = datetime_hint()
                 end
 
             end
@@ -417,6 +430,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             # Add compatible example format for datetime objects
             if current_type <: DateTime
                 current_field["example"] = example_datetime()
+                current_field["description"] = datetime_hint()
             end
 
             # Add format if it exists

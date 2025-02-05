@@ -22,6 +22,7 @@ CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Mustache = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
 OteraEngine = "b2d7f28f-acd6-4007-8b26-bc27716e5513"
 ProtoBuf = "3349acd9-ac6a-5e09-bcdb-63829b23a429"
+TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [extensions]
@@ -30,6 +31,7 @@ CairoMakieExt = "CairoMakie"
 MustacheExt = "Mustache"
 OteraEngineExt = "OteraEngine"
 ProtoBufExt = "ProtoBuf"
+TimeZonesExt = "TimeZones"
 WGLMakieExt = ["WGLMakie", "Bonito"]
 
 [compat]
@@ -50,6 +52,7 @@ Sockets = "^1"
 Statistics = "^1"
 StructTypes = "^1"
 Suppressor = "^0.2.6"
+TimeZones = "^1.20.0"
 WGLMakie = "^0.11"
 julia = "^1.10"
 
@@ -60,4 +63,4 @@ Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Bonito", "CairoMakie", "Mustache", "OteraEngine", "ProtoBuf", "Pkg", "StructTypes", "Suppressor", "Test", "WGLMakie"]
+test = ["Bonito", "CairoMakie", "Mustache", "OteraEngine", "ProtoBuf", "Pkg", "StructTypes", "Suppressor", "Test", "TimeZones", "WGLMakie"]

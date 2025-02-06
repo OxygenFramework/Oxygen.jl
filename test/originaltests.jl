@@ -33,6 +33,9 @@ staticfiles("content")
 #@dynamicfiles "content" "/dynamic"
 dynamicfiles("content", "/dynamic")
 
+# test that trailing system file path separators are allowed
+dynamicfiles("content/", "/dynamic2")
+
 @get "/killserver" function (; context)
     terminate()
 end
@@ -555,6 +558,10 @@ r = internalrequest(HTTP.Request("GET", "/file"))
 @test text(r) == file("content/sample.html") |> text
 
 r = internalrequest(HTTP.Request("GET", "/dynamic/sample.html"))
+@test r.status == 200
+@test text(r) == file("content/sample.html") |> text
+
+r = internalrequest(HTTP.Request("GET", "/dynamic2/sample.html"))
 @test r.status == 200
 @test text(r) == file("content/sample.html") |> text
 

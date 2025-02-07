@@ -553,6 +553,22 @@ person = json(r, Person)
 @test person.name == "jim"
 @test person.age == 25
 
+function testfolder(prefix::String, folder::String)
+    filepaths = Oxygen.Core.Util.getfiles(folder)
+    for path in filepaths
+        link =  "/$prefix/$(relpath(path, folder))"
+        r = internalrequest(HTTP.Request("GET", link))
+        @test r.status == 200
+        @test text(r) == file(path) |> text
+    end
+end
+
+@testset "Test all mounted files" begin
+    testfolder("static", "./content")
+    testfolder("dynamic", "./content")
+    testfolder("dynamic2", "./content")
+end
+
 r = internalrequest(HTTP.Request("GET", "/file"))
 @test r.status == 200
 @test text(r) == file("content/sample.html") |> text

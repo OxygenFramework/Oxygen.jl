@@ -72,7 +72,7 @@ end
         html(app)
     end
 
-    setup_bonito_connection(CONTEXT[]; setup_all=true)
+    setup_bonito_connection(; setup_all=true)
 
     serve(host=HOST, port=PORT, async=true, show_banner=false, access_log=nothing)
 

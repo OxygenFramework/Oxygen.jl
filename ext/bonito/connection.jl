@@ -34,7 +34,7 @@ BonitoConnectionContext(policy=DefaultCleanupPolicy()) = BonitoConnectionContext
 
 """
     setup_bonito_connection(
-        context::Context;
+        [context::ServerContext];
         setup_all=false,
         setup_route=setup_all,
         setup_register_connection=setup_all,
@@ -43,7 +43,7 @@ BonitoConnectionContext(policy=DefaultCleanupPolicy()) = BonitoConnectionContext
 
 This is the high level function to setup bonito connection. It will register the route and create a connection if needed.
 
-In the simplest use case you can simply pass `setup_bonito_connection(CONTEXT[]; setup_all=true)` and it will set up everything for you. Please see the guide for advanced usage.
+In the simplest use case you can simply pass `setup_bonito_connection(; setup_all=true)` and it will set up everything for you. Please see the guide for advanced usage.
 """
 function Oxygen.setup_bonito_connection(
     context::Oxygen.ServerContext;

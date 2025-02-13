@@ -41,6 +41,6 @@ using WGLMakie
 end
 
 
-Oxygen.setup_bonito_connection(Oxygen.CONTEXT[]; setup_all=true)
+Oxygen.setup_bonito_connection(; setup_all=true)
 
 serve()

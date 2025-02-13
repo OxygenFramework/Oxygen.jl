@@ -941,7 +941,7 @@ There are two parts to integrating Bonito with Oxygen:
 To do both you can simply use the following command at the top level of your module or script:
 
 ```julia
-Oxygen.setup_bonito_connection(CONTEXT[]; setup_all=true)
+Oxygen.setup_bonito_connection(; setup_all=true)
 ```
 
 In case you want to change the url of the Bonito websocket route, you can do so via the `route_base` keyword argument, which defaults to `"/bonito_websocket/"`.
@@ -951,7 +951,7 @@ You may like to add some custom behaviour to the route such as authentication. I
 ```julia
 function __init__()
     const route_base = "/foobar/"
-    oxygen_bonito = Oxygen.setup_bonito_connection(CONTEXT[]; setup_register_connection=true, route_base=route_base)
+    oxygen_bonito = Oxygen.setup_bonito_connection(; setup_register_connection=true, route_base=route_base)
     route_pattern = route_base * "{session_id}"
     @websocket route_pattern function mybonitohandler(websocket::HTTP.WebSocket, session_id::String)
         # Add custom behaviour here

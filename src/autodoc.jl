@@ -357,6 +357,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
     # intilaize this entry
     obj = Dict("type" => "object", "properties" => Dict())
+    required_fields = String[]
 
     # parse out the fields of the type
     info = splitdef(type)
@@ -373,6 +374,10 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         current_type = p.type
         current_name = string(nameof(current_type))
 
+        if isrequired(p)
+            push!(required_fields, field_name);
+        end
+
         # Skip if the field is already registered
         if haskey(schemas, current_name)
             continue
@@ -382,10 +387,10 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             obj["properties"][field_name] = Dict("\$ref" => getcomponent(current_name))
             convertobject!(current_type, schemas)
 
-            # Case 2: The custom type is wrapped inside an array or vector
+        # Case 2: The custom type is wrapped inside an array or vector
         elseif current_type <: AbstractVector
 
-            current_field = Dict("type" => "array", "required" => isrequired(p))
+            current_field = Dict("type" => "array", "items" => Dict())
             nested_type = current_type.parameters[1]
             nested_type_name = string(nameof(nested_type))
 
@@ -400,7 +405,8 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
             # Handle non-custom nested types
             else
-                current_field["items"] = Dict("type" => gettype(nested_type))
+                current_field["items"] = Dict("type" =>  gettype(nested_type))
+
                 format = getformat(nested_type)
                 if !isnothing(format)
                     current_field["items"]["format"] = format
@@ -425,7 +431,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         # Case 3: Convert the individual fields of the current type to it's openapi equivalent
         else
 
-            current_field = Dict("type" => gettype(current_type), "required" => isrequired(p))
+            current_field = Dict("type" => gettype(current_type))
 
             # Add compatible example format for datetime objects
             if current_type <: DateTime
@@ -447,6 +453,11 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             # convert the current field
             obj["properties"][field_name] = current_field
         end
+    end
+    
+    # Required fields cannot be an empty collection so define property only if we have data 
+    if length(required_fields) > 0 
+        obj["required"] = required_fields
     end
 
     schemas[typename] = obj

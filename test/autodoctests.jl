@@ -58,35 +58,37 @@ schemas = ctx.docs.schema["components"]["schemas"]
     # ensure the generated Car schema aligns
     car = schemas["Car"]
     @test car["type"] == "object"
-    @test car["properties"]["name"]["required"] == true
+    @test haskey(car, "required") && all( x -> x in car["required"], ["name"])
     @test car["properties"]["name"]["type"] == "string"
 
     # ensure the generated Person schema aligns
     person = schemas["Person"]
     @test person["type"] == "object"
-    @test person["properties"]["name"]["required"] == true
+    @test haskey(person, "required") && all( x -> x in person["required"], ["name", "car"])
     @test person["properties"]["name"]["type"] == "string"
     @test person["properties"]["car"]["\$ref"] == "#/components/schemas/Car"
 
     # ensure the generated Party schema aligns
     party = schemas["Party"]
+    # There should be no required key defined if no fields are required
+    @test !haskey(party, "required")
     @test party["type"] == "object"
-    @test party["properties"]["guests"]["required"] == false
     @test party["properties"]["guests"]["type"] == "array"
     @test party["properties"]["guests"]["items"]["\$ref"] == "#/components/schemas/Person"
     @test party["properties"]["guests"]["default"] == "[{\"name\":\"Alice\",\"car\":{\"name\":\"Toyota\"}},{\"name\":\"Bob\",\"car\":{\"name\":\"Honda\"}}]"
     
     # ensure the generated PartyInvite schema aligns
     party_invite = schemas["PartyInvite"]
+    # Properties without default vaules should be required
     @test party_invite["type"] == "object"
-    @test party_invite["properties"]["time"]["required"] == true
+    @test haskey(party_invite, "required") && all( x -> x in party_invite["required"], ["party", "time"])
     @test party_invite["properties"]["time"]["type"] == "string"
     @test party_invite["properties"]["time"]["format"] == "date-time"
 
     # ensure the generated PartyInvite schema aligns
     event_invite = schemas["EventInvite"]
     @test event_invite["type"] == "object"
-    @test event_invite["properties"]["times"]["required"] == true
+    @test haskey(event_invite, "required") && all( x -> x in event_invite["required"], ["party", "times"])
     @test event_invite["properties"]["times"]["type"] == "array"
     @test event_invite["properties"]["times"]["items"]["format"] == "date-time"
     @test event_invite["properties"]["times"]["items"]["type"] == "string"

@@ -7,6 +7,7 @@ using Dates
 using TimeZones
 using Oxygen; @oxidise
 using ..Constants
+using ..TestUtils
 
 # This is the default format given from JS when creating a new date and calling toISOString()
 @testset "UTC ISO 8601 String Parsing Test" begin
@@ -58,7 +59,7 @@ paths = ctx.docs.schema["paths"]
     # ensure the generated Car schema aligns
     time_payload = components["TimePayload"]
     @test time_payload["type"] == "object"
-    @test haskey(time_payload, "required") && all( x -> x in time_payload["required"], ["time"])
+    @test_has_key_and_values time_payload "required" ["time"]
     @test time_payload["properties"]["time"]["type"] == "string"
     @test time_payload["properties"]["time"]["format"] == "date-time"
 end

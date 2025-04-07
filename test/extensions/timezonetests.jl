@@ -58,7 +58,7 @@ paths = ctx.docs.schema["paths"]
     # ensure the generated Car schema aligns
     time_payload = components["TimePayload"]
     @test time_payload["type"] == "object"
-    @test time_payload["properties"]["time"]["required"] == true
+    @test haskey(time_payload, "required") && all( x -> x in time_payload["required"], ["time"])
     @test time_payload["properties"]["time"]["type"] == "string"
     @test time_payload["properties"]["time"]["format"] == "date-time"
 end

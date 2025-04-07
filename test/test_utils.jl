@@ -11,13 +11,10 @@ of that field is a collection which contains all of the passed values.
 It may contain more additional values.
 """
 macro test_has_key_and_values(dict, key, values)
-    quote
-        local keyVal = $(esc(key))
-        local dictVal = $(esc(dict))
-        local testValues = $(esc(values))
-        @test haskey(dictVal, keyVal)
-        @test all( x -> x in dictVal[keyVal], testValues)
-    end
+    esc(quote
+        @test haskey($dict, $key)
+        @test all( x -> x in $dict[$key], $values)
+    end)
 end
 
 end # module

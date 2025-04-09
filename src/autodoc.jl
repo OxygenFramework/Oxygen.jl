@@ -374,10 +374,6 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         current_field = Dict()
         current_type = p.type
 
-        if isrequired(p)
-            push!(required_fields, field_name);
-        end
-
         # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
         if current_type isa Union
             sub_types = Base.uniontypes(current_type)
@@ -394,15 +390,18 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             current_type = non_null_types[1]
         end
         current_name = string(nameof(current_type))    
-
-        # Skip if the field is already registered
-        if haskey(schemas, current_name)
-            continue
+        
+        # Only add field to required list if it is not nullable (and otherwise required)
+        if isrequired(p) && !haskey(current_field, "nullable")
+            push!(required_fields, field_name);
+        end
 
         # Case 1: Recursively convert nested structs & register schemas
-        elseif is_custom_struct(current_type) && !haskey(schemas, current_name)
+        if is_custom_struct(current_type)
             current_field["\$ref"] = getcomponent(current_name)
-            convertobject!(current_type, schemas)
+            if !haskey(schemas, current_name)
+                convertobject!(current_type, schemas)
+            end
 
         # Case 2: The custom type is wrapped inside an array or vector
         elseif current_type <: AbstractVector
@@ -412,19 +411,17 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             nested_type = current_type.parameters[1]
             nested_type_name = string(nameof(nested_type))
 
-            # Skip if the field is already registered
-            if haskey(schemas, nested_type_name)
-                continue
-
             # Handle custom structs
-            elseif is_custom_struct(nested_type)
+            if is_custom_struct(nested_type)
                 current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
-                convertobject!(nested_type, schemas)
+                # Register type only if not already registered
+                if !haskey(schemas, nested_type_name)
+                    convertobject!(nested_type, schemas)
+                end
 
             # Handle non-custom nested types
             else
                 current_field["items"] = Dict("type" =>  gettype(nested_type))
-
                 format = getformat(nested_type)
                 
                 if !isnothing(format)

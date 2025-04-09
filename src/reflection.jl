@@ -359,7 +359,12 @@ function splitdef(info::Vector{Core.CodeInfo}, method_defs::Base.MethodList, fun
             # inferr the type of the parameter based on the default value
             param_default = param_defaults[name]
             inferred_type = type == Any ? typeof(param_default) : type
-            push!(params, Param(name=name, type=inferred_type, default=param_default, hasdefault=true))
+            if typeof(param_default) == inferred_type
+                push!(params, Param(name=name, type=inferred_type, default=param_default, hasdefault=true))
+            else
+                @warn "splitdef: Default for $func_name.$name type ($(typeof(param_default))) differs from inferred type ($inferred_type). Skipping."
+                push!(params, Param(name=name, type=type))
+            end
         else
             push!(params, Param(name=name, type=type))
         end

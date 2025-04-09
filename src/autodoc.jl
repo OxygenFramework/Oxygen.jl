@@ -272,9 +272,8 @@ function registerschema(
         end
     end
 
-    components = Dict("components" => Dict("schemas" => schemas))
     if !isempty(schemas)
-        mergeschema(docs.schema, components)
+        mergeschema(docs.schema, Dict("components" => Dict("schemas" => schemas)))
     end
 
     ##### Append the parameter schema for the route #####

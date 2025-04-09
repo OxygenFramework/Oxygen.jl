@@ -272,10 +272,6 @@ function registerschema(
         end
     end
 
-    if !isempty(schemas)
-        mergeschema(docs.schema, Dict("components" => Dict("schemas" => schemas)))
-    end
-
     ##### Append the parameter schema for the route #####
     params = []
 
@@ -324,7 +320,7 @@ function registerschema(
     elseif length(return_type_schemas) == 1
         json_response_schema = return_type_schemas[1]
     end
-    
+
     # Only append the content key if we have concrete return type
     if !isempty(json_response_schema)
         responses["200"]["content"] = Dict("application/json" => Dict("schema" => json_response_schema))
@@ -344,6 +340,10 @@ function registerschema(
             "required" => any(p -> isrequired(p), bodyparams),
             "content" => content
         )
+    end
+
+    if !isempty(schemas)
+        mergeschema(docs.schema, Dict("components" => Dict("schemas" => schemas)))
     end
 
     # remove any special regex patterns from the path before adding this path to the schema

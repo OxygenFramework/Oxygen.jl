@@ -295,21 +295,39 @@ function registerschema(
         tags = []
     end
 
+    # Build a response type payload
+    successResponse = Dict{String, Any}("description" => "200 response")
+    successContent = Dict()
+    if length(returntype) > 0 
+        current_type = returntype[1]
+        inner_type = extract_concrete_types(current_type)
+        
+        if !isnothing(inner_type)
+            nullable, inner_types = inner_type
+
+            if length(inner_types) > 0 
+                successContent["application/json"] = Dict("schema" => buildschema!(inner_types[1], schemas))
+            end
+        end
+    end
+
+    if !isempty(successContent)
+        successResponse["content"] = successContent
+    end
+
     # Build the route schema
     route = Dict(
-        "$(lowercase(httpmethod))" => Dict(
-            "tags" => tags,
-            "parameters" => params,
-            "responses" => Dict(
-                "200" => Dict("description" => "200 response"),
-                "500" => Dict("description" => "500 Server encountered a problem")
-            )
+        "tags" => tags,
+        "parameters" => params,
+        "responses" => Dict(
+            "200" => successResponse,
+            "500" => Dict("description" => "500 Server encountered a problem")
         )
     )
 
     # Add a request body to the route if it's a POST, PUT, or PATCH request
     if httpmethod in ["POST", "PUT", "PATCH"] || !isempty(bodyparams)
-        route[lowercase(httpmethod)]["requestBody"] = Dict(
+        route["requestBody"] = Dict(
             # if any body param is required, mark the entire body as required
             "required" => any(p -> isrequired(p), bodyparams),
             "content" => content
@@ -318,8 +336,10 @@ function registerschema(
 
     # remove any special regex patterns from the path before adding this path to the schema
     cleanedpath = replace(path, r"(?=:)(.*?)(?=}/)" => "")
-    mergeschema(docs.schema, cleanedpath, route)
+    mergeschema(docs.schema, cleanedpath, Dict("$(lowercase(httpmethod))" => route))
 end
+
+
 
 function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
     refs = []

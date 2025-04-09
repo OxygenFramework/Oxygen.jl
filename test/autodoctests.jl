@@ -29,6 +29,16 @@ struct EventInvite
     times::Vector{DateTime}
 end
 
+@kwdef struct Album 
+    releaseyear::Int
+    artist::Person
+    collaborators::Union{Vector{Person}, Nothing}
+end
+
+@post "/album" function (req, album::Json{Album})
+    return album.payload;
+end
+
 @post "/party-invite" function(req, party::Json{PartyInvite})
     return text("added $(length(party.payload.party.guests)) guests")
 end
@@ -55,6 +65,12 @@ schemas = ctx.docs.schema["components"]["schemas"]
     @test haskey(schemas, "Car")
     @test haskey(schemas, "Person")
     @test haskey(schemas, "Party")
+    @test haskey(schemas, "Album")
+    
+    album = schemas["Album"]
+    @test values_present(album, "required", ["releaseyear","artist"])
+    # Nullable field should not be present in the required field list
+    @test value_absent(album, "required", "collaborators")
 
     # ensure the generated Car schema aligns
     car = schemas["Car"]
@@ -96,6 +112,5 @@ schemas = ctx.docs.schema["components"]["schemas"]
     @test event_invite["properties"]["times"]["items"]["example"] |> !isempty
 
 end 
-
 
 end

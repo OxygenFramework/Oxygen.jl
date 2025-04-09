@@ -59,13 +59,13 @@ schemas = ctx.docs.schema["components"]["schemas"]
     # ensure the generated Car schema aligns
     car = schemas["Car"]
     @test car["type"] == "object"
-    @test_has_key_and_values car "required" ["name"]
+    @test values_present(car, "required", ["name"])
     @test car["properties"]["name"]["type"] == "string"
 
     # ensure the generated Person schema aligns
     person = schemas["Person"]
     @test person["type"] == "object"
-    @test_has_key_and_values person "required" ["name", "car"]
+    @test values_present(person, "required", ["name", "car"])
     @test person["properties"]["name"]["type"] == "string"
     @test person["properties"]["car"]["\$ref"] == "#/components/schemas/Car"
 
@@ -82,14 +82,14 @@ schemas = ctx.docs.schema["components"]["schemas"]
     party_invite = schemas["PartyInvite"]
     # Properties without default vaules should be required
     @test party_invite["type"] == "object"
-    @test_has_key_and_values party_invite "required" ["party", "time"]
+    @test values_present(party_invite, "required", ["party", "time"])
     @test party_invite["properties"]["time"]["type"] == "string"
     @test party_invite["properties"]["time"]["format"] == "date-time"
 
     # ensure the generated PartyInvite schema aligns
     event_invite = schemas["EventInvite"]
     @test event_invite["type"] == "object"
-    @test_has_key_and_values event_invite "required" ["party", "times"]
+    @test values_present(event_invite, "required", ["party", "times"])
     @test event_invite["properties"]["times"]["type"] == "array"
     @test event_invite["properties"]["times"]["items"]["format"] == "date-time"
     @test event_invite["properties"]["times"]["items"]["type"] == "string"

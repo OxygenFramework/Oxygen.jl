@@ -401,6 +401,17 @@ end
 end
 ```
 
+#### Nullable Types
+You can indicate that a field may be null by declaring it as a Union type with either `Nothing` or `Missing`.
+```julia
+@kwdef struct Pet
+    name::Union{String,Nothing}
+    color::Union{ColorStruct,Missing} 
+    age::Int = 10
+end
+
+```
+
 #### Validation
 
 On top of serializing incoming data, you can also define your own validation rules by using the `validate` function. In the example below we show how to use both `global` and `local` validators in your code.

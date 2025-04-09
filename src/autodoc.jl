@@ -295,34 +295,46 @@ function registerschema(
         tags = []
     end
 
+    responses = Dict(
+        "200" => Dict{String,Any}("description" => "200 response"),
+        "500" => Dict{String,Any}("description" => "500 Server encountered a problem")
+        )
+        
     # Build a response type payload
-    successResponse = Dict{String, Any}("description" => "200 response")
-    successContent = Dict()
-    if length(returntype) > 0 
-        current_type = returntype[1]
-        inner_type = extract_concrete_types(current_type)
+    return_types = []
+    for item in returntype
+        # Structs are typically returning as ::Union{T,Nothing} so extract the concrete type
+        inner_type = extract_concrete_types(item)
         
         if !isnothing(inner_type)
-            nullable, inner_types = inner_type
-
-            if length(inner_types) > 0 
-                successContent["application/json"] = Dict("schema" => buildschema!(inner_types[1], schemas))
-            end
+            _, inner_types = inner_type
+            append!(return_types, inner_types)
+        else
+            push!(return_types, item)
         end
     end
-
-    if !isempty(successContent)
-        successResponse["content"] = successContent
+    
+    # Attempt to build schemas for all return types, filtering out those which cannot be built
+    return_type_schemas = filter(x -> !isnothing(x), map(x -> buildschema!(x, schemas), return_types))
+    json_response_schema = Dict()
+    
+    # If our function returns multiple types, then may this an `anyOf` collection
+    if length(return_type_schemas) > 1 
+        json_response_schema = Dict("anyOf" => return_type_schemas)
+    elseif length(return_type_schemas) == 1
+        json_response_schema = return_type_schemas[1]
+    end
+    
+    # Only append the content key if we have concrete return type
+    if !isempty(json_response_schema)
+        responses["200"]["content"] = Dict("application/json" => Dict("schema" => json_response_schema))
     end
 
     # Build the route schema
     route = Dict(
         "tags" => tags,
         "parameters" => params,
-        "responses" => Dict(
-            "200" => successResponse,
-            "500" => Dict("description" => "500 Server encountered a problem")
-        )
+        "responses" => responses
     )
 
     # Add a request body to the route if it's a POST, PUT, or PATCH request
@@ -377,6 +389,11 @@ and return `\$ref` reference, else will create an inline type definition.
 """
 function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
     
+    # Union{} is the type of html() function 
+    if isnothing(current_type) || current_type === Union{}
+        return nothing
+    end
+
     current_field = Dict()
 
     # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
@@ -389,7 +406,7 @@ function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
 
         if length(non_null_types) != 1 
             @warn "OpenAPI Nullable union must have exactly one non-nulled type."
-            return Nothing
+            return nothing
         end
         # Re-assign the current type to be in the non-missing type
         current_type = non_null_types[1]

@@ -361,14 +361,13 @@ function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
     current_field = Dict()
 
     # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
-    if current_type isa Union
-        sub_types = Base.uniontypes(current_type)
-        nullable = Missing ∈ sub_types || Nothing ∈ sub_types
+    union_info = extract_concrete_types(current_type)
+    if !isnothing(union_info) 
+        nullable, non_null_types = union_info
         if nullable 
             current_field["nullable"] = true
         end
-        non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
-        # We only support exactly one concrete (non-missing) type
+
         if length(non_null_types) != 1 
             @warn "OpenAPI Nullable union must have exactly one non-nulled type."
             return Nothing
@@ -376,6 +375,7 @@ function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
         # Re-assign the current type to be in the non-missing type
         current_type = non_null_types[1]
     end
+    
     current_name = string(nameof(current_type))    
 
     # Case 1: Recursively convert nested structs & register schemas
@@ -438,6 +438,20 @@ function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
     end   
 
     return current_field
+end
+
+"""
+Test if this is a union and if so return nullability and non-null types.
+Returns `Nothing` if not a union.
+"""
+function extract_concrete_types(maybe_union)::Union{Tuple{Bool, Vector{Type}}, Nothing}
+    if maybe_union isa Union
+        sub_types = Base.uniontypes(maybe_union)
+        is_nullable = Missing ∈ sub_types || Nothing ∈ sub_types
+        non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+        return (is_nullable, non_null_types)
+    end
+    return nothing
 end
 
 # takes a struct and converts it into an openapi 3.0 compliant dictionary

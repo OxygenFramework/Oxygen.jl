@@ -382,8 +382,9 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
                 current_field["nullable"] = true
             end
             non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+            # We only support exactly one concrete (non-missing) type
             if length(non_null_types) != 1 
-                @warn "OpenAPI generation failed $typename.$field_name. Nullable union must have exactly one non-nulled type."
+                @warn "OpenAPI $typename.$field_name: Nullable union must have exactly one non-nulled type."
                 continue
             end
             # Re-assign the current type to be in the non-missing type

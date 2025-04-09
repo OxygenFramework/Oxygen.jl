@@ -350,6 +350,96 @@ function example_datetime() :: String
     return Dates.format(now(), "yyyy") * "-01-01T00:00:00.000"
 end
 
+"""
+Generates the OpenAPI schema defintion just for the passed type.
+
+If this is an object will generate object definition (and add to `schemas`) 
+and return `\$ref` reference, else will create an inline type definition.
+"""
+function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
+    
+    current_field = Dict()
+
+    # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
+    if current_type isa Union
+        sub_types = Base.uniontypes(current_type)
+        nullable = Missing ∈ sub_types || Nothing ∈ sub_types
+        if nullable 
+            current_field["nullable"] = true
+        end
+        non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+        # We only support exactly one concrete (non-missing) type
+        if length(non_null_types) != 1 
+            @warn "OpenAPI Nullable union must have exactly one non-nulled type."
+            return Nothing
+        end
+        # Re-assign the current type to be in the non-missing type
+        current_type = non_null_types[1]
+    end
+    current_name = string(nameof(current_type))    
+
+    # Case 1: Recursively convert nested structs & register schemas
+    if is_custom_struct(current_type)
+        current_field["\$ref"] = getcomponent(current_name)
+        if !haskey(schemas, current_name)
+            convertobject!(current_type, schemas)
+        end
+
+    # Case 2: The custom type is wrapped inside an array or vector
+    elseif current_type <: AbstractVector
+
+        current_field["type"] = "array"
+        current_field["items"] = Dict()
+        nested_type = current_type.parameters[1]
+        nested_type_name = string(nameof(nested_type))
+
+        # Handle custom structs
+        if is_custom_struct(nested_type)
+            current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
+            # Register type only if not already registered
+            if !haskey(schemas, nested_type_name)
+                convertobject!(nested_type, schemas)
+            end
+
+        # Handle non-custom nested types
+        else
+            current_field["items"] = Dict("type" =>  gettype(nested_type))
+            format = getformat(nested_type)
+            
+            if !isnothing(format)
+                current_field["items"]["format"] = format
+            end
+
+            # Add compatible example format for datetime objects within a vector
+            if nested_type <: DateTime
+                current_field["items"]["example"] = example_datetime()
+                current_field["items"]["description"] = datetime_hint()
+            end
+
+        end
+
+    # Case 3: Convert the individual fields of the current type to it's openapi equivalent
+    else
+
+        current_field["type"] = gettype(current_type)
+
+        # Add compatible example format for datetime objects
+        if current_type <: DateTime
+            current_field["example"] = example_datetime()
+            current_field["description"] = datetime_hint()
+        end
+
+        # Add format if it exists
+        format = getformat(current_type)
+        if !isnothing(format)
+            current_field["format"] = format
+        end
+
+    end   
+
+    return current_field
+end
+
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
 function convertobject!(type::Type, schemas::Dict) :: Dict
 
@@ -371,102 +461,27 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
         p = info.sig_map[name]
         field_name = string(p.name)
-        current_field = Dict()
-        current_type = p.type
-
-        # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
-        if current_type isa Union
-            sub_types = Base.uniontypes(current_type)
-            is_nullable = Missing ∈ sub_types || Nothing ∈ sub_types
-            if (is_nullable)
-                current_field["nullable"] = true
-            end
-            non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
-            # We only support exactly one concrete (non-missing) type
-            if length(non_null_types) != 1 
-                @warn "OpenAPI $typename.$field_name: Nullable union must have exactly one non-nulled type."
-                continue
-            end
-            # Re-assign the current type to be in the non-missing type
-            current_type = non_null_types[1]
-        end
-        current_name = string(nameof(current_type))    
         
-        # Only add field to required list if it is not nullable (and otherwise required)
-        if isrequired(p) && !haskey(current_field, "nullable")
+        current_type = p.type
+        schema = buildschema!(current_type, schemas)
+
+        # Was unable to generate a definition for these field
+        if isnothing(schema)
+            @warn "AutoDoc unable generate a schema for $typename.$field_name"
+            continue;
+        end
+
+        if p.hasdefault
+            schema["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
+        end
+            
+        # TODO: Switch to using nullable property
+        if isrequired(p) && (!haskey(schema, "nullable") || schema["nullable"] == false)
             push!(required_fields, field_name);
         end
-
-        # Case 1: Recursively convert nested structs & register schemas
-        if is_custom_struct(current_type)
-            current_field["\$ref"] = getcomponent(current_name)
-            if !haskey(schemas, current_name)
-                convertobject!(current_type, schemas)
-            end
-
-        # Case 2: The custom type is wrapped inside an array or vector
-        elseif current_type <: AbstractVector
-
-            current_field["type"] = "array"
-            current_field["items"] = Dict()
-            nested_type = current_type.parameters[1]
-            nested_type_name = string(nameof(nested_type))
-
-            # Handle custom structs
-            if is_custom_struct(nested_type)
-                current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
-                # Register type only if not already registered
-                if !haskey(schemas, nested_type_name)
-                    convertobject!(nested_type, schemas)
-                end
-
-            # Handle non-custom nested types
-            else
-                current_field["items"] = Dict("type" =>  gettype(nested_type))
-                format = getformat(nested_type)
-                
-                if !isnothing(format)
-                    current_field["items"]["format"] = format
-                end
-
-                # Add compatible example format for datetime objects within a vector
-                if nested_type <: DateTime
-                    current_field["items"]["example"] = example_datetime()
-                    current_field["items"]["description"] = datetime_hint()
-                end
-
-            end
-
-            # Add default value if it exists
-            if p.hasdefault
-                current_field["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
-            end
-
-        # Case 3: Convert the individual fields of the current type to it's openapi equivalent
-        else
-
-            current_field["type"] = gettype(current_type)
-
-            # Add compatible example format for datetime objects
-            if current_type <: DateTime
-                current_field["example"] = example_datetime()
-                current_field["description"] = datetime_hint()
-            end
-
-            # Add format if it exists
-            format = getformat(current_type)
-            if !isnothing(format)
-                current_field["format"] = format
-            end
-
-            # Add default value if it exists
-            if p.hasdefault
-                current_field["default"] = string(p.default)
-            end    
-        end
-
-        # convert the current field
-        obj["properties"][field_name] = current_field
+        
+        obj["properties"][field_name] = schema
+        
     end
     
     # Required fields cannot be an empty collection so define property only if we have data 

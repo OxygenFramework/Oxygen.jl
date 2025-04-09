@@ -32,6 +32,8 @@ end
 @kwdef struct Album 
     releaseyear::Int
     artist::Person
+    remasteredyear::Union{Int,Nothing}
+    soundtech::Union{Person,Nothing}
     collaborators::Union{Vector{Person}, Nothing}
 end
 
@@ -69,7 +71,13 @@ schemas = ctx.docs.schema["components"]["schemas"]
     
     album = schemas["Album"]
     @test values_present(album, "required", ["releaseyear","artist"])
-    # Nullable field should not be present in the required field list
+    # Bug fix: vector of object following object first use missing in 1.7.1
+    @test has_property(album, "collaborators")
+    # Bug fix: object following initial use missing in 1.7.1
+    @test has_property(album, "soundtech")
+    # Feature: nullable primitive types should not be required
+    @test value_absent(album, "required", "remasteredyear")
+    # Nullable vector types should not be required
     @test value_absent(album, "required", "collaborators")
 
     # ensure the generated Car schema aligns

@@ -389,6 +389,60 @@ function example_datetime() :: String
     return Dates.format(now(), "yyyy") * "-01-01T00:00:00.000"
 end
 
+# takes a struct and converts it into an openapi 3.0 compliant dictionary
+function convertobject!(type::Type, schemas::Dict) :: Dict
+
+    typename = type |> nameof |> string
+
+    # intilaize this entry
+    obj = Dict("type" => "object", "properties" => Dict())
+    required_fields = String[]
+
+    # parse out the fields of the type
+    info = splitdef(type)
+
+    # Make sure we have a unique set of names (in case of duplicate field names when parsing types)
+    # The same field names can show up as regular parameters and keyword parameters when the type is used with @kwdef
+    sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
+
+    # loop over all unique fields
+    for name in sig_names
+
+        p = info.sig_map[name]
+        field_name = string(p.name)
+        
+        current_type = p.type
+        schema = buildschema!(current_type, schemas)
+
+        # Was unable to generate a definition for these field
+        if isnothing(schema)
+            @warn "AutoDoc unable generate a schema for $typename.$field_name"
+            continue;
+        end
+
+        if p.hasdefault
+            schema["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
+        end
+            
+        # TODO: Switch to using nullable property
+        if isrequired(p) && (!haskey(schema, "nullable") || schema["nullable"] == false)
+            push!(required_fields, field_name);
+        end
+        
+        obj["properties"][field_name] = schema
+        
+    end
+    
+    # Required fields cannot be an empty collection so define property only if we have data 
+    if length(required_fields) > 0 
+        obj["required"] = required_fields
+    end
+
+    schemas[typename] = obj
+
+    return schemas
+end
+
 """
 Generates the OpenAPI schema defintion just for the passed type.
 
@@ -473,60 +527,6 @@ function extract_concrete_types(maybe_union)::Union{Tuple{Bool, Vector{Type}}, N
         return (is_nullable, non_null_types)
     end
     return nothing
-end
-
-# takes a struct and converts it into an openapi 3.0 compliant dictionary
-function convertobject!(type::Type, schemas::Dict) :: Dict
-
-    typename = type |> nameof |> string
-
-    # intilaize this entry
-    obj = Dict("type" => "object", "properties" => Dict())
-    required_fields = String[]
-
-    # parse out the fields of the type
-    info = splitdef(type)
-
-    # Make sure we have a unique set of names (in case of duplicate field names when parsing types)
-    # The same field names can show up as regular parameters and keyword parameters when the type is used with @kwdef
-    sig_names = OrderedSet{Symbol}(p.name for p in info.sig)
-
-    # loop over all unique fields
-    for name in sig_names
-
-        p = info.sig_map[name]
-        field_name = string(p.name)
-        
-        current_type = p.type
-        schema = buildschema!(current_type, schemas)
-
-        # Was unable to generate a definition for these field
-        if isnothing(schema)
-            @warn "AutoDoc unable generate a schema for $typename.$field_name"
-            continue;
-        end
-
-        if p.hasdefault
-            schema["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
-        end
-            
-        # TODO: Switch to using nullable property
-        if isrequired(p) && (!haskey(schema, "nullable") || schema["nullable"] == false)
-            push!(required_fields, field_name);
-        end
-        
-        obj["properties"][field_name] = schema
-        
-    end
-    
-    # Required fields cannot be an empty collection so define property only if we have data 
-    if length(required_fields) > 0 
-        obj["required"] = required_fields
-    end
-
-    schemas[typename] = obj
-
-    return schemas
 end
 
 """

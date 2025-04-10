@@ -42,10 +42,12 @@ Returns the openapi equivalent of each Julia type
 function gettype(type::Type)::String
     if type <: Bool
         return "boolean"
-    elseif type <: AbstractFloat
-        return "number"
+    # Test first for narrower subset of Real which are Integers
     elseif type <: Integer
         return "integer"
+    # If Real and not integer it must be floating point
+    elseif type <: Real
+        return "number"
     elseif type <: AbstractVector
         return "array"
     elseif type <: String || type == Date || type == DateTime

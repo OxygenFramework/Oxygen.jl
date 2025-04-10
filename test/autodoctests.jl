@@ -32,6 +32,7 @@ end
 @kwdef struct Album 
     releaseyear::Int
     artist::Person
+    price::Real
     remasteredyear::Union{Int,Nothing}
     soundtech::Union{Person,Nothing}
     collaborators::Union{Vector{Person}, Nothing}
@@ -84,6 +85,10 @@ paths = ctx.docs.schema["paths"]
     @test value_absent(album, "required", "remasteredyear")
     # Nullable vector types should not be required
     @test value_absent(album, "required", "collaborators")
+    # Bug fix: verify `Real` data type translated to `number` 
+    @test album["properties"]["price"]["type"] == "number"
+    # Verify: that more specific integer type isn't clobbered by Real
+    @test album["properties"]["releaseyear"]["type"] == "integer"
 
     ### Test return type generation
     @test json_response_contains(paths["/album"], "post", Dict("\$ref" => "#/components/schemas/Album"))

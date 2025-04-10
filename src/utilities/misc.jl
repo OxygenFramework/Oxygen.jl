@@ -80,8 +80,9 @@ function recursive_merge(x::AbstractVector...)
     
     if !isempty(parameters)
         return [ elements[name] for name in parameters ]
+    # Fix: De-duplicate the flattened vectors (else entries may be cloned)
     else
-        return flattened
+        return unique(flattened)
     end
 end 
 

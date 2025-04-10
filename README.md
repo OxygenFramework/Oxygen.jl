@@ -402,11 +402,15 @@ end
 ```
 
 #### Nullable Types
-You can indicate that a field may be null by declaring it as a Union type with either `Nothing` or `Missing`.
+You can indicate that a field may be null by declaring it as a Union type with `Nothing`.
+> **Note:** While the serializer can handle type `::Union{T,Missing}` it will fail if a default value of `missing` provided. Instead use `::Union{T,Nothing} = nothing`.
+
 ```julia
 @kwdef struct Pet
-    name::Union{String,Nothing}
-    color::Union{ColorStruct,Missing} 
+    name::Union{String,Nothing} # Valid
+    surname::Union{String,Nothing} = nothing # Valid
+    eyecolor::Union{ColorStruct, Missing} # Valid 
+    coatcolor::Union{ColorStruct,Missing} = missing # Invalid: no schema will be generated for `Pet` 
     age::Int = 10
 end
 

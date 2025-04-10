@@ -436,40 +436,13 @@ function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
     
     # Case 2: The custom type is wrapped inside an array or vector
     elseif current_type <: AbstractVector
-
         current_field["type"] = "array"
         current_field["items"] = Dict()
         nested_type = current_type.parameters[1]
-        nested_type_name = string(nameof(nested_type))
-
-        # Handle custom structs
-        if is_custom_struct(nested_type)
-            current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
-            # Register type only if not already registered
-            if !haskey(schemas, nested_type_name)
-                convertobject!(nested_type, schemas)
-            end
-
-        # Handle non-custom nested types
-        else
-            current_field["items"] = Dict("type" =>  gettype(nested_type))
-            format = getformat(nested_type)
-            
-            if !isnothing(format)
-                current_field["items"]["format"] = format
-            end
-
-            # Add compatible example format for datetime objects within a vector
-            if nested_type <: DateTime
-                current_field["items"]["example"] = example_datetime()
-                current_field["items"]["description"] = datetime_hint()
-            end
-
-        end
+        current_field["items"] = buildschema!(nested_type, schemas)    
 
     # Case 3: Convert the individual fields of the current type to it's openapi equivalent
     else
-
         current_field["type"] = gettype(current_type)
 
         # Add compatible example format for datetime objects
@@ -483,7 +456,6 @@ function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
         if !isnothing(format)
             current_field["format"] = format
         end
-
     end   
 
     return current_field

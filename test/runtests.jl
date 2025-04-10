@@ -1,6 +1,7 @@
 module RunTests 
 
 include("constants.jl"); using .Constants
+include("test_utils.jl"); using .TestUtils
 
 #### Extension Tests ####
 

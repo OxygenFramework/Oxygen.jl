@@ -79,6 +79,14 @@ schemas = ctx.docs.schema["components"]["schemas"]
 
     # Test that partial arrays are combined in output
     @test values_present(merged, "required", ["field1", "field2"])
+
+    # When merging primitive vectors choose the latest instead of merging them
+    obj = Dict("required" => ["field1","field1","field2"])
+    obj = Dict("required" => ["field1","field2","field2"])
+    merged = Oxygen.AutoDoc.mergeschema(obj,obj)
+    @test value_count(obj, "required", "field1") == 1
+    # Verify that merge doesn't remove duplciate entries
+    @test value_count(obj, "required", "field2") == 2
 end
 
 @testset "schema gen tests" begin 

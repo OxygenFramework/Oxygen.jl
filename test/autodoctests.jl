@@ -35,9 +35,14 @@ end
     remasteredyear::Union{Int,Nothing}
     soundtech::Union{Person,Nothing}
     collaborators::Union{Vector{Person}, Nothing}
+    composer::Union{Person,Nothing} = nothing
 end
 
 @post "/album" function (req, album::Json{Album})
+    return album.payload;
+end
+
+@post "/album2" function (req, album::Json{Album})
     return album.payload;
 end
 
@@ -61,6 +66,21 @@ end
 ctx = CONTEXT[]
 schemas = ctx.docs.schema["components"]["schemas"]
 
+@testset "schema merge tests" begin
+    obj = Dict("required" => ["field1", "field2"])
+    merged = Oxygen.AutoDoc.mergeschema(obj,obj)
+    
+    # Fix: Test that mergeschema will not duplicate keys in simple vectors 
+    @test value_count(obj, "required", "field1") == 1
+
+    obj1 = Dict("required" => ["field1"])
+    obj2 = Dict("required" => ["field2"])
+    merged = Oxygen.AutoDoc.mergeschema(obj,obj)
+
+    # Test that partial arrays are combined in output
+    @test values_present(merged, "required", ["field1", "field2"])
+end
+
 @testset "schema gen tests" begin 
 
     # ensure schemas are present for all types
@@ -79,6 +99,8 @@ schemas = ctx.docs.schema["components"]["schemas"]
     @test value_absent(album, "required", "remasteredyear")
     # Nullable vector types should not be required
     @test value_absent(album, "required", "collaborators")
+    # Fix: ensure that pararm object referenced in two paths does not clone `required` collection
+    @test value_count(album, "required", "artist") == 1
 
     # ensure the generated Car schema aligns
     car = schemas["Car"]

@@ -1,9 +1,10 @@
 module TestUtils
 using Test
 
+export has_property
 export values_present
 export value_absent
-export has_property
+export value_count
 
 """
     values_present(dict, key, values)
@@ -14,6 +15,17 @@ Collection may contain additional values.
 """
 function values_present(dict, key, values)
     return haskey(dict, key) && all(x -> x in dict[key], values)
+end
+
+"""
+    value_count(dict,key,value)
+Returns occurence count of value in collection specified by key
+"""
+function value_count(dict, key, value)
+    if(!haskey(dict,key))
+        return 0
+    end
+    return count(x -> x == value,dict[key])
 end
 
 """

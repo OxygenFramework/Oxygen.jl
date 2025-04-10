@@ -371,7 +371,8 @@ Helper function used to determine if a type is a custom struct and whethere or n
 we should do a recurive dive and convertion to openapi schema.
 """
 function is_custom_struct(T::Type) :: Bool
-    return T.name.module ∉ (Base, Core, Dates) && (isstructtype(T) || isabstracttype(T))
+    # First test that this type has a name (Union{} and UnionAll{} will lack this)
+    return hasfield(typeof(T), :name) && T.name.module ∉ (Base, Core, Dates) && (isstructtype(T) || isabstracttype(T))
 end
 
 """
@@ -393,10 +394,15 @@ and return `\$ref` reference, else will create an inline type definition.
 function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
     
     # Union{} is the type of html() function 
-    if isnothing(current_type) || current_type === Union{}
+    if isnothing(current_type)
         return nothing
     end
 
+    # If this the base type then return `{}` as our schema allowing both objects and primitve values
+    if current_type == Union{}
+        return Dict()
+    end
+    
     current_field = Dict()
 
     # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
@@ -414,16 +420,16 @@ function buildschema!(current_type::Type, schemas::Dict)::Union{Dict,Nothing}
         # Re-assign the current type to be in the non-missing type
         current_type = non_null_types[1]
     end
-    
-    current_name = string(nameof(current_type))    
 
     # Case 1: Recursively convert nested structs & register schemas
     if is_custom_struct(current_type)
+        # Only get name once safely tested for custom struct (i.e. Union{} will throw error)
+        current_name = string(nameof(current_type))
         current_field["\$ref"] = getcomponent(current_name)
         if !haskey(schemas, current_name)
             convertobject!(current_type, schemas)
         end
-
+    
     # Case 2: The custom type is wrapped inside an array or vector
     elseif current_type <: AbstractVector
 

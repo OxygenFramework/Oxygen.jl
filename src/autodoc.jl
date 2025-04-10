@@ -421,7 +421,11 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         end
 
         if p.hasdefault
-            schema["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
+            if current_type <: Bool || current_type <: Number || current_type <: AbstractString
+                schema["default"] = p.default
+            else
+                schema["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
+            end
         end
             
         # TODO: Switch to using nullable property

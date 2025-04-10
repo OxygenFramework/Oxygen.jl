@@ -310,9 +310,9 @@ function registerschema(
     # as we cannot infer the type of the serialized objects within thier payloads
     filtered = filter(x -> x != HTTP.Messages.Response, return_types);
 
-    # Attempt to build schemas for all return types, filtering out those which cannot be built
-    # HTTP.Messages.Response
-    return_type_schemas = filter(x -> !isnothing(x), map(x -> buildschema!(x, schemas), filtered))
+    # Attempt to build schemas for all return Types
+    # Call unique() because we occasionally see duplicate object references from functions
+    return_type_schemas = unique(filter(x -> !isnothing(x), map(x -> buildschema!(x, schemas), filtered)))
     json_response_schema = Dict()
     
     # If our function returns multiple types, then may this an `anyOf` collection

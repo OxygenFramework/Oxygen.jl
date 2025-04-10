@@ -41,6 +41,10 @@ end
     return album.payload;
 end
 
+@get "/releaseyear" () -> 2010
+@get "/artist" () -> "Some Artist"
+@get "/dict" () -> Dict("foo"=>"bar")
+
 @post "/party-invite" function(req, party::Json{PartyInvite})
     return text("added $(length(party.payload.party.guests)) guests")
 end
@@ -60,6 +64,7 @@ end
 
 ctx = CONTEXT[]
 schemas = ctx.docs.schema["components"]["schemas"]
+paths = ctx.docs.schema["paths"]
 
 @testset "schema gen tests" begin 
 
@@ -79,6 +84,13 @@ schemas = ctx.docs.schema["components"]["schemas"]
     @test value_absent(album, "required", "remasteredyear")
     # Nullable vector types should not be required
     @test value_absent(album, "required", "collaborators")
+
+    ### Test return type generation
+    @test json_response_contains(paths["/album"], "post", Dict("\$ref" => "#/components/schemas/Album"))
+    @test json_response_contains(paths["/releaseyear"], "get", Dict("type" => "integer"))
+    @test json_response_contains(paths["/artist"], "get", Dict("type" => "string"))
+    # Dictionary should serialize to `object`
+    @test json_response_contains(paths["/dict"], "get", Dict("type" => "object"))
 
     # ensure the generated Car schema aligns
     car = schemas["Car"]

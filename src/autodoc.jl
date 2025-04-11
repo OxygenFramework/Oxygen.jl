@@ -360,7 +360,10 @@ function registerschema(
 end
 
 
-
+"""
+Return a dictionary keyed by `schematype` containing references to all the object
+types referenced by the passed `keys` collection.
+"""
 function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
     refs = []
     for key in keys

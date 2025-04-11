@@ -20,6 +20,7 @@ end
 
 """
     value_count(dict,key,value)
+    
 Returns occurence count of value in collection specified by key
 """
 function value_count(dict, key, value)

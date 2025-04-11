@@ -32,6 +32,7 @@ end
 @kwdef struct Album 
     releaseyear::Int
     artist::Person
+    price::Real
     remasteredyear::Union{Int,Nothing}
     soundtech::Union{Person,Nothing}
     collaborators::Union{Vector{Person}, Nothing}
@@ -45,6 +46,10 @@ end
 @post "/album2" function (req, album::Json{Album})
     return album.payload;
 end
+
+@get "/releaseyear" () -> 2010
+@get "/artist" () -> "Some Artist"
+@get "/dict" () -> Dict("foo"=>"bar")
 
 @post "/party-invite" function(req, party::Json{PartyInvite})
     return text("added $(length(party.payload.party.guests)) guests")
@@ -65,6 +70,7 @@ end
 
 ctx = CONTEXT[]
 schemas = ctx.docs.schema["components"]["schemas"]
+paths = ctx.docs.schema["paths"]
 
 @testset "schema merge tests" begin
     obj = Dict("required" => ["field1", "field2"])
@@ -109,6 +115,17 @@ end
     @test value_absent(album, "required", "collaborators")
     # Fix: ensure that pararm object referenced in two paths does not clone `required` collection
     @test value_count(album, "required", "artist") == 1
+    # Bug fix: verify `Real` data type translated to `number` 
+    @test album["properties"]["price"]["type"] == "number"
+    # Verify: that more specific integer type isn't clobbered by Real
+    @test album["properties"]["releaseyear"]["type"] == "integer"
+
+    ### Test return type generation
+    @test json_response_contains(paths["/album"], "post", Dict("\$ref" => "#/components/schemas/Album"))
+    @test json_response_contains(paths["/releaseyear"], "get", Dict("type" => "integer"))
+    @test json_response_contains(paths["/artist"], "get", Dict("type" => "string"))
+    # Dictionary should serialize to `object`
+    @test json_response_contains(paths["/dict"], "get", Dict("type" => "object"))
 
     # ensure the generated Car schema aligns
     car = schemas["Car"]

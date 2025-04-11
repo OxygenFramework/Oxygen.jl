@@ -80,8 +80,11 @@ function recursive_merge(x::AbstractVector...)
     
     if !isempty(parameters)
         return [ elements[name] for name in parameters ]
+    # Fix: When returning a vector of primitive values simply prefer 
+    # the final entry over the earlier (instead of combining) which makes 
+    # no sense for items like `required`
     else
-        return flattened
+        return x[end]
     end
 end 
 

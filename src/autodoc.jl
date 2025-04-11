@@ -371,43 +371,60 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
         p = info.sig_map[name]
         field_name = string(p.name)
+        current_field = Dict()
         current_type = p.type
-        current_name = string(nameof(current_type))
 
-        if isrequired(p)
+        # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
+        if current_type isa Union
+            sub_types = Base.uniontypes(current_type)
+            is_nullable = Missing ∈ sub_types || Nothing ∈ sub_types
+            if (is_nullable)
+                current_field["nullable"] = true
+            end
+            non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+            # We only support exactly one concrete (non-missing) type
+            if length(non_null_types) != 1 
+                @warn "OpenAPI $typename.$field_name: Nullable union must have exactly one non-nulled type."
+                continue
+            end
+            # Re-assign the current type to be in the non-missing type
+            current_type = non_null_types[1]
+        end
+        current_name = string(nameof(current_type))    
+        
+        # Only add field to required list if it is not nullable (and otherwise required)
+        if isrequired(p) && !haskey(current_field, "nullable")
             push!(required_fields, field_name);
         end
 
-        # Skip if the field is already registered
-        if haskey(schemas, current_name)
-            continue
-
         # Case 1: Recursively convert nested structs & register schemas
-        elseif is_custom_struct(current_type) && !haskey(schemas, current_name)
-            obj["properties"][field_name] = Dict("\$ref" => getcomponent(current_name))
-            convertobject!(current_type, schemas)
+        if is_custom_struct(current_type)
+            current_field["\$ref"] = getcomponent(current_name)
+            if !haskey(schemas, current_name)
+                convertobject!(current_type, schemas)
+            end
 
         # Case 2: The custom type is wrapped inside an array or vector
         elseif current_type <: AbstractVector
 
-            current_field = Dict("type" => "array", "items" => Dict())
+            current_field["type"] = "array"
+            current_field["items"] = Dict()
             nested_type = current_type.parameters[1]
             nested_type_name = string(nameof(nested_type))
 
-            # Skip if the field is already registered
-            if haskey(schemas, nested_type_name)
-                continue
-
             # Handle custom structs
-            elseif is_custom_struct(nested_type)
+            if is_custom_struct(nested_type)
                 current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
-                convertobject!(nested_type, schemas)
+                # Register type only if not already registered
+                if !haskey(schemas, nested_type_name)
+                    convertobject!(nested_type, schemas)
+                end
 
             # Handle non-custom nested types
             else
                 current_field["items"] = Dict("type" =>  gettype(nested_type))
-
                 format = getformat(nested_type)
+                
                 if !isnothing(format)
                     current_field["items"]["format"] = format
                 end
@@ -425,13 +442,10 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
                 current_field["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
             end
 
-            # convert the current field
-            obj["properties"][field_name] = current_field
-
         # Case 3: Convert the individual fields of the current type to it's openapi equivalent
         else
 
-            current_field = Dict("type" => gettype(current_type))
+            current_field["type"] = gettype(current_type)
 
             # Add compatible example format for datetime objects
             if current_type <: DateTime
@@ -448,11 +462,11 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             # Add default value if it exists
             if p.hasdefault
                 current_field["default"] = string(p.default)
-            end
-
-            # convert the current field
-            obj["properties"][field_name] = current_field
+            end    
         end
+
+        # convert the current field
+        obj["properties"][field_name] = current_field
     end
     
     # Required fields cannot be an empty collection so define property only if we have data 

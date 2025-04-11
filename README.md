@@ -401,6 +401,21 @@ end
 end
 ```
 
+#### Nullable Types
+You can indicate that a field may be null by declaring it as a Union type with `Nothing`.
+> **Note:** While the serializer can handle type `::Union{T,Missing}` it will fail if a default value of `missing` provided. Instead use `::Union{T,Nothing} = nothing`.
+
+```julia
+@kwdef struct Pet
+    name::Union{String,Nothing} # Valid
+    surname::Union{String,Nothing} = nothing # Valid
+    eyecolor::Union{ColorStruct, Missing} # Valid 
+    coatcolor::Union{ColorStruct,Missing} = missing # Invalid: no schema will be generated for `Pet` 
+    age::Int = 10
+end
+
+```
+
 #### Validation
 
 On top of serializing incoming data, you can also define your own validation rules by using the `validate` function. In the example below we show how to use both `global` and `local` validators in your code.

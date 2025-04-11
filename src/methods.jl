@@ -392,3 +392,4 @@ for method in [:startcronjobs, :stopcronjobs, :clearcronjobs]
     end)
 end
 
+include("./exts_methods.jl")

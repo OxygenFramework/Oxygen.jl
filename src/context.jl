@@ -5,7 +5,7 @@ using HTTP
 using HTTP: Server, Router
 using ..Types
 
-export ServerContext, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen
+export ServerContext, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen, install_ext_context
 
 function defaultSchema() :: Dict
     Dict(
@@ -68,6 +68,14 @@ end
     tasks   :: TasksContext     = TasksContext()
     mod     :: Nullable{Module} = nothing
     app_context :: Ref{Any}     = Ref{Any}(missing) # This stores a reference to an Context{T} object
+    ext_context :: Ref{Any}     = Ref{Any}((;)) # This stores a reference to a namedtuple
+end
+
+function install_ext_context(ctx::ServerContext; kwargs...)
+    ctx.ext_context[] = (;
+        ctx.ext_context[]...,
+        kwargs...
+    )
 end
 
 Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])

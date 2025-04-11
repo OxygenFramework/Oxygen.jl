@@ -11,9 +11,9 @@ const HTML  = MIME"text/html"()
 """
 Converts a Figure object to the designated MIME type and wraps it inside an HTTP response.
 """
-function response(content::App, mime_type::MIME, status::Int, headers::Vector)
+function response(content::App, mime_type::MIME, status::Int, headers::Vector, offline=Oxygen.BONITO_OFFLINE[])
     # Force inlining all data & js dependencies
-    Page(exportable=true, offline=true)
+    Page(exportable=true, offline=offline)
 
     # Convert & load the figure into an IOBuffer
     io = IOBuffer()
@@ -32,6 +32,8 @@ end
 
 Convert a Bonito.App to HTML and wrap it inside an HTTP response.
 """
-html(app::App, status=200, headers=[]) :: HTTP.Response = response(app, HTML, status, headers)
+html(app::App, status=200, headers=[], offline=Oxygen.BONITO_OFFLINE[]) :: HTTP.Response = response(app, HTML, status, headers, offline)
+
+include("./bonito/connection.jl")
 
 end

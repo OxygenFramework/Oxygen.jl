@@ -18,6 +18,7 @@ include("util.jl");         @reexport using .Util
 include("types.jl");        @reexport using .Types 
 include("constants.jl");    @reexport using .Constants
 include("context.jl");      @reexport using .AppContext
+include("contextext.jl");   @reexport using .ContextExt
 include("handlers.jl");     @reexport using .Handlers
 include("middleware.jl");   @reexport using .Middleware
 include("routerhof.jl");    @reexport using .RouterHOF
@@ -332,6 +333,7 @@ function startserver(ctx::ServerContext; host, port, show_banner=false, docs=fal
 
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
+    ContextExt.initialize_exts!(ctx)
 
     show_banner && serverwelcome(ctx.service.external_url[], docs, metrics, parallel, ctx.docs.docspath[])
 

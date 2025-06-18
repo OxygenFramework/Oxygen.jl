@@ -23,7 +23,11 @@ struct TimeseriesRecord
 end
 
 function push_history(history::History, transaction::HTTPTransaction)
-    pushfirst!(history, transaction)
+    try
+        pushfirst!(history, transaction)
+    catch error
+        @warn "Failed to push transaction into our history: $error"
+    end
 end
 
 function get_history(history::History) :: Vector{HTTPTransaction}

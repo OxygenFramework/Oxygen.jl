@@ -107,8 +107,12 @@ which is caught and results with a 400 status code.
 function safe_extract(f::Function, param::Param{U}) :: T where {T, U <: Extractor{T}} 
     try 
         return f()
-    catch
-        throw(ValidationError("Failed to serialize data for | parameter: $(param.name) | extractor: $U | type: $T"))
+    catch e
+        if e isa ValidationError
+            throw(e)
+        end
+        # If the function fails, we throw a ValidationError with the parameter name and type
+        throw(ValidationError("Failed to serialize data for | parameter: $(param.name) | extractor: $U | type: $T", e))
     end
 end
 

@@ -10,11 +10,11 @@ export PACKAGE_DIR, DATA_PATH,
     SWAGGER_VERSION, REDOC_VERSION
 
 # Generate a reliable path to our package directory
-const PACKAGE_DIR :: String = @path @__DIR__
+const PACKAGE_DIR = @path @__DIR__
 
 # Generate a reliable path to our internal data folder that works when the 
 # package is used with PackageCompiler.jl
-const DATA_PATH :: String = @path joinpath(@__DIR__, "..", "data")
+const DATA_PATH = @path joinpath(@__DIR__, "..", "data")
 
 # HTTP Methods
 const GET       :: String   = "GET"

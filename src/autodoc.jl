@@ -272,6 +272,29 @@ function registerschema(
         end
     end
 
+    ##### Auto regiser response schema #####
+    response_schema = nothing
+    if !isempty(returntype)
+        rt = returntype[1]
+        if is_custom_struct(rt)
+            convertobject!(rt, schemas)
+            response_schema = Dict("\$ref" => getcomponent(rt))
+        elseif rt <: AbstractVector
+            elem_type = rt.parameters[1]
+            if is_custom_struct(elem_type)
+                convertobject!(elem_type, schemas)
+                response_schema = Dict(
+                    "type" => "array",
+                    "items" => Dict("\$ref" => getcomponent(elem_type))
+                )
+            else
+                response_schema = Dict("type" => "array", "items" => Dict("type" => gettype(elem_type)))
+            end
+        else
+            response_schema = Dict("type" => gettype(rt))
+        end
+    end
+
     components = Dict("components" => Dict("schemas" => schemas))
     if !isempty(schemas)
         mergeschema(docs.schema, components)
@@ -296,15 +319,24 @@ function registerschema(
         tags = []
     end
 
+    ##### build responses field #####
+    response_200 = Dict{String, Any}("description" => "200 response")
+    if response_schema !== nothing
+        response_200["content"] = Dict(
+            "application/json" => Dict("schema" => response_schema)
+        )
+    end
+    responses =  Dict{String, Any}(
+        "200" => response_200,
+        "500" => Dict("description" => "500 Server encountered a problem")
+    )
+
     # Build the route schema
     route = Dict(
         "$(lowercase(httpmethod))" => Dict(
             "tags" => tags,
             "parameters" => params,
-            "responses" => Dict(
-                "200" => Dict("description" => "200 response"),
-                "500" => Dict("description" => "500 Server encountered a problem")
-            )
+            "responses" => responses
         )
     )
 

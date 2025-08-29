@@ -769,6 +769,86 @@ finally
 end
 ```
 
+## Extensions
+
+Packages which extend Oxygen can inject themselves in a few ways:
+
+ * `@contextmethod`
+ * `@register_ext`
+ * Middleware
+
+### @contextmethod
+
+Using `@contextmethod`, one can provide new methods which get access to the
+`ServerContext` object automatically. These are installed into an `OxygenExt`
+module, which is made available both through `Oxygen.OxygenExt` and wherever
+`@oxidise` is used.
+
+For example, in an package `MyExtension`
+
+```julia
+@contextmethod function specialfunction(32)
+    # This function now has access to a context::ServerContext
+    dosomething(context)
+end
+```
+
+Then user code can use the function like so
+
+```julia
+@oxidise
+
+function mycode()
+    OxygenExt.specialfunction(42)
+end
+```
+
+### @register_ext
+
+Extensions may wish to store various data. Although they could choose to use
+global state in order to do so, it may be that they have data that is associated
+with a particular server instance. In this case it is possible to inject data
+into the `ServerContext`, which can then be retrieved later. Since a
+`ServerContext` is need to retrieve the data, this combines well with
+`@contextmethod`.
+
+```julia
+struct MyExtensionState
+    foo::Int
+end
+const (get_ext, install_ext!) = Oxygen.@register_ext(MyExtensionState)
+
+function install_extension(...)
+    install_ext!(MyExtensionState(42))
+end
+
+@contextmethod function needsstate(x)
+    return get_ext(context).foo + x
+end
+```
+
+Then code using the extension might look like:
+
+```julia
+@oxidise
+
+install_extension(...)
+
+function mycode()
+    OxygenExt.needsstate(1)
+end
+```
+
+Note that since your extensions code can be called from multiple threads, is up
+to you make sure any mutable state accessed in a threadsafe way, e.g. using
+locks.
+
+### Middleware
+
+Extensions may also choose to provide and install middleware. See also XXX.
+
+TODO: Example of how middleware can combine with other things
+
 ## Multithreading & Parallelism
 
 For scenarios where you need to handle higher amounts of traffic, you can run Oxygen in a 

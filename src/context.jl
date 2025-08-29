@@ -4,6 +4,7 @@ import Base.Threads: ReentrantLock
 using HTTP
 using HTTP: Server, Router
 using ..Types
+using Pkg # This is used in @install_ext
 
 export ServerContext, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen
 
@@ -61,6 +62,11 @@ end
     middleware_cache_lock :: ReentrantLock          = ReentrantLock()
 end
 
+struct ExtensionBuilder
+    bits::Vector{Pair{Symbol, Any}}
+end
+ExtensionBuilder() = ExtensionBuilder(Pair{Symbol, Any}[])
+
 @kwdef struct ServerContext
     service :: Service          = Service()    
     docs    :: Documenation     = Documenation()
@@ -68,6 +74,8 @@ end
     tasks   :: TasksContext     = TasksContext()
     mod     :: Nullable{Module} = nothing
     app_context :: Ref{Any}     = Ref{Any}(missing) # This stores a reference to an Context{T} object
+    ext_builder :: ExtensionBuilder = ExtensionBuilder()
+    exts :: Ref{NamedTuple} = (;)
 end
 
 Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])

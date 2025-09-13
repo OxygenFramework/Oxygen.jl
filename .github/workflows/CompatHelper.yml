@@ -10,17 +10,11 @@ jobs:
   CompatHelper:
     runs-on: ubuntu-latest
     steps:
-      - name: Check if Julia is already available in the PATH
-        id: julia_in_path
-        run: which julia
-        continue-on-error: true
-      - name: Install Julia, but only if it is not already available in the PATH
+      - name: Install Julia
         uses: julia-actions/setup-julia@v2
         with:
-          # Ensure we always use the LTS version for compatibility checks
           version: '1.10'
           arch: ${{ runner.arch }}
-        if: steps.julia_in_path.outcome != 'success'
       - name: "Add the General registry via Git"
         run: |
           import Pkg
@@ -38,7 +32,7 @@ jobs:
       - name: "Run CompatHelper"
         run: |
           import CompatHelper
-          CompatHelper.main()
+          CompatHelper.main(master_branch="feature/fix-compat-helper-setup")
         shell: julia --color=yes {0}
         env:
           GITHUB_TOKEN: ${{ secrets.OXYGEN_REPO_MANAGER_PAT }}

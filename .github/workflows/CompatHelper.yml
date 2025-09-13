@@ -32,7 +32,7 @@ jobs:
       - name: "Run CompatHelper"
         run: |
           import CompatHelper
-          CompatHelper.main(master_branch="feature/fix-compat-helper-setup")
+          CompatHelper.main()
         shell: julia --color=yes {0}
         env:
           GITHUB_TOKEN: ${{ secrets.OXYGEN_REPO_MANAGER_PAT }}

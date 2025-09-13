@@ -9,7 +9,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+
       - name: Pkg.add("CompatHelper")
         run: julia -e 'using Pkg; Pkg.add("CompatHelper")'
 
@@ -21,7 +21,10 @@ jobs:
           echo "$COMPATHELPER_PRIV" | base64 -d > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          git remote set-url origin git@github.com:${{ github.repository }}.git
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          
+      - name: Show git remote
+        run: git remote -v
 
       - name: CompatHelper.main()
         env:

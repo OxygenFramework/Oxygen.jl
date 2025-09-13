@@ -21,6 +21,8 @@ jobs:
           echo "$COMPATHELPER_PRIV" | base64 -d > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/id_rsa
           git config --global url."git@github.com:".insteadOf "https://github.com/"
           
       - name: Show git remote

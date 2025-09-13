@@ -9,6 +9,17 @@ jobs:
     steps:
       - name: Pkg.add("CompatHelper")
         run: julia -e 'using Pkg; Pkg.add("CompatHelper")'
+
+      - name: Set up SSH for CompatHelper
+        env:
+          COMPATHELPER_PRIV: ${{ secrets.DOCUMENTER_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$COMPATHELPER_PRIV" | base64 -d > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          git remote set-url origin git@github.com:${{ github.repository }}.git
+
       - name: CompatHelper.main()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

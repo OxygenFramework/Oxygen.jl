@@ -94,17 +94,42 @@ function datetime_hint() :: String
     return "Note: Julia's DateTime object does not natively support timezone information. Consider using the TimeZones.jl package for timezone-aware datetime handling."
 end
 
-function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
+# Unwrap UnionAll (parametric) wrappers to the concrete/body type
+function unwrap_type(T::Type)::Type
+    while T isa UnionAll
+        T = T.body
+    end
+    return T
+end
 
-    schema = Dict("type" => gettype(p.type))
+# Extract the element type from an array-like type (e.g., Array{Person} -> Person)
+# Uses Base.eltype with fallback to .parameters for robustness
+function get_element_type(T::Type)::Type
+    # First, unwrap any parametric wrappers to ensure we're working with a concrete type
+    T = unwrap_type(T)
+    # Try the canonical eltype method, fallback to parameters lookup
+    elem_type = try
+        Base.eltype(T)
+    catch
+        length(T.parameters) >= 1 ? T.parameters[1] : Any
+    end
+    # Unwrap the element type itself (in case it's also parametric)
+    return unwrap_type(elem_type)
+end
+
+
+function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
+    ptype = unwrap_type(p.type)
+
+    schema = Dict("type" => gettype(ptype))
 
     # Add ref if the type is a custom struct
     if schema["type"] == "object"
-        schema["\$ref"] = getcomponent(p.type)
+        schema["\$ref"] = getcomponent(string(nameof(ptype)))
     end
 
     # Add optional format if it's relevant
-    format = getformat(p.type)
+    format = getformat(ptype)
     if !isnothing(format)
         schema["format"] = format
     end
@@ -118,14 +143,14 @@ function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
     param_required = paramtype == "path" ? true : isrequired(p)
 
     param = Dict(
-        "in" => paramtype, # path, query, header (where the parameter is located)
+        "in" => paramtype,
         "name" => String(p.name),
         "required" => param_required,
         "schema" => schema
     )
 
     # Add a string formatting hint & example for DateTime objects
-    if p.type <: DateTime 
+    if ptype <: DateTime 
         param["example"] = example_datetime()
         param["description"] = datetime_hint()
     end
@@ -289,6 +314,36 @@ function registerschema(
     ##### Set the schema for the body parameters #####
     content = formatcontent(bodyparams)
 
+    ##### Auto register response schema #####
+    response_schema = nothing
+    if !isempty(returntype)
+        rt = returntype[1] |> unwrap_type
+
+        if is_custom_struct(rt)
+            convertobject!(rt, schemas)
+            response_schema = Dict("\$ref" => getcomponent(rt))
+
+        elseif rt <: AbstractVector
+            elem_type = rt.parameters[1]
+            if is_custom_struct(elem_type)
+                convertobject!(elem_type, schemas)
+                response_schema = Dict(
+                    "type" => "array",
+                    "items" => Dict("\$ref" => getcomponent(elem_type))
+                )
+            else
+                response_schema = Dict("type" => "array", "items" => Dict("type" => gettype(elem_type)))
+            end
+        else
+            response_schema = Dict("type" => gettype(rt))
+        end
+    end
+
+    ##### Merge any new schemas from return type #####
+    if !isempty(schemas)
+        mergeschema(docs.schema, Dict("components" => Dict("schemas" => schemas)))
+    end
+
     # lookup if this route has any registered tags
     if haskey(docs.taggedroutes, path) && httpmethod in docs.taggedroutes[path].httpmethods
         tags = docs.taggedroutes[path].tags
@@ -296,15 +351,24 @@ function registerschema(
         tags = []
     end
 
+    ##### Build responses field #####
+    response_200 = Dict{String, Any}("description" => "200 response")
+    if response_schema !== nothing
+        response_200["content"] = Dict(
+            "application/json" => Dict("schema" => response_schema)
+        )
+    end
+    responses = Dict{String, Any}(
+        "200" => response_200,
+        "500" => Dict("description" => "500 Server encountered a problem")
+    )
+
     # Build the route schema
     route = Dict(
         "$(lowercase(httpmethod))" => Dict(
             "tags" => tags,
             "parameters" => params,
-            "responses" => Dict(
-                "200" => Dict("description" => "200 response"),
-                "500" => Dict("description" => "500 Server encountered a problem")
-            )
+            "responses" => responses
         )
     )
 
@@ -336,6 +400,24 @@ end
 Helper function used to determine if a type is a custom struct and whethere or not
 we should do a recurive dive and convertion to openapi schema.
 """
+# function is_custom_struct(T::Type) :: Bool
+#     # unwrap parametric wrappers first
+#     Tt = unwrap_type(T)
+
+#     # If it's a Union (e.g. Union{A,B}) we don't treat it as a single custom struct here
+#     if Tt isa Union
+#         return false
+#     end
+
+#     # safely try to access the module/name; some builtin/odd types may not expose .name
+#     mod = try
+#         Tt.name.module
+#     catch
+#         return false
+#     end
+
+#     return mod ∉ (Base, Core, Dates) && (isstructtype(Tt) || isabstracttype(Tt))
+# end
 function is_custom_struct(T::Type) :: Bool
     return T.name.module ∉ (Base, Core, Dates) && (isstructtype(T) || isabstracttype(T))
 end
@@ -352,6 +434,9 @@ end
 
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
 function convertobject!(type::Type, schemas::Dict) :: Dict
+
+    # unwrap parametric/wrapper types (UnionAll) to a concrete/body type
+    type = unwrap_type(type)
 
     typename = type |> nameof |> string
 
@@ -373,6 +458,8 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         field_name = string(p.name)
         current_field = Dict()
         current_type = p.type
+        # unwrap any UnionAll/parametric wrappers for the field type
+        current_type = unwrap_type(current_type)
 
         # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
         if current_type isa Union
@@ -405,11 +492,13 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             end
 
         # Case 2: The custom type is wrapped inside an array or vector
-        elseif current_type <: AbstractVector
+        elseif current_type <: AbstractArray
 
             current_field["type"] = "array"
             current_field["items"] = Dict()
-            nested_type = current_type.parameters[1]
+
+            # Extract and unwrap the nested element type
+            nested_type = get_element_type(current_type)
             nested_type_name = string(nameof(nested_type))
 
             # Handle custom structs

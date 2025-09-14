@@ -596,7 +596,7 @@ function register(ctx::ServerContext, httpmethod::String, route::Union{String,Fu
     if ctx.docs.enabled[]
 
         # Even if docs are enabled, we don't want to let any docs generation related errors prevent the server from running
-        try
+        # try
             # Pull out the request parameters
             queryparams = func_details.queryparams
             pathparams = func_details.pathparams
@@ -606,10 +606,10 @@ function register(ctx::ServerContext, httpmethod::String, route::Union{String,Fu
             # Register the route schema with out autodocs module
             registerschema(ctx.docs, route, httpmethod, pathparams, queryparams, headers, bodyparams, Base.return_types(func))
 
-        catch error
-            @warn "Failed to generate openapi schema for route: $route"
-            @warn error
-        end
+        # catch error
+        #     @warn "Failed to generate openapi schema for route: $route"
+        #     @warn error
+        # end
     end
 
     # Register the route with the router

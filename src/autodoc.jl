@@ -94,6 +94,199 @@ function datetime_hint() :: String
     return "Note: Julia's DateTime object does not natively support timezone information. Consider using the TimeZones.jl package for timezone-aware datetime handling."
 end
 
+"""
+    extract_non_null_type(T::Type) -> Type
+
+Extract the single non-Nothing/non-Missing type from a Union, or return the type unchanged
+if it's not a Union. Returns Union{} if no valid non-null types are found.
+
+# Examples
+```julia
+extract_non_null_type(Union{String, Nothing}) # Returns String
+extract_non_null_type(Union{Int, Missing}) # Returns Int
+extract_non_null_type(String) # Returns String (unchanged)
+extract_non_null_type(Union{String, Int}) # Warns and returns Union{}
+```
+"""
+function extract_non_null_type(T::Type)::Type
+    if !(T isa Union)
+        return T
+    end
+    
+    sub_types = Base.uniontypes(T)
+    non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+    
+    if length(non_null_types) == 1
+        return non_null_types[1]
+    elseif length(non_null_types) == 0
+        return Union{}
+    else
+        @warn "Cannot convert Union type with multiple non-null types: $T"
+        return Union{}
+    end
+end
+
+"""
+    is_nullable_union(T::Type) -> Bool
+
+Check if a type is a nullable Union (contains Nothing or Missing along with exactly one other type).
+
+# Examples
+```julia
+is_nullable_union(Union{String, Nothing}) # Returns true
+is_nullable_union(Union{Int, Missing}) # Returns true
+is_nullable_union(String) # Returns false
+is_nullable_union(Union{String, Int}) # Returns false
+```
+"""
+function is_nullable_union(T::Type)::Bool
+    if !(T isa Union)
+        return false
+    end
+    
+    sub_types = Base.uniontypes(T)
+    has_null = Missing ∈ sub_types || Nothing ∈ sub_types
+    non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+    
+    return has_null && length(non_null_types) == 1
+end
+
+"""
+    resolve_union_type(T::Type) -> Type
+
+Comprehensive Union type resolution that unwraps parametric types and extracts
+non-null types from nullable Unions.
+
+# Examples
+```julia
+resolve_union_type(Union{String, Nothing}) # Returns String
+resolve_union_type(Vector{Union{Int, Missing}}) # Returns Vector{Int}
+resolve_union_type(String) # Returns String (unchanged)
+```
+"""
+function resolve_union_type(T::Type)::Type
+    # First unwrap any parametric wrappers
+    T = unwrap_type(T)
+    
+    # Then extract non-null type if it's a Union
+    return extract_non_null_type(T)
+end
+
+"""
+    process_field_type(field_type::Type) -> Tuple{Type, Bool}
+
+Process a field type and return the resolved type and whether it's nullable.
+Handles Union types by extracting non-null types and detecting nullability.
+
+# Returns
+- `(resolved_type, is_nullable)`: The resolved non-union type and nullability flag
+
+# Examples
+```julia
+process_field_type(Union{String, Nothing}) # Returns (String, true)
+process_field_type(String) # Returns (String, false)
+process_field_type(Union{Int, String}) # Returns (Union{}, false) with warning
+```
+"""
+function process_field_type(field_type::Type)::Tuple{Type, Bool}
+    # Unwrap parametric types first
+    field_type = unwrap_type(field_type)
+    
+    # Check if it's nullable
+    is_nullable = is_nullable_union(field_type)
+    
+    # Extract the non-null type
+    resolved_type = extract_non_null_type(field_type)
+    
+    return (resolved_type, is_nullable)
+end
+
+"""
+    create_array_field_schema(array_type::Type, schemas::Dict, p::Param) -> Dict
+
+Create OpenAPI schema for array/vector fields, handling both custom structs and primitive types.
+
+# Arguments
+- `array_type::Type`: The array type to process
+- `schemas::Dict`: Schema dictionary to register nested types
+- `p::Param`: Parameter information for defaults and other metadata
+
+# Returns
+- `Dict`: OpenAPI schema for the array field
+"""
+function create_array_field_schema(array_type::Type, schemas::Dict, p)::Dict
+    field_schema = Dict("type" => "array", "items" => Dict())
+
+    # Extract and unwrap the nested element type
+    nested_type = get_element_type(array_type)
+    nested_type_name = string(nameof(nested_type))
+
+    # Handle custom structs
+    if is_custom_struct(nested_type)
+        field_schema["items"] = Dict("\$ref" => getcomponent(nested_type_name))
+        # Register type only if not already registered
+        if !haskey(schemas, nested_type_name)
+            convertobject!(nested_type, schemas)
+        end
+    else
+        # Handle non-custom nested types
+        field_schema["items"] = Dict("type" => gettype(nested_type))
+        format = getformat(nested_type)
+        
+        if !isnothing(format)
+            field_schema["items"]["format"] = format
+        end
+
+        # Add compatible example format for datetime objects within a vector
+        if nested_type <: DateTime
+            field_schema["items"]["example"] = example_datetime()
+            field_schema["items"]["description"] = datetime_hint()
+        end
+    end
+
+    # Add default value if it exists
+    if p.hasdefault
+        field_schema["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
+    end
+
+    return field_schema
+end
+
+"""
+    create_primitive_field_schema(field_type::Type, p::Param) -> Dict
+
+Create OpenAPI schema for primitive (non-struct, non-array) fields.
+
+# Arguments
+- `field_type::Type`: The primitive type to process
+- `p::Param`: Parameter information for defaults and other metadata
+
+# Returns
+- `Dict`: OpenAPI schema for the primitive field
+"""
+function create_primitive_field_schema(field_type::Type, p)::Dict
+    field_schema = Dict("type" => gettype(field_type))
+
+    # Add compatible example format for datetime objects
+    if field_type <: DateTime
+        field_schema["example"] = example_datetime()
+        field_schema["description"] = datetime_hint()
+    end
+
+    # Add format if it exists
+    format = getformat(field_type)
+    if !isnothing(format)
+        field_schema["format"] = format
+    end
+
+    # Add default value if it exists
+    if p.hasdefault
+        field_schema["default"] = string(p.default)
+    end
+
+    return field_schema
+end
+
 # Unwrap UnionAll (parametric) wrappers to the concrete/body type
 function unwrap_type(T::Type)::Type
     while T isa UnionAll
@@ -322,21 +515,7 @@ function registerschema(
     ##### Auto register response schema #####
     response_schema = nothing
     if !isempty(returntype)
-        rt = returntype[1] |> unwrap_type
-
-        # Handle Union types - extract the non-Nothing/non-Missing type
-        if rt isa Union
-            sub_types = Base.uniontypes(rt)
-            non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
-            if length(non_null_types) == 1
-                rt = non_null_types[1]
-            elseif length(non_null_types) == 0
-                rt = Union{}  # No non-null types
-            else
-                @warn "Cannot convert Union type with multiple non-null types: $rt"
-                rt = Union{}  # Fallback to empty union
-            end
-        end
+        rt = resolve_union_type(returntype[1])
 
         if rt === Union{} || rt === Core.TypeofBottom
             response_schema = Dict("type" => "null")  # Handle empty types explicitly
@@ -419,8 +598,20 @@ function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
 end
 
 """
-Helper function used to determine if a type is a custom struct and whethere or not
-we should do a recurive dive and convertion to openapi schema.
+    is_custom_struct(T::Type) -> Bool
+
+Helper function used to determine if a type is a custom struct and whether or not
+we should do a recursive dive and conversion to openapi schema.
+
+Excludes built-in types from Base, Core, Dates, and HTTP.Messages modules.
+Handles Union types by checking if any constituent type is a custom struct.
+
+# Examples
+```julia
+is_custom_struct(MyStruct) # Returns true for user-defined structs
+is_custom_struct(String) # Returns false for built-in types
+is_custom_struct(Union{MyStruct, Nothing}) # Returns true if MyStruct is custom
+```
 """
 function is_custom_struct(T::Type) :: Bool
     # Handle the case where T is Union{} (TypeofBottom) or a Union type
@@ -455,17 +646,13 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
     # unwrap parametric/wrapper types (UnionAll) to a concrete/body type
     type = unwrap_type(type)
 
-
     # Handle Union types - extract the non-Nothing/non-Missing type
-    if type isa Union
-        sub_types = Base.uniontypes(type)
-        non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
-        if length(non_null_types) == 1
-            type = non_null_types[1]
-        else
-            @warn "Cannot convert Union type with multiple non-null types: $type"
-            return schemas
-        end
+    type = extract_non_null_type(type)
+    
+    # If we couldn't resolve to a valid type, return early
+    if type === Union{}
+        @warn "Cannot convert unresolvable Union type"
+        return schemas
     end
 
     typename = type |> nameof |> string
@@ -487,26 +674,22 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         p = info.sig_map[name]
         field_name = string(p.name)
         current_field = Dict()
-        current_type = p.type
-        # unwrap any UnionAll/parametric wrappers for the field type
-        current_type = unwrap_type(current_type)
-
-        # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
-        if current_type isa Union
-            sub_types = Base.uniontypes(current_type)
-            is_nullable = Missing ∈ sub_types || Nothing ∈ sub_types
-            if (is_nullable)
-                current_field["nullable"] = true
-            end
-            non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
-            # We only support exactly one concrete (non-missing) type
-            if length(non_null_types) != 1 
-                @warn "OpenAPI $typename.$field_name: Nullable union must have exactly one non-nulled type."
-                continue
-            end
-            # Re-assign the current type to be in the non-missing type
-            current_type = non_null_types[1]
+        
+        # Process the field type to handle Union types and nullability
+        resolved_type, is_nullable = process_field_type(p.type)
+        
+        # Skip fields that couldn't be resolved
+        if resolved_type === Union{}
+            @warn "OpenAPI $typename.$field_name: Cannot resolve field type."
+            continue
         end
+        
+        # Set nullable flag if needed
+        if is_nullable
+            current_field["nullable"] = true
+        end
+        
+        current_type = resolved_type
         current_name = string(nameof(current_type))    
         
         # Only add field to required list if it is not nullable (and otherwise required)
@@ -523,65 +706,11 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
         # Case 2: The custom type is wrapped inside an array or vector
         elseif current_type <: AbstractArray
-
-            current_field["type"] = "array"
-            current_field["items"] = Dict()
-
-            # Extract and unwrap the nested element type
-            nested_type = get_element_type(current_type)
-            nested_type_name = string(nameof(nested_type))
-
-            # Handle custom structs
-            if is_custom_struct(nested_type)
-                current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
-                # Register type only if not already registered
-                if !haskey(schemas, nested_type_name)
-                    convertobject!(nested_type, schemas)
-                end
-
-            # Handle non-custom nested types
-            else
-                current_field["items"] = Dict("type" =>  gettype(nested_type))
-                format = getformat(nested_type)
-                
-                if !isnothing(format)
-                    current_field["items"]["format"] = format
-                end
-
-                # Add compatible example format for datetime objects within a vector
-                if nested_type <: DateTime
-                    current_field["items"]["example"] = example_datetime()
-                    current_field["items"]["description"] = datetime_hint()
-                end
-
-            end
-
-            # Add default value if it exists
-            if p.hasdefault
-                current_field["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
-            end
+            current_field = create_array_field_schema(current_type, schemas, p)
 
         # Case 3: Convert the individual fields of the current type to it's openapi equivalent
         else
-
-            current_field["type"] = gettype(current_type)
-
-            # Add compatible example format for datetime objects
-            if current_type <: DateTime
-                current_field["example"] = example_datetime()
-                current_field["description"] = datetime_hint()
-            end
-
-            # Add format if it exists
-            format = getformat(current_type)
-            if !isnothing(format)
-                current_field["format"] = format
-            end
-
-            # Add default value if it exists
-            if p.hasdefault
-                current_field["default"] = string(p.default)
-            end    
+            current_field = create_primitive_field_schema(current_type, p)
         end
 
         # convert the current field

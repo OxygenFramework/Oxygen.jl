@@ -107,16 +107,19 @@ end
 function get_element_type(T::Type)::Type
     # First, unwrap any parametric wrappers to ensure we're working with a concrete type
     T = unwrap_type(T)
+    # Handle the case where T is Union{} (TypeofBottom)
+    if T === Union{} || T === Core.TypeofBottom
+        return Any
+    end
     # Try the canonical eltype method, fallback to parameters lookup
     elem_type = try
         Base.eltype(T)
     catch
-        length(T.parameters) >= 1 ? T.parameters[1] : Any
+        hasfield(T, :parameters) && length(T.parameters) >= 1 ? T.parameters[1] : Any
     end
     # Unwrap the element type itself (in case it's also parametric)
     return unwrap_type(elem_type)
 end
-
 
 function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
     ptype = unwrap_type(p.type)
@@ -124,7 +127,7 @@ function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
     schema = Dict("type" => gettype(ptype))
 
     # Add ref if the type is a custom struct
-    if schema["type"] == "object"
+    if schema["type"] == "object" && is_custom_struct(ptype)
         schema["\$ref"] = getcomponent(string(nameof(ptype)))
     end
 
@@ -290,10 +293,12 @@ function registerschema(
     ##### Add all the body parameters to the schema #####
 
     schemas = Dict()
-    for p in bodyparams
-        inner_type = p.type |> extracttype
-        if is_custom_struct(inner_type)
-            convertobject!(inner_type, schemas)
+    for params in [bodyparams, parameters, queryparams, headers]
+        for p in params
+            inner_type = isextractor(p) ? extracttype(p.type) : p.type
+            if is_custom_struct(inner_type)
+                convertobject!(inner_type, schemas)
+            end
         end
     end
 
@@ -319,7 +324,24 @@ function registerschema(
     if !isempty(returntype)
         rt = returntype[1] |> unwrap_type
 
-        if is_custom_struct(rt)
+        # Handle Union types - extract the non-Nothing/non-Missing type
+        if rt isa Union
+            sub_types = Base.uniontypes(rt)
+            non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+            if length(non_null_types) == 1
+                rt = non_null_types[1]
+            elseif length(non_null_types) == 0
+                rt = Union{}  # No non-null types
+            else
+                @warn "Cannot convert Union type with multiple non-null types: $rt"
+                rt = Union{}  # Fallback to empty union
+            end
+        end
+
+        if rt === Union{} || rt === Core.TypeofBottom
+            response_schema = Dict("type" => "null")  # Handle empty types explicitly
+
+        elseif is_custom_struct(rt)
             convertobject!(rt, schemas)
             response_schema = Dict("\$ref" => getcomponent(rt))
 
@@ -400,26 +422,21 @@ end
 Helper function used to determine if a type is a custom struct and whethere or not
 we should do a recurive dive and convertion to openapi schema.
 """
-# function is_custom_struct(T::Type) :: Bool
-#     # unwrap parametric wrappers first
-#     Tt = unwrap_type(T)
-
-#     # If it's a Union (e.g. Union{A,B}) we don't treat it as a single custom struct here
-#     if Tt isa Union
-#         return false
-#     end
-
-#     # safely try to access the module/name; some builtin/odd types may not expose .name
-#     mod = try
-#         Tt.name.module
-#     catch
-#         return false
-#     end
-
-#     return mod ∉ (Base, Core, Dates) && (isstructtype(Tt) || isabstracttype(Tt))
-# end
 function is_custom_struct(T::Type) :: Bool
-    return T.name.module ∉ (Base, Core, Dates) && (isstructtype(T) || isabstracttype(T))
+    # Handle the case where T is Union{} (TypeofBottom) or a Union type
+    if T === Union{} || T === Core.TypeofBottom
+        return false
+    elseif T isa Union
+        # Check if any of the types in the Union are custom structs
+        return any(is_custom_struct, Base.uniontypes(T))
+    end
+
+    # Exclude types from Base, Core, Dates, and HTTP.Messages
+    if T.name.module ∉ (Base, Core, Dates, HTTP.Messages)
+        return isstructtype(T) || isabstracttype(T)
+    end
+
+    return false
 end
 
 """
@@ -437,6 +454,19 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
     # unwrap parametric/wrapper types (UnionAll) to a concrete/body type
     type = unwrap_type(type)
+
+
+    # Handle Union types - extract the non-Nothing/non-Missing type
+    if type isa Union
+        sub_types = Base.uniontypes(type)
+        non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+        if length(non_null_types) == 1
+            type = non_null_types[1]
+        else
+            @warn "Cannot convert Union type with multiple non-null types: $type"
+            return schemas
+        end
+    end
 
     typename = type |> nameof |> string
 

@@ -1,32 +1,114 @@
 module SwaggerDemo 
 
 using TimeZones
-include("../ext/TimeZonesExt.jl")
-using .TimeZonesExt
 include("../src/Oxygen.jl")
 using .Oxygen
+
+
+
+
+import .Oxygen.Core.Types: Nullable
+import .Oxygen.Core.Util: parseparam
+import .Oxygen.Core.AutoDoc: is_custom_struct, gettype, getformat
+
+####################################
+# Util parsing overloads           #
+####################################
+
+function parseparam(::Type{T}, str::String; escape=true) where {T <: ZonedDateTime}
+    return parse(T, escape ? HTTP.unescapeuri(str) : str)
+end
+
+####################################
+# AutoDoc Overloads                #
+####################################
+
+is_custom_struct(::Type{ZonedDateTime}) :: Bool = false
+gettype(::Type{ZonedDateTime}) :: String = "string"
+getformat(::Type{ZonedDateTime}) :: Nullable{String} = "date-time"
+
+
 using HTTP
 using SwaggerMarkdown
 using StructTypes
 using JSON3
 using Dates
 
-@enum Fruit apple=1 orange=2 kiwi=3
+
+struct Car
+    name::String
+end
 
 struct Person 
-  name  :: String 
-  age   :: Int8
+    name::String
+    car::Car
 end
 
-struct Classroom 
-  name  :: String 
-  people   :: Array{Person}
+@kwdef struct Party
+    guests::Vector{Person} = [Person("Alice", Car("Toyota")), Person("Bob", Car("Honda"))]
 end
 
-struct School
-  name :: String
-  classes :: Array{Classroom}
+struct PartyInvite 
+    party::Party
+    time::DateTime
 end
+
+struct EventInvite 
+    party::Party
+    times::Vector{DateTime}
+end
+
+@kwdef struct Album 
+    releaseyear::Int
+    artist::Person
+    remasteredyear::Union{Int,Nothing}
+    soundtech::Union{Person,Nothing}
+    collaborators::Union{Vector{Person}, Nothing}
+    composer::Union{Person,Nothing} = nothing
+end
+
+@post "/album" function (req, album::Json{Album})
+    return album.payload;
+end
+
+@post "/album2" function (req, album::Json{Album})
+    return album.payload;
+end
+
+@post "/party-invite" function(req, party::Json{PartyInvite})
+    return text("added $(length(party.payload.party.guests)) guests")
+end
+
+@post "/event-invite" function(req, event::Json{EventInvite})
+    return text("added $(length(event.payload.party.guests)) guests")
+end
+
+@post "/party-invite" function(req, party::Json{PartyInvite})
+    return text("added $(length(party.payload.guests)) guests")
+end
+
+# This will do a recursive dive on the 'Party' type and generate the schema for all structs
+@post "/invite-all" function(req, party::Json{Party})
+    return text("added $(length(party.payload.guests)) guests")
+end
+
+
+# @enum Fruit apple=1 orange=2 kiwi=3
+
+# struct Person 
+#   name  :: String 
+#   age   :: Int8
+# end
+
+# struct Classroom 
+#   name  :: String 
+#   people   :: Array{Person}
+# end
+
+# struct School
+#   name :: String
+#   classes :: Array{Classroom}
+# end
 
 # Add a supporting struct type definition to the Person struct
 # StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
@@ -36,22 +118,27 @@ end
 StructTypes.StructType(::Type{Complex{Float64}}) = StructTypes.Struct()
 
 # Test using it directly as a path parameter
-@get "/time/{time}" function(req, time::ZonedDateTime)
+@post "/time/" function(req, time::Json{ZonedDateTime})
     return "current date: $time" |> text
 end
 
-
-@post "/person" function(req, person::Json{Person})
-  return person
+# Test using it directly as a path parameter
+@get "/timev2/{time}" function(req, time::ZonedDateTime)
+    return time
 end
 
-@post "/class" function(req, classroom::Json{Classroom})
-  return classroom
-end
 
-@post "/school" function(req, school::Json{School})
-  return school
-end
+# @post "/person" function(req, person::Json{Person})
+#   return person
+# end
+
+# @post "/class" function(req, classroom::Json{Classroom})
+#   return classroom
+# end
+
+# @post "/school" function(req, school::Json{School})
+#   return school
+# end
 
 # @get "/fruit/{fruit}" function(req, fruit::Fruit)
 #   return fruit

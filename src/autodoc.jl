@@ -46,6 +46,10 @@ function gettype(type::Type)::String
         return "number"
     elseif type <: Integer
         return "integer"
+    elseif type <: Complex
+        return "string"
+    elseif type <: Number
+        return "number"
     elseif type <: AbstractVector
         return "array"
     elseif type <: Enum
@@ -76,6 +80,8 @@ function getformat(type::Type) :: Nullable{String}
         elseif type == Int64
             return "int64"
         end
+    elseif type <: Number
+        return "double"
     elseif type <: Enum
         # Get the underlying integer type of the enum
         enum_base_type = Base.Enums.basetype(type)

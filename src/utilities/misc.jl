@@ -100,20 +100,32 @@ function parseparam(::Type{String}, str::String; escape=true)
     return escape ? HTTP.unescapeuri(str) : str
 end
 
+function parseparam(::Type{Date}, str::String; escape=true)
+    return parse(Date, escape ? HTTP.unescapeuri(str) : str)
+end
+
+function parseparam(::Type{DateTime}, str::String; escape=true)
+    return parse(DateTime, escape ? HTTP.unescapeuri(str) : str)
+end
+
+function parseparam(::Type{Number}, str::String; escape=true)
+    return parse(Number, escape ? HTTP.unescapeuri(str) : str)
+end
+
+function parseparam(::Type{Char}, str::String; escape=true)
+    return parse(Char, escape ? HTTP.unescapeuri(str) : str)
+end
+
+function parseparam(::Type{Bool}, str::String; escape=true)
+    return parse(Bool, escape ? HTTP.unescapeuri(str) : str)
+end
+
+function parseparam(::Type{Symbol}, str::String; escape=true)
+    return parse(Symbol, escape ? HTTP.unescapeuri(str) : str)
+end
+
 function parseparam(::Type{T}, str::String; escape=true) where {T <: Enum}
     return T(parse(Int, escape ? HTTP.unescapeuri(str) : str))
-end
-
-function parseparam(::Type{T}, str::String; escape=true) where {T <: Union{Date, DateTime}}
-    return parse(T, escape ? HTTP.unescapeuri(str) : str)
-end
-
-function parseparam(::Type{T}, str::String; escape=true) where {T <: Union{Number, Char, Bool, Symbol}}
-    return parse(T, escape ? HTTP.unescapeuri(str) : str)
-end
-
-function parseparam(::Type{T}, str::String; escape=true) where {T}
-    return JSON3.read(escape ? HTTP.unescapeuri(str) : str, T)
 end
 
 """
@@ -132,6 +144,19 @@ function parseparam(type::Union, str::String; escape=true)
         end
     end
     return result
+end
+
+
+"""
+The fallback case for parsing parameters. 
+Tries to parse the type as is, if this fails then we assume it's a json string
+"""
+function parseparam(::Type{T}, str::String; escape=true) where {T}
+    try
+        return parse(T, escape ? HTTP.unescapeuri(str) : str)
+    catch
+        return JSON3.read(escape ? HTTP.unescapeuri(str) : str, T)
+    end
 end
 
 

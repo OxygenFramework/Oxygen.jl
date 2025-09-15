@@ -48,6 +48,8 @@ function gettype(type::Type)::String
         return "integer"
     elseif type <: AbstractVector
         return "array"
+    elseif type <: Enum
+        return "integer"  # Enums are represented as integers in OpenAPI
     elseif type <: String || type == Date || type == DateTime
         return "string"
     elseif isstructtype(type)
@@ -73,6 +75,16 @@ function getformat(type::Type) :: Nullable{String}
             return "int32"
         elseif type == Int64
             return "int64"
+        end
+    elseif type <: Enum
+        # Get the underlying integer type of the enum
+        enum_base_type = Base.Enums.basetype(type)
+        if enum_base_type == Int32
+            return "int32"
+        elseif enum_base_type == Int64
+            return "int64"
+        else
+            return "int32"  # Default to int32 for other integer types
         end
     elseif type == Date
         return "date"
@@ -215,7 +227,7 @@ Create OpenAPI schema for array/vector fields, handling both custom structs and 
 - `Dict`: OpenAPI schema for the array field
 """
 function create_array_field_schema(array_type::Type, schemas::Dict, p)::Dict
-    field_schema = Dict("type" => "array", "items" => Dict())
+    field_schema = Dict{String,Any}("type" => "array", "items" => Dict())
 
     # Extract and unwrap the nested element type
     nested_type = get_element_type(array_type)
@@ -231,6 +243,13 @@ function create_array_field_schema(array_type::Type, schemas::Dict, p)::Dict
     else
         # Handle non-custom nested types
         field_schema["items"] = Dict("type" => gettype(nested_type))
+        
+        # Add enum values if nested type is an enum
+        if nested_type <: Enum
+            enum_values = Int.(Base.Enums.instances(nested_type))
+            field_schema["items"]["enum"] = enum_values
+        end
+        
         format = getformat(nested_type)
         
         if !isnothing(format)
@@ -265,7 +284,18 @@ Create OpenAPI schema for primitive (non-struct, non-array) fields.
 - `Dict`: OpenAPI schema for the primitive field
 """
 function create_primitive_field_schema(field_type::Type, p)::Dict
-    field_schema = Dict("type" => gettype(field_type))
+    field_schema = Dict{String,Any}("type" => gettype(field_type))
+
+    # Add enum values if this is an enum type
+    if field_type <: Enum
+        enum_values = Int.(Base.Enums.instances(field_type))
+        field_schema["enum"] = enum_values
+        # Add format for enums
+        format = getformat(field_type)
+        if !isnothing(format)
+            field_schema["format"] = format
+        end
+    end
 
     # Add compatible example format for datetime objects
     if field_type <: DateTime
@@ -280,7 +310,7 @@ function create_primitive_field_schema(field_type::Type, p)::Dict
     end
 
     # Add default value if it exists
-    if p.hasdefault
+    if p.hasdefault 
         field_schema["default"] = string(p.default)
     end
 
@@ -317,7 +347,13 @@ end
 function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
     ptype = unwrap_type(p.type)
 
-    schema = Dict("type" => gettype(ptype))
+    schema = Dict{String,Any}("type" => gettype(ptype))
+
+    # Add enum values if this is an enum type
+    if ptype <: Enum
+        enum_values = Int.(Base.Enums.instances(ptype))
+        schema["enum"] = enum_values
+    end
 
     # Add ref if the type is a custom struct
     if schema["type"] == "object" && is_custom_struct(ptype)
@@ -533,10 +569,30 @@ function registerschema(
                     "items" => Dict("\$ref" => getcomponent(elem_type))
                 )
             else
-                response_schema = Dict("type" => "array", "items" => Dict("type" => gettype(elem_type)))
+                response_schema = Dict{String,Any}("type" => "array", "items" => Dict("type" => gettype(elem_type)))
+                # Add enum values if element type is an enum
+                if elem_type <: Enum
+                    enum_values = Int.(Base.Enums.instances(elem_type))
+                    response_schema["items"]["enum"] = enum_values
+                end
+                # Add format if it exists
+                format = getformat(elem_type)
+                if !isnothing(format)
+                    response_schema["items"]["format"] = format
+                end
             end
         else
-            response_schema = Dict("type" => gettype(rt))
+            response_schema = Dict{String,Any}("type" => gettype(rt))
+            # Add enum values if return type is an enum
+            if rt <: Enum
+                enum_values = Int.(Base.Enums.instances(rt))
+                response_schema["enum"] = enum_values
+            end
+            # Add format if it exists
+            format = getformat(rt)
+            if !isnothing(format)
+                response_schema["format"] = format
+            end
         end
     end
 
@@ -617,6 +673,7 @@ function is_custom_struct(T::Type) :: Bool
     # Handle the case where T is Union{} (TypeofBottom) or a Union type
     if T === Union{} || T === Core.TypeofBottom
         return false
+
     elseif T isa Union
         # Check if any of the types in the Union are custom structs
         return any(is_custom_struct, Base.uniontypes(T))

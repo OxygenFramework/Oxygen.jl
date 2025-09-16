@@ -204,7 +204,8 @@ end
 
 @testset "returntype tests" begin
     # Define additional types for testing return types
-    @enum TestEnum valA valB valC
+    @enum TestEnum::Int64 valA valB valC
+    @enum TestEnum2::Int8 valA valB valC
 
     struct TestStruct
         id::Int
@@ -212,6 +213,11 @@ end
     end
 
     # Routes with different return types to cover all cases
+
+    # 0. Test generating docs for more edge cases
+    @post "/unique-types/{a}/{b}/{c}/{d}" function(req, a::Char, b::Real, c::Symbol, d::TestEnum2)
+        return (a,b,c,d)
+    end
 
     # 1. Custom struct return type
     @post "/return-struct" function(req)

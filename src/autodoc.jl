@@ -133,13 +133,11 @@ function extract_non_null_type(T::Type)::Type
     
     sub_types = Base.uniontypes(T)
     non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
-    
+    # return a single non-null type 
     if length(non_null_types) == 1
         return non_null_types[1]
-    elseif length(non_null_types) == 0
-        return Union{}
+    # If there are none or multiple non-null types, we don't return them
     else
-        @warn "Cannot convert Union type with multiple non-null types: $T"
         return Union{}
     end
 end
@@ -248,11 +246,11 @@ function create_array_field_schema(array_type::Type, schemas::Dict, p)::Dict
         end
     else
         # Handle non-custom nested types
-        field_schema["items"] = Dict("type" => gettype(nested_type))
+        field_schema["items"] = Dict{String,Any}("type" => gettype(nested_type))
         
         # Add enum values if nested type is an enum
         if nested_type <: Enum
-            enum_values = Int.(Base.Enums.instances(nested_type))
+            enum_values = collect(Int.(Base.Enums.instances(nested_type)))
             field_schema["items"]["enum"] = enum_values
         end
         
@@ -294,7 +292,7 @@ function create_primitive_field_schema(field_type::Type, p)::Dict
 
     # Add enum values if this is an enum type
     if field_type <: Enum
-        enum_values = Int.(Base.Enums.instances(field_type))
+        enum_values = collect(Int.(Base.Enums.instances(field_type)))
         field_schema["enum"] = enum_values
         # Add format for enums
         format = getformat(field_type)
@@ -357,7 +355,7 @@ function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
 
     # Add enum values if this is an enum type
     if ptype <: Enum
-        enum_values = Int.(Base.Enums.instances(ptype))
+        enum_values = collect(Int.(Base.Enums.instances(ptype)))
         schema["enum"] = enum_values
     end
 
@@ -559,7 +557,7 @@ function registerschema(
     if !isempty(returntype)
         rt = resolve_union_type(returntype[1])
 
-        if rt === Union{} || rt === Core.TypeofBottom
+        if rt == Nothing || rt === Union{} || rt === Core.TypeofBottom
             response_schema = Dict("type" => "null")  # Handle empty types explicitly
 
         elseif is_custom_struct(rt)
@@ -578,7 +576,7 @@ function registerschema(
                 response_schema = Dict{String,Any}("type" => "array", "items" => Dict("type" => gettype(elem_type)))
                 # Add enum values if element type is an enum
                 if elem_type <: Enum
-                    enum_values = Int.(Base.Enums.instances(elem_type))
+                    enum_values = collect(Int.(Base.Enums.instances(elem_type)))
                     response_schema["items"]["enum"] = enum_values
                 end
                 # Add format if it exists
@@ -591,7 +589,7 @@ function registerschema(
             response_schema = Dict{String,Any}("type" => gettype(rt))
             # Add enum values if return type is an enum
             if rt <: Enum
-                enum_values = Int.(Base.Enums.instances(rt))
+                enum_values = collect(Int.(Base.Enums.instances(rt)))
                 response_schema["enum"] = enum_values
             end
             # Add format if it exists

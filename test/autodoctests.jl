@@ -54,10 +54,6 @@ end
     return text("added $(length(event.payload.party.guests)) guests")
 end
 
-@post "/party-invite" function(req, party::Json{PartyInvite})
-    return text("added $(length(party.payload.guests)) guests")
-end
-
 # This will do a recursive dive on the 'Party' type and generate the schema for all structs
 @post "/invite-all" function(req, party::Json{Party})
     return text("added $(length(party.payload.guests)) guests")
@@ -150,5 +146,113 @@ end
     @test event_invite["properties"]["times"]["items"]["example"] |> !isempty
 
 end 
+
+@testset "additional tests" begin
+
+    # Test gettype for number
+    @test Oxygen.AutoDoc.gettype(Float64) == "number"
+    @test Oxygen.AutoDoc.gettype(Int32) == "integer"
+
+    # Define enums
+    @enum Base64Enum val1 val2
+    @enum Base8Enum val3 val4
+
+    # Structs
+    struct EnumArrayTest
+        enums::Vector{Base64Enum}
+    end
+
+    struct EnumTopLevel
+        enum::Base8Enum
+    end
+
+    # Routes
+    @post "/enum-array" function(req, data::Json{EnumArrayTest})
+        return data.payload
+    end
+
+    @post "/enum-top" function(req, data::Json{EnumTopLevel})
+        return data.payload
+    end
+
+    @post "/form-test" function(req, data::Form{EnumTopLevel})
+        return data.payload
+    end
+
+    # Update ctx and schemas
+    ctx = CONTEXT[]
+    schemas = ctx.docs.schema["components"]["schemas"]
+
+    # Tests
+    @test haskey(schemas, "EnumArrayTest")
+    enum_array = schemas["EnumArrayTest"]
+    @test enum_array["properties"]["enums"]["type"] == "array"
+    @test haskey(enum_array["properties"]["enums"]["items"], "enum")
+    @test enum_array["properties"]["enums"]["items"]["enum"] == [0, 1]  # val1=0, val2=1
+
+    @test haskey(schemas, "EnumTopLevel")
+    enum_top = schemas["EnumTopLevel"]
+    @test haskey(enum_top["properties"]["enum"], "enum")
+    @test enum_top["properties"]["enum"]["enum"] == [0, 1]  # val3=0, val4=1
+
+    # Test the functions
+    @test Oxygen.AutoDoc.extract_non_null_type(Union{Nothing, Missing}) == Union{}
+    @test Oxygen.AutoDoc.get_element_type(Union{}) == Any
+
+end
+
+
+@testset "returntype tests" begin
+    # Define additional types for testing return types
+    @enum TestEnum valA valB valC
+
+    struct TestStruct
+        id::Int
+        name::String
+    end
+
+    # Routes with different return types to cover all cases
+
+    # 1. Custom struct return type
+    @post "/return-struct" function(req)
+        return TestStruct(1, "test")
+    end
+
+    # 2. Vector of custom struct
+    @post "/return-vector-struct" function(req)
+        return [TestStruct(1, "test1"), TestStruct(2, "test2")]
+    end
+
+    # 3. Vector of primitive (Int)
+    @post "/return-vector-int" function(req)
+        return [1, 2, 3]
+    end
+
+    # 4. Vector of enum
+    @post "/return-vector-enum" function(req)
+        return [TestEnum.valA, TestEnum.valB]
+    end
+
+    # 5. Primitive return type (Int)
+    @post "/return-int" function(req)
+        return 42
+    end
+
+    # 6. Enum return type
+    @post "/return-enum" function(req)
+        return TestEnum.valA
+    end
+
+    # 7. DateTime return type
+    @post "/return-datetime" function(req)
+        return now()
+    end
+
+    # 8. Union{} return type (edge case)
+    @post "/return-union-empty" function(req)
+        return nothing
+    end
+
+end
 
 end

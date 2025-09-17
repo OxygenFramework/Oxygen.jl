@@ -205,8 +205,8 @@ end
 @testset "returntype tests" begin
     # Define additional types for testing return types
     @enum TestEnum::Int64 valA valB valC
-    @enum TestEnum2::Int8 val1 val2 val3
-
+    @enum TestEnum2::Int8 enumVal1 enumVal2 enumVal3
+    
     struct TestStruct
         id::Int
         name::String

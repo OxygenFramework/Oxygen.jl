@@ -46,8 +46,14 @@ function gettype(type::Type)::String
         return "number"
     elseif type <: Integer
         return "integer"
+    elseif type <: Complex
+        return "string"
+    elseif type <: Number
+        return "number"
     elseif type <: AbstractVector
         return "array"
+    elseif type <: Enum
+        return "integer"  # Enums are represented as integers in OpenAPI
     elseif type <: String || type == Date || type == DateTime
         return "string"
     elseif isstructtype(type)
@@ -74,6 +80,18 @@ function getformat(type::Type) :: Nullable{String}
         elseif type == Int64
             return "int64"
         end
+    elseif type <: Number
+        return "double"
+    elseif type <: Enum
+        # Get the underlying integer type of the enum
+        enum_base_type = Base.Enums.basetype(type)
+        if enum_base_type == Int32
+            return "int32"
+        elseif enum_base_type == Int64
+            return "int64"
+        else
+            return "int32"  # Default to int32 for other integer types
+        end
     elseif type == Date
         return "date"
     elseif type == DateTime
@@ -94,17 +112,260 @@ function datetime_hint() :: String
     return "Note: Julia's DateTime object does not natively support timezone information. Consider using the TimeZones.jl package for timezone-aware datetime handling."
 end
 
-function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
+"""
+    extract_non_null_type(T::Type) -> Type
 
-    schema = Dict("type" => gettype(p.type))
+Extract the single non-Nothing/non-Missing type from a Union, or return the type unchanged
+if it's not a Union. Returns Union{} if no valid non-null types are found.
+
+# Examples
+```julia
+extract_non_null_type(Union{String, Nothing}) # Returns String
+extract_non_null_type(Union{Int, Missing}) # Returns Int
+extract_non_null_type(String) # Returns String (unchanged)
+extract_non_null_type(Union{String, Int}) # Warns and returns Union{}
+```
+"""
+function extract_non_null_type(T::Type)::Type
+    if !(T isa Union)
+        return T
+    end
+    
+    sub_types = Base.uniontypes(T)
+    non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+    # return a single non-null type 
+    if length(non_null_types) == 1
+        return non_null_types[1]
+    # If there are none or multiple non-null types, we don't return them
+    else
+        return Union{}
+    end
+end
+
+"""
+    is_nullable_union(T::Type) -> Bool
+
+Check if a type is a nullable Union (contains Nothing or Missing along with exactly one other type).
+
+# Examples
+```julia
+is_nullable_union(Union{String, Nothing}) # Returns true
+is_nullable_union(Union{Int, Missing}) # Returns true
+is_nullable_union(String) # Returns false
+is_nullable_union(Union{String, Int}) # Returns false
+```
+"""
+function is_nullable_union(T::Type)::Bool
+    if !(T isa Union)
+        return false
+    end
+    
+    sub_types = Base.uniontypes(T)
+    has_null = Missing ∈ sub_types || Nothing ∈ sub_types
+    non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+    
+    return has_null && length(non_null_types) == 1
+end
+
+"""
+    resolve_union_type(T::Type) -> Type
+
+Comprehensive Union type resolution that unwraps parametric types and extracts
+non-null types from nullable Unions.
+
+# Examples
+```julia
+resolve_union_type(Union{String, Nothing}) # Returns String
+resolve_union_type(Vector{Union{Int, Missing}}) # Returns Vector{Int}
+resolve_union_type(String) # Returns String (unchanged)
+```
+"""
+function resolve_union_type(T::Type)::Type
+    # First unwrap any parametric wrappers
+    T = unwrap_type(T)
+    
+    # Then extract non-null type if it's a Union
+    return extract_non_null_type(T)
+end
+
+"""
+    process_field_type(field_type::Type) -> Tuple{Type, Bool}
+
+Process a field type and return the resolved type and whether it's nullable.
+Handles Union types by extracting non-null types and detecting nullability.
+
+# Returns
+- `(resolved_type, is_nullable)`: The resolved non-union type and nullability flag
+
+# Examples
+```julia
+process_field_type(Union{String, Nothing}) # Returns (String, true)
+process_field_type(String) # Returns (String, false)
+process_field_type(Union{Int, String}) # Returns (Union{}, false) with warning
+```
+"""
+function process_field_type(field_type::Type)::Tuple{Type, Bool}
+    # Unwrap parametric types first
+    field_type = unwrap_type(field_type)
+    
+    # Check if it's nullable
+    is_nullable = is_nullable_union(field_type)
+    
+    # Extract the non-null type
+    resolved_type = extract_non_null_type(field_type)
+    
+    return (resolved_type, is_nullable)
+end
+
+"""
+    create_array_field_schema(array_type::Type, schemas::Dict, p::Param) -> Dict
+
+Create OpenAPI schema for array/vector fields, handling both custom structs and primitive types.
+
+# Arguments
+- `array_type::Type`: The array type to process
+- `schemas::Dict`: Schema dictionary to register nested types
+- `p::Param`: Parameter information for defaults and other metadata
+
+# Returns
+- `Dict`: OpenAPI schema for the array field
+"""
+function create_array_field_schema(array_type::Type, schemas::Dict, p)::Dict
+    field_schema = Dict{String,Any}("type" => "array", "items" => Dict())
+
+    # Extract and unwrap the nested element type
+    nested_type = get_element_type(array_type)
+    nested_type_name = string(nameof(nested_type))
+
+    # Handle custom structs
+    if is_custom_struct(nested_type)
+        field_schema["items"] = Dict("\$ref" => getcomponent(nested_type_name))
+        # Register type only if not already registered
+        if !haskey(schemas, nested_type_name)
+            convertobject!(nested_type, schemas)
+        end
+    else
+        # Handle non-custom nested types
+        field_schema["items"] = Dict{String,Any}("type" => gettype(nested_type))
+        
+        # Add enum values if nested type is an enum
+        if nested_type <: Enum
+            enum_values = collect(Int.(Base.Enums.instances(nested_type)))
+            field_schema["items"]["enum"] = enum_values
+        end
+        
+        format = getformat(nested_type)
+        
+        if !isnothing(format)
+            field_schema["items"]["format"] = format
+        end
+
+        # Add compatible example format for datetime objects within a vector
+        if nested_type <: DateTime
+            field_schema["items"]["example"] = example_datetime()
+            field_schema["items"]["description"] = datetime_hint()
+        end
+    end
+
+    # Add default value if it exists
+    if p.hasdefault
+        field_schema["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
+    end
+
+    return field_schema
+end
+
+"""
+    create_primitive_field_schema(field_type::Type, p::Param) -> Dict
+
+Create OpenAPI schema for primitive (non-struct, non-array) fields.
+
+# Arguments
+- `field_type::Type`: The primitive type to process
+- `p::Param`: Parameter information for defaults and other metadata
+
+# Returns
+- `Dict`: OpenAPI schema for the primitive field
+"""
+function create_primitive_field_schema(field_type::Type, p)::Dict
+    field_schema = Dict{String,Any}("type" => gettype(field_type))
+
+    # Add enum values if this is an enum type
+    if field_type <: Enum
+        enum_values = collect(Int.(Base.Enums.instances(field_type)))
+        field_schema["enum"] = enum_values
+        # Add format for enums
+        format = getformat(field_type)
+        if !isnothing(format)
+            field_schema["format"] = format
+        end
+    end
+
+    # Add compatible example format for datetime objects
+    if field_type <: DateTime
+        field_schema["example"] = example_datetime()
+        field_schema["description"] = datetime_hint()
+    end
+
+    # Add format if it exists
+    format = getformat(field_type)
+    if !isnothing(format)
+        field_schema["format"] = format
+    end
+
+    # Add default value if it exists
+    if p.hasdefault 
+        field_schema["default"] = string(p.default)
+    end
+
+    return field_schema
+end
+
+# Unwrap UnionAll (parametric) wrappers to the concrete/body type
+function unwrap_type(T::Type)::Type
+    while T isa UnionAll
+        T = T.body
+    end
+    return T
+end
+
+# Extract the element type from an array-like type (e.g., Array{Person} -> Person)
+# Uses Base.eltype with fallback to .parameters for robustness
+function get_element_type(T::Type)::Type
+    # First, unwrap any parametric wrappers to ensure we're working with a concrete type
+    T = unwrap_type(T)
+    # Handle the case where T is Union{} (TypeofBottom)
+    if T === Union{} || T === Core.TypeofBottom
+        return Any
+    end
+    # Try the canonical eltype method, fallback to parameters lookup
+    elem_type = try
+        Base.eltype(T)
+    catch
+        hasfield(T, :parameters) && length(T.parameters) >= 1 ? T.parameters[1] : Any
+    end
+    # Unwrap the element type itself (in case it's also parametric)
+    return unwrap_type(elem_type)
+end
+
+function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
+    ptype = unwrap_type(p.type)
+
+    schema = Dict{String,Any}("type" => gettype(ptype))
+
+    # Add enum values if this is an enum type
+    if ptype <: Enum
+        enum_values = collect(Int.(Base.Enums.instances(ptype)))
+        schema["enum"] = enum_values
+    end
 
     # Add ref if the type is a custom struct
-    if schema["type"] == "object"
-        schema["\$ref"] = getcomponent(p.type)
+    if schema["type"] == "object" && is_custom_struct(ptype)
+        schema["\$ref"] = getcomponent(string(nameof(ptype)))
     end
 
     # Add optional format if it's relevant
-    format = getformat(p.type)
+    format = getformat(ptype)
     if !isnothing(format)
         schema["format"] = format
     end
@@ -118,14 +379,14 @@ function createparam(p::Param{T}, paramtype::String) :: Dict where {T}
     param_required = paramtype == "path" ? true : isrequired(p)
 
     param = Dict(
-        "in" => paramtype, # path, query, header (where the parameter is located)
+        "in" => paramtype,
         "name" => String(p.name),
         "required" => param_required,
         "schema" => schema
     )
 
     # Add a string formatting hint & example for DateTime objects
-    if p.type <: DateTime 
+    if ptype <: DateTime 
         param["example"] = example_datetime()
         param["description"] = datetime_hint()
     end
@@ -265,10 +526,12 @@ function registerschema(
     ##### Add all the body parameters to the schema #####
 
     schemas = Dict()
-    for p in bodyparams
-        inner_type = p.type |> extracttype
-        if is_custom_struct(inner_type)
-            convertobject!(inner_type, schemas)
+    for params in [bodyparams, parameters, queryparams, headers]
+        for p in params
+            inner_type = isextractor(p) ? extracttype(p.type) : p.type
+            if is_custom_struct(inner_type)
+                convertobject!(inner_type, schemas)
+            end
         end
     end
 
@@ -289,6 +552,59 @@ function registerschema(
     ##### Set the schema for the body parameters #####
     content = formatcontent(bodyparams)
 
+    ##### Auto register response schema #####
+    response_schema = nothing
+    if !isempty(returntype)
+        rt = resolve_union_type(returntype[1])
+
+        if rt == Nothing || rt === Union{} || rt === Core.TypeofBottom
+            response_schema = Dict("type" => "null")  # Handle empty types explicitly
+
+        elseif is_custom_struct(rt)
+            convertobject!(rt, schemas)
+            response_schema = Dict("\$ref" => getcomponent(rt))
+
+        elseif rt <: AbstractVector
+            elem_type = rt.parameters[1]
+            if is_custom_struct(elem_type)
+                convertobject!(elem_type, schemas)
+                response_schema = Dict(
+                    "type" => "array",
+                    "items" => Dict("\$ref" => getcomponent(elem_type))
+                )
+            else
+                response_schema = Dict{String,Any}("type" => "array", "items" => Dict("type" => gettype(elem_type)))
+                # Add enum values if element type is an enum
+                if elem_type <: Enum
+                    enum_values = collect(Int.(Base.Enums.instances(elem_type)))
+                    response_schema["items"]["enum"] = enum_values
+                end
+                # Add format if it exists
+                format = getformat(elem_type)
+                if !isnothing(format)
+                    response_schema["items"]["format"] = format
+                end
+            end
+        else
+            response_schema = Dict{String,Any}("type" => gettype(rt))
+            # Add enum values if return type is an enum
+            if rt <: Enum
+                enum_values = collect(Int.(Base.Enums.instances(rt)))
+                response_schema["enum"] = enum_values
+            end
+            # Add format if it exists
+            format = getformat(rt)
+            if !isnothing(format)
+                response_schema["format"] = format
+            end
+        end
+    end
+
+    ##### Merge any new schemas from return type #####
+    if !isempty(schemas)
+        mergeschema(docs.schema, Dict("components" => Dict("schemas" => schemas)))
+    end
+
     # lookup if this route has any registered tags
     if haskey(docs.taggedroutes, path) && httpmethod in docs.taggedroutes[path].httpmethods
         tags = docs.taggedroutes[path].tags
@@ -296,15 +612,24 @@ function registerschema(
         tags = []
     end
 
+    ##### Build responses field #####
+    response_200 = Dict{String, Any}("description" => "200 response")
+    if response_schema !== nothing
+        response_200["content"] = Dict(
+            "application/json" => Dict("schema" => response_schema)
+        )
+    end
+    responses = Dict{String, Any}(
+        "200" => response_200,
+        "500" => Dict("description" => "500 Server encountered a problem")
+    )
+
     # Build the route schema
     route = Dict(
         "$(lowercase(httpmethod))" => Dict(
             "tags" => tags,
             "parameters" => params,
-            "responses" => Dict(
-                "200" => Dict("description" => "200 response"),
-                "500" => Dict("description" => "500 Server encountered a problem")
-            )
+            "responses" => responses
         )
     )
 
@@ -333,11 +658,37 @@ function collectschemarefs(data::Dict, keys::Vector{String}; schematype="allOf")
 end
 
 """
-Helper function used to determine if a type is a custom struct and whethere or not
-we should do a recurive dive and convertion to openapi schema.
+    is_custom_struct(T::Type) -> Bool
+
+Helper function used to determine if a type is a custom struct and whether or not
+we should do a recursive dive and conversion to openapi schema.
+
+Excludes built-in types from Base, Core, Dates, and HTTP.Messages modules.
+Handles Union types by checking if any constituent type is a custom struct.
+
+# Examples
+```julia
+is_custom_struct(MyStruct) # Returns true for user-defined structs
+is_custom_struct(String) # Returns false for built-in types
+is_custom_struct(Union{MyStruct, Nothing}) # Returns true if MyStruct is custom
+```
 """
 function is_custom_struct(T::Type) :: Bool
-    return T.name.module ∉ (Base, Core, Dates) && (isstructtype(T) || isabstracttype(T))
+    # Handle the case where T is Union{} (TypeofBottom) or a Union type
+    if T === Union{} || T === Core.TypeofBottom
+        return false
+
+    elseif T isa Union
+        # Check if any of the types in the Union are custom structs
+        return any(is_custom_struct, Base.uniontypes(T))
+    end
+
+    # Exclude types from Base, Core, Dates, and HTTP.Messages
+    if T.name.module ∉ (Base, Core, Dates, HTTP.Messages)
+        return isstructtype(T) || isabstracttype(T)
+    end
+
+    return false
 end
 
 """
@@ -353,10 +704,28 @@ end
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
 function convertobject!(type::Type, schemas::Dict) :: Dict
 
+    # unwrap parametric/wrapper types (UnionAll) to a concrete/body type
+    type = unwrap_type(type)
+
+    # Handle Union types - extract the non-Nothing/non-Missing type
+    type = extract_non_null_type(type)
+    
+    # If we couldn't resolve to a valid type, return early
+    if type === Union{}
+        @warn "Cannot convert unresolvable Union type"
+        return schemas
+    end
+
     typename = type |> nameof |> string
+
+    # Check if this type is already being processed or has been processed
+    if haskey(schemas, typename)
+        return schemas
+    end
 
     # intilaize this entry
     obj = Dict("type" => "object", "properties" => Dict())
+    schemas[typename] = obj  # Placeholder; will be filled below
     required_fields = String[]
 
     # parse out the fields of the type
@@ -372,24 +741,22 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         p = info.sig_map[name]
         field_name = string(p.name)
         current_field = Dict()
-        current_type = p.type
-
-        # Handle a nullable type, defined as a Union of {T, Missing|Nothing}
-        if current_type isa Union
-            sub_types = Base.uniontypes(current_type)
-            is_nullable = Missing ∈ sub_types || Nothing ∈ sub_types
-            if (is_nullable)
-                current_field["nullable"] = true
-            end
-            non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
-            # We only support exactly one concrete (non-missing) type
-            if length(non_null_types) != 1 
-                @warn "OpenAPI $typename.$field_name: Nullable union must have exactly one non-nulled type."
-                continue
-            end
-            # Re-assign the current type to be in the non-missing type
-            current_type = non_null_types[1]
+        
+        # Process the field type to handle Union types and nullability
+        resolved_type, is_nullable = process_field_type(p.type)
+        
+        # Skip fields that couldn't be resolved
+        if resolved_type === Union{}
+            @warn "OpenAPI $typename.$field_name: Cannot resolve field type."
+            continue
         end
+        
+        # Set nullable flag if needed
+        if is_nullable
+            current_field["nullable"] = true
+        end
+        
+        current_type = resolved_type
         current_name = string(nameof(current_type))    
         
         # Only add field to required list if it is not nullable (and otherwise required)
@@ -400,69 +767,16 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         # Case 1: Recursively convert nested structs & register schemas
         if is_custom_struct(current_type)
             current_field["\$ref"] = getcomponent(current_name)
-            if !haskey(schemas, current_name)
-                convertobject!(current_type, schemas)
-            end
+        # Note: We removed the haskey check here; recursion prevention is now handled at the top of this function
+            convertobject!(current_type, schemas)
 
         # Case 2: The custom type is wrapped inside an array or vector
-        elseif current_type <: AbstractVector
-
-            current_field["type"] = "array"
-            current_field["items"] = Dict()
-            nested_type = current_type.parameters[1]
-            nested_type_name = string(nameof(nested_type))
-
-            # Handle custom structs
-            if is_custom_struct(nested_type)
-                current_field["items"] = Dict("\$ref" => getcomponent(nested_type_name))
-                # Register type only if not already registered
-                if !haskey(schemas, nested_type_name)
-                    convertobject!(nested_type, schemas)
-                end
-
-            # Handle non-custom nested types
-            else
-                current_field["items"] = Dict("type" =>  gettype(nested_type))
-                format = getformat(nested_type)
-                
-                if !isnothing(format)
-                    current_field["items"]["format"] = format
-                end
-
-                # Add compatible example format for datetime objects within a vector
-                if nested_type <: DateTime
-                    current_field["items"]["example"] = example_datetime()
-                    current_field["items"]["description"] = datetime_hint()
-                end
-
-            end
-
-            # Add default value if it exists
-            if p.hasdefault
-                current_field["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
-            end
+        elseif current_type <: AbstractArray
+            current_field = create_array_field_schema(current_type, schemas, p)
 
         # Case 3: Convert the individual fields of the current type to it's openapi equivalent
         else
-
-            current_field["type"] = gettype(current_type)
-
-            # Add compatible example format for datetime objects
-            if current_type <: DateTime
-                current_field["example"] = example_datetime()
-                current_field["description"] = datetime_hint()
-            end
-
-            # Add format if it exists
-            format = getformat(current_type)
-            if !isnothing(format)
-                current_field["format"] = format
-            end
-
-            # Add default value if it exists
-            if p.hasdefault
-                current_field["default"] = string(p.default)
-            end    
+            current_field = create_primitive_field_schema(current_type, p)
         end
 
         # convert the current field
@@ -474,7 +788,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         obj["required"] = required_fields
     end
 
-    schemas[typename] = obj
+    # No need to reassign schemas[typename] = obj, as it's already set and modified in-place
 
     return schemas
 end

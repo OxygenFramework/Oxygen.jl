@@ -2,6 +2,7 @@ module AutoDocTests
 
 using Test
 using Dates
+using HTTP
 using Oxygen; @oxidise
 using ..Constants
 using ..TestUtils
@@ -52,10 +53,6 @@ end
 
 @post "/event-invite" function(req, event::Json{EventInvite})
     return text("added $(length(event.payload.party.guests)) guests")
-end
-
-@post "/party-invite" function(req, party::Json{PartyInvite})
-    return text("added $(length(party.payload.guests)) guests")
 end
 
 # This will do a recursive dive on the 'Party' type and generate the schema for all structs
@@ -150,5 +147,187 @@ end
     @test event_invite["properties"]["times"]["items"]["example"] |> !isempty
 
 end 
+
+@testset "additional tests" begin
+
+    # Test gettype for number
+    @test Oxygen.AutoDoc.gettype(Float64) == "number"
+    @test Oxygen.AutoDoc.gettype(Int32) == "integer"
+
+    # Define enums
+    @enum Base64Enum val1 val2
+    @enum Base8Enum val3 val4
+
+    # Structs
+    struct EnumArrayTest
+        enums::Vector{Base64Enum}
+    end
+
+    struct EnumTopLevel
+        enum::Base8Enum
+    end
+
+    # Routes
+    @post "/enum-array" function(req, data::Json{EnumArrayTest})
+        return data.payload
+    end
+
+    @post "/enum-top" function(req, data::Json{EnumTopLevel})
+        return data.payload
+    end
+
+    @post "/form-test" function(req, data::Form{EnumTopLevel})
+        return data.payload
+    end
+
+    # Update ctx and schemas
+    ctx = CONTEXT[]
+    schemas = ctx.docs.schema["components"]["schemas"]
+
+    # Tests
+    @test haskey(schemas, "EnumArrayTest")
+    enum_array = schemas["EnumArrayTest"]
+    @test enum_array["properties"]["enums"]["type"] == "array"
+    @test haskey(enum_array["properties"]["enums"]["items"], "enum")
+    @test enum_array["properties"]["enums"]["items"]["enum"] == [0, 1]  # val1=0, val2=1
+
+    @test haskey(schemas, "EnumTopLevel")
+    enum_top = schemas["EnumTopLevel"]
+    @test haskey(enum_top["properties"]["enum"], "enum")
+    @test enum_top["properties"]["enum"]["enum"] == [0, 1]  # val3=0, val4=1
+
+    # Test the functions
+    @test Oxygen.AutoDoc.extract_non_null_type(Union{Nothing, Missing}) == Union{}
+    @test Oxygen.AutoDoc.get_element_type(Union{}) == Any
+
+end
+
+
+@testset "recursive struct tests" begin
+    # Example 1: Tree structure with recursive children
+    struct TreeNode
+        value::String
+        children::Vector{TreeNode}
+    end
+
+    # Example 2: Person with family relationships (recursive)
+    struct PersonRecursive
+        name::String
+        parent::Union{PersonRecursive, Nothing}
+        children::Vector{PersonRecursive}
+    end
+
+    # Example 3: Linked list structure
+    struct LinkedListNode
+        data::Int
+        next::Union{LinkedListNode, Nothing}
+    end
+
+    # Routes to test recursive schema generation
+    @post "/tree-node" function(req, node::Json{TreeNode})
+        return node.payload
+    end
+
+    @post "/person-recursive" function(req, person::Json{PersonRecursive})
+        return person.payload
+    end
+
+    @post "/linked-list" function(req, list::Json{LinkedListNode})
+        return list.payload
+    end
+
+        # Update context to get latest schemas
+    ctx = CONTEXT[]
+    schemas = ctx.docs.schema["components"]["schemas"]
+
+    # Test that recursive schemas are generated correctly
+    @test haskey(schemas, "TreeNode")
+    tree_node_schema = schemas["TreeNode"]
+    @test tree_node_schema["type"] == "object"
+    @test haskey(tree_node_schema["properties"], "children")
+    @test tree_node_schema["properties"]["children"]["type"] == "array"
+    @test tree_node_schema["properties"]["children"]["items"]["\$ref"] == "#/components/schemas/TreeNode"
+
+    @test haskey(schemas, "PersonRecursive")
+    person_schema = schemas["PersonRecursive"]
+    @test person_schema["type"] == "object"
+    @test person_schema["properties"]["parent"]["\$ref"] == "#/components/schemas/PersonRecursive"
+    @test person_schema["properties"]["parent"]["nullable"] == true
+    @test person_schema["properties"]["children"]["type"] == "array"
+    @test person_schema["properties"]["children"]["items"]["\$ref"] == "#/components/schemas/PersonRecursive"
+
+    @test haskey(schemas, "LinkedListNode")
+    list_schema = schemas["LinkedListNode"]
+    @test list_schema["type"] == "object"
+    @test list_schema["properties"]["next"]["\$ref"] == "#/components/schemas/LinkedListNode"
+    @test list_schema["properties"]["next"]["nullable"] == true
+
+end
+
+@testset "returntype tests" begin
+    # Define additional types for testing return types
+    @enum TestEnum::Int64 valA valB valC
+    @enum TestEnum2::Int8 enumVal1 enumVal2 enumVal3
+
+    struct TestStruct
+        id::Int
+        name::String
+    end
+
+    # Routes with different return types to cover all cases
+
+    # 0. Test generating docs for more edge cases
+    @get "/unique-types/{a}/{b}/{c}/{d}/{e}/{f}" function(req, a::Char, b::Real, c::Symbol, d::TestEnum2, e::Regex, f::Float64)
+        return (a,b,c,d,e,f)
+    end
+
+    # 1. Custom struct return type
+    @post "/return-struct" function(req)
+        return TestStruct(1, "test")
+    end
+
+    # 2. Vector of custom struct
+    @post "/return-vector-struct" function(req)
+        return [TestStruct(1, "test1"), TestStruct(2, "test2")]
+    end
+
+    # 3. Vector of primitive (Int)
+    @post "/return-vector-int" function(req)
+        return [1, 2, 3]
+    end
+
+    # 4. Vector of enum
+    @post "/return-vector-enum" function(req)
+        return [TestEnum.valA, TestEnum.valB]
+    end
+
+    # 5. Primitive return type (Int)
+    @post "/return-int" function(req)
+        return 42
+    end
+
+    # 6. Enum return type
+    @post "/return-enum" function(req)
+        return TestEnum.valA
+    end
+
+    # 7. DateTime return type
+    @post "/return-datetime" function(req)
+        return now()
+    end
+
+    # 8. Union{} return type (edge case)
+    @post "/return-union-empty" function(req)
+        return nothing
+    end
+
+    serve(port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+
+    # query metrics endpoints
+    r = internalrequest(HTTP.Request("GET", "/unique-types/c/0.23/:hello/0/test.*/42.4"), metrics=false)
+    @test r.status == 200
+
+    terminate()
+end
 
 end

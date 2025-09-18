@@ -100,13 +100,6 @@ function parseparam(::Type{String}, str::String; escape=true)
     return escape ? HTTP.unescapeuri(str) : str
 end
 
-function parseparam(::Type{Date}, str::String; escape=true)
-    return parse(Date, escape ? HTTP.unescapeuri(str) : str)
-end
-
-function parseparam(::Type{DateTime}, str::String; escape=true)
-    return parse(DateTime, escape ? HTTP.unescapeuri(str) : str)
-end
 
 function parseparam(::Type{Char}, str::String; escape=true)
     value = escape ? HTTP.unescapeuri(str) : str
@@ -118,18 +111,12 @@ function parseparam(::Type{Regex}, str::String; escape=true)
     return Regex(value)
 end
 
-function parseparam(::Type{Bool}, str::String; escape=true)
-    return parse(Bool, escape ? HTTP.unescapeuri(str) : str)
-end
 
 function parseparam(::Type{Symbol}, str::String; escape=true)
     value = escape ? HTTP.unescapeuri(str) : str
     return Symbol(value)
 end
 
-function parseparam(::Type{T}, str::String; escape=true)  where {T <: Number}
-    return parse(T, escape ? HTTP.unescapeuri(str) : str)
-end
 
 function parseparam(::Type{T}, str::String; escape=true) where {T <: Enum}
     return T(parse(Int, escape ? HTTP.unescapeuri(str) : str))

@@ -718,8 +718,14 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
 
     typename = type |> nameof |> string
 
+    # Check if this type is already being processed or has been processed
+    if haskey(schemas, typename)
+        return schemas
+    end
+
     # intilaize this entry
     obj = Dict("type" => "object", "properties" => Dict())
+    schemas[typename] = obj  # Placeholder; will be filled below
     required_fields = String[]
 
     # parse out the fields of the type
@@ -761,9 +767,8 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         # Case 1: Recursively convert nested structs & register schemas
         if is_custom_struct(current_type)
             current_field["\$ref"] = getcomponent(current_name)
-            if !haskey(schemas, current_name)
-                convertobject!(current_type, schemas)
-            end
+        # Note: We removed the haskey check here; recursion prevention is now handled at the top of this function
+            convertobject!(current_type, schemas)
 
         # Case 2: The custom type is wrapped inside an array or vector
         elseif current_type <: AbstractArray
@@ -783,7 +788,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         obj["required"] = required_fields
     end
 
-    schemas[typename] = obj
+    # No need to reassign schemas[typename] = obj, as it's already set and modified in-place
 
     return schemas
 end

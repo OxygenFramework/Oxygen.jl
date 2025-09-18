@@ -2,6 +2,7 @@ module AutoDocTests
 
 using Test
 using Dates
+using HTTP
 using Oxygen; @oxidise
 using ..Constants
 using ..TestUtils
@@ -202,11 +203,72 @@ end
 end
 
 
+@testset "recursive struct tests" begin
+    # Example 1: Tree structure with recursive children
+    struct TreeNode
+        value::String
+        children::Vector{TreeNode}
+    end
+
+    # Example 2: Person with family relationships (recursive)
+    struct PersonRecursive
+        name::String
+        parent::Union{PersonRecursive, Nothing}
+        children::Vector{PersonRecursive}
+    end
+
+    # Example 3: Linked list structure
+    struct LinkedListNode
+        data::Int
+        next::Union{LinkedListNode, Nothing}
+    end
+
+    # Routes to test recursive schema generation
+    @post "/tree-node" function(req, node::Json{TreeNode})
+        return node.payload
+    end
+
+    @post "/person-recursive" function(req, person::Json{PersonRecursive})
+        return person.payload
+    end
+
+    @post "/linked-list" function(req, list::Json{LinkedListNode})
+        return list.payload
+    end
+
+        # Update context to get latest schemas
+    ctx = CONTEXT[]
+    schemas = ctx.docs.schema["components"]["schemas"]
+
+    # Test that recursive schemas are generated correctly
+    @test haskey(schemas, "TreeNode")
+    tree_node_schema = schemas["TreeNode"]
+    @test tree_node_schema["type"] == "object"
+    @test haskey(tree_node_schema["properties"], "children")
+    @test tree_node_schema["properties"]["children"]["type"] == "array"
+    @test tree_node_schema["properties"]["children"]["items"]["\$ref"] == "#/components/schemas/TreeNode"
+
+    @test haskey(schemas, "PersonRecursive")
+    person_schema = schemas["PersonRecursive"]
+    @test person_schema["type"] == "object"
+    @test person_schema["properties"]["parent"]["\$ref"] == "#/components/schemas/PersonRecursive"
+    @test person_schema["properties"]["parent"]["nullable"] == true
+    @test person_schema["properties"]["children"]["type"] == "array"
+    @test person_schema["properties"]["children"]["items"]["\$ref"] == "#/components/schemas/PersonRecursive"
+
+    @test haskey(schemas, "LinkedListNode")
+    list_schema = schemas["LinkedListNode"]
+    @test list_schema["type"] == "object"
+    @test list_schema["properties"]["next"]["\$ref"] == "#/components/schemas/LinkedListNode"
+    @test list_schema["properties"]["next"]["nullable"] == true
+
+end
+
 @testset "returntype tests" begin
     # Define additional types for testing return types
     @enum TestEnum::Int64 valA valB valC
     @enum TestEnum2::Int8 enumVal1 enumVal2 enumVal3
-    
+
     struct TestStruct
         id::Int
         name::String
@@ -215,8 +277,8 @@ end
     # Routes with different return types to cover all cases
 
     # 0. Test generating docs for more edge cases
-    @post "/unique-types/{a}/{b}/{c}/{d}" function(req, a::Char, b::Real, c::Symbol, d::TestEnum2)
-        return (a,b,c,d)
+    @get "/unique-types/{a}/{b}/{c}/{d}/{e}" function(req, a::Char, b::Real, c::Symbol, d::TestEnum2, e::Regex)
+        return (a,b,c,d,e)
     end
 
     # 1. Custom struct return type
@@ -259,6 +321,13 @@ end
         return nothing
     end
 
+    serve(port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+
+    # query metrics endpoints
+    r = internalrequest(HTTP.Request("GET", "/unique-types/c/0.23/:hello/0/test.*/"), metrics=false)
+    @test r.status == 200
+
+    terminate()
 end
 
 end

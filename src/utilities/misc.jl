@@ -127,6 +127,10 @@ function parseparam(::Type{Symbol}, str::String; escape=true)
     return Symbol(value)
 end
 
+function parseparam(::Type{T}, str::String; escape=true)  where {T <: Number}
+    return parse(T, escape ? HTTP.unescapeuri(str) : str)
+end
+
 function parseparam(::Type{T}, str::String; escape=true) where {T <: Enum}
     return T(parse(Int, escape ? HTTP.unescapeuri(str) : str))
 end

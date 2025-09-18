@@ -108,10 +108,6 @@ function parseparam(::Type{DateTime}, str::String; escape=true)
     return parse(DateTime, escape ? HTTP.unescapeuri(str) : str)
 end
 
-function parseparam(::Type{Number}, str::String; escape=true)
-    return parse(Number, escape ? HTTP.unescapeuri(str) : str)
-end
-
 function parseparam(::Type{Char}, str::String; escape=true)
     value = escape ? HTTP.unescapeuri(str) : str
     return first(value)

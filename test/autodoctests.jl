@@ -277,8 +277,8 @@ end
     # Routes with different return types to cover all cases
 
     # 0. Test generating docs for more edge cases
-    @get "/unique-types/{a}/{b}/{c}/{d}/{e}" function(req, a::Char, b::Real, c::Symbol, d::TestEnum2, e::Regex)
-        return (a,b,c,d,e)
+    @get "/unique-types/{a}/{b}/{c}/{d}/{e}/{f}" function(req, a::Char, b::Real, c::Symbol, d::TestEnum2, e::Regex, f::Float64)
+        return (a,b,c,d,e,f)
     end
 
     # 1. Custom struct return type
@@ -324,7 +324,7 @@ end
     serve(port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
 
     # query metrics endpoints
-    r = internalrequest(HTTP.Request("GET", "/unique-types/c/0.23/:hello/0/test.*/"), metrics=false)
+    r = internalrequest(HTTP.Request("GET", "/unique-types/c/0.23/:hello/0/test.*/42.4"), metrics=false)
     @test r.status == 200
 
     terminate()

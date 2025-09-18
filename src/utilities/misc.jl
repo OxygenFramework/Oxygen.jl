@@ -100,7 +100,6 @@ function parseparam(::Type{String}, str::String; escape=true)
     return escape ? HTTP.unescapeuri(str) : str
 end
 
-
 function parseparam(::Type{Char}, str::String; escape=true)
     value = escape ? HTTP.unescapeuri(str) : str
     return first(value)

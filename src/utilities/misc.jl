@@ -307,9 +307,9 @@ function join_url_path(prefix::Union{String,Nothing}, route::String)::String
     if isnothing(prefix)
         return route
     else
-        p = endswith(prefix, "/") ? prefix : prefix * "/"
-        r = startswith(route, "/") ? lstrip(route, '/') : route
-        return p * r 
+        p = endswith(prefix, "/") ? prefix : prefix * "/"  # Ensure the prefix always ends with a slash
+        r = startswith(route, "/") ? lstrip(route, '/') : route # Ensure the route doesn't start with a slash
+        return p * r # when combined, it should create a valid url route
     end
 end
 

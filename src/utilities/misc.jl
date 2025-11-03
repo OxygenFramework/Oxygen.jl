@@ -296,10 +296,13 @@ function response(content::String, status=200, headers=[]; detect=true) :: HTTP.
 end
 
 
-# join_url_path(prefix, route) -> normalized URL path starting with "/"
-# - prefix may be nothing or a string (e.g. "api" or "/api/v1")
-# - route may be "/users/{id}" or "users/{id}" or "/"
-# Result always uses "/" and contains no duplicate slashes.
+"""
+    join_url_path(prefix::Union{String,Nothing}, route::String)::String
+
+- prefix may be nothing or a string (e.g. "api" or "/api/v1")
+- route may be "/users/{id}" or "users/{id}" or "/"
+Result always uses "/" and contains no duplicate slashes.
+"""
 function join_url_path(prefix::Union{String,Nothing}, route::String)::String
     if isnothing(prefix)
         return route

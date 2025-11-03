@@ -100,6 +100,7 @@ function serve(ctx::ServerContext;
     docs_path   = "/docs",
     schema_path = "/schema",
     external_url = nothing,
+    path_prefix = nothing,
     context     = missing,
     revise      = :none, # :none, :lazy, :eager
     kwargs...) :: Server
@@ -109,12 +110,11 @@ function serve(ctx::ServerContext;
     end
 
     # set the external url if it's passed
-    if !isnothing(external_url)
-        ctx.service.external_url[] = external_url
-    else
-        ctx.service.external_url[] = "http://$host:$port"
-    end
+    ctx.service.external_url[] = external_url isa String ? external_url : "http://$host:$port"
 
+    # Set the global path prefix (defaults to nothing)
+    ctx.service.path_prefix[] = path_prefix isa String ? path_prefix : nothing
+    
     # overwrite docs & schema paths
     ctx.docs.enabled[] = docs
     ctx.docs.docspath[] = docs_path
@@ -706,6 +706,7 @@ function create_param_parser(ctx::ServerContext, func_details)
     end
 end
 
+
 function registerhandler(ctx::ServerContext, router::Router, httpmethod::String, route::String, func::Function, func_details::NamedTuple)
 
     # Get information about the function's arguments
@@ -743,7 +744,11 @@ function registerhandler(ctx::ServerContext, router::Router, httpmethod::String,
 
     # Use method aliases for special methods
     resolved_httpmethod = get(METHOD_ALIASES, httpmethod, httpmethod)
-    HTTP.register!(router, resolved_httpmethod, route, handle)
+
+    # Join the route to the path prefix (if available)
+    adjusted_route = join_url_path(ctx.service.path_prefix[], route)
+
+    HTTP.register!(router, resolved_httpmethod, adjusted_route, handle)
 end
 
 function setupdocs(ctx::ServerContext)

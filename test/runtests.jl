@@ -20,6 +20,7 @@ include("streamingtests.jl")
 include("handlertests.jl")
 
 #### Core Tests ####
+include("utiltests.jl")
 include("test_reexports.jl")
 include("precompilationtest.jl")
 include("autodoctests.jl")

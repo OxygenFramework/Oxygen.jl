@@ -9,7 +9,7 @@ using Oxygen; @oxidise
     return "Hello World"
 end
 
-serve(path_prefix="/custom-api", port=PORT, host=HOST, async=true,  show_errors=false, show_banner=false)
+serve(prefix="/custom-api", port=PORT, host=HOST, async=true,  show_errors=false, show_banner=false)
 
 @testset "Valid Prefixed requests" begin 
     r = internalrequest(HTTP.Request("GET", "/custom-api/test"))

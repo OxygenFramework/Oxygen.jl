@@ -41,15 +41,19 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(external_url::String, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
+function serverwelcome(external_url::String, path_prefix::Nullable{String}, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
     printstyled(oxygen_title, color=:blue, bold=true)
+    server_url = join_url_path(external_url, path_prefix)
     @info "📦 Version 1.7.5 (2025-09-18)"
-    @info "✅ Started server: $external_url"
+    if !isnothing(path_prefix)
+        @info "🏷️  Global path prefix: $path_prefix"
+    end
+    @info "✅ Started server: $server_url"
     if docs
-        @info "📖 Documentation: $external_url" * docspath
+        @info "📖 Documentation: $(join_url_path(server_url, docspath))"
     end
     if docs && metrics
-        @info "📊 Metrics: $external_url" * "$docspath/metrics"
+        @info "📊 Metrics: $(join_url_path(server_url, "$docspath/metrics"))"
     end
     if parallel
         @info "🚀 Running in parallel mode with $(Threads.nthreads()) threads"
@@ -290,7 +294,6 @@ function parallel_stream_handler(handle_stream::Function)
     end
 end
 
-
 """
 Compose the user & internally defined middleware functions together. Practically, this allows
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
@@ -304,6 +307,9 @@ function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=t
     else
         reverse(middleware)
     end
+
+    # If a global prefix is passed, then we inject middleware to remove the prefix at runtime before routing
+    global_prefix_middleware = !isnothing(ctx.service.path_prefix[]) ? [PrefixStripMiddleware(ctx.service.path_prefix[])] : []
 
     # Docs middleware should only be available at runtime when serve() or serveparallel is called
     docs_middleware = docs && !isnothing(ctx.docs.router[]) ? [DocsMiddleware(ctx.docs.router[], ctx.docs.docspath[])] : []
@@ -321,6 +327,7 @@ function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=t
         custom_middleware...,
         collect_metrics...,
         docs_middleware...,
+        global_prefix_middleware...
     ])
 end
 
@@ -333,7 +340,7 @@ function startserver(ctx::ServerContext; host, port, show_banner=false, docs=fal
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
 
-    show_banner && serverwelcome(ctx.service.external_url[], docs, metrics, parallel, ctx.docs.docspath[])
+    show_banner && serverwelcome(ctx.service.external_url[], ctx.service.path_prefix[], docs, metrics, parallel, ctx.docs.docspath[])
 
     # start the HTTP server
     ctx.service.server[] = start(preprocesskwargs(kwargs))
@@ -389,6 +396,26 @@ function internalrequest(ctx::ServerContext, req::HTTP.Request; middleware::Vect
     return req |> setupmiddleware(ctx; middleware, metrics, serialize, catch_errors)
 end
 
+"""
+If a global prefix is passed through the serve() function then we want to inject a 
+middleware function to intercept requests and strip off the prefix so it's compatible 
+with the actual registered routes - which doesn't include the prefix.
+"""
+function PrefixStripMiddleware(prefix::String)
+    plen = length(prefix)
+    NOT_FOUND = HTTP.Response(404, "Not Found")
+    return function (handler)
+        return function (req::HTTP.Request)
+            if startswith(req.target, prefix)
+                newtarget = req.target[plen+1:end]
+                req.target = isempty(newtarget) ? "/" : newtarget
+                return handler(req)
+            else
+                return NOT_FOUND
+            end
+        end
+    end
+end
 
 function DocsMiddleware(docsrouter::Router, docspath::String)
     return function (handle)
@@ -745,24 +772,38 @@ function registerhandler(ctx::ServerContext, router::Router, httpmethod::String,
     # Use method aliases for special methods
     resolved_httpmethod = get(METHOD_ALIASES, httpmethod, httpmethod)
 
-    # Join the route to the path prefix (if available)
-    adjusted_route = join_url_path(ctx.service.path_prefix[], route)
-
-    HTTP.register!(router, resolved_httpmethod, adjusted_route, handle)
+    HTTP.register!(router, resolved_httpmethod, route, handle)
 end
 
 function setupdocs(ctx::ServerContext)
     setupdocs(ctx, ctx.docs.router[], ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[])
 end
 
+function update_paths_keys(schema::Dict, prefix::Nullable{String})
+    paths = get(schema, "paths", Dict())
+    # Map over all keys in the paths dict and update them using f
+    new_paths = Dict(join_url_path(prefix, k) => v for (k, v) in paths)
+    # Return a new schema with updated paths
+    return merge(schema, Dict("paths" => new_paths))
+end
+
 # add the swagger and swagger/schema routes 
 function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::String, schemapath::String)
     full_schema = "$docspath$schemapath"
-    register_internal(ctx, router, "GET", "$docspath", () -> swaggerhtml(full_schema, docspath))
-    register_internal(ctx, router, "GET", "$docspath/swagger", () -> swaggerhtml(full_schema, docspath))
-    register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(full_schema, docspath))
-    register_internal(ctx, router, "GET", full_schema, () -> schema)
+
+    # If a global prefix is assigned, then we need to make sure we inject the prefixes into the source url as well.
+    prefixed_schema = join_url_path(ctx.service.path_prefix[], full_schema)
+    prefixed_docspath = join_url_path(ctx.service.path_prefix[], docspath)
+
+    # Need to update the "path" in our open-api schema to include the global prefix
+    prefixed_openapi_schema = update_paths_keys(schema, ctx.service.path_prefix[])
+
+    register_internal(ctx, router, "GET", "$docspath", () -> swaggerhtml(prefixed_schema, prefixed_docspath))
+    register_internal(ctx, router, "GET", "$docspath/swagger", () -> swaggerhtml(prefixed_schema, prefixed_docspath))
+    register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(prefixed_schema, prefixed_docspath))
+    register_internal(ctx, router, "GET", full_schema, () -> prefixed_openapi_schema)
 end
+
 
 function setupmetrics(context::ServerContext)
     setupmetrics(context, context.docs.router[], context.service.history, context.docs.docspath[], context.service.history_lock)
@@ -771,13 +812,16 @@ end
 # add the swagger and swagger/schema routes 
 function setupmetrics(ctx::ServerContext, router::Router, history::History, docspath::String, history_lock::ReentrantLock)
 
+    # If a global prefix is assigned, then we need to make sure we inject the prefixes into the source url as well.
+    prefixed_docspath = join_url_path(ctx.service.path_prefix[], docspath)
+
     # This allows us to customize the path to the metrics dashboard
     function loadfile(filepath)::String
         content = readfile(filepath)
         # only replace content if it's in a generated file
         ext = lowercase(last(splitext(filepath)))
         if ext in [".html", ".css", ".js"]
-            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$docspath/metrics/")
+            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$prefixed_docspath/metrics/")
         else
             return content
         end

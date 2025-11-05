@@ -21,14 +21,14 @@ using Oxygen.Core.Util
     @test join_url_path("/api/", "/users/") == "/api/users/"
 
     # empty route
-    @test join_url_path("/api", "") == "/api/"
+    @test join_url_path("/api", "") == "/api"
     @test join_url_path("", "/") == "/"
 end
 
 @testset "join_url_path additional edge cases" begin
     # empty route cases
     @test join_url_path(nothing, "") == ""            # current implementation returns route verbatim
-    @test join_url_path("", "") == "/"                # prefix "" produces root
+    @test join_url_path("", "") == ""                # prefix "" produces root
 
     # multiple leading slashes in route should be normalized by lstrip
     @test join_url_path("/api", "///users") == "/api/users"
@@ -43,6 +43,18 @@ end
 
     # prefix made only of slashes (demonstrates current behavior)
     @test join_url_path("///", "/users") == "///users"
+
+    @test join_url_path("http://localhost:8080", "/users") == "http://localhost:8080/users"
+    @test join_url_path("http://localhost:8080/", "users") == "http://localhost:8080/users"
+    @test join_url_path("http://localhost:8080", "") == "http://localhost:8080"
+    @test join_url_path("http://localhost:8080/api", "/users") == "http://localhost:8080/api/users"
+
+    # additional fake HTTPS domains (no port)
+    @test join_url_path("https://example.com", "/users") == "https://example.com/users"
+    @test join_url_path("https://example.com/", "users") == "https://example.com/users"
+    @test join_url_path("https://example.com", "") == "https://example.com"
+    @test join_url_path("https://api.example.com", "/v1/items") == "https://api.example.com/v1/items"
+    @test join_url_path("https://service.local", "/") == "https://service.local/"
 end
 
 @testset "join_url_path exhaustive edge cases" begin

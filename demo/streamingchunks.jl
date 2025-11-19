@@ -1,13 +1,13 @@
 module StreamingChunksDemo
 
-using JSON3
+using JSON
 using Dates
 using HTTP
-using JSON3
+using JSON
 using Oxygen
 
 function chunks(data::Any, nchunks::Int)
-    return chunks(JSON3.write(data), nchunks)
+    return chunks(JSON.json(data), nchunks)
 end
 
 function chunks(data::String, nchunks::Int)

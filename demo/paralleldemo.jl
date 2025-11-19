@@ -1,14 +1,11 @@
 module ParallelDemo 
 using Oxygen
 using HTTP
-using JSON3
-using StructTypes
+using JSON
 using SwaggerMarkdown
 using Base.Threads
 
 ############## Atomic variable example ##############
-
-StructTypes.StructType(::Type{Atomic{Int64}}) = StructTypes.Struct()
 
 x = Atomic{Int64}(0);
 

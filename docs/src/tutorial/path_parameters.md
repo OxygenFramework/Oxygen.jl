@@ -54,13 +54,12 @@ and passed to your request handlers.
 
 In most cases, Oxygen uses the built-in `parse()` function to parse incoming parameters. 
 But when the parameter types start getting more complex (eg. `Vector{Int64}` or a custom struct),
-then Oxygen assumes the parameter is a JSON string and uses the JSON3 library 
+then Oxygen assumes the parameter is a JSON string and uses the JSON library 
 to serialize the parameter into the corresponding type
 
 ```julia
 using Dates
 using Oxygen
-using StructTypes
 
 @enum Fruit apple=1 orange=2 kiwi=3
 
@@ -68,10 +67,6 @@ struct Person
   name  :: String 
   age   :: Int8
 end
-
-# Add a supporting struct types
-StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
-StructTypes.StructType(::Type{Complex{Float64}}) = StructTypes.Struct()
 
 @get "/fruit/{fruit}" function(req, fruit::Fruit)
   return fruit

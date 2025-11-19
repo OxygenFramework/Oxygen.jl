@@ -22,7 +22,7 @@ include("exts.jl")
 include("methods.jl")
 include("deprecated.jl")
 
-macro oxidise()
+macro oxidize()
     quote
         import Oxygen
         import Oxygen: PACKAGE_DIR, ServerContext, Nullable
@@ -35,7 +35,7 @@ macro oxidise()
     end |> esc
 end
 
-export  @oxidise, @get, @post, @put, @patch, @delete, @route, 
+export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route, 
         @staticfiles, @dynamicfiles, @cron, @repeat, @stream, @websocket,
         get, post, put, patch, delete, route, stream, websocket,
         serve, serveparallel, terminate, internalrequest, 

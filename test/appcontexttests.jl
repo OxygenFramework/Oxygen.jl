@@ -2,7 +2,7 @@ module AppContextTests
 using Test
 using HTTP
 using ..Constants
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 struct Person
     name::String

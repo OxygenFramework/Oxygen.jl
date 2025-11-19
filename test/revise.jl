@@ -1,7 +1,7 @@
 module ReviseTest
 
 using Test
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 using ..Constants
 using HTTP
 

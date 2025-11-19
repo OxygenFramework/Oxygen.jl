@@ -2,7 +2,7 @@ module ThunderingHerdTest
 using Test
 using HTTP
 using ..Constants
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 allowed_origins = [ "Access-Control-Allow-Origin" => "*" ]
 

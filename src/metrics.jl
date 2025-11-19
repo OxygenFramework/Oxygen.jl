@@ -1,7 +1,7 @@
 module Metrics
 
 using HTTP
-using JSON3
+using JSON
 using Dates
 using DataStructures
 using Statistics

@@ -3,7 +3,7 @@ module ParallelTests
 using Test
 using HTTP
 using Suppressor
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 using ..Constants
 

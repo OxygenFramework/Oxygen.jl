@@ -1,5 +1,5 @@
 using HTTP 
-using JSON3
+using JSON
 using Dates
 
 using ..Errors: ValidationError
@@ -12,7 +12,7 @@ export countargs, recursive_merge, parseparam,
 ### Request helper functions ###
 
 """
-    redirect(path::String; code = 308)
+    redirect(path::String; code = 307)
 
 return a redirect response 
 """
@@ -148,7 +148,7 @@ function parseparam(::Type{T}, str::String; escape=true) where {T}
     try
         return parse(T, escape ? HTTP.unescapeuri(str) : str)
     catch
-        return JSON3.read(escape ? HTTP.unescapeuri(str) : str, T)
+        return JSON.parse(escape ? HTTP.unescapeuri(str) : str, T)
     end
 end
 
@@ -183,7 +183,7 @@ end
 
 function format_response!(req::HTTP.Request, content::Any)
     # Convert anthything else to a JSON string
-    body = JSON3.write(content)
+    body = JSON.json(content)
     HTTP.setheader(req.response, "Content-Type" => "application/json; charset=utf-8")
     HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
 

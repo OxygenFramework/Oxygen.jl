@@ -6,7 +6,7 @@ using HTTP
 using Suppressor
 using ProtoBuf
 using ..Constants
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 using Oxygen: extract, Param, LazyRequest, Extractor, ProtoBuffer, isbodyparam
 
 # extend the built-in validate function

@@ -1,7 +1,7 @@
 module MiddlewareTests
 using Test
 using HTTP
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 invocation = []
 

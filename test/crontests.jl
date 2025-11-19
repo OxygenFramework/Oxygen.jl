@@ -1,8 +1,7 @@
 module CronTests 
 using Test
 using HTTP
-using JSON3
-using StructTypes
+using JSON
 using Sockets
 using Dates 
 using Oxygen

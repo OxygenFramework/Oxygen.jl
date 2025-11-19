@@ -1,7 +1,6 @@
 
 using HTTP 
-using JSON3
-using StructTypes
+using JSON
 
 export text, binary, json, formdata
 
@@ -46,17 +45,17 @@ Read the body of a HTTP.Request as JSON with additional arguments for the read/s
 """
 function json(req::HTTP.Request; kwargs...)
     body = IOBuffer(HTTP.payload(req))
-    return eof(body) ? nothing : JSON3.read(body; kwargs...)    
+    return eof(body) ? nothing : JSON.parse(body; kwargs...)    
 end
 
 """
-    json(request::HTTP.Request, classtype; keyword_arguments...)
+    json(request::HTTP.Request, class_type; keyword_arguments...)
 
 Read the body of a HTTP.Request as JSON with additional arguments for the read/serializer into a custom struct.
 """
-function json(req::HTTP.Request, classtype::Type{T}; kwargs...) :: T where {T}
+function json(req::HTTP.Request, class_type::Type{T}; kwargs...) :: T where {T}
     body = IOBuffer(HTTP.payload(req))
-    return eof(body) ? nothing : JSON3.read(body, classtype; kwargs...)    
+    return eof(body) ? nothing : JSON.parse(body, class_type; kwargs...)    
 end
 
 
@@ -87,18 +86,18 @@ end
 
 Read the body of a HTTP.Response as JSON with additional keyword arguments
 """
-function json(response::HTTP.Response; kwargs...) :: JSON3.Object
-    return JSON3.read(response.body; kwargs...)
+function json(response::HTTP.Response; kwargs...) :: JSON.Object
+    return JSON.parse(response.body; kwargs...)
 end
 
 
 """
-    json(response::HTTP.Response, classtype; keyword_arguments)
+    json(response::HTTP.Response, class_type; keyword_arguments)
 
 Read the body of a HTTP.Response as JSON with additional keyword arguments and serialize it into a custom struct
 """
-function json(response::HTTP.Response, classtype::Type{T}; kwargs...) :: T where {T}
-    return JSON3.read(response.body, classtype; kwargs...)
+function json(response::HTTP.Response, class_type::Type{T}; kwargs...) :: T where {T}
+    return JSON.parse(response.body, class_type; kwargs...)
 end
 
 

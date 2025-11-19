@@ -1,7 +1,6 @@
 
 module BodyParserTests 
 using Test
-using StructTypes
 
 using Oxygen
 using Oxygen: set_content_size!
@@ -10,9 +9,6 @@ struct rank
     title   :: String 
     power   :: Float64
 end
-
-# added supporting structype
-StructTypes.StructType(::Type{rank}) = StructTypes.Struct()
 
 req = Request("GET", "/json", [], """{"message":["hello",1.0]}""")
 json(req)
@@ -90,26 +86,26 @@ end
     @testset "json() Request struct keyword tests" begin 
 
         req = Request("GET", "/json", [], "{\"message\":[NaN,1.0]}")
-        @test isnan(json(req, allow_inf = true)["message"][1])
-        @test !isnan(json(req, allow_inf = true)["message"][2])
+        @test isnan(json(req, allownan = true)["message"][1])
+        @test !isnan(json(req, allownan = true)["message"][2])
 
         req = Request("GET", "/json", [], "{\"message\":[Inf,1.0]}")
-        @test isinf(json(req, allow_inf = true)["message"][1])
+        @test isinf(json(req, allownan = true)["message"][1])
 
         req = Request("GET", "/json", [], "{\"message\":[null,1.0]}")
-        @test isnothing(json(req, allow_inf = false)["message"][1])
+        @test isnothing(json(req, allownan = false)["message"][1])
 
     end
 
 
-    @testset "json() Request stuct keyword with classtype" begin 
+    @testset "json() Request stuct keyword with class_type" begin 
 
         req = Request("GET","/", [],"""{"title": "viscount", "power": NaN}""")
-        myjson = json(req, rank, allow_inf = true)
+        myjson = json(req, rank, allownan = true)
         @test isnan(myjson.power)
 
         req = Request("GET","/", [],"""{"title": "viscount", "power": 9000.1}""")
-        myjson = json(req, rank, allow_inf = false)
+        myjson = json(req, rank, allownan = false)
         @test myjson.power == 9000.1
 
     end
@@ -134,10 +130,10 @@ end
     end
 
 
-    @testset "json() Request with classtype" begin 
+    @testset "json() Request with class_type" begin 
 
         req = Request("GET","/", [],"""{"title": "viscount", "power": NaN}""")
-        myjson = json(req, rank)
+        myjson = json(req, rank, allownan = true)
         @test isnan(myjson.power)
 
         req = Request("GET","/", [],"""{"title": "viscount", "power": 9000.1}""")
@@ -146,7 +142,7 @@ end
 
         # test invalid json
         req = Request("GET","/", [],"""{}""")
-        @test_throws MethodError json(req, rank) 
+        @test_throws TypeError json(req, rank) 
 
         # test extra key
         req = Request("GET","/", [],"""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")
@@ -171,26 +167,26 @@ end
     @testset "json() Response struct keyword tests" begin 
 
         req = Response("{\"message\":[NaN,1.0]}")
-        @test isnan(json(req, allow_inf = true)["message"][1])
-        @test !isnan(json(req, allow_inf = true)["message"][2])
+        @test isnan(json(req, allownan = true)["message"][1])
+        @test !isnan(json(req, allownan = true)["message"][2])
 
         req = Response("{\"message\":[Inf,1.0]}")
-        @test isinf(json(req, allow_inf = true)["message"][1])
+        @test isinf(json(req, allownan = true)["message"][1])
 
         req = Response("{\"message\":[null,1.0]}")
-        @test isnothing(json(req, allow_inf = false)["message"][1])
+        @test isnothing(json(req, allownan = false)["message"][1])
 
     end
 
 
-    @testset "json() Response stuct keyword with classtype" begin 
+    @testset "json() Response stuct keyword with class_type" begin 
 
         req = Response("""{"title": "viscount", "power": NaN}""")
-        myjson = json(req, rank, allow_inf = true)
+        myjson = json(req, rank, allownan = true)
         @test isnan(myjson.power)
 
         req = Response("""{"title": "viscount", "power": 9000.1}""")
-        myjson = json(req, rank, allow_inf = false)
+        myjson = json(req, rank, allownan = false)
         @test myjson.power == 9000.1
 
     end
@@ -215,10 +211,10 @@ end
     end
 
 
-    @testset "json() Response with classtype" begin 
+    @testset "json() Response with class_type" begin 
 
         req = Response("""{"title": "viscount", "power": NaN}""")
-        myjson = json(req, rank)
+        myjson = json(req, rank; allownan=true)
         @test isnan(myjson.power)
 
         req = Response("""{"title": "viscount", "power": 9000.1}""")
@@ -227,7 +223,7 @@ end
 
         # test invalid json
         req = Response("""{}""")
-        @test_throws MethodError json(req, rank) 
+        @test_throws TypeError json(req, rank) 
 
         # test extra key
         req = Response("""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")

@@ -2,12 +2,11 @@ module OriginalTests
 
 using Test
 using HTTP
-using JSON3
-using StructTypes
+using JSON
 using Sockets
 using Dates 
 using Suppressor
-using Oxygen; @oxidise
+using Oxygen; @oxidise # intentionally use the deprecated spelling to trigger the warning
 
 using ..Constants
 
@@ -24,7 +23,6 @@ end
 
 configdocs("/docs", "/schema")
 
-StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
 # mount all files inside the content folder under /static
 #@staticfiles "content"
 staticfiles("content")
@@ -191,8 +189,6 @@ struct Student
   age   :: Int8
 end
 
-StructTypes.StructType(::Type{Student}) = StructTypes.Struct()
-StructTypes.StructType(::Type{Complex{Float64}}) = StructTypes.Struct()
 
 @get "/fruit/{fruit}" function(req, fruit::Fruit; request, context)
   return fruit
@@ -606,13 +602,9 @@ r = internalrequest(HTTP.Request("GET", "/static/sample.html"))
 @suppress global r = internalrequest(HTTP.Request("GET", "/undefinederror"))
 @test r.status == 500    
 
-
-try 
-    # apparently you don't need to have StructTypes setup on a custom type with the latest JSON3 library
-    r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
-catch e 
-    @test e isa ArgumentError
-end
+# Test struct serializaiton without any explicit struct types (will work with the new JSON library)
+r = internalrequest(HTTP.Request("GET", "/unsupported-struct"))
+@test r.status == 200
 
 ## docs related tests 
 

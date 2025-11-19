@@ -1,6 +1,6 @@
 module ProjectBasedDemo
 
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 @get("/") do req
     "home" 

@@ -2,7 +2,7 @@ module CustomSerializerDemo
 
 using Oxygen
 using HTTP
-using JSON3
+using JSON
 
 function middleware(handle)
     return function(req)
@@ -11,7 +11,7 @@ function middleware(handle)
             if resp isa HTTP.Messages.Response
                 return resp
             end
-            return HTTP.Response(200, [], body=JSON3.write(resp))
+            return HTTP.Response(200, [], body=JSON.json(resp))
         catch error
             @error "ERROR: " exception=(error, catch_backtrace())
             return HTTP.Response(500, "The server encountered a problem")

@@ -4,7 +4,7 @@ using Base: @kwdef
 using HTTP
 using HTTP: Router
 using Sockets
-using JSON3
+using JSON
 using Base
 using Dates
 using Reexport
@@ -136,7 +136,7 @@ function serve(ctx::ServerContext;
             error("You must load Revise.jl before Oxygen.jl to use the `revise` option")
         end
         if ctx.mod === nothing
-            @warn "You are trying to use the `revise` option without @oxidise. Code in the `Main` module, which likely includes your routes, will not be tracked and revised."
+            @warn "You are trying to use the `revise` option without @oxidize. Code in the `Main` module, which likely includes your routes, will not be tracked and revised."
         end
         middleware = convert(Vector{Any}, middleware)
         insert!(middleware, 1, ReviseHandler(ctx))

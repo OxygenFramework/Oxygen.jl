@@ -3,7 +3,7 @@ using HTTP
 using Test
 using Bonito
 using WGLMakie: heatmap
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 import Oxygen: text, html
 using ..Constants
 

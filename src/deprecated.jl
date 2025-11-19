@@ -25,6 +25,11 @@ function configdocs(docspath::String = "/docs", schemapath::String = "/schema")
     return
 end
 
+# v1.8.0 - Deprecate the British spelling of the macro in favor of the more internationally recognized version  
+macro oxidise()
+    @warn "The spelling of the `@oxidise` macro has been deprecated in favor of `@oxidize`"
+    esc(:(@oxidize))
+end
 
 
 

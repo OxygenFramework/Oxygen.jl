@@ -2,7 +2,7 @@ module CairoMakieTests
 using HTTP
 using Test
 using Bonito
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 import Oxygen: text, html
 using ..Constants
 

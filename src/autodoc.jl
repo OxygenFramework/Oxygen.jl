@@ -1,6 +1,6 @@
 module AutoDoc
 using HTTP
-using JSON3
+using JSON
 using Dates
 using DataStructures
 using Reexport
@@ -269,7 +269,7 @@ function create_array_field_schema(array_type::Type, schemas::Dict, p)::Dict
 
     # Add default value if it exists
     if p.hasdefault
-        field_schema["default"] = JSON3.write(p.default) # for special defaults we need to convert to JSON
+        field_schema["default"] = JSON.json(p.default) # for special defaults we need to convert to JSON
     end
 
     return field_schema

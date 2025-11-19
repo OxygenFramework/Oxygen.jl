@@ -3,7 +3,7 @@ module AutoDocTests
 using Test
 using Dates
 using HTTP
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 using ..Constants
 using ..TestUtils
 

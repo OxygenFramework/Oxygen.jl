@@ -6,7 +6,8 @@ using ..Errors: ValidationError
 
 export countargs, recursive_merge, parseparam, 
     redirect, handlerequest,
-    format_response!, set_content_size!, format_sse_message
+    format_response!, set_content_size!, format_sse_message,
+    join_url_path
 
 ### Request helper functions ###
 
@@ -293,6 +294,28 @@ function response(content::String, status=200, headers=[]; detect=true) :: HTTP.
     HTTP.setheader(response, "Content-Length" => string(sizeof(content)))
     return response
 end
+
+
+"""
+    join_url_path(prefix::Union{String,Nothing}, route::String)::String
+
+- prefix may be nothing or a string (e.g. "api" or "/api/v1")
+- route may be "/users/{id}" or "users/{id}" or "/"
+Result always uses "/" and contains no duplicate slashes.
+"""
+function join_url_path(prefix::String, route::String) :: String
+    if isempty(strip(route))
+        return prefix
+    else
+        p = endswith(prefix, "/") ? prefix : prefix * "/"  # Ensure the prefix always ends with a slash
+        r = startswith(route, "/") ? lstrip(route, '/') : route # Ensure the route doesn't start with a slash
+        return p * r # when combined, it should create a valid url route
+    end
+end
+
+join_url_path(::Nothing, ::Nothing) :: String = ""
+join_url_path(::Nothing, route::String) :: String = route
+join_url_path(prefix::String, ::Nothing) :: String = prefix
 
 # """
 #     generate_parser(func::Function, pathparams::Vector{Tuple{String,Type}})

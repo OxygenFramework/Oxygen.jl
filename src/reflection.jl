@@ -135,7 +135,14 @@ function reconstruct(info::Core.CodeInfo, func_name::Symbol)
         end
 
         if arg isa Expr
-            push!(default_values, eval(arg))
+            try
+                rebuilt = rebuild!(arg)
+                # Skip if SlotNumbers remain after rebuilding
+                walkargs(x -> isa(x, Core.SlotNumber), rebuilt) && continue
+                push!(default_values, eval(rebuilt))
+            catch
+                continue
+            end
         else
             push!(default_values, arg)
         end
@@ -220,9 +227,6 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
     param_defaults = Dict()
     kwarg_defaults = Dict()
 
-    # Given the params, we can take an educated guess and map the slot number to the parameter name
-    slot_mapping = Dict(i + 1 => p for (i, p) in enumerate(vcat(param_names, kwarg_names)))
-
     # skip parsing if no parameters or keyword arguments are found
     if isempty(param_names) && isempty(kwarg_names)
         return param_defaults, kwarg_defaults 
@@ -238,38 +242,36 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
         # rebuild the function signature with the default values included
         sig_args = reconstruct(c, func_name)
 
-        sig_length = length(sig_args)
-        self_index = findfirst([isa(x, Core.SlotNumber) && x.id == 1 for x in sig_args])
+        param_values = []
+        kwarg_values = []
 
-        for (index, arg) in enumerate(sig_args)
-
-            # for keyword arguments
-            if index < self_index  
-
-                # derive the current slot name
-                slot_number = sig_length - abs(self_index - index) + 1
-                slot_name = slot_mapping[slot_number]
-
-                # don't store slot numbers when no default is given
-                value = getargvalue(arg)
-                if !isa(value, Core.SlotNumber)
-                    kwarg_defaults[slot_name] = value
-                end
-
-            # for regular arguments
-            elseif index > self_index 
-                  
-                # derive the current slot name
-                slot_number = abs(self_index - index) + 1
-                slot_name = slot_mapping[slot_number]
-
-                # don't store slot numbers when no default is given
-                value = getargvalue(arg)
-                if !isa(value, Core.SlotNumber)
-                    param_defaults[slot_name] = value
+        seen_self = false
+        for arg in sig_args
+            if isa(arg, Core.SlotNumber) && arg.id == 1
+                seen_self = true
+            else 
+                if seen_self 
+                    push!(param_values, arg)
+                else
+                    push!(kwarg_values, arg)
                 end
             end
+        end
 
+        # map parameters if defaults values are available
+        for (index, p_val) in enumerate(param_values)
+            if !isa(p_val, Core.SlotNumber)
+                p_name = param_names[index]
+                param_defaults[p_name] = getargvalue(p_val)
+            end
+        end
+
+        # map keyword args if defaults values are available
+        for (index, k_val) in enumerate(kwarg_values)
+            if !isa(k_val, Core.SlotNumber)
+                k_name = kwarg_names[index]
+                kwarg_defaults[k_name] = getargvalue(k_val)
+            end
         end
     end 
 

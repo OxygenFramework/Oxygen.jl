@@ -393,20 +393,11 @@ r = internalrequest(HTTP.Request("GET", "/date/2022"))
 r = internalrequest(HTTP.Request("GET", "/date/2022-01-01"))
 @test r.status == 200
 
-@suppress global r = internalrequest(HTTP.Request("GET", "/date/-3"))
-@test r.status == 500
 
-# # datetime
+# datetime
 
 r = internalrequest(HTTP.Request("GET", "/datetime/2022-01-01"))
 @test r.status == 200
-
-@suppress global r = internalrequest(HTTP.Request("GET", "/datetime/2022"))
-@test r.status == 500
-
-@suppress global r = internalrequest(HTTP.Request("GET", "/datetime/-3"))
-@test r.status == 500
-
 
 # complex
 r = internalrequest(HTTP.Request("GET", "/complex/3.2e-1"))

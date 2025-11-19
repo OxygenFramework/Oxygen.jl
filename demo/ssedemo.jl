@@ -1,6 +1,6 @@
 module SSEDemo
 
-using JSON3
+using JSON
 using Dates
 using HTTP
 using Oxygen

@@ -3,8 +3,7 @@ module SwaggerDemo
 using Oxygen
 using HTTP
 using SwaggerMarkdown
-using StructTypes
-using JSON3
+using JSON
 using Dates
 
 @enum Fruit apple=1 orange=2 kiwi=3
@@ -12,10 +11,6 @@ struct Person
   name  :: String 
   age   :: Int8
 end
-
-# Add a supporting struct type definition to the Person struct
-StructTypes.StructType(::Type{Person}) = StructTypes.Struct()
-StructTypes.StructType(::Type{Complex{Float64}}) = StructTypes.Struct()
 
 @get "/fruit/{fruit}" function(req, fruit::Fruit)
   return fruit

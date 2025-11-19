@@ -2,7 +2,7 @@ module RouterDemo
 
 using Oxygen
 using HTTP
-using JSON3
+using JSON
 
 hellorouter = router("/hello", tags=["greeting"])
 

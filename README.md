@@ -316,12 +316,11 @@ serve()
 ```
 
 ## Deserialize & Serialize custom structs
-Oxygen provides some out-of-the-box serialization & deserialization for most objects but requires the use of StructTypes when converting structs
+Oxygen provides out-of-the-box serialization & deserialization for all objects and structs using the JSON.jl package
 
 ```julia
 using Oxygen
 using HTTP
-using StructTypes
 
 struct Animal
     id::Int
@@ -329,18 +328,15 @@ struct Animal
     name::String
 end
 
-# Add a supporting struct type definition so JSON3 can serialize & deserialize automatically
-StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
-
 @get "/get" function(req::HTTP.Request)
-    # serialize struct into JSON automatically (because we used StructTypes)
+    # serialize struct into JSON automatically
     return Animal(1, "cat", "whiskers")
 end
 
 @post "/echo" function(req::HTTP.Request)
     # deserialize JSON from the request body into an Animal struct
     animal = json(req, Animal)
-    # serialize struct back into JSON automatically (because we used StructTypes)
+    # serialize struct back into JSON automatically
     return animal
 end
 
@@ -682,7 +678,7 @@ Next, write the main code for you routes in a module `src/MyModule.jl`:
 ```
 module MyModule
 
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 @get "/greet" function(req::HTTP.Request)
     return "hello world!"
@@ -711,7 +707,7 @@ In some advanced scenarios, you might need to spin up multiple web severs within
 
 As a general rule of thumb, if you know how many instances you need ahead of time it's best to go with the static approach.
 
-### Static: multiple instance's with `@oxidise` 
+### Static: multiple instance's with `@oxidize` 
 
 Oxygen provides a new macro which makes it possible to setup and run multiple instances. It generates methods and binds them to a new internal state for the current module. 
 
@@ -719,7 +715,7 @@ In the example below, two simple servers are defined within modules A and B and 
 
 ```julia
 module A
-    using Oxygen; @oxidise
+    using Oxygen; @oxidize
 
     get("/") do
         text("server A")
@@ -727,7 +723,7 @@ module A
 end
 
 module B
-    using Oxygen; @oxidise
+    using Oxygen; @oxidize
 
     get("/") do
         text("server B")
@@ -796,11 +792,7 @@ julia --threads 4
 
 ```julia
 using Oxygen
-using StructTypes
 using Base.Threads
-
-# Make the Atomic struct serializable
-StructTypes.StructType(::Type{Atomic{Int64}}) = StructTypes.Struct()
 
 x = Atomic{Int64}(0);
 
@@ -1172,7 +1164,7 @@ Both `serve()` and `serveparallel()` have a `serialize` keyword argument which c
 ```julia
 using Oxygen
 using HTTP
-using JSON3
+using JSON
 
 @get "/divide/{a}/{b}" function(req::HTTP.Request, a::Float64, b::Float64)
     return a / b
@@ -1184,7 +1176,7 @@ function myserializer(handle)
         try
           response = handle(req)
           # convert all responses to JSON
-          return HTTP.Response(200, [], body=JSON3.write(response)) 
+          return HTTP.Response(200, [], body=JSON.json(response)) 
         catch error 
             @error "ERROR: " exception=(error, catch_backtrace())
             return HTTP.Response(500, "The Server encountered a problem")
@@ -1384,11 +1376,11 @@ Returns the body of a request as a binary file (returns a vector of `UInt8`s)
 
 #### json()
 ```julia
-  json(request, classtype)
+  json(request, class_type)
 ```
 | Parameter | Type     | Description                |
 | :-------- | :------- | :------------------------- |
 | `req` | `HTTP.Request` | **Required**. The HTTP request object |
-| `classtype` | `struct` | A struct to deserialize a JSON object into |
+| `class_type` | `struct` | A struct to deserialize a JSON object into |
 
 Deserialize the body of a request into a julia struct 

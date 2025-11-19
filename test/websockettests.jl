@@ -3,7 +3,7 @@ using Test
 using HTTP
 using HTTP.WebSockets
 using ..Constants
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 websocket("/ws") do ws::HTTP.WebSocket
     try 

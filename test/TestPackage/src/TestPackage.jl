@@ -3,7 +3,7 @@ module TestPackage
 using Base: @kwdef
 
 push!(LOAD_PATH, "../../")
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 export start, stop
 

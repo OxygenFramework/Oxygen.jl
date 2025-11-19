@@ -3,7 +3,7 @@ using Test
 using Dates
 using HTTP
 using ..Constants
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 @get "/health" function()
     return text("I'm alive")

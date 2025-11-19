@@ -1,7 +1,7 @@
 module MultiInstanceDemo
 
 module A
-    using Oxygen; @oxidise
+    using Oxygen; @oxidize
 
     @get "/" function()
         text("server A")
@@ -13,7 +13,7 @@ module A
 end
 
 module B
-    using Oxygen; @oxidise
+    using Oxygen; @oxidize
 
     @get "/" function()
         text("server B")

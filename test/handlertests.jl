@@ -2,7 +2,7 @@ module HandlerTests
 using Test
 using HTTP
 using ..Constants
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 @get "/noarg" function(;request)
     @test isa(request, HTTP.Request)

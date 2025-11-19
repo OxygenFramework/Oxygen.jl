@@ -5,7 +5,7 @@ This module holds Structs that are used throughout the application
 
 using HTTP
 using Sockets
-using JSON3
+using JSON
 using Dates
 using Base: @kwdef
 using DataStructures: CircularDeque
@@ -102,7 +102,7 @@ end
     pathparams  = Ref{Nullable{Dict{String,String}}}(nothing)
     queryparams = Ref{Nullable{Dict{String,String}}}(nothing)
     formbody    = Ref{Nullable{Dict{String,String}}}(nothing)
-    jsonbody    = Ref{Nullable{JSON3.Object}}(nothing)
+    jsonbody    = Ref{Nullable{JSON.Object}}(nothing)
     textbody    = Ref{Nullable{String}}(nothing)
 end
 
@@ -127,7 +127,7 @@ function queryvars(req::LazyRequest) :: Nullable{Dict{String,String}}
     return req.queryparams[]
 end
 
-function jsonbody(req::LazyRequest) :: Nullable{JSON3.Object}
+function jsonbody(req::LazyRequest) :: Nullable{JSON.Object}
     if isnothing(req.jsonbody[])
         req.jsonbody[] = json(req.request)
     end

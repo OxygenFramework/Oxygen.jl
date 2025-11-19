@@ -2,7 +2,7 @@ module MiddlewareDemo
 
 using Oxygen
 using HTTP
-using JSON3
+using JSON
 
 function handler1(handler)
     return function(req::HTTP.Request)

@@ -2,7 +2,7 @@ module CairoMakieTests
 using HTTP
 using Test
 using CairoMakie: heatmap
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 import Oxygen: text
 using ..Constants
 

@@ -1,10 +1,9 @@
 module ErgonomicsDemo
 
 using Oxygen
-using StructTypes
 using Dates
 using HTTP
-using JSON3
+using JSON
 using Base: @kwdef
 using BenchmarkTools
 

@@ -131,7 +131,7 @@ end
 end
 
 module A
-    using Oxygen; @oxidise
+    using Oxygen; @oxidize
 
     @get "/" function()
         text("server A")

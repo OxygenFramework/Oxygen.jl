@@ -1,17 +1,13 @@
 module Main 
 using Oxygen
 using HTTP
-using JSON3
-using StructTypes
+using JSON
 
 struct Animal
     id::Int
     type::String
     name::String
 end
-
-# Add a supporting struct type definition to the Animal struct
-StructTypes.StructType(::Type{Animal}) = StructTypes.Struct()
 
 @get "/" function()
     return "home"

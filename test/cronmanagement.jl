@@ -1,7 +1,7 @@
 module CronManagementTests
 
 using Test
-using Oxygen; @oxidise
+using Oxygen; @oxidize
 
 const iterations = Ref{Int}(0)
 

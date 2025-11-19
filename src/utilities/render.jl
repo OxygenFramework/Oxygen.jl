@@ -1,6 +1,6 @@
 
 using HTTP
-using JSON3
+using JSON
 using MIMEs
 
 export html, text, json, xml, js, css, binary, file
@@ -36,7 +36,7 @@ end
 A convenience function to return a String that should be interpreted as JSON
 """
 function json(content::Any; status = 200, headers = []) :: HTTP.Response
-    body = JSON3.write(content)
+    body = JSON.json(content)
     response = HTTP.Response(status, headers, body = body)
     HTTP.setheader(response, "Content-Type" => "application/json; charset=utf-8")
     HTTP.setheader(response, "Content-Length" => string(sizeof(body)))

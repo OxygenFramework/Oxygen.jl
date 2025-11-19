@@ -12,7 +12,7 @@ export countargs, recursive_merge, parseparam,
 ### Request helper functions ###
 
 """
-    redirect(path::String; code = 308)
+    redirect(path::String; code = 307)
 
 return a redirect response 
 """

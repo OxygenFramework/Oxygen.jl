@@ -154,26 +154,68 @@ route(func::Function, methods::Vector{String}, path::Union{String,Function}) = r
 
 ### Special Routing Functions Support for do..end Syntax ###
 
+"""
+    stream(func::Function, path::String)
+    stream(func::Function, path::Function)
+
+Convenience function to register a STREAM route. Equivalent to `@stream`.
+"""
 stream(func::Function, path::String)    = route([STREAM], path, func)
 stream(func::Function, path::Function)  = route([STREAM], path, func)
 
+"""
+    websocket(func::Function, path::String)
+    websocket(func::Function, path::Function)
+
+Convenience function to register a WEBSOCKET route. Equivalent to `@websocket`.
+"""
 websocket(func::Function, path::String)    = route([WEBSOCKET], path, func)
 websocket(func::Function, path::Function)  = route([WEBSOCKET], path, func)
 
 ### Core Routing Functions Support for do..end Syntax ###
 
+"""
+    get(func::Function, path::String)
+    get(func::Function, path::Function)
+
+Convenience function to register a GET route. Equivalent to `@get`.
+"""
 get(func::Function, path::String)       = route([GET], path, func)
 get(func::Function, path::Function)     = route([GET], path, func)
 
+"""
+    post(func::Function, path::String)
+    post(func::Function, path::Function)
+
+Convenience function to register a POST route. Equivalent to `@post`.
+"""
 post(func::Function, path::String)      = route([POST], path, func)
 post(func::Function, path::Function)    = route([POST], path, func)
 
+"""
+    put(func::Function, path::String)
+    put(func::Function, path::Function)
+
+Convenience function to register a PUT route. Equivalent to `@put`.
+"""
 put(func::Function, path::String)       = route([PUT], path, func) 
 put(func::Function, path::Function)     = route([PUT], path, func) 
 
+"""
+    patch(func::Function, path::String)
+    patch(func::Function, path::Function)
+
+Convenience function to register a PATCH route. Equivalent to `@patch`.
+"""
 patch(func::Function, path::String)     = route([PATCH], path, func)
 patch(func::Function, path::Function)   = route([PATCH], path, func)
 
+"""
+    delete(func::Function, path::String)
+    delete(func::Function, path::Function)
+
+Convenience function to register a DELETE route. Equivalent to `@delete`.
+"""
 delete(func::Function, path::String)    = route([DELETE], path, func)
 delete(func::Function, path::Function)  = route([DELETE], path, func)
 
@@ -234,9 +276,33 @@ function getexternalurl() :: String
     return external_url
 end
 
+"""
+    internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true)
+
+Sends an internal request to the server, allowing for communication between different parts of the application.
+"""
 internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true) = 
     Oxygen.Core.internalrequest(CONTEXT[], req; middleware, metrics, serialize, catch_errors)
 
+"""
+    router(prefix::String = ""; 
+                tags::Vector{String} = Vector{String}(), 
+                middleware::Nullable{Vector} = nothing, 
+                interval::Nullable{Real} = nothing,
+                cron::Nullable{String} = nothing)
+
+Create a new router instance.
+
+# Arguments
+- `prefix::String`: A string to be prefixed to all routes in this router.
+- `tags::Vector{String}`: A vector of strings to tag the router for documentation and management purposes.
+- `middleware::Nullable{Vector}`: Optional middleware to be applied to all routes in the router.
+- `interval::Nullable{Real}`: Optional interval for scheduling tasks.
+- `cron::Nullable{String}`: Optional cron expression for scheduling tasks.
+
+# Returns
+A router instance that can be used to define and manage a set of related routes.
+"""
 function router(prefix::String = ""; 
                 tags::Vector{String} = Vector{String}(), 
                 middleware::Nullable{Vector} = nothing, 
@@ -324,6 +390,12 @@ end
 
 ## Cron Job Functions ##
 
+"""
+    startcronjobs(ctx::ServerContext)
+    startcronjobs()
+
+Start all registered cron jobs.
+"""
 function startcronjobs(ctx::ServerContext)
     Oxygen.Core.registercronjobs(ctx)
     Oxygen.Core.startcronjobs(ctx.cron)
@@ -331,14 +403,32 @@ end
 
 startcronjobs() = startcronjobs(CONTEXT[])
 
+"""
+    stopcronjobs(ctx::ServerContext)
+    stopcronjobs()
+
+Stop all running cron jobs.
+"""
 stopcronjobs(ctx::ServerContext) = Oxygen.Core.stopcronjobs(ctx.cron)
 stopcronjobs() = stopcronjobs(CONTEXT[])
 
+"""
+    clearcronjobs(ctx::ServerContext)
+    clearcronjobs()
+
+Clear all registered cron jobs.
+"""
 clearcronjobs(ctx::ServerContext) = Oxygen.Core.clearcronjobs(ctx.cron)
 clearcronjobs() = clearcronjobs(CONTEXT[])
 
 ### Repeat Task Functions ###
 
+"""
+    starttasks(context::ServerContext)
+    starttasks()
+
+Start all registered repeat tasks.
+"""
 function starttasks(context::ServerContext) 
     Oxygen.Core.registertasks(context)
     Oxygen.Core.starttasks(context.tasks)
@@ -346,16 +436,33 @@ end
 
 starttasks() = starttasks(CONTEXT[])
 
+"""
+    stoptasks(context::ServerContext)
+    stoptasks()
 
+Stop all running repeat tasks.
+"""
 stoptasks(context::ServerContext) = Oxygen.Core.stoptasks(context.tasks)
 stoptasks() = stoptasks(CONTEXT[])
 
+"""
+    cleartasks(context::ServerContext)
+    cleartasks()
+
+Clear all registered repeat tasks.
+"""
 cleartasks(context::ServerContext) = Oxygen.Core.cleartasks(context.tasks)
 cleartasks() = cleartasks(CONTEXT[])
 
 
 ### Terminate Function ###
 
+"""
+    terminate(context::ServerContext)
+    terminate()
+
+Terminate the server and stop all running tasks.
+"""
 terminate(context::ServerContext) = Oxygen.Core.terminate(context)
 terminate() = terminate(CONTEXT[])
 

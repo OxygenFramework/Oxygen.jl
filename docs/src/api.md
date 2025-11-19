@@ -68,7 +68,6 @@ cleartasks
 startcronjobs
 stopcronjobs
 clearcronjobs
-clearcronjobs
 ```
 
 ## Extra's

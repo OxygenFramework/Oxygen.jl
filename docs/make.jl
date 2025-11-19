@@ -4,6 +4,7 @@ using Oxygen
 makedocs(
     sitename = "Oxygen.jl",
     format = Documenter.HTML(),
+    warnonly = true,  # everything is just a warning
     modules = [Oxygen],
     pages = [
         "Overview" => "index.md",

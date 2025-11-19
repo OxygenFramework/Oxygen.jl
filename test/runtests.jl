@@ -20,6 +20,7 @@ include("streamingtests.jl")
 include("handlertests.jl")
 
 #### Core Tests ####
+include("utiltests.jl")
 include("test_reexports.jl")
 include("precompilationtest.jl")
 include("autodoctests.jl")
@@ -37,6 +38,7 @@ include("taskmanagement.jl")
 include("cronmanagement.jl")
 include("middlewaretests.jl")
 include("appcontexttests.jl")
+include("path_prefix_tests.jl")
 include("originaltests.jl")
 include("revise.jl")
 

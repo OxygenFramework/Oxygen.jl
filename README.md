@@ -42,6 +42,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Websockets, Streaming, and Server-Sent Events
 - Cron Scheduling (on endpoints & functions)
 - Middleware chaining (at the application, router, and route levels)
+- Prebuilt Middleware - RateLimiter, Cors, BearerAuth
 - Static & Dynamic file hosting
 - Hot reloads with Revise.jl
 - Templating Support
@@ -1155,6 +1156,81 @@ end
 serve(middleware=[CorsMiddleware, AuthMiddleware])
 ```
 
+## Built-in Middleware
+
+Oxygen comes with a few handy middleware functions right out of the box, so you can easily add security, rate limiting, and CORS support to your app. You can drop these into your application, router, or even individual routes—just pass them in with the `middleware` keyword and Oxygen will take care of the rest.
+
+### RateLimiter
+
+The `RateLimiter` middleware lets you set a cap on how many requests each client can make in a given time window. It's perfect for public endpoints, login routes, or anywhere you want to keep things smooth and prevent brute-force attacks.
+
+**Example:**
+```julia
+# Limit each client to 50 requests every 3 seconds
+serve(middleware=[RateLimiter(rate_limit=50, window_period=Second(3))])
+```
+- `rate_limit`: How many requests a client can make before being slowed down.
+- `window_period`: The time window for counting requests (like `Second(3)`).
+
+---
+
+### BearerAuth
+
+The `BearerAuth` middleware extracts the bearer token from the authorization header and passes it to your custom function and Oxygen will handle the rest. If the token's good, your handler runs; if not, the request gets bounced.
+
+
+**Example:**
+```julia
+# Your function will need to perform actual token validation 
+function validate_token(token::String)
+    return true
+end
+
+# Only let requests with a valid token through
+serve(middleware=[BearerAuth(validate_token)])
+```
+- `validate_token`: Your function for checking if a token is legit. Return user info if it's good, or `nothing` if not.
+
+---
+
+### Cors
+
+The `Cors` middleware handles Cross-Origin Resource Sharing (CORS) for your API. It sets the right headers and responds to preflight OPTIONS requests, so browsers can safely call your endpoints from other domains. Just configure your policy with keyword arguments and Oxygen will do the rest.
+
+**Example:**
+```julia
+# Let any origin connect and expose a custom header
+serve(middleware=[Cors(allowed_origins="*")])
+```
+- `allowed_origins`, `allowed_headers`, `allowed_methods`: Set your CORS policy.
+- `allow_credentials`: Let browsers send cookies or auth headers.
+- `max_age`: How long browsers should cache preflight responses.
+- `extra_headers`: Toss in any custom headers you want to expose.
+
+**Example:**
+```julia
+# Let any origin connect and expose a custom header
+serve(middleware=[Cors(allowed_origins="*")])
+```
+- `allowed_origins`, `allowed_headers`, `allowed_methods`: Set your CORS policy.
+- `allow_credentials`: Let browsers send cookies or auth headers.
+- `max_age`: How long browsers should cache preflight responses.
+- `extra_headers`: Toss in any custom headers you want to expose.
+
+---
+
+**How to Use:**
+- Just pass your middleware to `serve`, `router`, or a route. Mix and match as needed.
+- Stack them up for extra protection and flexibility.
+
+**Example:**
+```julia
+# Mix CORS, rate limiting, and auth for a super secure API
+serve(middleware=[Cors(), RateLimiter(), BearerAuth(validate_token)])
+```
+
+Check out the test suite and demos for more real-world examples.
+
 ## Custom Response Serializers
 
 If you don't want to use Oxygen's default response serializer, you can turn it off and add your own! Just create your own special middleware function to serialize the response and add it at the end of your own middleware chain. 
@@ -1383,4 +1459,4 @@ Returns the body of a request as a binary file (returns a vector of `UInt8`s)
 | `req` | `HTTP.Request` | **Required**. The HTTP request object |
 | `class_type` | `struct` | A struct to deserialize a JSON object into |
 
-Deserialize the body of a request into a julia struct 
+Deserialize the body of a request into a julia struct

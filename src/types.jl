@@ -14,6 +14,7 @@ using ..Util
 export Server, History, HTTPTransaction, TaggedRoute, Nullable, Context,
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition,
+    LifecycleMiddleware, startup, shutdown,
     Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
 
 const Nullable{T} = Union{T, Nothing}
@@ -79,6 +80,35 @@ struct HTTPTransaction
     success     :: Bool
     status      :: Int16
     error_message :: Nullable{String}
+end
+
+@kwdef struct LifecycleMiddleware 
+    # The middleware function itself (handles incoming requests)
+    middleware :: Function
+    # A hook that's called when the server starts up (optional)
+    on_startup :: Union{Function,Nothing} = nothing
+    # A hook that's called when the server is shutdown (optional)
+    on_shutdown :: Union{Function,Nothing} = nothing
+end
+
+function startup(lf::LifecycleMiddleware)
+    if !isnothing(lf.on_startup)
+        try 
+            lf.on_startup()
+        catch error
+            @error "Error in LifecycleMiddleware.on_startup: " exception=(error, catch_backtrace())
+        end
+    end
+end
+
+function shutdown(lf::LifecycleMiddleware)
+    if !isnothing(lf.on_shutdown)
+        try
+            lf.on_shutdown()
+        catch error
+            @error "Error in LifecycleMiddleware.on_shutdown: " exception=(error, catch_backtrace())
+        end
+    end
 end
 
 const Server = HTTP.Server

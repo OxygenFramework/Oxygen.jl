@@ -67,19 +67,18 @@ function serverwelcome(external_url::String, prefix::Nullable{String}, docs::Boo
     end
 end
 
-struct ReviseHandler
-    ctx::ServerContext
-end
 
-function (handler::ReviseHandler)(handle)
-    req -> begin
-        Revise = Main.Revise
-        if !isempty(Revise.revision_queue)
-            @info "🔴 Starting pre-request revision"
-            Revise.revise()
-            @info "🟢 Pre-request revision finished"
+function ReviseHandler()
+    return function (handle)
+        return function (req::HTTP.Request)
+            Revise = Main.Revise
+            if !isempty(Revise.revision_queue)
+                @info "🔴 Starting pre-request revision"
+                Revise.revise()
+                @info "🟢 Pre-request revision finished"
+            end
+            invokelatest(handle, req)
         end
-        invokelatest(handle, req)
     end
 end
 
@@ -139,7 +138,7 @@ function serve(ctx::ServerContext;
             @warn "You are trying to use the `revise` option without @oxidize. Code in the `Main` module, which likely includes your routes, will not be tracked and revised."
         end
         middleware = convert(Vector{Any}, middleware)
-        insert!(middleware, 1, ReviseHandler(ctx))
+        insert!(middleware, 1, ReviseHandler())
     end
 
     # compose our middleware ahead of time (so it only has to be built up once)
@@ -201,7 +200,7 @@ end
 """
     terminate(ctx)
 
-stops the webserver immediately
+Gracefully shuts down the webserver
 """
 function terminate(context::ServerContext)
     if isopen(context.service)
@@ -213,13 +212,14 @@ function terminate(context::ServerContext)
         stoptasks(context.tasks)
         cleartasks(context.tasks)
 
-        # stop server
-        close(context.service)
+        # cleanup lifecycle middleware
+        shutdown.(context.service.lifecycle_middleware)
+        empty!(context.service.lifecycle_middleware)
 
         # Set the external url to nothing when the server is terminated
         context.service.external_url[] = nothing
 
-        # close our service on termination
+        # stop the server
         close(context.service)
     end
 end
@@ -302,10 +302,14 @@ application and have them execute in the order they were passed (left to right) 
 function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true)::Function
 
     # determine if we have any special router or route-specific middleware
+    raw_middleware = reverse(middleware)
+    
+    processed_middleware = process_middleware(ctx, raw_middleware)
+
     custom_middleware = if !isempty(ctx.service.custommiddleware)
-        [compose(ctx.service.router, ctx.service.middleware_cache_lock, middleware, ctx.service.custommiddleware, ctx.service.middleware_cache)]
+        [compose(ctx.service.router, ctx.service.middleware_cache_lock, processed_middleware, ctx.service.custommiddleware, ctx.service.middleware_cache)]
     else
-        reverse(middleware)
+        processed_middleware
     end
 
     # If a global prefix is passed, then we inject middleware to remove the prefix at runtime before routing
@@ -353,6 +357,9 @@ function startserver(ctx::ServerContext; host, port, show_banner=false, docs=fal
     registercronjobs(ctx)
     startcronjobs(ctx.cron)
 
+    # Signal start of server to LifecycleMiddleware functions
+    startup.(ctx.service.lifecycle_middleware)
+
     if !async
         try
             wait(ctx.service)
@@ -392,7 +399,7 @@ Directly call one of our other endpoints registered with the router, using your 
 and bypassing any globally defined middleware
 """
 function internalrequest(ctx::ServerContext, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true)::HTTP.Response
-    req.context[:ip] = "INTERNAL" # label internal requests
+    req.context[:ip] = IPv4("127.0.0.1") # label internal requests
     return req |> setupmiddleware(ctx; middleware, metrics, serialize, catch_errors)
 end
 

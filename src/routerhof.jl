@@ -2,11 +2,104 @@ module RouterHOF
 
 using HTTP
 
-using ..Middleware: genkey
+using ..Util: join_url_path
 using ..AppContext: ServerContext, Documenation
-using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable
+using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, LifecycleMiddleware
 
-export router
+export router, compose, genkey, process_middleware
+
+"""
+normalizes a list of middleware functions and LifecycleMiddleware structs
+"""
+function process_middleware(ctx::ServerContext, middleware::Vector) :: Vector{Function}
+    processed = []
+    for mw in middleware
+        if mw isa LifecycleMiddleware
+            push!(ctx.service.lifecycle_middleware, mw)
+            push!(processed, mw.middleware)
+        else
+            push!(processed, mw)
+        end
+    end
+    return processed
+end
+
+# Do nothing if we have no middleware to append
+function process_middleware(::ServerContext, ::Nothing) end
+
+
+"""
+This function is used to generate dictionary keys which lookup middleware for routes
+"""
+function genkey(httpmethod::String, path::String)::String
+    return "$httpmethod|$path"
+end
+
+"""
+This function is used to build up the middleware chain for all our endpoints
+"""
+function buildmiddleware(key::String, handler::Function, globalmiddleware::Vector, custommiddleware::Dict) :: Function
+
+    # lookup the middleware for this path
+    routermiddleware, routemiddleware = get(custommiddleware, key, (nothing, nothing))
+
+    # sanitize outputs (either value can be nothing)
+    routermiddleware = isnothing(routermiddleware) ? [] : routermiddleware
+    routemiddleware = isnothing(routemiddleware) ? [] : routemiddleware
+
+    # initialize our middleware layers
+    layers::Vector{Function} = [handler]
+
+    # append the middleware in reverse order (so when we reduce over it, it's in the correct order)
+    append!(layers, routemiddleware)
+    append!(layers, routermiddleware)
+    append!(layers, globalmiddleware)
+
+    # combine all the middleware functions together
+    return reduce(|>, layers)
+end
+
+"""
+This function dynamically determines which middleware functions to apply to a request at runtime. 
+If router or route specific middleware is defined, then it's used instead of the globally defined
+middleware. 
+"""
+function compose(router::HTTP.Router, cache_lock::ReentrantLock, globalmiddleware::Vector, custommiddleware::Dict, middleware_cache::Dict)
+    return function (handler)
+        return function (req::HTTP.Request)
+
+            innerhandler, path, _ = HTTP.Handlers.gethandler(router, req)
+
+            # Check if the current request matches one of our predefined routes 
+            if innerhandler !== nothing
+
+                # Check if we already have a cached middleware function for this specific route
+                key = genkey(req.method, path)
+                func = get(middleware_cache, key, nothing)
+                if !isnothing(func)
+                    return func(req)
+                end
+
+                # Combine all the middleware functions together 
+                strategy = buildmiddleware(key, handler, globalmiddleware, custommiddleware)
+                
+                ## Below Double-checked locking is used to reduce the overhead of acquiring a lock
+                if !haskey(middleware_cache, key)
+                    lock(cache_lock) do 
+                        if !haskey(middleware_cache, key)
+                            middleware_cache[key] = strategy
+                        end
+                    end
+                end
+                
+                return strategy(req)
+            end
+    
+            return handler(req)
+        end
+    end
+end
+
 
 """
 This functions assists registering routes with a specific prefix.
@@ -28,6 +121,9 @@ function createrouter(ctx::ServerContext, prefix::String,
     routerinterval::Nullable{Real},
     routercron::Nullable{String}=nothing)
 
+    # ensure we collect & process any lifecycle-middleware functions
+    routermiddleware = process_middleware(ctx, routermiddleware)
+
     # appends a "/" character to the given string if doesn't have one. 
     function fixpath(path::String)
         path = String(strip(path))
@@ -43,6 +139,9 @@ function createrouter(ctx::ServerContext, prefix::String,
         middleware::Nullable{Vector}=nothing,
         interval::Nullable{Real}=routerinterval,
         cron::Nullable{String}=routercron)
+
+        # ensure we collect & process any lifecycle-middleware functions
+        middleware = process_middleware(ctx, middleware)
 
         # this is called inside the @register macro (only it knows the exact httpmethod associated with each path)
         return function (httpmethod::String)
@@ -67,41 +166,35 @@ function createrouter(ctx::ServerContext, prefix::String,
             set to the HTTP method, and we update path to use the router prefix instead.
             """
             if path === httpmethod
-                path = prefix
+                final_path = prefix
             else
-                # combine the current routers prefix with this specfic path 
-                path = !isnothing(path) ? "$(fixpath(prefix))$(fixpath(path))" : fixpath(prefix)
+                final_path = !isnothing(path) ? join_url_path(prefix, path) : join_url_path(prefix, "")
             end
 
             if !(isnothing(routermiddleware) && isnothing(middleware))
-                # add both router & route-sepecific middleware
-                ctx.service.custommiddleware[genkey(httpmethod, path)] = (routermiddleware, middleware)
+                ctx.service.custommiddleware[genkey(httpmethod, final_path)] = (routermiddleware, middleware)
             end
 
-            # register interval for this route 
             if !isnothing(interval) && interval >= 0.0
-                task = TaskDefinition(path, httpmethod, interval)
+                task = TaskDefinition(final_path, httpmethod, interval)
                 push!(ctx.tasks.task_definitions, task)
             end
 
-            # register cron expression for this route 
             if !isnothing(cron) && !isempty(cron)
-                job = CronDefinition(path, httpmethod, cron)
+                job = CronDefinition(final_path, httpmethod, cron)
                 push!(ctx.cron.job_definitions, job)
             end
 
             combinedtags = [tags..., routertags...]
 
-            # register tags
-            if !haskey(ctx.docs.taggedroutes, path)
-                ctx.docs.taggedroutes[path] = TaggedRoute([httpmethod], combinedtags)
+            if !haskey(ctx.docs.taggedroutes, final_path)
+                ctx.docs.taggedroutes[final_path] = TaggedRoute([httpmethod], combinedtags)
             else
-                combinedmethods = vcat(httpmethod, ctx.docs.taggedroutes[path].httpmethods)
-                ctx.docs.taggedroutes[path] = TaggedRoute(combinedmethods, combinedtags)
+                combinedmethods = vcat(httpmethod, ctx.docs.taggedroutes[final_path].httpmethods)
+                ctx.docs.taggedroutes[final_path] = TaggedRoute(combinedmethods, combinedtags)
             end
 
-            #return path 
-            return path
+            return final_path
         end
     end
 end

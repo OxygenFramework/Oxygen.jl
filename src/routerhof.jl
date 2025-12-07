@@ -6,7 +6,7 @@ using ..Util: join_url_path
 using ..AppContext: ServerContext, Documenation
 using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, LifecycleMiddleware
 
-export router, compose, genkey, process_middleware
+export router, compose, genkey, process_middleware, HOFRouter, OuterRouter, InnerRouter
 
 """
 normalizes a list of middleware functions and LifecycleMiddleware structs
@@ -112,92 +112,107 @@ function router(ctx::ServerContext, prefix::String="";
     interval::Nullable{Real}=nothing,
     cron::Nullable{String}=nothing)
 
-    return createrouter(ctx, prefix, tags, middleware, interval, cron)
+    # ensure we collect & process any lifecycle-middleware functions
+    router_middleware = process_middleware(ctx, middleware)
+
+    return OuterRouter(ctx, prefix, tags, router_middleware, interval, cron)
 end
 
-function createrouter(ctx::ServerContext, prefix::String,
-    routertags::Vector{String},
-    routermiddleware::Nullable{Vector},
-    routerinterval::Nullable{Real},
-    routercron::Nullable{String}=nothing)
+
+"""
+Abstract supertype for higher-order function (HOF) routers in Oxygen.
+
+This type serves as the base for `OuterRouter` and `InnerRouter`, enabling composable routing patterns
+with features like prefixes, middleware, tags, intervals, and cron jobs. HOF routers allow building
+nested route configurations by chaining callable instances.
+"""
+abstract type HOFRouter end
+
+struct OuterRouter <: HOFRouter
+    ctx::ServerContext
+    prefix::String
+    routertags::Vector{String}
+    routermiddleware::Nullable{Vector}
+    routerinterval::Nullable{Real}
+    routercron::Nullable{String}
+end
+
+function (outer::OuterRouter)(path=nothing;
+    tags::Vector{String}=Vector{String}(),
+    middleware::Nullable{Vector}=nothing,
+    interval::Nullable{Real}=outer.routerinterval,
+    cron::Nullable{String}=outer.routercron)
 
     # ensure we collect & process any lifecycle-middleware functions
-    routermiddleware = process_middleware(ctx, routermiddleware)
+    processed_middleware = process_middleware(outer.ctx, middleware)
 
-    # appends a "/" character to the given string if doesn't have one. 
-    function fixpath(path::String)
-        path = String(strip(path))
-        if !isnothing(path) && !isempty(path) && path !== "/"
-            return startswith(path, "/") ? path : "/$path"
-        end
-        return ""
-    end
-
-    # This function takes input from the user next to the request handler
-    return function (path=nothing;
-        tags::Vector{String}=Vector{String}(),
-        middleware::Nullable{Vector}=nothing,
-        interval::Nullable{Real}=routerinterval,
-        cron::Nullable{String}=routercron)
-
-        # ensure we collect & process any lifecycle-middleware functions
-        middleware = process_middleware(ctx, middleware)
-
-        # this is called inside the @register macro (only it knows the exact httpmethod associated with each path)
-        return function (httpmethod::String)
-
-            """
-            This scenario can happen when the user passes a router object directly like so: 
-
-            @get router("/math/power/{a}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
-                return a ^ b
-            end
-
-            Under normal circumstances, the function returned by the router call is used when registering routes. 
-            However, in this specific case, the call to router returns a higher-order function (HOF) that's nested one 
-            layer deeper than expected.
-
-            Due to the way we call these functions to derive the path for the currently registered route, 
-            the path argument can sometimes be mistakenly set to the HTTP method (e.g., "GET", "POST"). 
-            This can lead to the path getting concatenated with the HTTP method string.
-
-            To account for this specific use case, we've added a check in the inner function to verify whether 
-            path matches the current passed in httpmethod. If it does, we assume that path has been incorrectly 
-            set to the HTTP method, and we update path to use the router prefix instead.
-            """
-            if path === httpmethod
-                final_path = prefix
-            else
-                final_path = !isnothing(path) ? join_url_path(prefix, path) : join_url_path(prefix, "")
-            end
-
-            if !(isnothing(routermiddleware) && isnothing(middleware))
-                ctx.service.custommiddleware[genkey(httpmethod, final_path)] = (routermiddleware, middleware)
-            end
-
-            if !isnothing(interval) && interval >= 0.0
-                task = TaskDefinition(final_path, httpmethod, interval)
-                push!(ctx.tasks.task_definitions, task)
-            end
-
-            if !isnothing(cron) && !isempty(cron)
-                job = CronDefinition(final_path, httpmethod, cron)
-                push!(ctx.cron.job_definitions, job)
-            end
-
-            combinedtags = [tags..., routertags...]
-
-            if !haskey(ctx.docs.taggedroutes, final_path)
-                ctx.docs.taggedroutes[final_path] = TaggedRoute([httpmethod], combinedtags)
-            else
-                combinedmethods = vcat(httpmethod, ctx.docs.taggedroutes[final_path].httpmethods)
-                ctx.docs.taggedroutes[final_path] = TaggedRoute(combinedmethods, combinedtags)
-            end
-
-            return final_path
-        end
-    end
+    return InnerRouter(outer.ctx, outer.prefix, outer.routertags, outer.routermiddleware, path, tags, processed_middleware, interval, cron)
 end
+
+struct InnerRouter <: HOFRouter
+    ctx::ServerContext
+    prefix::String
+    routertags::Vector{String}
+    routermiddleware::Nullable{Vector}
+    path::Union{Nothing, String}
+    tags::Vector{String}
+    middleware::Nullable{Vector}
+    interval::Nullable{Real}
+    cron::Nullable{String}
+end
+
+function (inner::InnerRouter)(httpmethod::String)
+    """
+    This scenario can happen when the user passes a router object directly like so: 
+
+    @get router("/math/power/{a}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
+        return a ^ b
+    end
+
+    Under normal circumstances, the function returned by the router call is used when registering routes. 
+    However, in this specific case, the call to router returns a higher-order function (HOF) that's nested one 
+    layer deeper than expected.
+
+    Due to the way we call these functions to derive the path for the currently registered route, 
+    the path argument can sometimes be mistakenly set to the HTTP method (e.g., "GET", "POST"). 
+    This can lead to the path getting concatenated with the HTTP method string.
+
+    To account for this specific use case, we've added a check in the inner function to verify whether 
+    path matches the current passed in httpmethod. If it does, we assume that path has been incorrectly 
+    set to the HTTP method, and we update path to use the router prefix instead.
+    """
+    if inner.path === httpmethod
+        final_path = inner.prefix
+    else
+        final_path = !isnothing(inner.path) ? join_url_path(inner.prefix, inner.path) : join_url_path(inner.prefix, "")
+    end
+
+    if !(isnothing(inner.routermiddleware) && isnothing(inner.middleware))
+        inner.ctx.service.custommiddleware[genkey(httpmethod, final_path)] = (inner.routermiddleware, inner.middleware)
+    end
+
+    if !isnothing(inner.interval) && inner.interval >= 0.0
+        task = TaskDefinition(final_path, httpmethod, inner.interval)
+        push!(inner.ctx.tasks.task_definitions, task)
+    end
+
+    if !isnothing(inner.cron) && !isempty(inner.cron)
+        job = CronDefinition(final_path, httpmethod, inner.cron)
+        push!(inner.ctx.cron.job_definitions, job)
+    end
+
+    combinedtags = [inner.tags..., inner.routertags...]
+
+    if !haskey(inner.ctx.docs.taggedroutes, final_path)
+        inner.ctx.docs.taggedroutes[final_path] = TaggedRoute([httpmethod], combinedtags)
+    else
+        combinedmethods = vcat(httpmethod, inner.ctx.docs.taggedroutes[final_path].httpmethods)
+        inner.ctx.docs.taggedroutes[final_path] = TaggedRoute(combinedmethods, combinedtags)
+    end
+
+    return final_path
+end
+
 
 
 end

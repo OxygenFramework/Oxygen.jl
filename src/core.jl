@@ -494,35 +494,46 @@ function MetricsMiddleware(service::Service, catch_errors::Bool)
 end
 
 
-function parse_route(httpmethod::String, route::Union{String,Function})::String
-
-    # check if path is a callable function (that means it's a router higher-order-function)
-    if isa(route, Function)
-
-        # This is true when the user passes the router() directly to the path.
-        # We call the generated function without args so it uses the default args 
-        # from the parent function.
-        if countargs(route) == 1
-            route = route()
-        end
-
-        # If it's still a function, then that means this is from the 3rd inner function 
-        # defined in the createrouter() function.
-        if countargs(route) == 2
-            route = route(httpmethod)
-        end
-    end
-
-    # if the route is still a function, then it's from the  3rd inner function 
-    # defined in the createrouter() function when the 'router()' function is passed directly.
-    if isa(route, Function)
-        route = route(httpmethod)
-    end
-
-    !isa(route, String) && throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
-
-    return route
+# Case 1: If we are given a string - just return it
+function parse_route(::String, route::String) :: String
+    return route 
 end
+
+# Case 2: Call OuterRouter with default args to get InnerRouter, then call with http_method
+function parse_route(http_method::String, router::OuterRouter) :: String
+    inner_router = router()
+    return inner_router(http_method)
+end
+
+# Case 3: Call InnerRouter with http_method to get the final path
+function parse_route(http_method::String, router::InnerRouter) :: String
+    return router(http_method)
+end
+
+# Base Case: We are given an invalid route object and should throw an error
+function parse_route(::String, route) :: String
+    throw("The `route` parameter is not a String, OuterRouter, or InnerRouter, but is instead a: $(typeof(route))")
+end
+
+# function parse_route(httpmethod::String, route::Union{String,HOFRouter}) :: String
+
+#     if isa(route, String)
+#         return route
+
+#     elseif isa(route, OuterRouter)
+#         # Call OuterRouter with default args to get InnerRouter, then call with httpmethod
+#         inner_router = route()
+#         return inner_router(httpmethod)
+
+#     elseif isa(route, InnerRouter)
+#         # Call InnerRouter with httpmethod to get the final path
+#         return route(httpmethod)
+
+#     else
+#         throw("The `route` parameter is not a String, OuterRouter, or InnerRouter, but is instead a: $(typeof(route))")
+#     end
+
+# end
 
 function parse_func_params(route::String, func::Function)
 
@@ -621,7 +632,7 @@ end
 
 Register a request handler function with a path to the ROUTER
 """
-function register(ctx::ServerContext, httpmethod::String, route::Union{String,Function}, func::Function)
+function register(ctx::ServerContext, httpmethod::String, route::Union{String,HOFRouter}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
@@ -655,7 +666,7 @@ end
 This registers a route wihout generating any documentation for it. Used primarily for internal routes like 
 docs and metrics
 """
-function register_internal(ctx::ServerContext, router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
+function register_internal(ctx::ServerContext, router::Router, httpmethod::String, route::Union{String,HOFRouter}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)

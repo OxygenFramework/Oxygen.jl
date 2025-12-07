@@ -501,7 +501,7 @@ end
 
 # Case 2: Call OuterRouter with default args to get InnerRouter, then call with http_method
 function parse_route(http_method::String, router::OuterRouter) :: String
-    inner_router = router()
+    inner_router::InnerRouter = router()
     return inner_router(http_method)
 end
 
@@ -514,26 +514,6 @@ end
 function parse_route(::String, route) :: String
     throw("The `route` parameter is not a String, OuterRouter, or InnerRouter, but is instead a: $(typeof(route))")
 end
-
-# function parse_route(httpmethod::String, route::Union{String,HOFRouter}) :: String
-
-#     if isa(route, String)
-#         return route
-
-#     elseif isa(route, OuterRouter)
-#         # Call OuterRouter with default args to get InnerRouter, then call with httpmethod
-#         inner_router = route()
-#         return inner_router(httpmethod)
-
-#     elseif isa(route, InnerRouter)
-#         # Call InnerRouter with httpmethod to get the final path
-#         return route(httpmethod)
-
-#     else
-#         throw("The `route` parameter is not a String, OuterRouter, or InnerRouter, but is instead a: $(typeof(route))")
-#     end
-
-# end
 
 function parse_func_params(route::String, func::Function)
 

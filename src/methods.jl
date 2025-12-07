@@ -161,7 +161,7 @@ route(func::Function, methods::Vector{String}, path::Union{String,HOFRouter}) = 
 Convenience function to register a STREAM route. Equivalent to `@stream`.
 """
 stream(func::Function, path::String)    = route([STREAM], path, func)
-stream(func::Function, path::HOFRouter)    = route([STREAM], path, func)
+stream(func::Function, path::HOFRouter) = route([STREAM], path, func)
 
 """
     websocket(func::Function, path::String)
@@ -169,8 +169,8 @@ stream(func::Function, path::HOFRouter)    = route([STREAM], path, func)
 
 Convenience function to register a WEBSOCKET route. Equivalent to `@websocket`.
 """
-websocket(func::Function, path::String)    = route([WEBSOCKET], path, func)
-websocket(func::Function, path::HOFRouter)    = route([WEBSOCKET], path, func)
+websocket(func::Function, path::String)     = route([WEBSOCKET], path, func)
+websocket(func::Function, path::HOFRouter)  = route([WEBSOCKET], path, func)
 
 ### Core Routing Functions Support for do..end Syntax ###
 
@@ -181,7 +181,7 @@ websocket(func::Function, path::HOFRouter)    = route([WEBSOCKET], path, func)
 Convenience function to register a GET route. Equivalent to `@get`.
 """
 get(func::Function, path::String)       = route([GET], path, func)
-get(func::Function, path::HOFRouter)       = route([GET], path, func)
+get(func::Function, path::HOFRouter)    = route([GET], path, func)
 
 """
     post(func::Function, path::String)
@@ -190,7 +190,7 @@ get(func::Function, path::HOFRouter)       = route([GET], path, func)
 Convenience function to register a POST route. Equivalent to `@post`.
 """
 post(func::Function, path::String)      = route([POST], path, func)
-post(func::Function, path::HOFRouter)      = route([POST], path, func)
+post(func::Function, path::HOFRouter)   = route([POST], path, func)
 
 """
     put(func::Function, path::String)
@@ -199,7 +199,7 @@ post(func::Function, path::HOFRouter)      = route([POST], path, func)
 Convenience function to register a PUT route. Equivalent to `@put`.
 """
 put(func::Function, path::String)       = route([PUT], path, func) 
-put(func::Function, path::HOFRouter)       = route([PUT], path, func) 
+put(func::Function, path::HOFRouter)    = route([PUT], path, func) 
 
 """
     patch(func::Function, path::String)
@@ -208,7 +208,7 @@ put(func::Function, path::HOFRouter)       = route([PUT], path, func)
 Convenience function to register a PATCH route. Equivalent to `@patch`.
 """
 patch(func::Function, path::String)     = route([PATCH], path, func)
-patch(func::Function, path::HOFRouter)     = route([PATCH], path, func)
+patch(func::Function, path::HOFRouter)  = route([PATCH], path, func)
 
 """
     delete(func::Function, path::String)
@@ -217,7 +217,7 @@ patch(func::Function, path::HOFRouter)     = route([PATCH], path, func)
 Convenience function to register a DELETE route. Equivalent to `@delete`.
 """
 delete(func::Function, path::String)    = route([DELETE], path, func)
-delete(func::Function, path::HOFRouter)    = route([DELETE], path, func)
+delete(func::Function, path::HOFRouter) = route([DELETE], path, func)
 
 
 

@@ -31,8 +31,8 @@ function process_middleware(::ServerContext, ::Nothing) end
 """
 This function is used to generate dictionary keys which lookup middleware for routes
 """
-function genkey(httpmethod::String, path::String)::String
-    return "$httpmethod|$path"
+function genkey(http_method::String, path::String)::String
+    return "$http_method|$path"
 end
 
 """
@@ -131,29 +131,28 @@ abstract type HOFRouter end
 struct OuterRouter <: HOFRouter
     ctx::ServerContext
     prefix::String
-    routertags::Vector{String}
-    routermiddleware::Nullable{Vector}
-    routerinterval::Nullable{Real}
-    routercron::Nullable{String}
+    tags::Vector{String}
+    middleware::Nullable{Vector}
+    interval::Nullable{Real}
+    cron::Nullable{String}
 end
 
-function (outer::OuterRouter)(path=nothing;
+function (outer::OuterRouter)(
+    path=nothing;
     tags::Vector{String}=Vector{String}(),
     middleware::Nullable{Vector}=nothing,
-    interval::Nullable{Real}=outer.routerinterval,
-    cron::Nullable{String}=outer.routercron)
+    interval::Nullable{Real}=outer.interval,
+    cron::Nullable{String}=outer.cron)
 
     # ensure we collect & process any lifecycle-middleware functions
     processed_middleware = process_middleware(outer.ctx, middleware)
 
-    return InnerRouter(outer.ctx, outer.prefix, outer.routertags, outer.routermiddleware, path, tags, processed_middleware, interval, cron)
+    return InnerRouter(outer.ctx, outer, path, tags, processed_middleware, interval, cron)
 end
 
 struct InnerRouter <: HOFRouter
     ctx::ServerContext
-    prefix::String
-    routertags::Vector{String}
-    routermiddleware::Nullable{Vector}
+    outer::OuterRouter
     path::Union{Nothing, String}
     tags::Vector{String}
     middleware::Nullable{Vector}
@@ -161,7 +160,11 @@ struct InnerRouter <: HOFRouter
     cron::Nullable{String}
 end
 
-function (inner::InnerRouter)(httpmethod::String)
+function (inner::InnerRouter)(http_method::String)
+
+    # Pull out the "router" level information 
+    outer = inner.outer
+
     """
     This scenario can happen when the user passes a router object directly like so: 
 
@@ -178,35 +181,35 @@ function (inner::InnerRouter)(httpmethod::String)
     This can lead to the path getting concatenated with the HTTP method string.
 
     To account for this specific use case, we've added a check in the inner function to verify whether 
-    path matches the current passed in httpmethod. If it does, we assume that path has been incorrectly 
+    path matches the current passed in http_method. If it does, we assume that path has been incorrectly 
     set to the HTTP method, and we update path to use the router prefix instead.
     """
-    if inner.path === httpmethod
-        final_path = inner.prefix
+    if inner.path === http_method
+        final_path = outer.prefix
     else
-        final_path = !isnothing(inner.path) ? join_url_path(inner.prefix, inner.path) : join_url_path(inner.prefix, "")
+        final_path = !isnothing(inner.path) ? join_url_path(outer.prefix, inner.path) : join_url_path(outer.prefix, "")
     end
 
-    if !(isnothing(inner.routermiddleware) && isnothing(inner.middleware))
-        inner.ctx.service.custommiddleware[genkey(httpmethod, final_path)] = (inner.routermiddleware, inner.middleware)
+    if !(isnothing(outer.middleware) && isnothing(inner.middleware))
+        inner.ctx.service.custommiddleware[genkey(http_method, final_path)] = (outer.middleware, inner.middleware)
     end
 
     if !isnothing(inner.interval) && inner.interval >= 0.0
-        task = TaskDefinition(final_path, httpmethod, inner.interval)
+        task = TaskDefinition(final_path, http_method, inner.interval)
         push!(inner.ctx.tasks.task_definitions, task)
     end
 
     if !isnothing(inner.cron) && !isempty(inner.cron)
-        job = CronDefinition(final_path, httpmethod, inner.cron)
+        job = CronDefinition(final_path, http_method, inner.cron)
         push!(inner.ctx.cron.job_definitions, job)
     end
 
-    combinedtags = [inner.tags..., inner.routertags...]
+    combinedtags = [inner.tags..., outer.tags...]
 
     if !haskey(inner.ctx.docs.taggedroutes, final_path)
-        inner.ctx.docs.taggedroutes[final_path] = TaggedRoute([httpmethod], combinedtags)
+        inner.ctx.docs.taggedroutes[final_path] = TaggedRoute([http_method], combinedtags)
     else
-        combinedmethods = vcat(httpmethod, inner.ctx.docs.taggedroutes[final_path].httpmethods)
+        combinedmethods = vcat(http_method, inner.ctx.docs.taggedroutes[final_path].httpmethods)
         inner.ctx.docs.taggedroutes[final_path] = TaggedRoute(combinedmethods, combinedtags)
     end
 

@@ -128,6 +128,18 @@ nested route configurations by chaining callable instances.
 """
 abstract type HOFRouter end
 
+"""
+This struct represents the data passed to the top level "router()" call.
+These properties can be shared bewteen any other endpoints that reuse the router
+
+ex.) 
+
+@get router("/repeat/one", interval = 1, tags=["repeat"]) function(req)
+    return "one"
+end
+
+The router() function itself can be passed to routes and returns the OuterRouter struct
+"""
 struct OuterRouter <: HOFRouter
     ctx::ServerContext
     prefix::String
@@ -150,6 +162,22 @@ function (outer::OuterRouter)(
     return InnerRouter(outer.ctx, outer, path, tags, processed_middleware, interval, cron)
 end
 
+
+"""
+The InnerRouter struct represents the returned function from the outer router, that
+lets you override properties on a route by route basis.
+
+ex.)
+
+repeat = router("/repeat", interval = 1, tags=["repeat"])
+
+@get repeat("/one") function(req)
+    return "one"
+end
+
+The "repeat()" function returns the InnerRouter function
+
+"""
 struct InnerRouter <: HOFRouter
     ctx::ServerContext
     outer::OuterRouter

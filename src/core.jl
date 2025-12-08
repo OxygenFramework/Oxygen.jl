@@ -513,10 +513,6 @@ function parse_route(http_method::String, router::InnerRouter) :: String
     return router(http_method)
 end
 
-# Base Case: We are given an invalid route object and should throw an error
-function parse_route(::String, route) :: String
-    throw("The `route` parameter is not a String, OuterRouter, or InnerRouter, but is instead a: $(typeof(route))")
-end
 
 function parse_func_params(route::String, func::Function)
 

@@ -193,30 +193,7 @@ function (inner::InnerRouter)(http_method::String)
     # Pull out the "router" level information 
     outer = inner.outer
 
-    """
-    This scenario can happen when the user passes a router object directly like so: 
-
-    @get router("/math/power/{a}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
-        return a ^ b
-    end
-
-    Under normal circumstances, the function returned by the router call is used when registering routes. 
-    However, in this specific case, the call to router returns a higher-order function (HOF) that's nested one 
-    layer deeper than expected.
-
-    Due to the way we call these functions to derive the path for the currently registered route, 
-    the path argument can sometimes be mistakenly set to the HTTP method (e.g., "GET", "POST"). 
-    This can lead to the path getting concatenated with the HTTP method string.
-
-    To account for this specific use case, we've added a check in the inner function to verify whether 
-    path matches the current passed in http_method. If it does, we assume that path has been incorrectly 
-    set to the HTTP method, and we update path to use the router prefix instead.
-    """
-    if inner.path === http_method
-        final_path = outer.prefix
-    else
-        final_path = !isnothing(inner.path) ? join_url_path(outer.prefix, inner.path) : join_url_path(outer.prefix, "")
-    end
+    final_path = !isnothing(inner.path) ? join_url_path(outer.prefix, inner.path) : join_url_path(outer.prefix, "")
 
     if !(isnothing(outer.middleware) && isnothing(inner.middleware))
         inner.ctx.service.custommiddleware[genkey(http_method, final_path)] = (outer.middleware, inner.middleware)

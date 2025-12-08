@@ -3,6 +3,7 @@ module RateLimiterTests
 using Test
 using HTTP
 using Dates
+using Sockets
 using Oxygen; @oxidize
 using ..Constants
 
@@ -58,7 +59,6 @@ terminate()
 
 # Create a rate limiter with realistic limits for testing (100 requests per second)
 serve(port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
-
 
 
 sleep(3.1) # Ensure rate limiter window is reset before starting next testset
@@ -121,6 +121,32 @@ sleep(3.1) # Ensure rate limiter window is reset before starting next testset
     @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/limited/goodbye"; retry=false)
     @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/limited/goodbye"; retry=false)
     @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/limited/goodbye"; retry=false)
+end
+
+terminate()
+
+rl = RateLimiter(rate_limit=1, window_period=Hour(1), cleanup_period=Second(1), cleanup_threshold=Second(1))
+
+# Start server for background cleanup test
+serve(middleware=[rl], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+
+@testset "Background Cleanup Test" begin
+
+    # First request should succeed
+    r = HTTP.get("$localhost/ok"; retry=false)
+    @test r.status == 200
+    @test text(r) == "ok"
+
+    # Second request should be rate limited (429)
+    @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/ok"; retry=false)
+
+    # Wait for cleanup to run (cleanup_threshold=1s, cleanup_period=1s, wait 2.1s to ensure task runs)
+    sleep(2.1)
+
+    # Third request should succeed because the IP entry was cleaned up
+    r = HTTP.get("$localhost/ok"; retry=false)
+    @test r.status == 200
+    @test text(r) == "ok"
 end
 
 terminate()

@@ -216,6 +216,9 @@ function terminate(context::ServerContext)
         shutdown.(context.service.lifecycle_middleware)
         empty!(context.service.lifecycle_middleware)
 
+        # clear any cached middleware strategies so new servers pick up updated middleware
+        empty!(context.service.middleware_cache)
+
         # Set the external url to nothing when the server is terminated
         context.service.external_url[] = nothing
 

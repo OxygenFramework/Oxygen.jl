@@ -28,21 +28,31 @@ function RateLimiter(;rate_limit::Int = 100, window_period::Period = Minute(1), 
 
     rate_limit_store = Dict{IPAddr, Tuple{Int, DateTime}}()
     store_lock = ReentrantLock()
-    running = Ref(true)
+    
+    running = Ref{Bool}(false)
+    cleanup_task = Ref{Union{Task,Nothing}}(nothing)
 
-    # Background cleanup task
-    @async while running[]
-        sleep(cleanup_period)
-        lock(store_lock) do
-            current_time = now()
-            to_delete = []
-            for (ip, (_, last_reset)) in rate_limit_store
-                if current_time - last_reset > cleanup_threshold
-                    push!(to_delete, ip)
+    function on_startup()
+        # enable the flag
+        running[] = true
+
+        # prevent multiple cleanup tasks from being started
+        if isnothing(cleanup_task[])
+            # Start Background cleanup task
+            cleanup_task[] = @async while running[]
+                sleep(cleanup_period)
+                lock(store_lock) do
+                    current_time = now()
+                    to_delete = []
+                    for (ip, (_, last_reset)) in rate_limit_store
+                        if current_time - last_reset > cleanup_threshold
+                            push!(to_delete, ip)
+                        end
+                    end
+                    for ip in to_delete
+                        delete!(rate_limit_store, ip)
+                    end
                 end
-            end
-            for ip in to_delete
-                delete!(rate_limit_store, ip)
             end
         end
     end
@@ -50,6 +60,7 @@ function RateLimiter(;rate_limit::Int = 100, window_period::Period = Minute(1), 
     # Stop function to halt the task
     function on_shutdown()
         running[] = false
+        cleanup_task[] = nothing
     end
     
     function middleware(handle::Function)
@@ -97,6 +108,7 @@ function RateLimiter(;rate_limit::Int = 100, window_period::Period = Minute(1), 
 
     return LifecycleMiddleware(;
         middleware = middleware, 
+        on_startup = on_startup,
         on_shutdown = on_shutdown
     )
 end

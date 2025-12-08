@@ -24,7 +24,7 @@ A `LifecycleMiddleware` struct containing the middleware function and a no-op sh
 function BearerAuth(validate_token::Function; header::String = "Authorization", scheme::String = "Bearer")
 
     full_scheme = scheme * " "
-    scheme_length = length(full_scheme) + 1
+    scheme_prefix_len = length(full_scheme)
 
     return function (handle::Function)
         return function(req::HTTP.Request)
@@ -35,12 +35,19 @@ function BearerAuth(validate_token::Function; header::String = "Authorization", 
                 return INVALID_HEADER
             end
 
-            # Fast, allocation-free extraction of the token (want to strip token just to be safe)
-            token = strip(auth_header[scheme_length:end])
-            if isempty(token)
+            header_len = length(auth_header)
+
+            # Ensure there is something after the scheme (e.g. "Bearer <token>")
+            if header_len <= scheme_prefix_len
                 return INVALID_HEADER
             end
             
+            # zero-copy view of the token portion
+            token = strip(SubString(auth_header, scheme_prefix_len+1:header_len))
+            if isempty(token)
+                return INVALID_HEADER
+            end
+
             # Validate or Reject incoming request
             user_info = validate_token(token)
             if user_info === nothing || user_info === missing

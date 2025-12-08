@@ -42,6 +42,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Websockets, Streaming, and Server-Sent Events
 - Cron Scheduling (on endpoints & functions)
 - Middleware chaining (at the application, router, and route levels)
+- Prebuilt Middleware (RateLimiter, Cors, BearerAuth)
 - Static & Dynamic file hosting
 - Hot reloads with Revise.jl
 - Templating Support
@@ -1155,6 +1156,123 @@ end
 serve(middleware=[CorsMiddleware, AuthMiddleware])
 ```
 
+## Built-in Middleware
+
+Oxygen also ships with some prebuilt middleware functions so you can easily add bearer auth, rate limiting and CORS support to your app. You can add these at the application, router, or route level in your app—just pass them in with the `middleware` keyword and Oxygen will take care of the rest.
+
+
+### RateLimiter
+
+The `RateLimiter` middleware lets you set a cap on how many requests each client can make in a given time window. It's perfect for public endpoints, login routes, or anywhere you want to keep things smooth and prevent brute-force attacks. 
+
+*The rate limiting is completely based on the `req.context[:ip]` property that's added to all requests. If you use proxies or services like cloudflare that intercept requests, you'll need to parse out the actuall callers ip from the headers and reassign the `ip` property on the `requet.context` object.*
+
+**Example:**
+```julia
+# Limit each client to 50 requests every 3 seconds
+serve(middleware=[RateLimiter(rate_limit=50, window_period=Second(3))])
+```
+
+Keyword Arguments:
+- `rate_limit::Int`: Maximum number of requests allowed per IP within the window period. Default is 100.
+- `window_period::Period`: Time window for rate limiting. Default is 1 minute.
+- `cleanup_period::Period`: Interval for running the background cleanup task. Default is 10 minutes.
+- `cleanup_threshold::Period`: Minimum age of inactive IP entries before deletion during cleanup. Default is 10 minutes.
+
+---
+
+### BearerAuth
+
+In most serious applications, you'll find yourself needing to add some layer of authentication to your web app. In most cases
+this means passing an `Authorization` header, extracting the token, and then validating it either against your custom oauth server or some external service. 
+
+After authenticating a user, you'll typically want this object readily available to most if not all routes in your application, so your routes don't need to revalidate the user more than once.
+
+The `BearerAuth` middleware does exactly this and extracts the bearer token from the authorization header and passes it to your custom function. If the token's good, your handler runs; if not, the request gets bounced.
+
+
+**Example:**
+```julia
+# Your function will need to perform actual token validation 
+function validate_token(token::String)
+    # return the user object 
+    return Dict("name" => "joe")
+end
+
+# Only let requests with a valid token through
+serve(middleware=[BearerAuth(validate_token)])
+```
+Parameters:
+- `validate_token`: Your function for checking if a token is legit. Return user info if it's good, or `nothing` or `missing` if not.
+
+Keyword Arguments:
+- `header`: The name of the header to check for the token (defaults to `"Authorization"`).
+- `scheme`: The authentication scheme prefix in the header (defaults to `"Bearer"`).
+---
+
+### CORS
+
+The `Cors` middleware handles Cross-Origin Resource Sharing (CORS) for your API. It sets the right headers and responds to preflight OPTIONS requests, so browsers can safely call your endpoints from other domains. Just configure your policy with keyword arguments and Oxygen will do the rest.
+
+**Example:**
+```julia
+# Let any origin connect and expose a custom header
+serve(middleware=[Cors(allowed_origins="*")])
+```
+- `allowed_origins`: Value for `Access-Control-Allow-Origin` (default: "*").
+- `allowed_headers`: Value for `Access-Control-Allow-Headers` (default: "*").
+- `allowed_methods`: Value for `Access-Control-Allow-Methods` (default: "GET, POST, OPTIONS").
+- `allow_credentials`: If true, adds `Access-Control-Allow-Credentials: true`.
+- `max_age`: If set, adds `Access-Control-Max-Age` header.
+- `extra_headers`: Vector of additional key-value pairs to be added as extra CORS headers.
+
+
+---
+
+### Bringing it all together
+
+In a more real-world example, you'll want to utilize all three of these together
+
+1. `Cors` - Ensure the caller's domain is allowed to call this server
+2. `RateLimiter` - Places a rate-limit limit on the caller's ip to prevent abuse
+3. `BearerAuth` - See if the current user has access to the api
+
+**Example:**
+```julia
+# Mix CORS, rate limiting, and auth for a super secure API
+serve(middleware=[Cors(), RateLimiter(), BearerAuth(validate_token)])
+```
+
+As a reminder, you can use `RateLimiter` and `BearerAuth` middleware on the router and route level to have more fine grained limits and rates on select endpoints / resources.
+
+
+**Example:**
+```julia
+
+# Your function will need to perform actual token validation 
+function validate_token(token::String)
+    # validate the token and lookup the user object
+    # return the user object 
+    return Dict("name" => "joe")
+end
+
+protected = router("/protected", middleware=[RateLimiter(rate_limit=50), BearerAuth(validate_token)])
+
+# This route is protected behind both the global middlewware and a lower rate limit and the token bearer authentication
+@get protected("/greet") function(req)
+    name = req.context[:user]["name"]
+    return text("hello $(name)!")
+end
+
+# This route is protected just by the global middleware
+@get "/" function()
+    return text("welcome to the server")
+end
+
+# Mix CORS, rate limiting, and auth for a super secure API
+serve(middleware=[Cors(), RateLimiter(rate_limit=100)])
+```
+
 ## Custom Response Serializers
 
 If you don't want to use Oxygen's default response serializer, you can turn it off and add your own! Just create your own special middleware function to serialize the response and add it at the end of your own middleware chain. 
@@ -1383,4 +1501,4 @@ Returns the body of a request as a binary file (returns a vector of `UInt8`s)
 | `req` | `HTTP.Request` | **Required**. The HTTP request object |
 | `class_type` | `struct` | A struct to deserialize a JSON object into |
 
-Deserialize the body of a request into a julia struct 
+Deserialize the body of a request into a julia struct

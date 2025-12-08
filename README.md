@@ -42,7 +42,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Websockets, Streaming, and Server-Sent Events
 - Cron Scheduling (on endpoints & functions)
 - Middleware chaining (at the application, router, and route levels)
-- Prebuilt Middleware - RateLimiter, Cors, BearerAuth
+- Prebuilt Middleware (RateLimiter, Cors, BearerAuth)
 - Static & Dynamic file hosting
 - Hot reloads with Revise.jl
 - Templating Support

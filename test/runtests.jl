@@ -45,7 +45,7 @@ include("revise.jl")
 #### Scenario Tests ####
 include("./scenarios/thunderingherd.jl")
 
-# #### Custom ToolBox Tests ####
+#### Prebuilt Middleware Tests ####
 include("middleware/ratelimitter_tests.jl")
 include("middleware/authmiddleware_tests.jl")
 include("middleware/cors_middleware_tests.jl")

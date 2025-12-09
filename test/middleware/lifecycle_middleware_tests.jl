@@ -2,8 +2,8 @@ module LifecycleMiddlewareTests
 
 using Test
 using Suppressor
-using Oxygen; @oxidize
 using Oxygen.Core
+using Oxygen; @oxidize
 
 @testset "LifecycleMiddleware - startup/shutdown hooks" begin
     sflag = Ref(false)

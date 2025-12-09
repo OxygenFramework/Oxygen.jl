@@ -6,7 +6,7 @@ using Sockets
 # Import top level types module
 using ...Types 
 
-export RateLimiter, rate_limiter
+export RateLimiter
 
 const EXCEEDED_RESPONSE = HTTP.Response(429, "Rate limit exceeded")
 
@@ -112,9 +112,5 @@ function RateLimiter(;rate_limit::Int = 100, window_period::Period = Minute(1), 
         on_shutdown = on_shutdown
     )
 end
-
-
-# lowercase alias for more julia-like naming
-const rate_limiter = RateLimiter
 
 end

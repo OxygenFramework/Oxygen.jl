@@ -3,7 +3,7 @@ module CORSMiddleware
 using HTTP
 using ...Types
 
-export Cors, cors
+export Cors
 
 """
     Cors(; allowed_origins="*", allowed_headers="*", allowed_methods="GET, POST, OPTIONS", allow_credentials=false, max_age=nothing, cors_headers...)
@@ -50,8 +50,5 @@ function Cors(; allowed_origins="*", allowed_headers="*", allowed_methods="GET,P
         end
     end
 end
-
-# lowercase alias for more julia-like naming
-const cors = Cors
 
 end

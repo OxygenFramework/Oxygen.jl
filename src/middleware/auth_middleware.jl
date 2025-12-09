@@ -3,7 +3,7 @@ module AuthMiddleware
 using HTTP
 using ...Types
 
-export BearerAuth, bearer_auth
+export BearerAuth
 
 const INVALID_HEADER = HTTP.Response(401, "Unauthorized: Missing or invalid Authorization header")
 const EXPIRED_TOKEN = HTTP.Response(401, "Unauthorized: Invalid or expired token")
@@ -59,8 +59,5 @@ function BearerAuth(validate_token::Function; header::String = "Authorization", 
         end
     end
 end
-
-# lowercase alias for more julia-like naming
-const bearer_auth = BearerAuth
 
 end

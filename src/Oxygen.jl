@@ -46,7 +46,7 @@ export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route,
         # Extractors
         Path, Query, Header, Json, JsonFragment, Form, Body, extract, validate,
         # Middleware
-        BearerAuth, bearer_auth, Cors, cors, RateLimiter, rate_limiter,
+        BearerAuth, Cors, RateLimiter,
         # Docs
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 

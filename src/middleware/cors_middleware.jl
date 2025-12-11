@@ -6,28 +6,39 @@ using ...Types
 export Cors
 
 """
-    Cors(; allowed_origins="*", allowed_headers="*", allowed_methods="GET, POST, OPTIONS", allow_credentials=false, max_age=nothing, cors_headers...)
+    Cors(; allowed_origins=["*"], allowed_headers=["*"], allowed_methods=["GET","POST","OPTIONS"], allow_credentials=false, max_age=nothing, extra_headers=Pair[])
 
 Creates a middleware function that adds CORS headers to responses and handles preflight OPTIONS requests.
 
 # Keyword Arguments
 
-    - `allowed_origins`: Value for `Access-Control-Allow-Origin` (default: "*").
-    - `allowed_headers`: Value for `Access-Control-Allow-Headers` (default: "*").
-    - `allowed_methods`: Value for `Access-Control-Allow-Methods` (default: "GET, POST, OPTIONS").
+    - `allowed_origins`: Vector of allowed origins (default: ["*"]).
+    - `allowed_headers`: Vector of allowed headers (default: ["*"]).
+    - `allowed_methods`: Vector of allowed methods (default: ["GET","POST","OPTIONS"]).
     - `allow_credentials`: If true, adds `Access-Control-Allow-Credentials: true`.
     - `max_age`: If set, adds `Access-Control-Max-Age` header.
-        - `extra_headers`: Vector of additional key-value pairs (e.g. `["Access-Control-Expose-Headers" => "X-My-Header", "X-Test-Header" => "TestValue"]`) to be added as extra CORS headers.
+    - `extra_headers`: Vector of additional key-value pairs.
 
 # Returns
 A `LifecycleMiddleware` struct containing the middleware function.
 """
-function Cors(; allowed_origins="*", allowed_headers="*", allowed_methods="GET,POST,OPTIONS", allow_credentials=false, max_age=nothing, extra_headers=Pair[])
-    cors_headers = [
-        "Access-Control-Allow-Origin" => allowed_origins,
-        "Access-Control-Allow-Headers" => allowed_headers,
-        "Access-Control-Allow-Methods" => allowed_methods,
+function Cors(; 
+    allowed_origins     :: Vector{String} = ["*"], 
+    allowed_headers     :: Vector{String} = ["*"], 
+    allowed_methods     :: Vector{String} = ["GET","POST","OPTIONS"], 
+    allow_credentials   :: Bool = false, 
+    max_age             :: Union{Int,Nothing} = nothing, 
+    extra_headers       :: Vector{Pair{String, String}} = Pair{String,String}[])
+    
+    # Helper to format header value: "*" if wildcard, else join with ", "
+    format_header(xs::Vector{String}) = ("*" in xs) ? "*" : join(xs, ", ")
+    
+    cors_headers :: Vector{Pair{String, String}} = [
+        "Access-Control-Allow-Origin" => format_header(allowed_origins),
+        "Access-Control-Allow-Headers" => format_header(allowed_headers),
+        "Access-Control-Allow-Methods" => format_header(allowed_methods),
     ]
+
     append!(cors_headers, extra_headers)
 
     if allow_credentials

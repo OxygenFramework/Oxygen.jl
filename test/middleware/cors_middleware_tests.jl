@@ -14,7 +14,7 @@ module RouterLevelTests
     end
 
     # Custom config: allow_credentials and max_age
-    custom_router = router("/customcors", middleware=[Cors(allowed_origins="https://example.com", allow_credentials=true, max_age=600)])
+    custom_router = router("/customcors", middleware=[Cors(allowed_origins=["https://example.com"], allow_credentials=true, max_age=600)])
     @route ["GET", "OPTIONS"] custom_router("/test") function() 
         return "custom" 
     end

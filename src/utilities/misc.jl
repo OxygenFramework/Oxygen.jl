@@ -4,7 +4,7 @@ using Dates
 
 using ..Errors: ValidationError
 
-export countargs, recursive_merge, parseparam, 
+export recursive_merge, parseparam, 
     redirect, handlerequest,
     format_response!, set_content_size!, format_sse_message,
     join_url_path
@@ -41,18 +41,6 @@ function handlerequest(getresponse::Function, catch_errors::Bool; show_errors::B
             return handle_error(error)
         end  
     end
-end
-
-"""
-countargs(func)
-
-Return the number of arguments of the first method of the function `f`.
-
-# Arguments
-- `f`: The function to get the number of arguments for.
-"""
-function countargs(f::Function)
-    return methods(f) |> first |> x -> x.nargs
 end
 
 
@@ -313,7 +301,6 @@ function join_url_path(prefix::String, route::String) :: String
     end
 end
 
-join_url_path(::Nothing, ::Nothing) :: String = ""
 join_url_path(::Nothing, route::String) :: String = route
 join_url_path(prefix::String, ::Nothing) :: String = prefix
 

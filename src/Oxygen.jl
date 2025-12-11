@@ -12,7 +12,7 @@ include("core.jl"); using .Core
 include("instances.jl"); using .Instances
 
 import HTTP: Request, Response, Stream, WebSocket, queryparams
-using .Core: ServerContext, History, Server, Nullable
+using .Core: ServerContext, History, Server, Nullable, HOFRouter
 using .Core: GET, POST, PUT, DELETE, PATCH
 
 const CONTEXT :: Ref{ServerContext} = Ref(ServerContext())
@@ -25,7 +25,7 @@ include("deprecated.jl")
 macro oxidize()
     quote
         import Oxygen
-        import Oxygen: PACKAGE_DIR, ServerContext, Nullable
+        import Oxygen: PACKAGE_DIR, ServerContext, Nullable, HOFRouter
         import Oxygen: GET, POST, PUT, DELETE, PATCH, STREAM, WEBSOCKET
 
         const CONTEXT :: Ref{ServerContext}  = Ref(ServerContext(; mod=$(__module__)))
@@ -45,6 +45,8 @@ export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route,
         html, text, json, file, xml, js, css, binary,
         # Extractors
         Path, Query, Header, Json, JsonFragment, Form, Body, extract, validate,
+        # Middleware
+        BearerAuth, Cors, RateLimiter,
         # Docs
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 

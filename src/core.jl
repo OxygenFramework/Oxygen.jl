@@ -67,19 +67,18 @@ function serverwelcome(external_url::String, prefix::Nullable{String}, docs::Boo
     end
 end
 
-struct ReviseHandler
-    ctx::ServerContext
-end
 
-function (handler::ReviseHandler)(handle)
-    req -> begin
-        Revise = Main.Revise
-        if !isempty(Revise.revision_queue)
-            @info "🔴 Starting pre-request revision"
-            Revise.revise()
-            @info "🟢 Pre-request revision finished"
+function ReviseHandler()
+    return function (handle)
+        return function (req::HTTP.Request)
+            Revise = Main.Revise
+            if !isempty(Revise.revision_queue)
+                @info "🔴 Starting pre-request revision"
+                Revise.revise()
+                @info "🟢 Pre-request revision finished"
+            end
+            invokelatest(handle, req)
         end
-        invokelatest(handle, req)
     end
 end
 
@@ -139,7 +138,7 @@ function serve(ctx::ServerContext;
             @warn "You are trying to use the `revise` option without @oxidize. Code in the `Main` module, which likely includes your routes, will not be tracked and revised."
         end
         middleware = convert(Vector{Any}, middleware)
-        insert!(middleware, 1, ReviseHandler(ctx))
+        insert!(middleware, 1, ReviseHandler())
     end
 
     # compose our middleware ahead of time (so it only has to be built up once)
@@ -201,7 +200,7 @@ end
 """
     terminate(ctx)
 
-stops the webserver immediately
+Gracefully shuts down the webserver
 """
 function terminate(context::ServerContext)
     if isopen(context.service)
@@ -213,13 +212,17 @@ function terminate(context::ServerContext)
         stoptasks(context.tasks)
         cleartasks(context.tasks)
 
-        # stop server
-        close(context.service)
+        # cleanup lifecycle middleware
+        shutdown.(context.service.lifecycle_middleware)
+        empty!(context.service.lifecycle_middleware)
+
+        # clear any cached middleware strategies so new servers pick up updated middleware
+        empty!(context.service.middleware_cache)
 
         # Set the external url to nothing when the server is terminated
         context.service.external_url[] = nothing
 
-        # close our service on termination
+        # stop the server
         close(context.service)
     end
 end
@@ -302,10 +305,14 @@ application and have them execute in the order they were passed (left to right) 
 function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true)::Function
 
     # determine if we have any special router or route-specific middleware
+    raw_middleware = reverse(middleware)
+    
+    processed_middleware = process_middleware(ctx, raw_middleware)
+
     custom_middleware = if !isempty(ctx.service.custommiddleware)
-        [compose(ctx.service.router, ctx.service.middleware_cache_lock, middleware, ctx.service.custommiddleware, ctx.service.middleware_cache)]
+        [compose(ctx.service.router, ctx.service.middleware_cache_lock, processed_middleware, ctx.service.custommiddleware, ctx.service.middleware_cache)]
     else
-        reverse(middleware)
+        processed_middleware
     end
 
     # If a global prefix is passed, then we inject middleware to remove the prefix at runtime before routing
@@ -353,6 +360,9 @@ function startserver(ctx::ServerContext; host, port, show_banner=false, docs=fal
     registercronjobs(ctx)
     startcronjobs(ctx.cron)
 
+    # Signal start of server to LifecycleMiddleware functions
+    startup.(ctx.service.lifecycle_middleware)
+
     if !async
         try
             wait(ctx.service)
@@ -392,7 +402,7 @@ Directly call one of our other endpoints registered with the router, using your 
 and bypassing any globally defined middleware
 """
 function internalrequest(ctx::ServerContext, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true)::HTTP.Response
-    req.context[:ip] = "INTERNAL" # label internal requests
+    req.context[:ip] = IPv4("127.0.0.1") # label internal requests
     return req |> setupmiddleware(ctx; middleware, metrics, serialize, catch_errors)
 end
 
@@ -487,35 +497,22 @@ function MetricsMiddleware(service::Service, catch_errors::Bool)
 end
 
 
-function parse_route(httpmethod::String, route::Union{String,Function})::String
-
-    # check if path is a callable function (that means it's a router higher-order-function)
-    if isa(route, Function)
-
-        # This is true when the user passes the router() directly to the path.
-        # We call the generated function without args so it uses the default args 
-        # from the parent function.
-        if countargs(route) == 1
-            route = route()
-        end
-
-        # If it's still a function, then that means this is from the 3rd inner function 
-        # defined in the createrouter() function.
-        if countargs(route) == 2
-            route = route(httpmethod)
-        end
-    end
-
-    # if the route is still a function, then it's from the  3rd inner function 
-    # defined in the createrouter() function when the 'router()' function is passed directly.
-    if isa(route, Function)
-        route = route(httpmethod)
-    end
-
-    !isa(route, String) && throw("The `route` parameter is not a String, but is instead a: $(typeof(route))")
-
-    return route
+# Case 1: If we are given a string - just return it
+function parse_route(::String, route::String) :: String
+    return route 
 end
+
+# Case 2: Call OuterRouter with default args to get InnerRouter, then call with http_method
+function parse_route(http_method::String, router::OuterRouter) :: String
+    inner_router::InnerRouter = router()
+    return inner_router(http_method)
+end
+
+# Case 3: Call InnerRouter with http_method to get the final path
+function parse_route(http_method::String, router::InnerRouter) :: String
+    return router(http_method)
+end
+
 
 function parse_func_params(route::String, func::Function)
 
@@ -614,7 +611,7 @@ end
 
 Register a request handler function with a path to the ROUTER
 """
-function register(ctx::ServerContext, httpmethod::String, route::Union{String,Function}, func::Function)
+function register(ctx::ServerContext, httpmethod::String, route::Union{String,HOFRouter}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
@@ -648,7 +645,7 @@ end
 This registers a route wihout generating any documentation for it. Used primarily for internal routes like 
 docs and metrics
 """
-function register_internal(ctx::ServerContext, router::Router, httpmethod::String, route::Union{String,Function}, func::Function)
+function register_internal(ctx::ServerContext, router::Router, httpmethod::String, route::Union{String,HOFRouter}, func::Function)
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)

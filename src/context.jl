@@ -57,9 +57,10 @@ end
     history             :: History                  = History(1_000_000)
     history_lock        :: ReentrantLock            = ReentrantLock()
     external_url        :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
-    prefix         :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
+    prefix              :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
     eager_revise        :: Ref{Nullable{EagerReviseService}} = Ref{Nullable{EagerReviseService}}(nothing)
     middleware_cache_lock :: ReentrantLock          = ReentrantLock()
+    lifecycle_middleware  :: Set{LifecycleMiddleware} = Set{LifecycleMiddleware}()
 end
 
 @kwdef struct ServerContext

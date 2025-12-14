@@ -2,11 +2,104 @@ module RouterHOF
 
 using HTTP
 
-using ..Middleware: genkey
+using ..Util: join_url_path
 using ..AppContext: ServerContext, Documenation
-using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable
+using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, LifecycleMiddleware
 
-export router
+export router, compose, genkey, process_middleware, HOFRouter, OuterRouter, InnerRouter
+
+"""
+normalizes a list of middleware functions and LifecycleMiddleware structs
+"""
+function process_middleware(ctx::ServerContext, middleware::Vector) :: Vector{Function}
+    processed = []
+    for mw in middleware
+        if mw isa LifecycleMiddleware
+            push!(ctx.service.lifecycle_middleware, mw)
+            push!(processed, mw.middleware)
+        else
+            push!(processed, mw)
+        end
+    end
+    return processed
+end
+
+# Do nothing if we have no middleware to append
+function process_middleware(::ServerContext, ::Nothing) end
+
+
+"""
+This function is used to generate dictionary keys which lookup middleware for routes
+"""
+function genkey(http_method::String, path::String)::String
+    return "$http_method|$path"
+end
+
+"""
+This function is used to build up the middleware chain for all our endpoints
+"""
+function buildmiddleware(key::String, handler::Function, globalmiddleware::Vector, custommiddleware::Dict) :: Function
+
+    # lookup the middleware for this path
+    routermiddleware, routemiddleware = get(custommiddleware, key, (nothing, nothing))
+
+    # sanitize outputs (either value can be nothing)
+    routermiddleware = isnothing(routermiddleware) ? [] : routermiddleware
+    routemiddleware = isnothing(routemiddleware) ? [] : routemiddleware
+
+    # initialize our middleware layers
+    layers::Vector{Function} = [handler]
+
+    # append the middleware in reverse order (so when we reduce over it, it's in the correct order)
+    append!(layers, routemiddleware)
+    append!(layers, routermiddleware)
+    append!(layers, globalmiddleware)
+
+    # combine all the middleware functions together
+    return reduce(|>, layers)
+end
+
+"""
+This function dynamically determines which middleware functions to apply to a request at runtime. 
+If router or route specific middleware is defined, then it's used instead of the globally defined
+middleware. 
+"""
+function compose(router::HTTP.Router, cache_lock::ReentrantLock, globalmiddleware::Vector, custommiddleware::Dict, middleware_cache::Dict)
+    return function (handler)
+        return function (req::HTTP.Request)
+
+            innerhandler, path, _ = HTTP.Handlers.gethandler(router, req)
+
+            # Check if the current request matches one of our predefined routes 
+            if innerhandler !== nothing
+
+                # Check if we already have a cached middleware function for this specific route
+                key = genkey(req.method, path)
+                func = get(middleware_cache, key, nothing)
+                if !isnothing(func)
+                    return func(req)
+                end
+
+                # Combine all the middleware functions together 
+                strategy = buildmiddleware(key, handler, globalmiddleware, custommiddleware)
+                
+                ## Below Double-checked locking is used to reduce the overhead of acquiring a lock
+                if !haskey(middleware_cache, key)
+                    lock(cache_lock) do 
+                        if !haskey(middleware_cache, key)
+                            middleware_cache[key] = strategy
+                        end
+                    end
+                end
+                
+                return strategy(req)
+            end
+    
+            return handler(req)
+        end
+    end
+end
+
 
 """
 This functions assists registering routes with a specific prefix.
@@ -19,92 +112,115 @@ function router(ctx::ServerContext, prefix::String="";
     interval::Nullable{Real}=nothing,
     cron::Nullable{String}=nothing)
 
-    return createrouter(ctx, prefix, tags, middleware, interval, cron)
+    # ensure we collect & process any lifecycle-middleware functions
+    router_middleware = process_middleware(ctx, middleware)
+
+    return OuterRouter(ctx, prefix, tags, router_middleware, interval, cron)
 end
 
-function createrouter(ctx::ServerContext, prefix::String,
-    routertags::Vector{String},
-    routermiddleware::Nullable{Vector},
-    routerinterval::Nullable{Real},
-    routercron::Nullable{String}=nothing)
 
-    # appends a "/" character to the given string if doesn't have one. 
-    function fixpath(path::String)
-        path = String(strip(path))
-        if !isnothing(path) && !isempty(path) && path !== "/"
-            return startswith(path, "/") ? path : "/$path"
-        end
-        return ""
-    end
+"""
+Abstract supertype for higher-order function (HOF) routers in Oxygen.
 
-    # This function takes input from the user next to the request handler
-    return function (path=nothing;
-        tags::Vector{String}=Vector{String}(),
-        middleware::Nullable{Vector}=nothing,
-        interval::Nullable{Real}=routerinterval,
-        cron::Nullable{String}=routercron)
+This type serves as the base for `OuterRouter` and `InnerRouter`, enabling composable routing patterns
+with features like prefixes, middleware, tags, intervals, and cron jobs. HOF routers allow building
+nested route configurations by chaining callable instances.
+"""
+abstract type HOFRouter end
 
-        # this is called inside the @register macro (only it knows the exact httpmethod associated with each path)
-        return function (httpmethod::String)
+"""
+This struct represents the data passed to the top level "router()" call.
+These properties can be shared bewteen any other endpoints that reuse the router
 
-            """
-            This scenario can happen when the user passes a router object directly like so: 
+ex.) 
 
-            @get router("/math/power/{a}/{b}") function (req::HTTP.Request, a::Float64, b::Float64)
-                return a ^ b
-            end
-
-            Under normal circumstances, the function returned by the router call is used when registering routes. 
-            However, in this specific case, the call to router returns a higher-order function (HOF) that's nested one 
-            layer deeper than expected.
-
-            Due to the way we call these functions to derive the path for the currently registered route, 
-            the path argument can sometimes be mistakenly set to the HTTP method (e.g., "GET", "POST"). 
-            This can lead to the path getting concatenated with the HTTP method string.
-
-            To account for this specific use case, we've added a check in the inner function to verify whether 
-            path matches the current passed in httpmethod. If it does, we assume that path has been incorrectly 
-            set to the HTTP method, and we update path to use the router prefix instead.
-            """
-            if path === httpmethod
-                path = prefix
-            else
-                # combine the current routers prefix with this specfic path 
-                path = !isnothing(path) ? "$(fixpath(prefix))$(fixpath(path))" : fixpath(prefix)
-            end
-
-            if !(isnothing(routermiddleware) && isnothing(middleware))
-                # add both router & route-sepecific middleware
-                ctx.service.custommiddleware[genkey(httpmethod, path)] = (routermiddleware, middleware)
-            end
-
-            # register interval for this route 
-            if !isnothing(interval) && interval >= 0.0
-                task = TaskDefinition(path, httpmethod, interval)
-                push!(ctx.tasks.task_definitions, task)
-            end
-
-            # register cron expression for this route 
-            if !isnothing(cron) && !isempty(cron)
-                job = CronDefinition(path, httpmethod, cron)
-                push!(ctx.cron.job_definitions, job)
-            end
-
-            combinedtags = [tags..., routertags...]
-
-            # register tags
-            if !haskey(ctx.docs.taggedroutes, path)
-                ctx.docs.taggedroutes[path] = TaggedRoute([httpmethod], combinedtags)
-            else
-                combinedmethods = vcat(httpmethod, ctx.docs.taggedroutes[path].httpmethods)
-                ctx.docs.taggedroutes[path] = TaggedRoute(combinedmethods, combinedtags)
-            end
-
-            #return path 
-            return path
-        end
-    end
+@get router("/repeat/one", interval = 1, tags=["repeat"]) function(req)
+    return "one"
 end
+
+The router() function itself can be passed to routes and returns the OuterRouter struct
+"""
+struct OuterRouter <: HOFRouter
+    ctx::ServerContext
+    prefix::String
+    tags::Vector{String}
+    middleware::Nullable{Vector}
+    interval::Nullable{Real}
+    cron::Nullable{String}
+end
+
+function (outer::OuterRouter)(
+    path=nothing;
+    tags::Vector{String}=Vector{String}(),
+    middleware::Nullable{Vector}=nothing,
+    interval::Nullable{Real}=outer.interval,
+    cron::Nullable{String}=outer.cron)
+
+    # ensure we collect & process any lifecycle-middleware functions
+    processed_middleware = process_middleware(outer.ctx, middleware)
+
+    return InnerRouter(outer.ctx, outer, path, tags, processed_middleware, interval, cron)
+end
+
+
+"""
+The InnerRouter struct represents the returned function from the outer router, that
+lets you override properties on a route by route basis.
+
+ex.)
+
+repeat = router("/repeat", interval = 1, tags=["repeat"])
+
+@get repeat("/one") function(req)
+    return "one"
+end
+
+The "repeat()" function returns the InnerRouter function
+
+"""
+struct InnerRouter <: HOFRouter
+    ctx::ServerContext
+    outer::OuterRouter
+    path::Union{Nothing, String}
+    tags::Vector{String}
+    middleware::Nullable{Vector}
+    interval::Nullable{Real}
+    cron::Nullable{String}
+end
+
+function (inner::InnerRouter)(http_method::String)
+
+    # Pull out the "router" level information 
+    outer = inner.outer
+
+    final_path = !isnothing(inner.path) ? join_url_path(outer.prefix, inner.path) : join_url_path(outer.prefix, "")
+
+    if !(isnothing(outer.middleware) && isnothing(inner.middleware))
+        inner.ctx.service.custommiddleware[genkey(http_method, final_path)] = (outer.middleware, inner.middleware)
+    end
+
+    if !isnothing(inner.interval) && inner.interval >= 0.0
+        task = TaskDefinition(final_path, http_method, inner.interval)
+        push!(inner.ctx.tasks.task_definitions, task)
+    end
+
+    if !isnothing(inner.cron) && !isempty(inner.cron)
+        job = CronDefinition(final_path, http_method, inner.cron)
+        push!(inner.ctx.cron.job_definitions, job)
+    end
+
+    combinedtags = [inner.tags..., outer.tags...]
+
+    if !haskey(inner.ctx.docs.taggedroutes, final_path)
+        inner.ctx.docs.taggedroutes[final_path] = TaggedRoute([http_method], combinedtags)
+    else
+        combinedmethods = vcat(http_method, inner.ctx.docs.taggedroutes[final_path].httpmethods)
+        inner.ctx.docs.taggedroutes[final_path] = TaggedRoute(combinedmethods, combinedtags)
+    end
+
+    return final_path
+end
+
 
 
 end

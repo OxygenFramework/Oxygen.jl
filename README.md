@@ -1158,14 +1158,14 @@ serve(middleware=[CorsMiddleware, AuthMiddleware])
 
 ## Built-in Middleware
 
-Oxygen also ships with some prebuilt middleware functions so you can easily add bearer auth, rate limiting and CORS support to your app. You can add these at the application, router, or route level in your app—just pass them in with the `middleware` keyword and Oxygen will take care of the rest.
+Oxygen ships with some prebuilt middleware functions so you can easily integrate bearer auth, rate limiting and CORS support to your app. You can add these at the application, router, or route level in your app through the `middleware` keyword.
 
 
 ### RateLimiter
 
-The `RateLimiter` middleware lets you set a cap on how many requests each client can make in a given time window. It's perfect for public endpoints, login routes, or anywhere you want to keep things smooth and prevent brute-force attacks. 
+The `RateLimiter` middleware lets you set a cap on how many requests each client IP can make in a given time window. It's perfect for public endpoints, login routes, or anywhere you want to keep things smooth and prevent brute-force attacks. 
 
-*The rate limiting is completely based on the `req.context[:ip]` property that's added to all requests. If you use proxies or services like cloudflare that intercept requests, you'll need to parse out the actuall callers ip from the headers and reassign the `ip` property on the `requet.context` object.*
+*The rate limiting is completely based on the `req.context[:ip]` property that's added to all requests. If you use proxies or services like cloudflare that intercept requests, you'll need to parse out the actual caller's IP from the headers and reassign the `ip` property on the `request.context` object.*
 
 **Example:**
 ```julia
@@ -1243,7 +1243,7 @@ In a more real-world example, you'll want to utilize all three of these together
 serve(middleware=[Cors(), RateLimiter(), BearerAuth(validate_token)])
 ```
 
-As a reminder, you can use `RateLimiter` and `BearerAuth` middleware on the router and route level to have more fine grained limits and rates on select endpoints / resources.
+As a reminder, you can use `RateLimiter` and `BearerAuth` middleware on the router and route level to have more fine grained limits and rates on specific endpoints / resources.
 
 
 **Example:**

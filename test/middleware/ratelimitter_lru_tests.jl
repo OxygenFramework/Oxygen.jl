@@ -1,4 +1,4 @@
-module RateLimiterTests
+module RateLimiterLRUTests
 
 using Test
 using HTTP
@@ -7,9 +7,9 @@ using Sockets
 using Oxygen; @oxidize
 using ..Constants
 
-limit = router("/limited", middleware=[RateLimiter(rate_limit=50, window=Second(3))])
+limit = router("/limited", middleware=[RateLimiterLRU(rate_limit=50, window=Second(3))])
 
-@get limit("/goodbye", middleware=[RateLimiter(rate_limit=25, window=Second(3))]) function()
+@get limit("/goodbye", middleware=[RateLimiterLRU(rate_limit=25, window=Second(3))]) function()
     return "goodbye"
 end
 
@@ -22,7 +22,7 @@ end
 end
 
 # Create a rate limiter with realistic limits for testing (100 requests per second)
-serve(middleware=[RateLimiter(rate_limit=100, window=Second(3))], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+serve(middleware=[RateLimiterLRU(rate_limit=100, window=Second(3))], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
 
 @testset "Rate Limiter Tests" begin
 
@@ -178,6 +178,7 @@ sleep(3.1) # Ensure rate limiter window is reset before starting next testset
     # Next 25 requests should succeed again after reset
     for i in 1:25
         r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
+        println(r)
         @test r.status == 200
         @test text(r) == "goodbye"
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"
@@ -195,50 +196,6 @@ sleep(3.1) # Ensure rate limiter window is reset before starting next testset
         reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
         @test reset_time > 0 && reset_time <= 3
     end
-end
-
-terminate()
-
-rl = RateLimiter(rate_limit=1, window=Hour(1), cleanup_period=Second(1), cleanup_threshold=Second(1))
-
-# Start server for background cleanup test
-serve(middleware=[rl], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
-
-@testset "Background Cleanup Test" begin
-
-    # First request should succeed
-    r = HTTP.get("$localhost/ok"; retry=false)
-    @test r.status == 200
-    @test text(r) == "ok"
-    @test HTTP.header(r, "X-RateLimit-Limit") == "1"
-    @test HTTP.header(r, "X-RateLimit-Remaining") == "0"
-    reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-    @test reset_time > 0  # Should be close to 1 hour in seconds
-
-    # Second request should be rate limited (429)
-    try
-        HTTP.get("$localhost/ok"; retry=false)
-        @test false
-    catch e
-        @test e isa HTTP.Exceptions.StatusError
-        @test e.response.status == 429
-        @test HTTP.header(e.response, "X-RateLimit-Limit") == "1"
-        @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
-        reset_time = parse(Int, HTTP.header(e.response, "X-RateLimit-Reset"))
-        @test reset_time > 0
-    end
-
-    # Wait for cleanup to run (cleanup_threshold=1s, cleanup_period=1s, wait 2.1s to ensure task runs)
-    sleep(2.1)
-
-    # Third request should succeed because the IP entry was cleaned up
-    r = HTTP.get("$localhost/ok"; retry=false)
-    @test r.status == 200
-    @test text(r) == "ok"
-    @test HTTP.header(r, "X-RateLimit-Limit") == "1"
-    @test HTTP.header(r, "X-RateLimit-Remaining") == "0"
-    reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-    @test reset_time > 0
 end
 
 terminate()

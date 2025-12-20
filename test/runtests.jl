@@ -47,6 +47,7 @@ include("test_utils.jl"); using .TestUtils
 
 #### Prebuilt Middleware Tests ####
 include("middleware/ratelimitter_tests.jl")
+include("middleware/ratelimitter_lru_tests.jl")
 # include("middleware/authmiddleware_tests.jl")
 # include("middleware/cors_middleware_tests.jl")
 # include("middleware/lifecycle_middleware_tests.jl")

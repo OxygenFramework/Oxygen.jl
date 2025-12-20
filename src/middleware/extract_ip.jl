@@ -53,13 +53,13 @@ function extract_ip(req::HTTP.Request) :: IPAddr
         if HTTP.Messages.field_name_isequal(k, "CF-Connecting-IP")
             return parse(IPAddr, v)
         # Case 2: Akamai/Enterprise proxies (True-Client-IP)
-        elseif HTTP.Messages.field_name_isequal(k, "True-Client-IP")
+        elseif isnothing(tci) && HTTP.Messages.field_name_isequal(k, "True-Client-IP")
             tci = v
         # Case 3: Standard X-Forwarded-For header (may be a list)
-        elseif HTTP.Messages.field_name_isequal(k, "X-Forwarded-For")
+        elseif isnothing(xff) && HTTP.Messages.field_name_isequal(k, "X-Forwarded-For")
             xff = v
         # Case 4: Nginx or other proxies (X-Real-IP)
-        elseif HTTP.Messages.field_name_isequal(k, "X-Real-IP")
+        elseif isnothing(xri) && HTTP.Messages.field_name_isequal(k, "X-Real-IP")
             xri = v
         end
     end

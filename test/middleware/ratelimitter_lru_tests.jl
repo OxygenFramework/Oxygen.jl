@@ -178,7 +178,6 @@ sleep(3.1) # Ensure rate limiter window is reset before starting next testset
     # Next 25 requests should succeed again after reset
     for i in 1:25
         r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
-        println(r)
         @test r.status == 200
         @test text(r) == "goodbye"
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"

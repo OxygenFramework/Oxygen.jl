@@ -61,12 +61,12 @@ This implementation uses UTC time to avoid timezone and DST issues. Significant 
 An `LifecycleMiddleware` struct containing the middleware function and a cleanup function to stop the background task on server shutdown.
 """
 function FixedRateLimiter(;
-    rate_limit::Int = 100, 
-    window::Period = Minute(1), 
-    cleanup_period::Period = Minute(10), 
-    cleanup_threshold::Period = Minute(10),
-    auto_extract_ip::Bool = true,
-    exempt_paths::Vector{String} = String[])
+    rate_limit          :: Int = 100, 
+    window              :: Period = Minute(1), 
+    cleanup_period      :: Period = Minute(10), 
+    cleanup_threshold   :: Period = Minute(10),
+    auto_extract_ip     :: Bool = true,
+    exempt_paths        :: Vector{String} = String[])
 
     # Validate parameters
     rate_limit > 0 || throw(ArgumentError("rate_limit must be positive, got $rate_limit"))
@@ -230,11 +230,11 @@ Uses a sliding window approach where:
 A middleware function with signature: `handle -> req -> response`
 """
 function SlidingRateLimiter(;
-    rate_limit::Int = 100,
-    window::Period = Minute(1),
-    max_clients::Int = 10000,
-    exempt_paths::Vector{String} = String[],
-    auto_extract_ip::Bool = true)
+    rate_limit      :: Int = 100,
+    window          :: Period = Minute(1),
+    max_clients     :: Int = 10000,
+    exempt_paths    :: Vector{String} = String[],
+    auto_extract_ip :: Bool = true)
 
     # Validate parameters
     rate_limit > 0 || throw(ArgumentError("rate_limit must be positive, got $rate_limit"))

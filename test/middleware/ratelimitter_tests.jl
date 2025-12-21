@@ -7,7 +7,7 @@ using Sockets
 using Oxygen; @oxidize
 using ..Constants
 
-limit = router("/limited", middleware=[RateLimiter(rate_limit=50, window=Second(3))])
+limit = router("/limited", middleware=[RateLimiter(rate_limit=50, window_period=Second(3))])
 
 @get limit("/goodbye", middleware=[RateLimiter(rate_limit=25, window=Second(3))]) function()
     return "goodbye"

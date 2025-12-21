@@ -2,39 +2,77 @@ module RateLimiterMiddleware
 using HTTP
 using Dates
 using Sockets
+using LRUCache
 
 # Import top level types module
 using ...Types 
 using ..ExtractIPMiddleware: ExtractIP
 
-export RateLimiter, set_rate_header, calculate_reset_time
+export RateLimiter
+
+function RateLimiter(;strategy::Symbol = :fixed_window, kwargs...)
+    kwargs_dict = Dict(kwargs)
+
+    # setup alias for :window_period => :window (for backwards compatibility for v1.9.0)
+    rename_key!(kwargs_dict, :window_period, :window; message = "The :window_period keyword argument was renamed to :window")
+
+    # Return the rate limiter middleware
+    dispatch_rate_limiter(Val(strategy); kwargs_dict...)
+end
+
+# Call the RateLimiter based on the strategy
+dispatch_rate_limiter(::Val{:fixed_window}; kwargs...) = FixedRateLimiter(;kwargs...)
+dispatch_rate_limiter(::Val{:sliding_window}; kwargs...) = SlidingRateLimiter(;kwargs...)
 
 """
-    RateLimiter(; rate_limit::Int = 100, window::Period = Minute(1), cleanup_period::Period = Minute(10), cleanup_threshold::Period = Minute(10), auto_extract_ip::Bool = true)
+Updates the key name inside a dictionary
+"""
+function rename_key!(kwargs_dict::Dict{Symbol, Any}, old_key::Symbol, new_key::Symbol; message::Union{String,Nothing}=nothing)
+    if haskey(kwargs_dict, old_key)
+        # show any custom warning message for this rename case
+        if !isnothing(message) 
+            @warn message
+        end
+        # remove and reassign value to new key
+        kwargs_dict[new_key] = pop!(kwargs_dict, old_key)
+    end
+end
+
+"""
+    FixedRateLimiter(; rate_limit::Int = 100, window::Period = Minute(1), cleanup_period::Period = Minute(10), cleanup_threshold::Period = Minute(10),  auto_extract_ip::Bool = true, exempt_paths::Vector{String} = String[])
 
 Creates a middleware function that enforces rate limiting based on IP address, with automatic background cleanup to prevent memory leaks.
 
 # Arguments
-- `rate_limit::Int`: Maximum number of requests allowed per IP within the window period. Default is 100.
-- `window::Period`: Time window for rate limiting. Default is 1 minute.
-- `cleanup_period::Period`: Interval for running the background cleanup task. Default is 10 minutes.
-- `cleanup_threshold::Period`: Minimum age of inactive IP entries before deletion during cleanup. Default is 10 minutes.
+- `rate_limit::Int`: Maximum number of requests allowed per IP within the window period. Default is 100. Must be positive.
+- `window::Period`: Time window for rate limiting. Default is 1 minute. Must be positive.
+- `cleanup_period::Period`: Interval for running the background cleanup task. Default is 10 minutes. Must be positive.
+- `cleanup_threshold::Period`: Minimum age of inactive IP entries before deletion during cleanup. Default is 10 minutes. Must be positive.
 - `auto_extract_ip::Bool`: If `true` (default), the middleware will automatically extract the client IP address from the request using the built-in extractor.
+- `exempt_paths::Vector{String}`: Request path prefixes to skip rate limiting. Default is empty.
 
 # Customization
 To customize IP extraction, set `auto_extract_ip=false` and insert your own middleware before the rate limiter to assign the desired IP address to `req.context[:ip]`. This is useful for advanced scenarios such as extracting IPs from custom headers, authentication tokens, or supporting non-standard proxy setups.
-```
+
+# Note
+This implementation relies on system clock time. Significant system clock adjustments (NTP sync, manual changes) may temporarily affect rate limiting accuracy.
 
 # Returns
 An `LifecycleMiddleware` struct containing the middleware function and a cleanup function to stop the background task on server shutdown.
 """
-function RateLimiter(;
+function FixedRateLimiter(;
     rate_limit::Int = 100, 
     window::Period = Minute(1), 
     cleanup_period::Period = Minute(10), 
     cleanup_threshold::Period = Minute(10),
     auto_extract_ip::Bool = true,
     exempt_paths::Vector{String} = String[])
+
+    # Validate parameters
+    rate_limit > 0 || throw(ArgumentError("rate_limit must be positive, got $rate_limit"))
+    Dates.value(window) > 0 || throw(ArgumentError("window must be a positive duration"))
+    Dates.value(cleanup_period) > 0 || throw(ArgumentError("cleanup_period must be a positive duration"))
+    Dates.value(cleanup_threshold) > 0 || throw(ArgumentError("cleanup_threshold must be a positive duration"))
 
     rate_limit_store = Dict{IPAddr, Tuple{Int, DateTime}}()
     store_lock = ReentrantLock()
@@ -54,11 +92,13 @@ function RateLimiter(;
                 lock(store_lock) do
                     current_time = now()
                     to_delete = []
+                    # Find old entries
                     for (ip, (_, last_reset)) in rate_limit_store
                         if current_time - last_reset > cleanup_threshold
                             push!(to_delete, ip)
                         end
                     end
+                    # Cleanup old entries
                     for ip in to_delete
                         delete!(rate_limit_store, ip)
                     end
@@ -140,7 +180,7 @@ function RateLimiter(;
                 end
 
             catch error
-                @error "ERROR: " exception=(error, catch_backtrace())
+                @error "Fixed Rate limiter error" exception=(error, catch_backtrace())
                 # Always process the incoming request even if our rate limiting fails
                 return handle(req)
             end
@@ -158,6 +198,122 @@ function RateLimiter(;
         on_shutdown = on_shutdown
     )
 end
+
+
+
+"""
+    SlidingRateLimiter(; rate_limit::Int=100, window::Period=Minute(1), max_clients::Int=10000, exempt_paths::Vector{String}=String[], auto_extract_ip::Bool=true)
+
+Creates a middleware function that enforces rate limiting using an LRU cache for sliding window tracking.
+This implementation provides true sliding window behavior where each request creates its own expiration time,
+offering more precise rate limiting than fixed windows but with higher memory usage.
+
+# Arguments
+- `rate_limit::Int`: Maximum requests per client per window. Default 100. Must be positive.
+- `window::Period`: Sliding time window duration. Default 1 minute. Must be positive.
+- `max_clients::Int`: Maximum distinct client buckets in LRU cache. Default 10000. Must be positive.
+- `exempt_paths::Vector{String}`: Request path prefixes to skip rate limiting. Default empty.
+- `auto_extract_ip::Bool`: If true, automatically extract IP address from request. Default true.
+
+# Algorithm
+Uses a sliding window approach where:
+1. Each request timestamp is stored individually
+2. On each request, expired timestamps are pruned
+3. Current request count is checked against limit
+4. LRU eviction prevents unbounded memory growth
+
+# Note
+- The `X-RateLimit-Reset` header indicates when the oldest request expires (when at least 1 request slot becomes available), not when the full quota resets.
+- This implementation relies on system clock time. Significant system clock adjustments (NTP sync, manual changes) may temporarily affect rate limiting accuracy.
+
+# Returns
+A middleware function with signature: `handle -> req -> response`
+"""
+function SlidingRateLimiter(;
+    rate_limit::Int = 100,
+    window::Period = Minute(1),
+    max_clients::Int = 10000,
+    exempt_paths::Vector{String} = String[],
+    auto_extract_ip::Bool = true)
+
+    # Validate parameters
+    rate_limit > 0 || throw(ArgumentError("rate_limit must be positive, got $rate_limit"))
+    Dates.value(window) > 0 || throw(ArgumentError("window must be a positive duration"))
+    max_clients > 0 || throw(ArgumentError("max_clients must be positive, got $max_clients"))
+
+    # LRU cache: IPAddr -> Vector of request timestamps
+    rate_limit_store = LRU{IPAddr, Vector{DateTime}}(maxsize = max_clients)
+    store_lock = ReentrantLock()
+    
+    # Precompute fallback reset seconds (window in milliseconds → seconds)
+    default_reset_seconds = Int(ceil(Dates.value(window) / 1000))
+
+    # Compute reset time from timestamps (safe for empty vectors)
+    function compute_reset_time_safe(current_time::DateTime, timestamps::Vector{DateTime})
+        if isempty(timestamps)
+            return default_reset_seconds
+        else
+            oldest_timestamp = minimum(timestamps)
+            return calculate_reset_time(current_time, oldest_timestamp, window)
+        end
+    end
+
+    function rate_limit_only(handle::Function)
+        return function(req::HTTP.Request)
+            try
+                # Check exempt paths first (most efficient early return)
+                for exempt_path in exempt_paths
+                    if startswith(req.target, exempt_path)
+                        return handle(req)
+                    end
+                end
+                
+                current_time = Dates.now()
+                ip = req.context[:ip]
+                
+                lock(store_lock) do
+                    # Get existing timestamps or create empty vector
+                    timestamps = get!(rate_limit_store, ip, DateTime[])
+
+                    # Prune expired timestamps (sliding window cleanup)
+                    # Keep only timestamps within the current window
+                    cutoff_time = current_time - window
+                    filter!(timestamp -> timestamp > cutoff_time, timestamps)
+
+                    # Check if adding this request would exceed the limit
+                    if length(timestamps) >= rate_limit
+                        reset_time = compute_reset_time_safe(current_time, timestamps)
+                        resp = HTTP.Response(429, "429 Too Many Requests")
+                        set_rate_headers!(resp, rate_limit, 0, reset_time)
+                        return resp
+                    else
+                        # This request is within the limit
+                        push!(timestamps, current_time)
+                        response = handle(req)
+                        remaining_requests = rate_limit - length(timestamps)
+                        # Time until oldest request expires (when 1 slot becomes available)
+                        reset_time = compute_reset_time_safe(current_time, timestamps)
+                        set_rate_headers!(response, rate_limit, remaining_requests, reset_time)
+                        return response
+                    end
+                end
+                
+            catch error
+                @error "Sliding Window Rate limiter error" exception=(error, catch_backtrace())
+                # Always proceed on middleware errors to maintain service availability
+                return handle(req)
+            end
+        end
+    end
+
+    # Compose with IP extraction if auto_extract_ip is enabled
+    function extract_ip_and_rate_limit(handle::Function)
+        return reduce(|>, [handle, rate_limit_only, ExtractIP()])
+    end
+
+    return auto_extract_ip ? extract_ip_and_rate_limit : rate_limit_only
+end
+
 
 
 """
@@ -205,8 +361,11 @@ function set_rate_headers!(resp::HTTP.Response, rate_limit::Int, remaining_reque
     has_retry = false
     
     # Loop over the headers once and try to find each header
-    for (k, v) in resp.headers
-        if !has_retry && HTTP.Messages.field_name_isequal(k, "Retry-After")
+    for (k, _) in resp.headers
+        # End if all headers are found
+        if has_retry && has_limit && has_remaining && has_reset
+            break
+        elseif !has_retry && HTTP.Messages.field_name_isequal(k, "Retry-After")
             has_retry = true
         elseif !has_limit && HTTP.Messages.field_name_isequal(k, "X-RateLimit-Limit")
             has_limit = true

@@ -7,9 +7,9 @@ using Sockets
 using Oxygen; @oxidize
 using ..Constants
 
-limit = router("/limited", middleware=[RateLimiterLRU(rate_limit=50, window=Second(3))])
+limit = router("/limited", middleware=[RateLimiter(strategy=:sliding_window, rate_limit=50, window=Second(3))])
 
-@get limit("/goodbye", middleware=[RateLimiterLRU(rate_limit=25, window=Second(3))]) function()
+@get limit("/goodbye", middleware=[RateLimiter(strategy=:sliding_window, rate_limit=25, window=Second(3))]) function()
     return "goodbye"
 end
 
@@ -22,7 +22,7 @@ end
 end
 
 # Create a rate limiter with realistic limits for testing (100 requests per second)
-serve(middleware=[RateLimiterLRU(rate_limit=100, window=Second(3))], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+serve(middleware=[RateLimiter(strategy=:sliding_window, rate_limit=100, window=Second(3))], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
 
 @testset "Rate Limiter Tests" begin
 

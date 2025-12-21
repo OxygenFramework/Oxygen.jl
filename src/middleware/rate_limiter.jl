@@ -55,7 +55,7 @@ Creates a middleware function that enforces rate limiting based on IP address, w
 To customize IP extraction, set `auto_extract_ip=false` and insert your own middleware before the rate limiter to assign the desired IP address to `req.context[:ip]`. This is useful for advanced scenarios such as extracting IPs from custom headers, authentication tokens, or supporting non-standard proxy setups.
 
 # Note
-This implementation relies on system clock time. Significant system clock adjustments (NTP sync, manual changes) may temporarily affect rate limiting accuracy.
+This implementation uses UTC time to avoid timezone and DST issues. Significant system clock adjustments (NTP sync, manual changes) may temporarily affect rate limiting accuracy.
 
 # Returns
 An `LifecycleMiddleware` struct containing the middleware function and a cleanup function to stop the background task on server shutdown.
@@ -90,7 +90,7 @@ function FixedRateLimiter(;
             cleanup_task[] = @async while running[]
                 sleep(cleanup_period)
                 lock(store_lock) do
-                    current_time = now()
+                    current_time = now(UTC)
                     to_delete = []
                     # Find old entries
                     for (ip, (_, last_reset)) in rate_limit_store
@@ -129,7 +129,7 @@ function FixedRateLimiter(;
                 remaining_requests = rate_limit
 
                 lock(store_lock) do
-                    current_time = Dates.now()
+                    current_time = now(UTC)
                     ip = req.context[:ip]
 
                     if haskey(rate_limit_store, ip)
@@ -224,7 +224,7 @@ Uses a sliding window approach where:
 
 # Note
 - The `X-RateLimit-Reset` header indicates when the oldest request expires (when at least 1 request slot becomes available), not when the full quota resets.
-- This implementation relies on system clock time. Significant system clock adjustments (NTP sync, manual changes) may temporarily affect rate limiting accuracy.
+- This implementation uses UTC time to avoid timezone and DST issues. Significant system clock adjustments (NTP sync, manual changes) may temporarily affect rate limiting accuracy.
 
 # Returns
 A middleware function with signature: `handle -> req -> response`
@@ -268,7 +268,7 @@ function SlidingRateLimiter(;
                     end
                 end
                 
-                current_time = Dates.now()
+                current_time = now(UTC)
                 ip = req.context[:ip]
                 
                 lock(store_lock) do

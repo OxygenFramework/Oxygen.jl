@@ -267,11 +267,12 @@ function SlidingRateLimiter(;
                         return handle(req)
                     end
                 end
-                
-                current_time = now(UTC)
-                ip = req.context[:ip]
-                
+
                 lock(store_lock) do
+                                    
+                    current_time = now(UTC)
+                    ip = req.context[:ip]
+                    
                     # Get existing timestamps or create empty vector
                     timestamps = get!(rate_limit_store, ip, DateTime[])
 

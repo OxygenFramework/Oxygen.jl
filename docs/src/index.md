@@ -1208,7 +1208,7 @@ more exotic ip extraction strategies you can turn it off and implement your own 
 Example:
 ```julia
 # run this before rate limiting when behind a proxy
-serve(middleware=[ExtractIP(), RateLimiter()])
+serve(middleware=[ExtractIP(), RateLimiter(auto_extract_ip=false)])
 ```
 
 ### BearerAuth

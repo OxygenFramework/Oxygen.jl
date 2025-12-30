@@ -1198,6 +1198,19 @@ serve(middleware=[RateLimiter(rate_limit=50, exempt_paths=["/health", "/metrics"
 
 ---
 
+### ExtractIP
+
+The `ExtractIP` middleware pulls the caller's real IP from common proxy headers (CF-Connecting-IP, True-Client-IP, X-Forwarded-For, X-Real-IP) and assigns it to `req.context[:ip]`. Use this before `RateLimiter` or logging when your app sits behind proxies or CDNs.
+
+*The `RateLimiter` middleware has a `auto_extract_ip` flag which will inject this middleware automatically. If your app needs / wants to do 
+more exotic ip extraction strategies you can turn it off and implement your own middlware function. As long as the result is assigned to the `req.context[:ip]` property, the rate limiter will perform as expected.*
+
+Example:
+```julia
+# run this before rate limiting when behind a proxy
+serve(middleware=[ExtractIP(), RateLimiter()])
+```
+
 ### BearerAuth
 
 In most serious applications, you'll find yourself needing to add some layer of authentication to your web app. In most cases

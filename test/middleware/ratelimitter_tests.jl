@@ -243,4 +243,54 @@ end
 
 terminate()
 
+# Start server for exempt paths test
+@get "/limited" function()
+    return "limited"
+end
+
+@get "/exempt" function()
+    return "exempt"
+end
+
+serve(middleware=[RateLimiter(rate_limit=10, window=Second(1), exempt_paths=["/exempt"])], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+
+@testset "Exempt Paths Test" begin
+    # First 10 requests to /limited should succeed with decreasing remaining count
+    for i in 1:10
+        r = HTTP.get("$localhost/limited")
+        @test r.status == 200
+        @test text(r) == "limited"
+        @test HTTP.header(r, "X-RateLimit-Limit") == "10"
+        @test HTTP.header(r, "X-RateLimit-Remaining") == string(10 - i)
+        reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
+        @test reset_time > 0 && reset_time <= 1
+    end
+
+    # 11th request to /limited should be rate limited (429)
+    try
+        HTTP.get("$localhost/limited"; retry=false)
+        @test false
+    catch e
+        @test e isa HTTP.Exceptions.StatusError
+        @test e.response.status == 429
+        @test HTTP.header(e.response, "X-RateLimit-Limit") == "10"
+        @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
+        reset_time = parse(Int, HTTP.header(e.response, "X-RateLimit-Reset"))
+        @test reset_time > 0 && reset_time <= 1
+    end
+
+    # Requests to /exempt should succeed even when rate limit is exceeded, and should not have rate limit headers
+    for i in 1:5
+        r = HTTP.get("$localhost/exempt")
+        @test r.status == 200
+        @test text(r) == "exempt"
+        # Exempt paths should not have rate limit headers
+        @test !HTTP.hasheader(r, "X-RateLimit-Limit")
+        @test !HTTP.hasheader(r, "X-RateLimit-Remaining")
+        @test !HTTP.hasheader(r, "X-RateLimit-Reset")
+    end
+end
+
+terminate()
+
 end

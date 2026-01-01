@@ -1163,23 +1163,53 @@ Oxygen ships with some prebuilt middleware functions so you can easily integrate
 
 ### RateLimiter
 
-The `RateLimiter` middleware lets you set a cap on how many requests each client IP can make in a given time window. It's perfect for public endpoints, login routes, or anywhere you want to keep things smooth and prevent brute-force attacks. 
+The `RateLimiter` middleware lets you set a cap on how many requests each client IP can make in a given time window. It's perfect for public endpoints, login routes, or anywhere you want to keep things smooth and prevent brute-force attacks. You can choose between fixed window (efficient) or sliding window (precise) strategies depending on your needs.
 
 *The rate limiting is completely based on the `req.context[:ip]` property that's added to all requests. If you use proxies or services like cloudflare that intercept requests, you'll need to parse out the actual caller's IP from the headers and reassign the `ip` property on the `request.context` object.*
 
-**Example:**
+**Examples:**
 ```julia
-# Limit each client to 50 requests every 3 seconds
-serve(middleware=[RateLimiter(rate_limit=50, window_period=Second(3))])
+# Limit each client to 50 requests every 3 seconds (fixed window - default)
+serve(middleware=[RateLimiter(rate_limit=50, window=Second(3))])
+
+# Use sliding window for more precise rate limiting
+serve(middleware=[RateLimiter(strategy=:sliding_window, rate_limit=100, window=Minute(1))])
+
+# Skip rate limiting for certain paths
+serve(middleware=[RateLimiter(rate_limit=50, exempt_paths=["/health", "/metrics"])])
 ```
 
-Keyword Arguments:
-- `rate_limit::Int`: Maximum number of requests allowed per IP within the window period. Default is 100.
-- `window_period::Period`: Time window for rate limiting. Default is 1 minute.
-- `cleanup_period::Period`: Interval for running the background cleanup task. Default is 10 minutes.
-- `cleanup_threshold::Period`: Minimum age of inactive IP entries before deletion during cleanup. Default is 10 minutes.
+**Strategy Options:**
+- `:fixed_window` (default): Efficient memory usage with periodic reset windows
+- `:sliding_window`: More precise tracking but higher memory usage per client
+
+**Common Parameters:**
+- `rate_limit::Int`: Maximum requests per IP within the window. Default is 100.
+- `window::Period`: Time window for rate limiting. Default is 1 minute.
+- `auto_extract_ip::Bool`: Automatically extract client IP from request. Default is true.
+- `exempt_paths::Vector{String}`: Request path prefixes to skip rate limiting. Default is empty.
+
+**Fixed Window Additional Parameters:**
+- `cleanup_period::Period`: Background cleanup interval. Default is 10 minutes.
+- `cleanup_threshold::Period`: Minimum age before cleanup. Default is 10 minutes.
+
+**Sliding Window Additional Parameters:**
+- `max_clients::Int`: Maximum client buckets in LRU cache. Default is 10000.
 
 ---
+
+### ExtractIP
+
+The `ExtractIP` middleware pulls the caller's real IP from common proxy headers (CF-Connecting-IP, True-Client-IP, X-Forwarded-For, X-Real-IP) and assigns it to `req.context[:ip]`. Use this before `RateLimiter` or logging when your app sits behind proxies or CDNs.
+
+*The `RateLimiter` middleware has a `auto_extract_ip` flag which will inject this middleware automatically. If your app needs / wants to do 
+more exotic ip extraction strategies you can turn it off and implement your own middlware function. As long as the result is assigned to the `req.context[:ip]` property, the rate limiter will perform as expected.*
+
+Example:
+```julia
+# run this before rate limiting when behind a proxy
+serve(middleware=[ExtractIP(), RateLimiter(auto_extract_ip=false)])
+```
 
 ### BearerAuth
 

@@ -1,4 +1,4 @@
-module RateLimiterTests
+module RateLimiterLRUTests
 
 using Test
 using HTTP
@@ -7,9 +7,9 @@ using Sockets
 using Oxygen; @oxidize
 using ..Constants
 
-limit = router("/limited", middleware=[RateLimiter(rate_limit=50, window_period=Second(3))])
+limit = router("/limited", middleware=[RateLimiter(strategy=:sliding_window, rate_limit=50, window=Second(3))])
 
-@get limit("/goodbye", middleware=[RateLimiter(rate_limit=25, window=Second(3))]) function()
+@get limit("/goodbye", middleware=[RateLimiter(strategy=:sliding_window, rate_limit=25, window=Second(3))]) function()
     return "goodbye"
 end
 
@@ -22,7 +22,7 @@ end
 end
 
 # Create a rate limiter with realistic limits for testing (100 requests per second)
-serve(middleware=[RateLimiter(rate_limit=100, window=Second(3))], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+serve(middleware=[RateLimiter(strategy=:sliding_window, rate_limit=100, window=Second(3))], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
 
 @testset "Rate Limiter Tests" begin
 
@@ -199,50 +199,6 @@ end
 
 terminate()
 
-rl = RateLimiter(rate_limit=1, window=Hour(1), cleanup_period=Second(1), cleanup_threshold=Second(1))
-
-# Start server for background cleanup test
-serve(middleware=[rl], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
-
-@testset "Background Cleanup Test" begin
-
-    # First request should succeed
-    r = HTTP.get("$localhost/ok"; retry=false)
-    @test r.status == 200
-    @test text(r) == "ok"
-    @test HTTP.header(r, "X-RateLimit-Limit") == "1"
-    @test HTTP.header(r, "X-RateLimit-Remaining") == "0"
-    reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-    @test reset_time > 0  # Should be close to 1 hour in seconds
-
-    # Second request should be rate limited (429)
-    try
-        HTTP.get("$localhost/ok"; retry=false)
-        @test false
-    catch e
-        @test e isa HTTP.Exceptions.StatusError
-        @test e.response.status == 429
-        @test HTTP.header(e.response, "X-RateLimit-Limit") == "1"
-        @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
-        reset_time = parse(Int, HTTP.header(e.response, "X-RateLimit-Reset"))
-        @test reset_time > 0
-    end
-
-    # Wait for cleanup to run (cleanup_threshold=1s, cleanup_period=1s, wait 2.1s to ensure task runs)
-    sleep(2.1)
-
-    # Third request should succeed because the IP entry was cleaned up
-    r = HTTP.get("$localhost/ok"; retry=false)
-    @test r.status == 200
-    @test text(r) == "ok"
-    @test HTTP.header(r, "X-RateLimit-Limit") == "1"
-    @test HTTP.header(r, "X-RateLimit-Remaining") == "0"
-    reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-    @test reset_time > 0
-end
-
-terminate()
-
 # Start server for exempt paths test
 @get "/limited" function()
     return "limited"
@@ -252,7 +208,7 @@ end
     return "exempt"
 end
 
-serve(middleware=[RateLimiter(rate_limit=10, window=Second(1), exempt_paths=["/exempt"])], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+serve(middleware=[RateLimiter(strategy=:sliding_window, rate_limit=10, window=Second(1), exempt_paths=["/exempt"])], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
 
 @testset "Exempt Paths Test" begin
     # First 10 requests to /limited should succeed with decreasing remaining count
@@ -288,6 +244,64 @@ serve(middleware=[RateLimiter(rate_limit=10, window=Second(1), exempt_paths=["/e
         @test !HTTP.hasheader(r, "X-RateLimit-Limit")
         @test !HTTP.hasheader(r, "X-RateLimit-Remaining")
         @test !HTTP.hasheader(r, "X-RateLimit-Reset")
+    end
+end
+
+terminate()
+
+# Start server for multiple exempt paths test
+@get "/limited" function()
+    return "limited"
+end
+
+@get "/exempt1" function()
+    return "exempt1"
+end
+
+@get "/exempt2" function()
+    return "exempt2"
+end
+
+@get "/notexempt" function()
+    return "notexempt"
+end
+
+serve(middleware=[RateLimiter(strategy=:sliding_window, rate_limit=5, window=Second(1), exempt_paths=["/exempt1", "/exempt2"])], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+
+@testset "Multiple Exempt Paths Test" begin
+    # First 5 requests to /limited should succeed
+    for i in 1:5
+        r = HTTP.get("$localhost/limited")
+        @test r.status == 200
+        @test text(r) == "limited"
+        @test HTTP.header(r, "X-RateLimit-Limit") == "5"
+        @test HTTP.header(r, "X-RateLimit-Remaining") == string(5 - i)
+    end
+
+    # 6th request to /limited should be rate limited
+    try
+        HTTP.get("$localhost/limited"; retry=false)
+        @test false
+    catch e
+        @test e.response.status == 429
+    end
+
+    # Requests to exempt paths should succeed and not have headers
+    for path in ["/exempt1", "/exempt2"]
+        r = HTTP.get("$localhost$path")
+        @test r.status == 200
+        @test text(r) == split(path, "/")[2]  # "exempt1" or "exempt2"
+        @test !HTTP.hasheader(r, "X-RateLimit-Limit")
+        @test !HTTP.hasheader(r, "X-RateLimit-Remaining")
+        @test !HTTP.hasheader(r, "X-RateLimit-Reset")
+    end
+
+    # Requests to /notexempt should also be limited
+    try
+        HTTP.get("$localhost/notexempt"; retry=false)
+        @test false
+    catch e
+        @test e.response.status == 429
     end
 end
 

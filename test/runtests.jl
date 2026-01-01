@@ -3,7 +3,7 @@ module RunTests
 include("constants.jl"); using .Constants
 include("test_utils.jl"); using .TestUtils
 
-#### Extension Tests ####
+# #### Extension Tests ####
 
 include("extensions/timezonetests.jl")
 include("extensions/templatingtests.jl")
@@ -46,6 +46,7 @@ include("revise.jl")
 include("./scenarios/thunderingherd.jl")
 
 #### Prebuilt Middleware Tests ####
+include("middleware/extract_ip_tests.jl")
 include("middleware/ratelimitter_tests.jl")
 include("middleware/ratelimitter_lru_tests.jl")
 include("middleware/authmiddleware_tests.jl")

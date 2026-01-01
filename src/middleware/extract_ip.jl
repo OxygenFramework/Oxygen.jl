@@ -3,7 +3,7 @@ module ExtractIPMiddleware
 using HTTP
 using Sockets
 
-export ExtractIP
+export ExtractIP, extract_ip
 
 """
     ExtractIP()

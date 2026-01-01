@@ -3,7 +3,7 @@ module ExtractIPTests
 using Test
 using HTTP
 using Sockets
-using Oxygen.Middleware.ExtractIPMiddleware: extract_ip
+using Oxygen.Middleware: extract_ip
 
 @testset "extract_ip function tests" begin
 

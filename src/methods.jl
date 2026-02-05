@@ -387,7 +387,16 @@ macro cron(expression, name, func)
         Oxygen.Core.cron($(CONTEXT[].cron.registered_jobs), $(esc(expression)), string($(esc(name))), $(esc(func)))
     end
 end
+### Cookie functions ###
 
+"""
+    set_cookie!(res::HTTP.Response, name::String, value::String; kwargs...)
+
+Set a cookie on an HTTP response using the global cookie configuration.
+"""
+function set_cookie!(res::HTTP.Response, name::String, value::String; kwargs...)
+    return Oxygen.Core.set_cookie!(res, name, value; config=CONTEXT[].service.cookies, kwargs...)
+end
 ## Cron Job Functions ##
 
 """

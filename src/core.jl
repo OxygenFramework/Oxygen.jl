@@ -16,6 +16,7 @@ import ..WAS_LOADED_AFTER_REVISE
 include("errors.jl");       @reexport using .Errors
 include("util.jl");         @reexport using .Util
 include("types.jl");        @reexport using .Types 
+include("security/Cookies.jl"); @reexport using .Cookies
 include("constants.jl");    @reexport using .Constants
 include("context.jl");      @reexport using .AppContext
 include("handlers.jl");     @reexport using .Handlers
@@ -106,11 +107,23 @@ function serve(ctx::ServerContext;
     prefix      = nothing,
     context     = missing,
     revise      = :none, # :none, :lazy, :eager
+    secret_key  = nothing,
+    httponly    = true,
+    secure      = true,
+    samesite    = "Lax",
     kwargs...) :: Server
 
     if !ismissing(context)
         ctx.app_context[] = Context(context)
     end
+
+    # initialize cookie configuration
+    ctx.service.cookies = CookieConfig(
+        secret_key = secret_key,
+        httponly = httponly,
+        secure = secure,
+        samesite = samesite
+    )
 
     # set the external url if it's passed
     ctx.service.external_url[] = external_url isa String ? external_url : "http://$host:$port"
@@ -540,11 +553,13 @@ function parse_func_params(route::String, func::Function)
     pathnames = Vector{Symbol}()
     querynames = Vector{Symbol}()
     headernames = Vector{Symbol}()
+    cookienames = Vector{Symbol}()
     bodynames = Vector{Symbol}()
 
     path_params = []
     query_params = []
     header_params = []
+    cookie_params = []
     body_params = []
 
     for param in info.args
@@ -567,6 +582,9 @@ function parse_func_params(route::String, func::Function)
             elseif param.type <: Header
                 append!(headernames, fieldnames(innner_type))
                 push!(header_params, param)
+            elseif param.type <: Cookie
+                push!(cookienames, param.name)
+                push!(cookie_params, param)
             else
                 append!(bodynames, fieldnames(innner_type))
                 push!(body_params, param)
@@ -600,7 +618,8 @@ function parse_func_params(route::String, func::Function)
         info=info, pathparams=path_params,
         pathnames=pathnames, queryparams=query_params,
         querynames=querynames, headers=header_params,
-        headernames=headernames, bodyargs=body_params,
+        headernames=headernames, cookies=cookie_params,
+        cookienames=cookienames, bodyargs=body_params,
         bodynames=bodynames
     )
 end
@@ -625,10 +644,11 @@ function register(ctx::ServerContext, httpmethod::String, route::Union{String,HO
             queryparams = func_details.queryparams
             pathparams = func_details.pathparams
             headers = func_details.headers
+            cookies = func_details.cookies
             bodyparams = func_details.bodyargs
 
             # Register the route schema with out autodocs module
-            registerschema(ctx.docs, route, httpmethod, pathparams, queryparams, headers, bodyparams, Base.return_types(func))
+            registerschema(ctx.docs, route, httpmethod, pathparams, queryparams, headers, cookies, bodyparams, Base.return_types(func))
 
         catch error
             @warn "Failed to generate openapi schema for route: $route"
@@ -679,6 +699,10 @@ function create_param_parser(ctx::ServerContext, func_details)
         return extract(param, lr)
     end
 
+    function cookie_strategy(lr::LazyRequest, param::Param{T}) where T
+        return extract(param, lr, ctx.service.cookies.secret_key)
+    end
+
     function pathparam_strategy(lr::LazyRequest, param::Param{T}, name::String) where T
         raw_pathparams = Types.pathparams(lr)
         return parseparam(param.type, raw_pathparams[name])
@@ -707,6 +731,8 @@ function create_param_parser(ctx::ServerContext, func_details)
         str_name = String(name)
         if param.type <: Context
             push!(strategies, context_strategy)
+        elseif param.type <: Cookie
+            push!(strategies, lr -> cookie_strategy(lr, param))
         elseif param.type <: Extractor
             push!(strategies, lr -> extractor_strategy(lr, param))
         elseif name in pathparams

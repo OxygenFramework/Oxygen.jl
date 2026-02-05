@@ -4,6 +4,7 @@ module Util
 
 include("utilities/bodyparsers.jl");
 include("utilities/render.jl");
+include("utilities/cookies.jl");
 include("utilities/misc.jl");
 include("utilities/fileutil.jl");
 

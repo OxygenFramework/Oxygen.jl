@@ -15,9 +15,29 @@ export Server, History, HTTPTransaction, TaggedRoute, Nullable, Context,
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition,
     LifecycleMiddleware, startup, shutdown,
-    Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
+    Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody,
+    CookieConfig, Cookie
 
 const Nullable{T} = Union{T, Nothing}
+
+abstract type Extractor{T} end
+
+# Generic cookie configuration
+@kwdef struct CookieConfig
+    secret_key::Nullable{String} = nothing
+    httponly::Bool = true
+    secure::Bool = true
+    samesite::String = "Lax"
+end
+
+# Represents a cookie extractor
+struct Cookie{T} <: Extractor{T}
+    name::String
+    value::Nullable{T}
+end
+
+Cookie(name::String, ::Type{T}) where T = Cookie{T}(name, nothing)
+Cookie(name::String, value::T) where T = Cookie{T}(name, value)
 
 # Represents the application context 
 struct Context{T}

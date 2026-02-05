@@ -61,6 +61,7 @@ end
     eager_revise        :: Ref{Nullable{EagerReviseService}} = Ref{Nullable{EagerReviseService}}(nothing)
     middleware_cache_lock :: ReentrantLock          = ReentrantLock()
     lifecycle_middleware  :: Set{LifecycleMiddleware} = Set{LifecycleMiddleware}()
+    cookies               :: CookieConfig           = CookieConfig()
 end
 
 @kwdef struct ServerContext

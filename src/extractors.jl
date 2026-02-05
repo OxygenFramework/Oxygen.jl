@@ -9,11 +9,12 @@ using ..Util: text, json, formdata, parseparam
 using ..Reflection: struct_builder, extract_struct_info
 using ..Errors: ValidationError
 using ..Types
+using ..Cookies
 
 export Extractor, extract, validate, extracttype, isextractor, isreqparam, isbodyparam,
-    Path, Query, Header, Json, JsonFragment, Form, Body
+    Path, Query, Header, Json, JsonFragment, Form, Body, Cookie
 
-abstract type Extractor{T} end
+# abstract type Extractor{T} end
 
 """
 Given a classname, build a new Extractor class
@@ -195,6 +196,37 @@ function extract(param::Param{Header{T}}, request::LazyRequest) :: Header{T}  wh
     end
     valid_instance = try_validate(param, instance)
     return Header(valid_instance)
+end
+
+"""
+Extracts a cookie from a request and converts it into a custom type.
+This is a helper used by the cookie strategy in Core.
+"""
+function extract(param::Param{Cookie{T}}, request::LazyRequest, secret_key::Nullable{String}) :: Cookie{T} where {T}
+    cookies = Cookies.parse_cookies(headers(request))
+    
+    # The cookie name is either explicitly set in the Cookie struct or defaults to the parameter name
+    cookie_name = if param.hasdefault && !isempty(param.default.name)
+        param.default.name
+    else
+        string(param.name)
+    end
+    
+    if !haskey(cookies, cookie_name)
+        return Cookie(cookie_name, T) # return with nothing value
+    end
+    
+    raw_value = String(cookies[cookie_name])
+    
+    # Decrypt if secret_key is present
+    decrypted_value = !isnothing(secret_key) ? Cookies.decrypt_payload(secret_key, raw_value) : raw_value
+    
+    instance = safe_extract(param) do 
+        parseparam(T, decrypted_value) 
+    end
+    
+    valid_instance = try_validate(param, instance)
+    return Cookie(cookie_name, valid_instance)
 end
 
 end

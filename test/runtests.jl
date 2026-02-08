@@ -5,6 +5,7 @@ include("test_utils.jl"); using .TestUtils
 
 # #### Extension Tests ####
 
+include("extensions/cryptotests.jl")
 include("extensions/timezonetests.jl")
 include("extensions/templatingtests.jl")
 include("extensions/protobuf/protobuftests.jl")
@@ -21,6 +22,7 @@ include("handlertests.jl")
 
 #### Core Tests ####
 include("utiltests.jl")
+include("cookiestests.jl")
 include("test_reexports.jl")
 include("precompilationtest.jl")
 include("autodoctests.jl")

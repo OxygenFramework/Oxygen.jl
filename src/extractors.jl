@@ -11,10 +11,8 @@ using ..Errors: ValidationError
 using ..Types
 using ..Cookies
 
-export Extractor, extract, validate, extracttype, isextractor, isreqparam, isbodyparam,
-    Path, Query, Header, Json, JsonFragment, Form, Body, Cookie
-
-# abstract type Extractor{T} end
+export extract, validate, extracttype, isextractor, isreqparam, isbodyparam,
+    Path, Query, Header, Json, JsonFragment, Form, Body, Cookie, Session
 
 """
 Given a classname, build a new Extractor class
@@ -203,30 +201,84 @@ Extracts a cookie from a request and converts it into a custom type.
 This is a helper used by the cookie strategy in Core.
 """
 function extract(param::Param{Cookie{T}}, request::LazyRequest, secret_key::Nullable{String}) :: Cookie{T} where {T}
-    cookies = Cookies.parse_cookies(headers(request))
-    
     # The cookie name is either explicitly set in the Cookie struct or defaults to the parameter name
-    cookie_name = if param.hasdefault && !isempty(param.default.name)
+    cookie_name = if param.hasdefault && !isnothing(param.default.name) && !isempty(param.default.name)
         param.default.name
     else
         string(param.name)
     end
+
+    # Use get_cookie to handle parsing, decryption and type conversion
+    # We pass T() or a representative value of type T as default to trigger type parsing if needed,
+    # but here safe_extract handles parseparam(T, ...) so we just get the raw/decrypted string.
     
-    if !haskey(cookies, cookie_name)
-        return Cookie(cookie_name, T) # return with nothing value
+    val = Cookies.get_cookie(headers(request), cookie_name; encrypted=!isnothing(secret_key), secret_key=secret_key)
+    
+    if isnothing(val)
+        return Cookie(cookie_name, T)
     end
-    
-    raw_value = String(cookies[cookie_name])
-    
-    # Decrypt if secret_key is present
-    decrypted_value = !isnothing(secret_key) ? Cookies.decrypt_payload(secret_key, raw_value) : raw_value
-    
+
     instance = safe_extract(param) do 
-        parseparam(T, decrypted_value) 
+        parseparam(T, val) 
     end
     
     valid_instance = try_validate(param, instance)
     return Cookie(cookie_name, valid_instance)
+end
+
+"""
+Extracts a session from a request using the application context as a store.
+"""
+function extract(param::Param{Session{T}}, request::LazyRequest, secret_key::Nullable{String}, app_context::Any) :: Session{T} where {T}
+    # 1. Get the session cookie name
+    session_cookie_name = if param.hasdefault && !isnothing(param.default.name) && !isempty(param.default.name)
+        param.default.name
+    else
+        "session" # default session cookie name
+    end
+
+    # 2. Extract the session ID from cookies
+    val = Cookies.get_cookie(headers(request), session_cookie_name; encrypted=!isnothing(secret_key), secret_key=secret_key)
+    
+    if isnothing(val) || isempty(val)
+        return Session(session_cookie_name, T)
+    end
+
+    # 3. Lookup in App Context
+    if ismissing(app_context)
+        return Session(session_cookie_name, T)
+    end
+
+    # app_context is expected to be a Context object
+    store = app_context.payload
+    
+    # We assume the store is a Dict-like object or support get()
+    instance = try
+        if hasmethod(Base.get, (typeof(store), String, Any))
+            Base.get(store, val, nothing)
+        elseif hasmethod(Base.get, (typeof(store), Symbol, Any))
+            Base.get(store, Symbol(val), nothing)
+        else
+            nothing
+        end
+    catch
+        nothing
+    end
+
+    if isnothing(instance)
+        return Session(session_cookie_name, T)
+    end
+
+    # Handle built-in SessionPayload with expiry checking
+    if instance isa SessionPayload
+        if instance.expires < Dates.now(Dates.UTC)
+            return Session(session_cookie_name, T)
+        end
+        instance = instance.data
+    end
+    
+    valid_instance = try_validate(param, instance)
+    return Session(session_cookie_name, valid_instance)
 end
 
 end

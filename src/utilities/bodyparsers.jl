@@ -1,6 +1,7 @@
 
 using HTTP 
 using JSON
+using ..Util
 
 export text, binary, json, formdata
 

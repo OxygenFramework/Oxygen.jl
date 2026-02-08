@@ -38,6 +38,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Request Extractors
 - Application Context
 - Multiple Instance Support
+- Cookie management & Encrypted Extractors
 - Multithreading support
 - Websockets, Streaming, and Server-Sent Events
 - Cron Scheduling (on endpoints & functions)
@@ -492,6 +493,48 @@ person = Person("John")
 
 # Here is how we set the application context in our server
 serve(context=person)
+```
+
+## Cookies
+
+Oxygen provides a high-performance cookie management system with native support for encryption and declarative data fetching.
+
+### Setting Cookies
+Use `set_cookie!` to attach cookies to your responses. By default, it sets `HttpOnly`, `Secure`, and `SameSite=Lax` for better security.
+
+```julia
+@get "/login" function(res::Response)
+    set_cookie!(res, "session", "xyz-789", maxage=3600)
+    return "Logged in!"
+end
+```
+
+### Getting Cookies
+You can use the `get_cookie` helper or the `Cookie` extractor to fetch cookie values.
+
+```julia
+# Using the Extractor (converts value to Int automatically)
+@get "/dashboard" function(user_id::Cookie{Int})
+    return "Welcome user $(user_id.value)"
+end
+
+# Using the helper
+@get "/profile" function(req::Request)
+    theme = get_cookie(req, "theme", "light")
+    return "Theme: $theme"
+end
+```
+
+### Encrypted Cookies
+If a `secret_key` is configured, Oxygen uses AES-256-GCM for authenticated encryption.
+
+```julia
+# Global configuration (requires OxygenCryptoExt)
+configcookies(secret_key = "your-32-character-secret-key")
+
+@get "/secure" function(res::Response)
+    set_cookie!(res, "secret", "shhh!", encrypted=true)
+end
 ```
 
 ## Interpolating variables into endpoints

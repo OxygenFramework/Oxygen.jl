@@ -277,12 +277,12 @@ function getexternalurl() :: String
 end
 
 """
-    internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true)
+    internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true, context=missing)
 
 Sends an internal request to the server, allowing for communication between different parts of the application.
 """
-internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true) = 
-    Oxygen.Core.internalrequest(CONTEXT[], req; middleware, metrics, serialize, catch_errors)
+internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true, context=missing) = 
+    Oxygen.Core.internalrequest(CONTEXT[], req; middleware, metrics, serialize, catch_errors, context)
 
 """
     router(prefix::String = ""; 
@@ -390,12 +390,38 @@ end
 ### Cookie functions ###
 
 """
-    set_cookie!(res::HTTP.Response, name::String, value::String; kwargs...)
+    configcookies(defaults::Dict)
+    configcookies(; kwargs...)
 
-Set a cookie on an HTTP response using the global cookie configuration.
+Configure global cookie defaults for the application.
 """
-function set_cookie!(res::HTTP.Response, name::String, value::String; kwargs...)
-    return Oxygen.Core.set_cookie!(res, name, value; config=CONTEXT[].service.cookies, kwargs...)
+function configcookies(defaults::Dict)
+    CONTEXT[].service.cookies[] = Oxygen.Core.load_cookie_settings!(defaults)
+end
+
+function configcookies(; kwargs...)
+    configcookies(Dict(string(k) => v for (k, v) in kwargs))
+end
+
+"""
+    get_cookie(req::Oxygen.Request, name::String, default::Any=nothing; kwargs...)
+
+Get a cookie value from an Oxygen request. Automatically handles decryption if a secret key is configured.
+"""
+function get_cookie(req::Oxygen.Request, name::String, default::Any=nothing; kwargs...)
+    secret_key = CONTEXT[].service.cookies[].secret_key
+    # If encrypted is not explicitly passed, we default to whatever the global config says (based on secret_key presence)
+    encrypted = Base.get(kwargs, :encrypted, !isnothing(secret_key))
+    return Oxygen.Core.get_cookie(req, name, default; secret_key=secret_key, encrypted=encrypted, kwargs...)
+end
+
+"""
+    set_cookie!(res::Oxygen.Response, name::String, value::Any; kwargs...)
+
+Set a cookie on an Oxygen response using the global cookie configuration.
+"""
+function set_cookie!(res::Oxygen.Response, name::String, value::Any; kwargs...)
+    return Oxygen.Core.set_cookie!(res, name, value; config=CONTEXT[].service.cookies[], kwargs...)
 end
 ## Cron Job Functions ##
 

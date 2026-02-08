@@ -44,9 +44,9 @@ export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route,
         redirect, formdata, format_sse_message,
         html, text, json, file, xml, js, css, binary,
         # Extractors
-        Path, Query, Header, Json, JsonFragment, Form, Body, Cookie, extract, validate,
-        # Cookies
-        set_cookie!,
+        Path, Query, Header, Json, JsonFragment, Form, Body, Cookie, Session, extract, validate,
+        # Cookies & Security
+        configcookies, get_cookie, set_cookie!, Cookies, Errors,
         # Middleware
         BearerAuth, Cors, RateLimiter, ExtractIP,
         # Docs

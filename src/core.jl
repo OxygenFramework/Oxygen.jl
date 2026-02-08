@@ -16,7 +16,7 @@ import ..WAS_LOADED_AFTER_REVISE
 include("errors.jl");       @reexport using .Errors
 include("util.jl");         @reexport using .Util
 include("types.jl");        @reexport using .Types 
-include("security/Cookies.jl"); @reexport using .Cookies
+include("cookies.jl");      @reexport using .Cookies
 include("constants.jl");    @reexport using .Constants
 include("context.jl");      @reexport using .AppContext
 include("handlers.jl");     @reexport using .Handlers
@@ -108,9 +108,9 @@ function serve(ctx::ServerContext;
     context     = missing,
     revise      = :none, # :none, :lazy, :eager
     secret_key  = nothing,
-    httponly    = true,
-    secure      = true,
-    samesite    = "Lax",
+    httponly    = nothing,
+    secure      = nothing,
+    samesite    = nothing,
     kwargs...) :: Server
 
     if !ismissing(context)
@@ -118,11 +118,18 @@ function serve(ctx::ServerContext;
     end
 
     # initialize cookie configuration
-    ctx.service.cookies = CookieConfig(
-        secret_key = secret_key,
-        httponly = httponly,
-        secure = secure,
-        samesite = samesite
+    # we only overwrite the fields that are explicitly passed to serve()
+    current = ctx.service.cookies[]
+    ctx.service.cookies[] = CookieConfig(
+        secret_key = isnothing(secret_key) ? current.secret_key : secret_key,
+        httponly = isnothing(httponly) ? current.httponly : httponly,
+        secure   = isnothing(secure)   ? current.secure   : secure,
+        samesite = isnothing(samesite) ? current.samesite : samesite,
+        path     = current.path,
+        domain   = current.domain,
+        maxage   = current.maxage,
+        expires  = current.expires,
+        max_cookie_size = current.max_cookie_size
     )
 
     # set the external url if it's passed
@@ -414,9 +421,23 @@ end
 Directly call one of our other endpoints registered with the router, using your own middleware
 and bypassing any globally defined middleware
 """
-function internalrequest(ctx::ServerContext, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true)::HTTP.Response
+function internalrequest(ctx::ServerContext, req::HTTP.Request; middleware::Vector=[], metrics::Bool=false, serialize::Bool=true, catch_errors=true, context=missing)::HTTP.Response
     req.context[:ip] = IPv4("127.0.0.1") # label internal requests
-    return req |> setupmiddleware(ctx; middleware, metrics, serialize, catch_errors)
+
+    # Temporarily set the context if provided
+    old_ctx = ctx.app_context[]
+    if !ismissing(context)
+        ctx.app_context[] = Context(context)
+    end
+
+    try
+        return req |> setupmiddleware(ctx; middleware, metrics, serialize, catch_errors)
+    finally
+        # restore the old context
+        if !ismissing(context)
+            ctx.app_context[] = old_ctx
+        end
+    end
 end
 
 """
@@ -582,6 +603,9 @@ function parse_func_params(route::String, func::Function)
             elseif param.type <: Header
                 append!(headernames, fieldnames(innner_type))
                 push!(header_params, param)
+            elseif param.type <: Session
+                push!(cookienames, param.name)
+                push!(cookie_params, param)
             elseif param.type <: Cookie
                 push!(cookienames, param.name)
                 push!(cookie_params, param)
@@ -700,7 +724,11 @@ function create_param_parser(ctx::ServerContext, func_details)
     end
 
     function cookie_strategy(lr::LazyRequest, param::Param{T}) where T
-        return extract(param, lr, ctx.service.cookies.secret_key)
+        return extract(param, lr, ctx.service.cookies[].secret_key)
+    end
+
+    function session_strategy(lr::LazyRequest, param::Param{T}) where T
+        return extract(param, lr, ctx.service.cookies[].secret_key, ctx.app_context[])
     end
 
     function pathparam_strategy(lr::LazyRequest, param::Param{T}, name::String) where T
@@ -731,6 +759,8 @@ function create_param_parser(ctx::ServerContext, func_details)
         str_name = String(name)
         if param.type <: Context
             push!(strategies, context_strategy)
+        elseif param.type <: Session
+            push!(strategies, lr -> session_strategy(lr, param))
         elseif param.type <: Cookie
             push!(strategies, lr -> cookie_strategy(lr, param))
         elseif param.type <: Extractor

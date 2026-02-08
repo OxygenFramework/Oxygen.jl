@@ -1,100 +1,99 @@
-module OxygenCryptoExt
+﻿module OxygenCryptoExt
 
-using Oxygen
 using OpenSSL
-using Base64
 using SHA
+using Base64
+import Oxygen.Core.Cookies: encrypt_payload, decrypt_payload
+import Oxygen.Core.Errors: CookieError
 
-"""
-    encrypt_payload(secret::String, payload::String)
-
-Encrypts a payload using AES-256-GCM.
-- Key is derived from `SHA256(secret)`.
-- A random 12-byte IV is generated.
-- Returns a Base64 encoded string: `base64(iv + ciphertext + tag)`.
-"""
-function Oxygen.Cookies.encrypt_payload(secret::String, payload::String)
-    # Derive 32-byte key
-    key = SHA.sha256(secret)
-
-    # Generate 12-byte IV
-    iv = Vector{UInt8}(undef, 12)
-    OpenSSL.RAND_bytes!(iv)
-
-    # Setup Cipher
-    cipher = OpenSSL.Cipher("AES-256-GCM")
-    ctx = OpenSSL.EncryptCipherContext(cipher, key, iv)
-
-    # Encrypt
-    # For GCM, we don't need manual padding, but OpenSSL.jl might handle block updates.
-    # However, OpenSSL.jl's high-level API might be slightly different.
-    # Let's use the streaming API or block API safely.
-
-    # Update
-    ciphertext_part1 = OpenSSL.update(ctx, Vector{UInt8}(payload))
-    # Finalize (GCM usually has no output in final but calculates tag)
-    ciphertext_part2 = OpenSSL.final(ctx)
-
-    ciphertext = [ciphertext_part1; ciphertext_part2]
-
-    # Get Tag (default 16 bytes)
-    tag = OpenSSL.get_tag(ctx)
-
-    # Combine: IV (12) + Ciphertext (N) + Tag (16)
-    final_data = [iv; ciphertext; tag]
-
-    return Base64.base64encode(final_data)
+# Helper for URL-safe Base64
+function base64url_encode(data::Vector{UInt8})
+    s = base64encode(data)
+    s = replace(s, '+' => '-', '/' => '_')
+    return replace(s, '=' => "")
 end
 
-"""
-    decrypt_payload(secret::String, payload::String)
+function base64url_decode(s::String)
+    s = replace(s, '-' => '+', '_' => '/')
+    padding = length(s) % 4
+    if padding > 0
+        s *= "=" ^ (4 - padding)
+    end
+    return base64decode(s)
+end
 
-Decrypts a payload using AES-256-GCM.
-- Expects Base64 input: `[IV(12)][Ciphertext][Tag(16)]`.
-- Verifies the tag (integrity check).
-- Returns the decrypted string.
-- Throws error if decryption/verification fails.
-"""
-function Oxygen.Cookies.decrypt_payload(secret::String, payload::String)
-    # Decode Base64
+function encrypt_payload(secret::String, payload::String)
+    key = SHA.sha256(secret)
+    
+    # Use OpenSSL for a cryptographically secure IV
+    iv = Vector{UInt8}(undef, 12)
+    ccall((:RAND_bytes, OpenSSL.libcrypto), Cint, (Ptr{UInt8}, Cint), iv, 12)
+
+    cipher_ptr = ccall((:EVP_get_cipherbyname, OpenSSL.libcrypto), Ptr{Cvoid}, (Cstring,), "AES-256-GCM")
+    cipher = OpenSSL.EvpCipher(cipher_ptr)
+    ctx = OpenSSL.EvpCipherContext()
+    
+    try
+        OpenSSL.encrypt_init(ctx, cipher, key, iv)
+        ciphertext = OpenSSL.cipher_update(ctx, Vector{UInt8}(payload))
+        final_part = OpenSSL.cipher_final(ctx)
+
+        tag = Vector{UInt8}(undef, 16)
+        ccall((:EVP_CIPHER_CTX_ctrl, OpenSSL.libcrypto), Cint, 
+              (OpenSSL.EvpCipherContext, Cint, Cint, Ptr{UInt8}), 
+              ctx, 0x10, 16, tag)
+
+        return base64url_encode(vcat(iv, ciphertext, final_part, tag))
+    finally
+        # context cleaned by finalizer
+    end
+end
+
+function decrypt_payload(secret::String, payload::String)
     data = try
-        Base64.base64decode(payload)
+        base64url_decode(payload)
     catch
-        error("Invalid Base64 payload")
+        throw(CookieError("Invalid Base64 payload"))
     end
 
-    # Validate minimum length (IV + Tag = 28 bytes)
     if length(data) < 28
-        error("Payload too short")
+        throw(CookieError("Payload too short"))
     end
 
-    # Extract parts
     iv = data[1:12]
     tag = data[end-15:end]
     ciphertext = data[13:end-16]
-
-    # Derive Key
     key = SHA.sha256(secret)
 
-    # Setup Cipher
-    cipher = OpenSSL.Cipher("AES-256-GCM")
-    ctx = OpenSSL.DecryptCipherContext(cipher, key, iv)
+    cipher_ptr = ccall((:EVP_get_cipherbyname, OpenSSL.libcrypto), Ptr{Cvoid}, (Cstring,), "AES-256-GCM")
+    cipher = OpenSSL.EvpCipher(cipher_ptr)
+    ctx = OpenSSL.EvpCipherContext()
 
-    # Set Tag for verification BEFORE final
-    OpenSSL.set_tag(ctx, tag)
+    try
+        OpenSSL.decrypt_init(ctx, cipher, key, iv)
+        plaintext = OpenSSL.cipher_update(ctx, Vector{UInt8}(ciphertext))
 
-    # Decrypt
-    plaintext_part1 = OpenSSL.update(ctx, ciphertext)
+        ccall((:EVP_CIPHER_CTX_ctrl, OpenSSL.libcrypto), Cint, 
+              (OpenSSL.EvpCipherContext, Cint, Cint, Ptr{UInt8}), 
+              ctx, 0x11, 16, Vector{UInt8}(tag))
 
-    # Check verification in final
-    plaintext_part2 = try
-        OpenSSL.final(ctx)
+        final_res = Vector{UInt8}(undef, 16)
+        outlen = Ref{Cint}(0)
+        
+        # EVP_DecryptFinal_ex returns 1 on success
+        ret = ccall((:EVP_DecryptFinal_ex, OpenSSL.libcrypto), Cint,
+                    (OpenSSL.EvpCipherContext, Ptr{UInt8}, Ptr{Cint}),
+                    ctx, final_res, outlen)
+        
+        if ret != 1
+            throw(CookieError("Decryption failed: integrity check failed"))
+        end
+
+        return String(vcat(plaintext, final_res[1:outlen[]]))
     catch e
-        # OpenSSL throws if tag verification fails
-        error("Decryption failed: integrity check failed")
+        if e isa CookieError; rethrow(e); end
+        throw(CookieError("Decryption error: $(e)"))
     end
-
-    return String([plaintext_part1; plaintext_part2])
 end
 
 end

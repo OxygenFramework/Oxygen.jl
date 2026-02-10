@@ -68,6 +68,8 @@ julia = "^1.10"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+OpenSSL = "4d8831e6-92b7-49fb-bdf8-b643e874388c"
+SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 
 [targets]
-test = ["Bonito", "CairoMakie", "Mustache", "OteraEngine", "ProtoBuf", "Pkg", "Suppressor", "Test", "TimeZones", "WGLMakie", "OpenSSL", "SHA"]
+test = ["Bonito", "CairoMakie", "Mustache", "OteraEngine", "ProtoBuf", "Pkg", "Suppressor", "Test", "TimeZones", "WGLMakie", "OpenSSL", "SHA", "Base64"]

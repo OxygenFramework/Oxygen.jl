@@ -9,6 +9,7 @@ using JSON
 using Dates
 using Base: @kwdef
 using DataStructures: CircularDeque
+using ..Util
 
 export Server, History, HTTPTransaction, TaggedRoute, Nullable, Context,
     ActiveTask, RegisteredTask, TaskDefinition,

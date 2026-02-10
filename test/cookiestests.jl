@@ -1,9 +1,11 @@
-if !isdefined(Main, :Oxygen)
-    include(joinpath(@__DIR__, "common_setup.jl"))
-    # Trigger extensions needed for these tests
-    trigger_extension("OpenSSL")
-    trigger_extension("SHA")
-end
+module CookieTests
+# To run just this test, uncomment below code and run: julia --project=test/dev_project test/cookiestests.jl
+# if !isdefined(Main, :Oxygen)
+#     include(joinpath(@__DIR__, "common_setup.jl"))
+#     # Trigger extensions needed for these tests
+#     trigger_extension("OpenSSL")
+#     trigger_extension("SHA")
+# end
 
 using Oxygen
 using Oxygen.Types
@@ -16,7 +18,7 @@ using SHA
 # Access Cookies module from Oxygen to avoid ambiguity
 const Cookies = Oxygen.Cookies
 
-@testset "Cookies with Encrypted Values (Genie Compatibility)" begin
+@testset "Cookies with Encrypted Values" begin
 
     secret = "repro-token-1234567890-1234567890"
 
@@ -301,41 +303,41 @@ const Cookies = Oxygen.Cookies
         @test isa(result, Int)
     end
 
-    @testset "ROBUSTNESS: Typed get with Invalid Values" begin
-        # Oxygen's design is to return the default value if parsing fails
-        req = HTTP.Request("GET", "/", ["Cookie" => "count=abc"])
-        @test Cookies.get_cookie(req, "count", default=10) == 10
-        
-        req_bool = HTTP.Request("GET", "/", ["Cookie" => "flag=not_a_bool"])
-        @test Cookies.get_cookie(req_bool, "flag", default=true) == true
+    @testset "ROBUSTNESS: Retrieval and Parsing Fallbacks" begin
+        # Case A: Typed Retrieval (with 'default') - Behavior: Parse or Fallback
+        # ---------------------------------------------------------------------
 
-        # Scenarios from Genie for compatibility check
-        # Scenario 1: Missing cookie returns default
+        # A.1: Successful parsing
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "count=42"]), "count", default=0) == 42
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "temp=36.5"]), "temp", default=0.0) == 36.5
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "count=0042"]), "count", default=0) == 42
+        
+        # A.2: Safe Fallback to 'default' on parsing failure (e.g. malformed data from client)
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "count=abc"]), "count", default=10) == 10
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "flag=not_a_bool"]), "flag", default=true) == true
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "val=   "]), "val", default=77) == 77
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "val="]), "val", default=42) == 42
+
+        # Case B: Untyped Retrieval (no 'default') - Behavior: Raw String
+        # ---------------------------------------------------------------------
+        # Retrieval is "untyped" by default and returns the raw string value as-is.
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "count=not_an_int"]), "count") == "not_an_int"
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "flag=invalid_bool"]), "flag") == "invalid_bool"
+        @test Cookies.get_cookie(HTTP.Request("GET", "/", ["Cookie" => "val="]), "val") == ""
+
+        # Case C: Missing Cookies - Behavior: Return default (defaults to nothing)
+        # ---------------------------------------------------------------------
         req_missing = HTTP.Request("GET", "/")
+        @test Cookies.get_cookie(req_missing, "nonexistent") === nothing
         @test Cookies.get_cookie(req_missing, "nonexistent", default=99) == 99
-        @test Cookies.get_cookie(req_missing, "nonexistent", default=3.14) == 3.14
         @test Cookies.get_cookie(req_missing, "nonexistent", default=true) == true
 
-        # Scenario 2: Valid Int value
-        req_valid_int = HTTP.Request("GET", "/", ["Cookie" => "counter=42"])
-        @test Cookies.get_cookie(req_valid_int, "counter", default=10) == 42
-
-        # Scenario 3: Valid Float value
-        req_valid_float = HTTP.Request("GET", "/", ["Cookie" => "temp=36.5"])
-        @test Cookies.get_cookie(req_valid_float, "temp", default=1.5) == 36.5
-
-        # Scenario 4: Leading zeros (valid Int)
-        req_leading_zeros = HTTP.Request("GET", "/", ["Cookie" => "count=0042"])
-        @test Cookies.get_cookie(req_leading_zeros, "count", default=0) == 42
-
-        # Scenario 5: Whitespace-only values (should return default)
-        req_whitespace = HTTP.Request("GET", "/", ["Cookie" => "value=   "])
-        @test Cookies.get_cookie(req_whitespace, "value", default=77) == 77
-
-        # Scenario 6: Empty cookie value (should return default for typed, empty string for untyped)
-        req_empty = HTTP.Request("GET", "/", ["Cookie" => "value="])
-        @test Cookies.get_cookie(req_empty, "value", default=42) == 42
-        @test Cookies.get_cookie(req_empty, "value") == ""
+        # Case D: Configuration Security - Behavior: Strict Validation
+        # ---------------------------------------------------------------------
+        # While retrieval is robust to handle untrusted client input, 
+        # setting cookies is strictly validated to prevent developer error.
+        res = HTTP.Response(200)
+        @test_throws ArgumentError set_cookie!(res, "test", "val", attrs=Dict("httponly" => "not_a_bool"), encrypted=false)
     end
 
     @testset "TYPE: Case-Insensitive Header and Key Variations" begin
@@ -396,7 +398,7 @@ const Cookies = Oxygen.Cookies
 
 
     # ============================================================================
-    # SET! FUNCTION TESTS (setting cookies on responses)
+    # SET_COOKIE! FUNCTION TESTS (setting cookies on responses)
     # ============================================================================
 
     @testset "SET: Basic Encrypted Cookie" begin
@@ -1339,4 +1341,5 @@ const Cookies = Oxygen.Cookies
         @test_throws Oxygen.Core.Errors.CookieError Oxygen.Extractors.extract(param, lazy_req, secret)
     end
 
+end
 end

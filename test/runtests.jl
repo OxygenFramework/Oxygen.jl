@@ -3,15 +3,20 @@ module RunTests
 include("constants.jl"); using .Constants
 include("test_utils.jl"); using .TestUtils
 
+# #### Security & Robustness ####
+
+include("securitytests.jl")
+
 # #### Extension Tests ####
 
-include("extensions/cryptotests.jl")
 include("extensions/timezonetests.jl")
 include("extensions/templatingtests.jl")
 include("extensions/protobuf/protobuftests.jl")
 include("extensions/cairomakietests.jl")
 include("extensions/wglmakietests.jl")
 include("extensions/bonitotests.jl")
+include("extensions/cryptotests.jl")
+
 
 #### Sepcial Handler Tests ####
 
@@ -23,6 +28,7 @@ include("handlertests.jl")
 #### Core Tests ####
 include("utiltests.jl")
 include("cookiestests.jl")
+include("sessiontests.jl")
 include("test_reexports.jl")
 include("precompilationtest.jl")
 include("autodoctests.jl")

@@ -1,6 +1,7 @@
+module CryptoTests
 # """
 #     OxygenCryptoExt Tests
-#     julia --project=test test/extensions/cryptotests.jl
+#     julia --project=test/dev_project test/extensions/cryptotests.jl
 # """
 
 # if !isdefined(Main, :Oxygen)
@@ -285,4 +286,5 @@ using Base64
         @test contains(decrypted_null, "\0")
     end
 
+end
 end

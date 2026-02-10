@@ -1,9 +1,11 @@
-if !isdefined(Main, :Oxygen)
-    include(joinpath(@__DIR__, "common_setup.jl"))
-    # Trigger extensions needed for these tests
-    trigger_extension("OpenSSL")
-    trigger_extension("SHA")
-end
+module SessionTests
+# To run just this test, uncomment below code and run: julia --project=test/dev_project test/sessiontests.jl
+# if !isdefined(Main, :Oxygen)
+#     include(joinpath(@__DIR__, "common_setup.jl"))
+#     # Trigger extensions needed for these tests
+#     trigger_extension("OpenSSL")
+#     trigger_extension("SHA")
+# end
 
 using Oxygen
 using Oxygen.Types
@@ -149,4 +151,5 @@ end
         @test all(results .== ["user-$i" for i in 1:n])
     end
 
+end
 end

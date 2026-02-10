@@ -1,7 +1,6 @@
-# Standard setup script for running isolated Oxygen tests
-# Usage: include("test/common_setup.jl") at the start of your test file
-#    or: julia -t auto --project=test -i test/common_setup.jl
-#    or: julia --project=test test/extensions/cryptotests.jl
+# Standard setup script for running isolated Oxygen tests ou starting repl with development environment to test code
+# Usage: run in repl: julia -t auto --project=test/dev_project -i test/common_setup.jl
+#    or use this setup in a specific file: julia -t auto --project=test/dev_project test/extensions/cryptotests.jl
 
 using Pkg
 
@@ -16,7 +15,6 @@ Pkg.instantiate()
 using Test
 using Oxygen
 using Dates
-using Base64
 using JSON
 using HTTP
 

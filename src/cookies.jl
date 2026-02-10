@@ -3,8 +3,9 @@ module Cookies
 using HTTP
 using Dates
 using ..Types
+using ..Errors
 
-export encrypt_payload, decrypt_payload, parse_cookies, format_cookie, get_cookie, set_cookie!, set!, load_cookie_settings!,
+export encrypt_payload, decrypt_payload, parse_cookies, format_cookie, get_cookie, set_cookie!, load_cookie_settings!,
     storesession!, prunesessions!
 
 # ============================================================================
@@ -12,17 +13,17 @@ export encrypt_payload, decrypt_payload, parse_cookies, format_cookie, get_cooki
 # ============================================================================
 
 """
-Placeholder for encryption - to be extended by OxygenCryptoExt
+Placeholder for encryption - throws error if extension not loaded but encryption requested
 """
 function encrypt_payload(secret, payload)
-    return payload
+    throw(CookieError("Encryption requested but OxygenCryptoExt is not loaded. Please load a crypto package (e.g. OpenSSL, SHA) or check your configuration."))
 end
 
 """
-Placeholder for decryption - to be extended by OxygenCryptoExt
+Placeholder for decryption - throws error if extension not loaded but encryption requested
 """
 function decrypt_payload(secret, payload)
-    return payload
+    throw(CookieError("Decryption requested but OxygenCryptoExt is not loaded. Please load a crypto package (e.g. OpenSSL, SHA) or check your configuration."))
 end
 
 # ============================================================================
@@ -574,8 +575,6 @@ function set_cookie!(
     return res
 end
 
-const set! = set_cookie!
-
 """
 Load cookie settings from a dictionary into a CookieConfig object.
 Performs normalization and validation.
@@ -655,8 +654,14 @@ Remove expired sessions from a MemoryStore.
 """
 function prunesessions!(store::MemoryStore)
     current_time = Dates.now(Dates.UTC)
+    # For now, we must lock the store while iterating and deleting from the internal Dict.
+    # For very large session sets, a sampling-based approach (like Redis) could be implemented if you accept this PR
     lock(store.lock) do
-        filter!(p -> p.second.expires > current_time, store.data)
+        for (k, v) in store.data
+            if v.expires <= current_time
+                delete!(store.data, k)
+            end
+        end
     end
 end
 

@@ -185,6 +185,7 @@ function start_revise_service()
                 break
             end
             wait(Revise.revision_event)
+            reset(Revise.revision_event)
             if revise_task_done[]
                 break
             end

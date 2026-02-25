@@ -15,9 +15,79 @@ export Server, History, HTTPTransaction, TaggedRoute, Nullable, Context,
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition,
     LifecycleMiddleware, startup, shutdown,
-    Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
+    Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody,
+    CookieConfig, Cookie, Session, SessionPayload, MemoryStore, Extractor
 
 const Nullable{T} = Union{T, Nothing}
+
+abstract type Extractor{T} end
+
+# Generic cookie configuration
+@kwdef struct CookieConfig
+    secret_key::Nullable{String} = nothing
+    httponly::Bool = true
+    secure::Bool = true
+    samesite::String = "Lax"
+    path::String = "/"
+    domain::Nullable{String} = nothing
+    maxage::Nullable{Int} = nothing
+    expires::Nullable{DateTime} = nothing
+    max_cookie_size::Nullable{Int} = nothing
+end
+
+# Represents a cookie extractor
+struct Cookie{T} <: Extractor{T}
+    name::String
+    value::Nullable{T}
+    
+    function Cookie(name::String, val_or_type::Any)
+        if val_or_type isa Type
+            return new{val_or_type}(name, nothing)
+        else
+            return new{typeof(val_or_type)}(name, val_or_type)
+        end
+    end
+
+    # Also allow explicit type specification
+    Cookie{T}(name::String, value::Nullable{T}=nothing) where T = new{T}(name, value)
+end
+
+# Represents a session extractor
+struct Session{T} <: Extractor{T}
+    name::String
+    payload::Nullable{T}
+    validate::Union{Function, Nothing}
+    type::Type{T}
+
+    function Session(name::String, val_or_type::Any)
+        if val_or_type isa Type
+            return new{val_or_type}(name, nothing, nothing, val_or_type)
+        else
+            return new{typeof(val_or_type)}(name, val_or_type, nothing, typeof(val_or_type))
+        end
+    end
+    
+    Session{T}(name::String, payload::Nullable{T}=nothing, validate::Union{Function, Nothing}=nothing) where T = new{T}(name, payload, validate, T)
+end
+
+# Represents a session with metadata (like discovery/expiry time)
+struct SessionPayload{T}
+    data::T
+    expires::DateTime
+end
+
+# A thread-safe in-memory store for sessions
+struct MemoryStore{K, V}
+    data::Dict{K, SessionPayload{V}}
+    lock::Base.ReentrantLock
+    MemoryStore{K, V}() where {K, V} = new{K, V}(Dict{K, SessionPayload{V}}(), Base.ReentrantLock())
+end
+
+function Base.get(store::MemoryStore, key, default)
+    lock(store.lock) do
+        return Base.get(store.data, key, default)
+    end
+end
 
 # Represents the application context 
 struct Context{T}

@@ -751,23 +751,12 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
             continue
         end
         
-        # Set nullable flag if needed
-        if is_nullable
-            current_field["nullable"] = true
-        end
-        
         current_type = resolved_type
-        current_name = string(nameof(current_type))    
-        
-        # Only add field to required list if it is not nullable (and otherwise required)
-        if isrequired(p) && !haskey(current_field, "nullable")
-            push!(required_fields, field_name);
-        end
-
+        current_name = string(nameof(current_type))
+    
         # Case 1: Recursively convert nested structs & register schemas
         if is_custom_struct(current_type)
             current_field["\$ref"] = getcomponent(current_name)
-        # Note: We removed the haskey check here; recursion prevention is now handled at the top of this function
             convertobject!(current_type, schemas)
 
         # Case 2: The custom type is wrapped inside an array or vector
@@ -778,7 +767,16 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         else
             current_field = create_primitive_field_schema(current_type, p)
         end
+        # Set nullable flag if needed
+        if is_nullable
+            current_field["nullable"] = true
+        end
 
+         # Only add field to required list if it is not nullable and required
+        if isrequired(p) && !haskey(current_field, "nullable")
+            push!(required_fields, field_name);
+        end
+        
         # convert the current field
         obj["properties"][field_name] = current_field
     end

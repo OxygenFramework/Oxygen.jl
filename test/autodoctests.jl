@@ -39,6 +39,16 @@ end
     composer::Union{Person,Nothing} = nothing
 end
 
+@kwdef struct MyRequest
+    name::String
+    max_items::Union{Nothing, Int} = nothing
+    tags::Union{Nothing, Vector{String}} = nothing
+end
+
+@post "/test-nullable" function(req, body::Json{MyRequest})
+    return body.payload
+end
+
 @post "/album" function (req, album::Json{Album})
     return album.payload;
 end
@@ -199,6 +209,25 @@ end
     # Test the functions
     @test Oxygen.AutoDoc.extract_non_null_type(Union{Nothing, Missing}) == Union{}
     @test Oxygen.AutoDoc.get_element_type(Union{}) == Any
+
+end
+
+@testset "nullable primitive and array tests" begin
+
+
+    ctx = CONTEXT[]
+    schemas = ctx.docs.schema["components"]["schemas"]
+
+    @test haskey(schemas, "MyRequest")
+    myreq = schemas["MyRequest"]
+
+    @test haskey(myreq["properties"]["max_items"], "nullable")
+    @test myreq["properties"]["max_items"]["nullable"] == true
+
+    @test haskey(myreq["properties"]["tags"], "nullable")
+    @test myreq["properties"]["tags"]["nullable"] == true
+    @test myreq["properties"]["tags"]["type"] == "array"
+    @test myreq["properties"]["tags"]["items"]["type"] == "string"
 
 end
 

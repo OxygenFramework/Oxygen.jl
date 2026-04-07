@@ -59,6 +59,14 @@ css
 binary
 ```
 
+## Cookies
+```@docs
+configcookies
+get_cookie
+set_cookie!
+Cookie
+```
+
 ## Repeat Tasks & Cron Scheduling
 ```@docs 
 @cron

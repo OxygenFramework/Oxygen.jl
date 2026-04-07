@@ -520,13 +520,14 @@ function registerschema(
     parameters::Vector,
     queryparams::Vector,
     headers::Vector,
+    cookies::Vector,
     bodyparams::Vector,
     returntype::Vector)
 
     ##### Add all the body parameters to the schema #####
 
     schemas = Dict()
-    for params in [bodyparams, parameters, queryparams, headers]
+    for params in [bodyparams, parameters, queryparams, headers, cookies]
         for p in params
             inner_type = isextractor(p) ? extracttype(p.type) : p.type
             if is_custom_struct(inner_type)
@@ -543,7 +544,7 @@ function registerschema(
     ##### Append the parameter schema for the route #####
     params = []
 
-    for (param_list, location) in [(parameters, "path"), (queryparams, "query"), (headers, "header")]
+    for (param_list, location) in [(parameters, "path"), (queryparams, "query"), (headers, "header"), (cookies, "cookie")]
         for p in param_list
             formatparam!(params, p, location)
         end

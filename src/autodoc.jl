@@ -767,6 +767,7 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         else
             current_field = create_primitive_field_schema(current_type, p)
         end
+        
         # Set nullable flag if needed
         if is_nullable
             current_field["nullable"] = true

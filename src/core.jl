@@ -44,7 +44,7 @@ oxygen_title = raw"""
 function serverwelcome(external_url::String, prefix::Nullable{String}, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
     printstyled(oxygen_title, color=:blue, bold=true)
     server_url = join_url_path(external_url, prefix)
-    @info "📦 Version 1.10.1 (2026-02-24)"
+    @info "📦 Version 1.10.2 (2026-04-18)"
     if !isnothing(prefix)
         @info "🏷️  Global path prefix: $prefix"
     end

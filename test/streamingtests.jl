@@ -10,7 +10,7 @@ function explicit_stream(stream::HTTP.Stream)
     HTTP.setheader(stream, "Transfer-Encoding" => "chunked")
 
     # Start writing (if you need to send headers before the body)
-    startwrite(stream)
+    HTTP.startwrite(stream)
 
     data = ["a", "b", "c"]
     for chunk in data
@@ -18,7 +18,7 @@ function explicit_stream(stream::HTTP.Stream)
     end
 
     # Close the stream to end the HTTP response properly
-    closewrite(stream)
+    HTTP.closewrite(stream)
 end
 
 function implicit_stream(stream)

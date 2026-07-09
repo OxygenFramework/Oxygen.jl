@@ -7,7 +7,7 @@ using ..AppContext: ServerContext
 export select_handler, first_arg_type
 
 # Union type of supported Handlers
-HandlerArgType = Union{HTTP.Messages.Request, HTTP.WebSockets.WebSocket, HTTP.Streams.Stream}
+HandlerArgType = Union{HTTP.Request, HTTP.WebSockets.WebSocket, HTTP.Stream}
 
 function get_context(ctx::ServerContext)
     app_ctx = ctx.app_context[]
@@ -23,55 +23,55 @@ request. This is a performance critical path and should be as fast as possible.
 function get_invoker_strategy(has_ctx_kwarg::Bool, has_req_kwarg::Bool, has_path_params::Bool, no_args::Bool, ctx::ServerContext)
     if no_args
         if has_req_kwarg && has_ctx_kwarg
-            return function (func::Function, _::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
+            return function (func::Function, _::HandlerArgType, req::HTTP.Request, _::Nullable{Vector})
                 func(; request=req, context=get_context(ctx))
             end
         elseif has_req_kwarg
-            return function (func::Function, _::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
+            return function (func::Function, _::HandlerArgType, req::HTTP.Request, _::Nullable{Vector})
                 func(; request=req)
             end
         elseif has_ctx_kwarg
-            return function (func::Function, _::HandlerArgType, _::HTTP.Messages.Request, _::Nullable{Vector})
+            return function (func::Function, _::HandlerArgType, _::HTTP.Request, _::Nullable{Vector})
                 func(; context=get_context(ctx))
             end
         else
-            return function (func::Function, _::HandlerArgType, _::HTTP.Messages.Request, _::Nullable{Vector})
+            return function (func::Function, _::HandlerArgType, _::HTTP.Request, _::Nullable{Vector})
                 func()
             end
         end
     elseif has_path_params
         if has_req_kwarg && has_ctx_kwarg
-            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, parameters::Nullable{Vector})
+            return function (func::Function, arg::HandlerArgType, req::HTTP.Request, parameters::Nullable{Vector})
                 func(arg, parameters...; request=req, context=get_context(ctx))
             end
         elseif has_req_kwarg
-            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, parameters::Nullable{Vector})
+            return function (func::Function, arg::HandlerArgType, req::HTTP.Request, parameters::Nullable{Vector})
                 func(arg, parameters...; request=req)
             end
         elseif has_ctx_kwarg
-            return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, parameters::Nullable{Vector})
+            return function (func::Function, arg::HandlerArgType, _::HTTP.Request, parameters::Nullable{Vector})
                 func(arg, parameters...; context=get_context(ctx))
             end
         else
-            return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, parameters::Nullable{Vector})
+            return function (func::Function, arg::HandlerArgType, _::HTTP.Request, parameters::Nullable{Vector})
                 func(arg, parameters...)
             end
         end
     else
         if has_req_kwarg && has_ctx_kwarg
-            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
+            return function (func::Function, arg::HandlerArgType, req::HTTP.Request, _::Nullable{Vector})
                 func(arg; request=req, context=get_context(ctx))
             end
         elseif has_req_kwarg
-            return function (func::Function, arg::HandlerArgType, req::HTTP.Messages.Request, _::Nullable{Vector})
+            return function (func::Function, arg::HandlerArgType, req::HTTP.Request, _::Nullable{Vector})
                 func(arg; request=req)
             end
         elseif has_ctx_kwarg
-            return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, _::Nullable{Vector})
+            return function (func::Function, arg::HandlerArgType, _::HTTP.Request, _::Nullable{Vector})
                 func(arg; context=get_context(ctx))
             end
         else
-            return function (func::Function, arg::HandlerArgType, _::HTTP.Messages.Request, _::Nullable{Vector})
+            return function (func::Function, arg::HandlerArgType, _::HTTP.Request, _::Nullable{Vector})
                 func(arg)
             end
         end
@@ -93,11 +93,11 @@ function select_handler(::Type{T}, has_ctx_kwarg::Bool, has_req_kwarg::Bool, has
 end
 
 """
-    select_handler(::Type{HTTP.Streams.Stream})
+    select_handler(::Type{HTTP.Stream})
 
-Returns a handler for `HTTP.Streams.Stream` types
+Returns a handler for `HTTP.Stream` types
 """
-function select_handler(::Type{HTTP.Streams.Stream}, has_ctx_kwarg::Bool, has_req_kwarg::Bool, has_path_params::Bool, ctx::ServerContext; no_args=false)
+function select_handler(::Type{HTTP.Stream}, has_ctx_kwarg::Bool, has_req_kwarg::Bool, has_path_params::Bool, ctx::ServerContext; no_args=false)
     invoker = get_invoker_strategy(has_ctx_kwarg, has_req_kwarg, has_path_params, no_args, ctx)
     function (req::HTTP.Request, func::Function; parameters::Nullable{Vector}=nothing)
         invoker(func, req.context[:stream], req, parameters)

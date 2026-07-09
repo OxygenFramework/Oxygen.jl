@@ -153,7 +153,7 @@ sleep(3.1) # Ensure rate limiter window is reset before starting next testset
 @testset "Limited Other Endpoint Rate Limiter" begin
     # First 25 requests should succeed (route-level limit enforced, headers show route-level limit)
     for i in 1:25
-        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
+        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false, retry=false)
         @test r.status == 200
         @test text(r) == "goodbye"
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"  # Headers set by route-level middleware
@@ -164,7 +164,7 @@ sleep(3.1) # Ensure rate limiter window is reset before starting next testset
 
     # 26-28th request should be rate limited (429) - route-level limit enforced
     for i in 1:3
-        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
+        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false, retry=false)
         @test r.status == 429
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"  # Headers show route-level
         @test HTTP.header(r, "X-RateLimit-Remaining") == "0"
@@ -177,7 +177,7 @@ sleep(3.1) # Ensure rate limiter window is reset before starting next testset
 
     # Next 25 requests should succeed again after reset
     for i in 1:25
-        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
+        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false, retry=false)
         @test r.status == 200
         @test text(r) == "goodbye"
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"
@@ -188,7 +188,7 @@ sleep(3.1) # Ensure rate limiter window is reset before starting next testset
 
     # 26-28th request in the new window should be rate limited again
     for i in 1:3
-        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
+        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false, retry=false)
         @test r.status == 429
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"
         @test HTTP.header(r, "X-RateLimit-Remaining") == "0"

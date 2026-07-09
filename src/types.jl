@@ -138,7 +138,9 @@ end
 
 function headers(req::LazyRequest) :: Nullable{Dict{String,String}}
     if isnothing(req.headers[])
-        req.headers[] = Dict(String(k) => String(v) for (k,v) in HTTP.headers(req.request))
+        # header names are case-insensitive; lowercase them so lookups by
+        # (lowercase) struct field name work regardless of wire casing
+        req.headers[] = Dict(lowercase(String(k)) => String(v) for (k,v) in req.request.headers)
     end
     return req.headers[] 
 end
@@ -152,7 +154,7 @@ end
 
 function queryvars(req::LazyRequest) :: Nullable{Dict{String,String}}
     if isnothing(req.queryparams[])
-        req.queryparams[] = HTTP.queryparams(req.request)
+        req.queryparams[] = HTTP.queryparams(HTTP.URI(req.request.target).query)
     end
     return req.queryparams[]
 end

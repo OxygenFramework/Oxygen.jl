@@ -43,7 +43,7 @@ const METHOD_ALIASES :: Dict{String,String} = Dict(
 
 const TYPE_ALIASES :: Dict{String, Type} = Dict(
     WEBSOCKET   => HTTP.WebSockets.WebSocket,
-    STREAM      => HTTP.Streams.Stream
+    STREAM      => HTTP.Stream
 )
 
 const SWAGGER_VERSION   :: String = "swagger@5.7.2"

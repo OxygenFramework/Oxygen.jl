@@ -5,8 +5,8 @@ using Dates
 using ..Errors: ValidationError
 
 export recursive_merge, parseparam, 
-    redirect, handlerequest,
-    format_response!, set_content_size!, format_sse_message,
+    redirect, queryparams, handlerequest,
+    format_response, set_content_size!, format_sse_message,
     join_url_path
 
 ### Request helper functions ###
@@ -78,6 +78,13 @@ function recursive_merge(x::AbstractVector...)
 end 
 
 """
+    Query parameter helpers, shadowing URIs.queryparams
+"""
+queryparams(x) = URIs.queryparams(x)
+queryparams(req::HTTP.Request) = URIs.queryparams(URI(req.target))
+queryparams(resp::HTTP.Response) = resp.request !== nothing ? queryparams(resp.request) : nothing
+
+"""
     Path Parameter Parsing functions
 """
 
@@ -144,39 +151,36 @@ end
     Response Formatter functions
 """
 
-function format_response!(req::HTTP.Request, resp::HTTP.Response)
+function format_response(req::HTTP.Request, resp::HTTP.Response) :: HTTP.Response
     # Return Response's as is without any modifications
-    req.response = resp
+    return resp
 end
 
-function format_response!(req::HTTP.Request, content::AbstractString)
+function format_response(req::HTTP.Request, content::AbstractString) :: HTTP.Response
     # Dynamically determine the content type when given a string
     body = string(content)
-    HTTP.setheader(req.response, "Content-Type" => HTTP.sniff(body))
-    HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
-
-    req.response.status = 200
-    req.response.body = content
+    resp = HTTP.Response(200, body)
+    HTTP.setheader(resp, "Content-Type" => HTTP.sniff(body))
+    HTTP.setheader(resp, "Content-Length" => string(sizeof(body)))
+    return resp
 end
 
-function format_response!(req::HTTP.Request, content::Union{Number, Bool, Char, Symbol})
+function format_response(req::HTTP.Request, content::Union{Number, Bool, Char, Symbol}) :: HTTP.Response
     # Convert all primitvies to a string and set the content type to text/plain
     body = string(content)
-    HTTP.setheader(req.response, "Content-Type" => "text/plain; charset=utf-8")
-    HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
-
-    req.response.status = 200
-    req.response.body = body
+    resp = HTTP.Response(200, body)
+    HTTP.setheader(resp, "Content-Type" => "text/plain; charset=utf-8")
+    HTTP.setheader(resp, "Content-Length" => string(sizeof(body)))
+    return resp
 end
 
-function format_response!(req::HTTP.Request, content::Any)
+function format_response(req::HTTP.Request, content::Any) :: HTTP.Response
     # Convert anthything else to a JSON string
     body = JSON.json(content)
-    HTTP.setheader(req.response, "Content-Type" => "application/json; charset=utf-8")
-    HTTP.setheader(req.response, "Content-Length" => string(sizeof(body)))
-
-    req.response.status = 200
-    req.response.body = body    
+    resp = HTTP.Response(200, body)
+    HTTP.setheader(resp, "Content-Type" => "application/json; charset=utf-8")
+    HTTP.setheader(resp, "Content-Length" => string(sizeof(body)))
+    return resp
 end
 
 

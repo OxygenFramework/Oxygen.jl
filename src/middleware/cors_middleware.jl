@@ -51,7 +51,7 @@ function Cors(;
 
     return function(handle::Function)
         return function(req::HTTP.Request)
-            if HTTP.method(req) == "OPTIONS"
+            if req.method == "OPTIONS"
                 return HTTP.Response(200, cors_headers)
             else
                 response = handle(req)

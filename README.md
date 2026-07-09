@@ -104,7 +104,7 @@ end
 end
 
 # Websocket Handler
-@websocket "/ws" function(ws::HTTP.WebSocket)
+@websocket "/ws" function(ws::HTTP.WebSockets.WebSocket)
     ...
 end
 ```
@@ -153,7 +153,7 @@ Stream handlers are used to stream data. They are defined using the `@stream` ma
 - You need to explicitly include the type definition so Oxygen can identify this as a `Stream` handler
 
 ### Websocket Handlers
-Websocket handlers are used to handle websocket connections. They are defined using the `@websocket` macro or the `websocket()` function and accept a `HTTP.WebSocket` object as the first argument. These handlers support both function and do-block syntax.
+Websocket handlers are used to handle websocket connections. They are defined using the `@websocket` macro or the `websocket()` function and accept a `HTTP.WebSockets.WebSocket` object as the first argument. These handlers support both function and do-block syntax.
 
 - `@websocket` and `websocket()` don't require a type definition on the first argument, they assume it's a websocket.
 - `Websocket` handlers can also be assigned with the `@get` macro or `get()` function, because the websocket protocol requires a `GET` request to initiate the handshake. 
@@ -1053,33 +1053,12 @@ dynamicfiles("content", "dynamic")
 # start the web server
 serve()
 ```
-## Performance Tips
-
-Disabling the internal logger can provide some massive performance gains, which can be helpful in some scenarios.
-Anecdotally, i've seen a 2-3x speedup in `serve()` and a 4-5x speedup in `serveparallel()` performance.
-
-```julia 
-# This is how you disable internal logging in both modes
-serve(access_log=nothing)
-serveparallel(access_log=nothing)
-```
-
 ## Logging
 
-Oxygen provides a default logging format but allows you to customize the format using the `access_log` parameter. This functionality is available in both the `serve()` and `serveparallel()` functions.
-
-You can read more about the logging options [here](https://juliaweb.github.io/HTTP.jl/stable/reference/#HTTP.@logfmt_str)
-
-```julia 
-# Uses the default logging format
-serve()
-
-# Customize the logging format 
-serve(access_log=logfmt"[$time_iso8601] \"$request\" $status")
-
-# Disable internal request logging 
-serve(access_log=nothing)
-```
+HTTP.jl 2.x no longer does per-request access logging in the server, so the `access_log` keyword
+(and the `logfmt"..."` format macro) from earlier Oxygen versions is gone. The `access_log` kwarg
+is still accepted by `serve()` and `serveparallel()` for backwards compatibility, but it is ignored.
+If you need request logging, add it yourself with a small [middleware](#middleware) function.
 
 ## Middleware
 

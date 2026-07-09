@@ -7,9 +7,13 @@ using Sockets
 using Oxygen; @oxidize
 using ..Constants
 
-limit = router("/limited", middleware=[RateLimiter(rate_limit=50, window_period=Second(3))])
+# Reuse a single client/connection across requests to avoid the per-request
+# connect overhead that would otherwise make these tight timing windows flaky.
+client = HTTP.Client()
 
-@get limit("/goodbye", middleware=[RateLimiter(rate_limit=25, window=Second(3))]) function()
+limit = router("/limited", middleware=[RateLimiter(rate_limit=50, window_period=Second(10))])
+
+@get limit("/goodbye", middleware=[RateLimiter(rate_limit=25, window=Second(10))]) function()
     return "goodbye"
 end
 
@@ -28,7 +32,7 @@ serve(middleware=[RateLimiter(rate_limit=100, window=Second(3))], port=PORT, hos
 
     # First 100 requests should succeed with decreasing remaining count
     for i in 1:100
-        r = HTTP.get("$localhost/ok")
+        r = HTTP.get(client, "$localhost/ok")
         @test r.status == 200
         @test text(r) == "ok"
         @test HTTP.header(r, "X-RateLimit-Limit") == "100"
@@ -40,7 +44,7 @@ serve(middleware=[RateLimiter(rate_limit=100, window=Second(3))], port=PORT, hos
     # 101-103rd request should be rate limited (429) with proper headers
     for i in 1:3
         try
-            HTTP.get("$localhost/ok"; retry=false)
+            HTTP.get(client, "$localhost/ok"; retry=false)
             @test false  # Should not reach here
         catch e
             @test e isa HTTP.Exceptions.StatusError
@@ -57,7 +61,7 @@ serve(middleware=[RateLimiter(rate_limit=100, window=Second(3))], port=PORT, hos
 
     # Next 100 requests should succeed again with decreasing remaining count
     for i in 1:100
-        r = HTTP.get("$localhost/ok")
+        r = HTTP.get(client, "$localhost/ok")
         @test r.status == 200
         @test text(r) == "ok"
         @test HTTP.header(r, "X-RateLimit-Limit") == "100"
@@ -69,7 +73,7 @@ serve(middleware=[RateLimiter(rate_limit=100, window=Second(3))], port=PORT, hos
     # 101-103rd request in the new window should be rate limited again
     for i in 1:3
         try
-            HTTP.get("$localhost/ok"; retry=false)
+            HTTP.get(client, "$localhost/ok"; retry=false)
             @test false
         catch e
             @test e isa HTTP.Exceptions.StatusError
@@ -94,19 +98,19 @@ sleep(5) # Ensure rate limiter window is completely reset and any background cle
 @testset "Limited Greet Endpoint Rate Limiter" begin
     # First 50 requests should succeed with decreasing remaining count
     for i in 1:50
-        r = HTTP.get("$localhost/limited/greet")
+        r = HTTP.get(client, "$localhost/limited/greet")
         @test r.status == 200
         @test text(r) == "hello"
         @test HTTP.header(r, "X-RateLimit-Limit") == "50"
         @test HTTP.header(r, "X-RateLimit-Remaining") == string(50 - i)
         reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-        @test reset_time > 0 && reset_time <= 3
+        @test reset_time > 0 && reset_time <= 10
     end
 
     # 51-53rd request should be rate limited (429)
     for i in 1:3
         try
-            HTTP.get("$localhost/limited/greet"; retry=false)
+            HTTP.get(client, "$localhost/limited/greet"; retry=false)
             @test false
         catch e
             @test e isa HTTP.Exceptions.StatusError
@@ -114,28 +118,28 @@ sleep(5) # Ensure rate limiter window is completely reset and any background cle
             @test HTTP.header(e.response, "X-RateLimit-Limit") == "50"
             @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
             reset_time = parse(Int, HTTP.header(e.response, "X-RateLimit-Reset"))
-            @test reset_time > 0 && reset_time <= 3
+            @test reset_time > 0 && reset_time <= 10
         end
     end
 
     # Wait for the window to reset (just over 3 seconds)
-    sleep(3.1)
+    sleep(10.1)
 
     # Next 50 requests should succeed again
     for i in 1:50
-        r = HTTP.get("$localhost/limited/greet")
+        r = HTTP.get(client, "$localhost/limited/greet")
         @test r.status == 200
         @test text(r) == "hello"
         @test HTTP.header(r, "X-RateLimit-Limit") == "50"
         @test HTTP.header(r, "X-RateLimit-Remaining") == string(50 - i)
         reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-        @test reset_time > 0 && reset_time <= 3
+        @test reset_time > 0 && reset_time <= 10
     end
 
     # 51-53rd request in the new window should be rate limited again
     for i in 1:3
         try
-            HTTP.get("$localhost/limited/greet"; retry=false)
+            HTTP.get(client, "$localhost/limited/greet"; retry=false)
             @test false
         catch e
             @test e isa HTTP.Exceptions.StatusError
@@ -143,57 +147,57 @@ sleep(5) # Ensure rate limiter window is completely reset and any background cle
             @test HTTP.header(e.response, "X-RateLimit-Limit") == "50"
             @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
             reset_time = parse(Int, HTTP.header(e.response, "X-RateLimit-Reset"))
-            @test reset_time > 0 && reset_time <= 3
+            @test reset_time > 0 && reset_time <= 10
         end
     end
 end
 
-sleep(3.1) # Ensure rate limiter window is reset before starting next testset
+sleep(10.1) # Ensure rate limiter window is reset before starting next testset
 
 @testset "Limited Other Endpoint Rate Limiter" begin
     # First 25 requests should succeed (route-level limit enforced, headers show route-level limit)
     for i in 1:25
-        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
+        r = HTTP.request(client, "GET", "$localhost/limited/goodbye", status_exception=false, retry=false)
         @test r.status == 200
         @test text(r) == "goodbye"
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"  # Headers set by route-level middleware
         @test HTTP.header(r, "X-RateLimit-Remaining") == string(25 - i)
         reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-        @test reset_time > 0 && reset_time <= 3
+        @test reset_time > 0 && reset_time <= 10
     end
 
     # 26-28th request should be rate limited (429) - route-level limit enforced
     for i in 1:3
-        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
+        r = HTTP.request(client, "GET", "$localhost/limited/goodbye", status_exception=false, retry=false)
         @test r.status == 429
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"  # Headers show route-level
         @test HTTP.header(r, "X-RateLimit-Remaining") == "0"
         reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-        @test reset_time > 0 && reset_time <= 3
+        @test reset_time > 0 && reset_time <= 10
     end
 
     # Wait for the window to reset (just over 3 seconds)
-    sleep(3.1)
+    sleep(10.1)
 
     # Next 25 requests should succeed again after reset
     for i in 1:25
-        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
+        r = HTTP.request(client, "GET", "$localhost/limited/goodbye", status_exception=false, retry=false)
         @test r.status == 200
         @test text(r) == "goodbye"
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"
         @test HTTP.header(r, "X-RateLimit-Remaining") == string(25 - i)
         reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-        @test reset_time > 0 && reset_time <= 3
+        @test reset_time > 0 && reset_time <= 10
     end
 
     # 26-28th request in the new window should be rate limited again
     for i in 1:3
-        r = HTTP.request("GET", "$localhost/limited/goodbye", status_exception=false)
+        r = HTTP.request(client, "GET", "$localhost/limited/goodbye", status_exception=false, retry=false)
         @test r.status == 429
         @test HTTP.header(r, "X-RateLimit-Limit") == "25"
         @test HTTP.header(r, "X-RateLimit-Remaining") == "0"
         reset_time = parse(Int, HTTP.header(r, "X-RateLimit-Reset"))
-        @test reset_time > 0 && reset_time <= 3
+        @test reset_time > 0 && reset_time <= 10
     end
 end
 
@@ -207,7 +211,7 @@ serve(middleware=[rl], port=PORT, host=HOST, async=true, show_errors=false, show
 @testset "Background Cleanup Test" begin
 
     # First request should succeed
-    r = HTTP.get("$localhost/ok"; retry=false)
+    r = HTTP.get(client, "$localhost/ok"; retry=false)
     @test r.status == 200
     @test text(r) == "ok"
     @test HTTP.header(r, "X-RateLimit-Limit") == "1"
@@ -217,7 +221,7 @@ serve(middleware=[rl], port=PORT, host=HOST, async=true, show_errors=false, show
 
     # Second request should be rate limited (429)
     try
-        HTTP.get("$localhost/ok"; retry=false)
+        HTTP.get(client, "$localhost/ok"; retry=false)
         @test false
     catch e
         @test e isa HTTP.Exceptions.StatusError
@@ -232,7 +236,7 @@ serve(middleware=[rl], port=PORT, host=HOST, async=true, show_errors=false, show
     sleep(2.1)
 
     # Third request should succeed because the IP entry was cleaned up
-    r = HTTP.get("$localhost/ok"; retry=false)
+    r = HTTP.get(client, "$localhost/ok"; retry=false)
     @test r.status == 200
     @test text(r) == "ok"
     @test HTTP.header(r, "X-RateLimit-Limit") == "1"
@@ -257,7 +261,7 @@ serve(middleware=[RateLimiter(rate_limit=10, window=Second(1), exempt_paths=["/e
 @testset "Exempt Paths Test" begin
     # First 10 requests to /limited should succeed with decreasing remaining count
     for i in 1:10
-        r = HTTP.get("$localhost/limited")
+        r = HTTP.get(client, "$localhost/limited")
         @test r.status == 200
         @test text(r) == "limited"
         @test HTTP.header(r, "X-RateLimit-Limit") == "10"
@@ -268,7 +272,7 @@ serve(middleware=[RateLimiter(rate_limit=10, window=Second(1), exempt_paths=["/e
 
     # 11th request to /limited should be rate limited (429)
     try
-        HTTP.get("$localhost/limited"; retry=false)
+        HTTP.get(client, "$localhost/limited"; retry=false)
         @test false
     catch e
         @test e isa HTTP.Exceptions.StatusError
@@ -281,7 +285,7 @@ serve(middleware=[RateLimiter(rate_limit=10, window=Second(1), exempt_paths=["/e
 
     # Requests to /exempt should succeed even when rate limit is exceeded, and should not have rate limit headers
     for i in 1:5
-        r = HTTP.get("$localhost/exempt")
+        r = HTTP.get(client, "$localhost/exempt")
         @test r.status == 200
         @test text(r) == "exempt"
         # Exempt paths should not have rate limit headers

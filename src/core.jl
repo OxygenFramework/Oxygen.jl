@@ -26,6 +26,7 @@ include("repeattasks.jl");  @reexport using .RepeatTasks
 include("metrics.jl");      @reexport using .Metrics
 include("reflection.jl");   @reexport using .Reflection
 include("extractors.jl");   @reexport using .Extractors
+using .Extractors: Form  # Prefer over HTTP.Form
 include("autodoc.jl");      @reexport using .AutoDoc
 
 export start, serve, serveparallel, terminate,
@@ -168,7 +169,7 @@ function serve(ctx::ServerContext;
     # The cleanup of resources are put at the topmost level in `methods.jl`
     try
         return startserver(ctx; host, port, show_banner, docs, metrics, parallel, async, kwargs, start=(kwargs) ->
-            HTTP.serve!(handle_stream, host, port; kwargs...))
+            HTTP.listen!(handle_stream, host, port; kwargs...))
     finally
         if ctx.service.eager_revise[] !== nothing && async == false
             close(ctx.service.eager_revise[])
@@ -270,10 +271,25 @@ This is our root stream handler used in both serve() and serveparallel().
 This function determines how we handle all incoming requests
 """
 
+"""
+Convert the `HTTP.peeraddr` result (a `Reseau.TCP.SocketAddr`-like struct with a
+`.ip` tuple of octets, or `nothing` if unavailable) into a `Sockets.IPAddr`.
+"""
+function peeraddr_to_ip(addr) :: IPAddr
+    addr === nothing && return ip"0.0.0.0"
+    octets = addr.ip
+    if length(octets) == 4
+        return IPv4(octets...)
+    else
+        groups = ntuple(i -> UInt16(octets[2i - 1]) << 8 | UInt16(octets[2i]), 8)
+        return IPv6(groups...)
+    end
+end
+
 function stream_handler(middleware::Function)
     return function (stream::HTTP.Stream)
         # extract the caller's ip address
-        ip, _ = Sockets.getpeername(stream)
+        ip = peeraddr_to_ip(HTTP.peeraddr(stream))
         # build up a streamhandler to handle our incoming requests
         handle_stream = HTTP.streamhandler(middleware |> decorate_request(ip, stream))
         # handle the incoming request
@@ -379,19 +395,13 @@ end
 
 
 """
-Used to overwrite defaults to any incoming keyword arguments
+Removes deprecated keys from incoming keyword arguments, currently: :stream, :access_log, and :queuesize.
 """
 function preprocesskwargs(kwargs)
     kwargs_dict = Dict{Symbol,Any}(kwargs)
-
-    # always set to streaming mode (regardless of what was passed)
-    kwargs_dict[:stream] = true
-
-    # user passed no loggin preferences - use defualt logging format 
-    if isempty(kwargs_dict) || !haskey(kwargs_dict, :access_log)
-        kwargs_dict[:access_log] = logfmt"$time_iso8601 - $remote_addr:$remote_port - \"$request\" $status"
-    end
-
+    delete!(kwargs_dict, :stream)
+    delete!(kwargs_dict, :access_log)
+    delete!(kwargs_dict, :queuesize)
     return kwargs_dict
 end
 
@@ -436,8 +446,7 @@ function DocsMiddleware(docsrouter::Router, docspath::String)
             else
                 response = handle(req)
             end
-            format_response!(req, response)
-            return req.response
+            return format_response(req, response)
         end
     end
 end
@@ -451,8 +460,7 @@ function DefaultSerializer(catch_errors::Bool; show_errors::Bool)
         return function (req::HTTP.Request)
             return handlerequest(catch_errors; show_errors) do
                 response = handle(req)
-                format_response!(req, response)
-                return req.response
+                return format_response(req, response)
             end
         end
     end

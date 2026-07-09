@@ -663,7 +663,7 @@ end
 Helper function used to determine if a type is a custom struct and whether or not
 we should do a recursive dive and conversion to openapi schema.
 
-Excludes built-in types from Base, Core, Dates, and HTTP.Messages modules.
+Excludes built-in types from Base, Core, Dates, and HTTP modules.
 Handles Union types by checking if any constituent type is a custom struct.
 
 # Examples
@@ -683,8 +683,8 @@ function is_custom_struct(T::Type) :: Bool
         return any(is_custom_struct, Base.uniontypes(T))
     end
 
-    # Exclude types from Base, Core, Dates, and HTTP.Messages
-    if T.name.module ∉ (Base, Core, Dates, HTTP.Messages)
+    # Exclude types from Base, Core, Dates, and HTTP
+    if T.name.module ∉ (Base, Core, Dates, HTTP)
         return isstructtype(T) || isabstracttype(T)
     end
 

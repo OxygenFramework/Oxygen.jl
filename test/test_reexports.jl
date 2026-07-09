@@ -7,8 +7,7 @@ import Oxygen
     @test Oxygen.Request        == HTTP.Request
     @test Oxygen.Response       == HTTP.Response
     @test Oxygen.Stream         == HTTP.Stream
-    @test Oxygen.WebSocket      == HTTP.WebSocket
-    @test Oxygen.queryparams    == HTTP.queryparams
+    @test Oxygen.WebSocket      == HTTP.WebSockets.WebSocket
 end
 
 end

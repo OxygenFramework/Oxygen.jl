@@ -13,7 +13,7 @@ jobs:
       - name: Install Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: '1.10'
+          version: '1.11'
           arch: ${{ runner.arch }}
       - name: "Add the General registry via Git"
         run: |

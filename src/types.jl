@@ -138,9 +138,7 @@ end
 
 function headers(req::LazyRequest) :: Nullable{Dict{String,String}}
     if isnothing(req.headers[])
-        # header names are case-insensitive; lowercase them so lookups by
-        # (lowercase) struct field name work regardless of wire casing
-        req.headers[] = Dict(lowercase(String(k)) => String(v) for (k,v) in req.request.headers)
+        req.headers[] = Dict(req.request.headers)
     end
     return req.headers[] 
 end

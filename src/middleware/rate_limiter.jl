@@ -366,13 +366,13 @@ function set_rate_headers!(resp::HTTP.Response, rate_limit::Int, remaining_reque
         # End if all headers are found
         if has_retry && has_limit && has_remaining && has_reset
             break
-        elseif !has_retry && lowercase(k) == lowercase("Retry-After")
+        elseif !has_retry && k == "Retry-After"
             has_retry = true
-        elseif !has_limit && lowercase(k) == lowercase("X-RateLimit-Limit")
+        elseif !has_limit && k == "X-RateLimit-Limit"
             has_limit = true
-        elseif !has_remaining && lowercase(k) == lowercase("X-RateLimit-Remaining" )
+        elseif !has_remaining && k == "X-RateLimit-Remaining"
             has_remaining = true
-        elseif !has_reset && lowercase(k) == lowercase("X-RateLimit-Reset")
+        elseif !has_reset && k == "X-RateLimit-Reset"
             has_reset = true
         end
     end

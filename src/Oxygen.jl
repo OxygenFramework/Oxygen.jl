@@ -11,9 +11,10 @@ end
 include("core.jl"); using .Core
 include("instances.jl"); using .Instances
 
-import HTTP: Request, Response, Stream, WebSocket, queryparams
+import HTTP: Request, Response, Stream
+import HTTP.WebSockets: WebSocket
 using .Core: ServerContext, History, Server, Nullable, HOFRouter
-using .Core: GET, POST, PUT, DELETE, PATCH
+using .Core: GET, POST, PUT, DELETE, PATCH, queryparams
 
 const CONTEXT :: Ref{ServerContext} = Ref(ServerContext())
 

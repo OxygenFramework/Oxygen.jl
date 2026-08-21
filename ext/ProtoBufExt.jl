@@ -21,12 +21,14 @@ Decode a protobuf message from the body of an HTTP request.
 - The decoded protobuf message of the specified type.
 """
 function protobuf(request::HTTP.Request, type::Type{T}) :: T where {T}
-    io = IOBuffer(request.body)
+    body = request.body isa HTTP.EmptyBody ? UInt8[] : copy(request.body)
+    io = IOBuffer(body)
     return decode(ProtoDecoder(io), type)
 end
 
 function protobuf(response::HTTP.Response, type::Type{T}) :: T where {T}
-    io = IOBuffer(response.body)
+    body = response.body isa HTTP.EmptyBody ? UInt8[] : copy(response.body)
+    io = IOBuffer(body)
     return decode(ProtoDecoder(io), type)
 end
 

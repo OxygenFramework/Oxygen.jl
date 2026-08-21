@@ -15,7 +15,7 @@ cors_headers = [
 function CorsHandler(handle)
     return function (req::HTTP.Request)
         # return headers on OPTIONS request
-        if HTTP.method(req) == "OPTIONS"
+        if req.method == "OPTIONS"
             return HTTP.Response(200, cors_headers)
         else
             r = handle(req)

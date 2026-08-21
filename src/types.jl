@@ -138,7 +138,7 @@ end
 
 function headers(req::LazyRequest) :: Nullable{Dict{String,String}}
     if isnothing(req.headers[])
-        req.headers[] = Dict(String(k) => String(v) for (k,v) in HTTP.headers(req.request))
+        req.headers[] = Dict(req.request.headers)
     end
     return req.headers[] 
 end
@@ -152,7 +152,7 @@ end
 
 function queryvars(req::LazyRequest) :: Nullable{Dict{String,String}}
     if isnothing(req.queryparams[])
-        req.queryparams[] = HTTP.queryparams(req.request)
+        req.queryparams[] = HTTP.queryparams(HTTP.URI(req.request.target).query)
     end
     return req.queryparams[]
 end

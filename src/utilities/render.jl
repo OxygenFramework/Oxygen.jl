@@ -124,7 +124,7 @@ an ArgumentError is thrown. The MIME type and the size of the file are added to 
 """
 function file(filepath::String; loadfile = nothing, status = 200, headers = []) :: HTTP.Response
     has_loadfile    = !isnothing(loadfile)
-    content         = has_loadfile ? loadfile(filepath) : read(filepath, String)
+    content         = has_loadfile ? loadfile(filepath) : read(filepath)
     content_length  = has_loadfile ? string(sizeof(content)) : string(filesize(filepath))
     content_type    = mime_from_path(filepath, MIME"application/octet-stream"()) |> contenttype_from_mime
     response = HTTP.Response(status, headers, body = content)

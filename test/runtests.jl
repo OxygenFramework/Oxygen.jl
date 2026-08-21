@@ -39,6 +39,7 @@ include("cronmanagement.jl")
 include("middlewaretests.jl")
 include("appcontexttests.jl")
 include("path_prefix_tests.jl")
+include("staticfilestests.jl")
 include("originaltests.jl")
 include("revise.jl")
 

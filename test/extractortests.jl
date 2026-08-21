@@ -84,7 +84,7 @@ end
 
 @testset "Form extract" begin 
     req = HTTP.Request("GET", "/", [], """name=joe&age=25""")
-    param = Param(:form, Form{Person}, missing, false)
+    param = Param(:form, Oxygen.Form{Person}, missing, false)
     p = extract(param, LazyRequest(request=req)).payload
     @test p.name == "joe"
     @test p.age == 25
@@ -92,14 +92,14 @@ end
 
     # Test that negative age trips the global validator
     req = HTTP.Request("GET", "/", [], """name=joe&age=-4""")
-    param = Param(:form, Form{Person}, missing, false)
+    param = Param(:form, Oxygen.Form{Person}, missing, false)
     @test_throws Oxygen.Core.Errors.ValidationError extract(param, LazyRequest(request=req))
 
 
     # Test that age < 25 trips the local validator
     req = HTTP.Request("GET", "/", [], """name=joe&age=10""")
-    default_value = Form{Person}(x -> x.age > 25)
-    param = Param(:form, Form{Person}, default_value, true)
+    default_value = Oxygen.Form{Person}(x -> x.age > 25)
+    param = Param(:form, Oxygen.Form{Person}, default_value, true)
     @test_throws Oxygen.Core.Errors.ValidationError extract(param, LazyRequest(request=req))
 end
 
@@ -181,7 +181,7 @@ end
         return headers.payload
     end
 
-    post("/form") do req, form::Form{Sample}
+    post("/form") do req, form::Oxygen.Form{Sample}
         return form.payload |> json
     end
 

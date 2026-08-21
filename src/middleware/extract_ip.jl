@@ -50,16 +50,16 @@ function extract_ip(req::HTTP.Request) :: IPAddr
 
     for (k, v) in req.headers
         # Case 1: Cloudflare's direct client IP header (return early since it's priority 1)
-        if HTTP.Messages.field_name_isequal(k, "CF-Connecting-IP")
+        if k == "CF-Connecting-IP"
             return parse(IPAddr, v)
         # Case 2: Akamai/Enterprise proxies (True-Client-IP)
-        elseif isnothing(tci) && HTTP.Messages.field_name_isequal(k, "True-Client-IP")
+        elseif isnothing(tci) && k == "True-Client-IP"
             tci = v
         # Case 3: Standard X-Forwarded-For header (may be a list)
-        elseif isnothing(xff) && HTTP.Messages.field_name_isequal(k, "X-Forwarded-For")
+        elseif isnothing(xff) && k == "X-Forwarded-For"
             xff = v
         # Case 4: Nginx or other proxies (X-Real-IP)
-        elseif isnothing(xri) && HTTP.Messages.field_name_isequal(k, "X-Real-IP")
+        elseif isnothing(xri) && k == "X-Real-IP"
             xri = v
         end
     end

@@ -186,7 +186,7 @@ end
         return data.payload
     end
 
-    @post "/form-test" function(req, data::Form{EnumTopLevel})
+    @post "/form-test" function(req, data::Oxygen.Form{EnumTopLevel})
         return data.payload
     end
 

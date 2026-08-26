@@ -1055,10 +1055,45 @@ serve()
 ```
 ## Logging
 
-HTTP.jl 2.x no longer does per-request access logging in the server, so the `access_log` keyword
-(and the `logfmt"..."` format macro) from earlier Oxygen versions is gone. The `access_log` kwarg
-is still accepted by `serve()` and `serveparallel()` for backwards compatibility, but it is ignored.
-If you need request logging, add it yourself with a small [middleware](#middleware) function.
+HTTP.jl 2.x no longer performs per-request access logging in the server, so Oxygen reintroduced
+request-level logging through the built-in `AccessLog` middleware. It emits a log entry
+for each request through Julia's logging system (at `Info` level with `_group=:access`) using
+NGINX-style format strings defined with the `logfmt"..."` macro:
+
+```julia
+using Oxygen
+
+# Common Log Format (default)
+serve(middleware=[AccessLog()])
+
+# Combined Log Format
+serve(middleware=[AccessLog(format=combined_logfmt)])
+
+# Custom format
+serve(middleware=[AccessLog(format=logfmt"[$time_iso8601] \"$request\" $status $body_bytes_sent")])
+```
+
+The following variables are supported in `logfmt"..."` strings:
+
+ - `$http_name`: arbitrary request header (with `-` replaced with `_`, e.g. `http_user_agent`)
+ - `$sent_http_name`: arbitrary response header (with `-` replaced with `_`)
+ - `$request`: the request line, e.g. `GET /index.html HTTP/1.1`
+ - `$request_method`: the request method
+ - `$request_uri`: the request URI
+ - `$remote_addr`: client address
+ - `$remote_port`: client port
+ - `$remote_user`: user name supplied with the Basic authentication
+ - `$server_protocol`: server protocol
+ - `$time_iso8601`: local time in ISO8601 format
+ - `$time_local`: local time in Common Log Format
+ - `$status`: response status code
+ - `$body_bytes_sent`: number of bytes in response body
+
+Because entries go through the standard logging system, they can be captured, filtered or
+redirected to a file using the `Logging` / `LoggingExtras` APIs.
+
+The deprecated `access_log` kwarg is still accepted by `serve()` and `serveparallel()` for
+backwards compatibility, but it is ignored.
 
 ## Middleware
 

@@ -811,16 +811,20 @@ end
 function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::String, schemapath::String)
     full_schema = "$docspath$schemapath"
 
-    # If a global prefix is assigned, then we need to make sure we inject the prefixes into the source url as well.
-    prefixed_schema = join_url_path(ctx.service.prefix[], full_schema)
-    prefixed_docspath = join_url_path(ctx.service.prefix[], docspath)
+    # Emit the schema URL relative (no leading slash) in the HTML so it resolves
+    # correctly regardless of prefix-stripping reverse proxies. Since every docs page
+    # (/docs, /docs/swagger, /docs/redoc) is a resource directly under `docspath`,
+    # the relative path to the schema is just `schemapath` without its leading slash.
+    # e.g. page at /docs + relative "schema" -> /docs/schema
+    schema_url = String(lstrip(schemapath, '/'))
 
-    # Need to update the "path" in our open-api schema to include the global prefix
+    # If a global prefix is assigned, then we need to make sure we inject it into the
+    # "paths" of the open-api schema.
     prefixed_openapi_schema = prefix_schema_paths(schema, ctx.service.prefix[])
 
-    register_internal(ctx, router, "GET", "$docspath", () -> swaggerhtml(prefixed_schema, prefixed_docspath))
-    register_internal(ctx, router, "GET", "$docspath/swagger", () -> swaggerhtml(prefixed_schema, prefixed_docspath))
-    register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(prefixed_schema, prefixed_docspath))
+    register_internal(ctx, router, "GET", "$docspath", () -> swaggerhtml(schema_url))
+    register_internal(ctx, router, "GET", "$docspath/swagger", () -> swaggerhtml(schema_url))
+    register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(schema_url))
     register_internal(ctx, router, "GET", full_schema, () -> prefixed_openapi_schema)
 end
 

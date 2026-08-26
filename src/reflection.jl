@@ -427,13 +427,38 @@ function parsetype(target_type::Type{T}, value::Any) :: T where {T}
 end
 
 """
+    match_field_names(::Type{T}, params::AbstractDict{Symbol}) where {T}
+
+Return a copy of `params` whose keys are rewritten to the field names of `T`
+matched case-insensitively. Used for sources like HTTP headers, whose names are
+case-insensitive (and which HTTP.jl canonicalizes to Title-Case), so that a
+struct field `name` still matches an incoming `Name` header.
+"""
+function match_field_names(::Type{T}, params::AbstractDict{Symbol}) where {T}
+    lookup = Dict(lowercase(String(k)) => v for (k, v) in params)
+    matched = empty(params)
+    for name in fieldnames(T)
+        value = get(lookup, lowercase(String(name)), nothing)
+        if !isnothing(value)
+            matched[name] = value
+        end
+    end
+    return matched
+end
+
+"""
     struct_builder(::Type{T}, parameters::Dict{String,String}) where {T}
 
 Constructs an object of type `T` using the parameters in the dictionary `parameters`.
+When `casesensitive` is false, parameter names are matched to the struct's field
+names ignoring case (used for case-insensitive sources like HTTP headers).
 """
-function struct_builder(::Type{T}, params::AbstractDict) :: T where {T}
+function struct_builder(::Type{T}, params::AbstractDict; casesensitive::Bool=true) :: T where {T}
     has_kwdef = has_kwdef_constructor(T)
-    params_with_symbols = Dict(Symbol(k) => v for (k, v) in params)   
+    params_with_symbols = Dict(Symbol(k) => v for (k, v) in params)
+    if !casesensitive
+        params_with_symbols = match_field_names(T, params_with_symbols)
+    end
     if has_kwdef
         # case 1: Use slower converter to handle structs with default values
         return kwarg_struct_builder(T, params_with_symbols)

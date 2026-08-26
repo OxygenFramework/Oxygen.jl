@@ -48,18 +48,21 @@ function extract_ip(req::HTTP.Request) :: IPAddr
     xff :: Union{String,Nothing} = nothing
     xri :: Union{String,Nothing} = nothing
 
+    # HTTP header names are case-insensitive, and HTTP.jl canonicalizes them to
+    # Title-Case (e.g. X-Real-IP -> X-Real-Ip), so match on the lowercased name.
     for (k, v) in req.headers
+        key = lowercase(k)
         # Case 1: Cloudflare's direct client IP header (return early since it's priority 1)
-        if k == "CF-Connecting-IP"
+        if key == "cf-connecting-ip"
             return parse(IPAddr, v)
         # Case 2: Akamai/Enterprise proxies (True-Client-IP)
-        elseif isnothing(tci) && k == "True-Client-IP"
+        elseif isnothing(tci) && key == "true-client-ip"
             tci = v
         # Case 3: Standard X-Forwarded-For header (may be a list)
-        elseif isnothing(xff) && k == "X-Forwarded-For"
+        elseif isnothing(xff) && key == "x-forwarded-for"
             xff = v
         # Case 4: Nginx or other proxies (X-Real-IP)
-        elseif isnothing(xri) && k == "X-Real-IP"
+        elseif isnothing(xri) && key == "x-real-ip"
             xri = v
         end
     end

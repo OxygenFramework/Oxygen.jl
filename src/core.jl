@@ -107,6 +107,7 @@ function serve(ctx::ServerContext;
     prefix      = nothing,
     context     = missing,
     revise      = :none, # :none, :lazy, :eager
+    access_log  = nothing, # (io::IO, req::HTTP.Request) -> nothing formatter
     kwargs...) :: Server
 
     if !ismissing(context)
@@ -143,7 +144,7 @@ function serve(ctx::ServerContext;
     end
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors)
+    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors, access_log)
 
     # setup the primary stream handler function (can be customized by the caller)
     handle_stream = handler(configured_middelware)
@@ -319,11 +320,11 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true)::Function
+function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true, access_log=nothing)::Function
 
     # determine if we have any special router or route-specific middleware
     raw_middleware = reverse(middleware)
-    
+
     processed_middleware = process_middleware(ctx, raw_middleware)
 
     custom_middleware = if !isempty(ctx.service.custommiddleware)
@@ -344,6 +345,14 @@ function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=t
     # check if we need to track metrics
     collect_metrics = metrics ? [MetricsMiddleware(ctx.service, metrics)] : []
 
+    # check if access logging was requested
+    access_loggers = if access_log !== nothing
+        access_log isa Function || throw(ArgumentError("access_log must be a formatter function `(io::IO, req::HTTP.Request) -> nothing`, e.g. a logfmt\"...\" value"))
+        [AccessLog(format=access_log)]
+    else
+        []
+    end
+
     # combine all our middleware functions
     return reduce(|>, [
         ctx.service.router,
@@ -351,6 +360,7 @@ function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=t
         custom_middleware...,
         collect_metrics...,
         docs_middleware...,
+        access_loggers...,
         global_prefix_middleware...
     ])
 end
@@ -395,12 +405,11 @@ end
 
 
 """
-Removes deprecated keys from incoming keyword arguments, currently: :stream, :access_log, and :queuesize.
+Removes deprecated keys from incoming keyword arguments, currently: :stream and :queuesize.
 """
 function preprocesskwargs(kwargs)
     kwargs_dict = Dict{Symbol,Any}(kwargs)
     delete!(kwargs_dict, :stream)
-    delete!(kwargs_dict, :access_log)
     delete!(kwargs_dict, :queuesize)
     return kwargs_dict
 end

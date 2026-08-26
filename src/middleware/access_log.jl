@@ -2,6 +2,7 @@ module AccessLogMiddleware
 
 using HTTP
 using Dates
+using Base64: base64decode
 
 export AccessLog, common_logfmt, combined_logfmt, @logfmt_str
 
@@ -26,7 +27,8 @@ The following variables are currently supported:
  - `$time_iso8601`: local time in ISO8601 format
  - `$time_local`: local time in Common Log Format
  - `$status`: response status code
- - `$body_bytes_sent`: number of bytes in response body
+ - `$body_bytes_sent`: number of bytes in the response body (approximates the bytes sent on
+   the wire; HTTP.jl 2.x no longer exposes the exact count of serialized bytes)
 
 ## Examples
 ```julia
@@ -41,7 +43,6 @@ end
 
 function logfmt_parser(s)
     s = String(s)
-    vars = Symbol[]
     ex = Expr(:call, :print, :io)
     i = 1
     while i <= lastindex(s)
@@ -75,6 +76,22 @@ function remote_port(http::HTTP.Request) :: String
     return string(addr.port)
 end
 
+# Extract the user name from a Basic authentication header ("-" when absent or unparseable)
+function remote_user(http::HTTP.Request) :: String
+    auth = HTTP.header(http, "Authorization", "")
+    if startswith(auth, "Basic ")
+        try
+            decoded = String(base64decode(SubString(auth, length("Basic ") + 1)))
+            separator = findfirst(':', decoded)
+            separator === nothing && return "-"
+            return decoded[1:prevind(decoded, separator)]
+        catch
+            return "-"
+        end
+    end
+    return "-"
+end
+
 # Number of bytes in the response body (replaces `http.nwritten` from HTTP.jl 1.x)
 function body_bytes_sent(response::HTTP.Response) :: Int
     response.content_length >= 0 && return Int(response.content_length)
@@ -101,7 +118,7 @@ function symbol_mapping(s::Symbol)
     elseif s === :remote_port
         :(remote_port(http))
     elseif s === :remote_user
-        :("-") # TODO: find from Basic auth...
+        :(remote_user(http))
     elseif s === :time_iso8601
         if !Sys.iswindows()
             :(Libc.strftime("%FT%T%z", time()))
@@ -171,22 +188,35 @@ serve(middleware=[AccessLog()], docs=false, metrics=false)
 
 serve(middleware=[AccessLog(format=logfmt"[\$time_iso8601] \\"\$request\\" \$status")])
 ```
+
+The same middleware can be enabled through the `access_log` keyword of `serve()` /
+`serveparallel()`, which accepts any `(io::IO, req::HTTP.Request) -> nothing` formatter
+(including `logfmt"..."` results):
+
+```julia
+serve(access_log=common_logfmt)
+```
 """
 function AccessLog(;
     format  :: Function = common_logfmt
 )
     return function(handle::Function)
         return function(req::HTTP.Request)
-            response = handle(req)
+            response = nothing
             try
-                # attach the response so formatters can reference $status,
-                # $sent_http_* and $body_bytes_sent values
-                req.context[:response] = response
-                @info sprint(format, req) _group=:access
-            catch error
-                @warn "AccessLog: failed to write access log entry" exception=(error, catch_backtrace())
+                response = handle(req)
+                return response
+            finally
+                try
+                    # attach the response so formatters can reference $status,
+                    # $sent_http_* and $body_bytes_sent values. When the request
+                    # handler itself failed, log the entry as a 500 response.
+                    req.context[:response] = something(response, HTTP.Response(500))
+                    @info sprint(format, req) _group=:access
+                catch error
+                    @warn "AccessLog: failed to write access log entry" exception=(error, catch_backtrace())
+                end
             end
-            return response
         end
     end
 end

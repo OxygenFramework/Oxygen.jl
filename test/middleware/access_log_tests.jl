@@ -156,4 +156,176 @@ module UnknownVariableTests
 
 end
 
+module RemoteUserTests
+
+    using Test
+    using Logging
+    using Base64: base64encode
+    using HTTP
+    using Oxygen; @oxidize
+    using ...Constants
+
+    user_format = logfmt"$remote_addr - $remote_user [$time_local] \"$request\" $status"
+
+    @get "/hello" function()
+        return text("world")
+    end
+
+    test_logger = Test.TestLogger()
+    serve(middleware=[AccessLog(format=user_format)], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false)
+
+    function capture(f)
+        previous = global_logger(test_logger)
+        try
+            return f()
+        finally
+            global_logger(previous)
+        end
+    end
+
+    @testset "AccessLog remote_user from Basic auth" begin
+        credentials = ["alice:secret", "bob:hunter2"]
+
+        capture() do
+            # authenticated request (alice)
+            r = HTTP.get("$localhost/hello"; headers=Dict(
+                "Authorization" => "Basic $(base64encode(credentials[1]))"
+            ))
+            @test r.status == 200
+        end
+
+        records = test_logger.logs
+        @test length(records) == 1
+        @test occursin(r"^127\.0\.0\.1 - alice \[.*\] \"GET /hello HTTP/1\.1\" 200$", records[1].message)
+
+        capture() do
+            # authenticated request (bob)
+            r = HTTP.get("$localhost/hello"; headers=Dict(
+                "Authorization" => "Basic $(base64encode(credentials[2]))"
+            ))
+            @test r.status == 200
+        end
+        records = test_logger.logs
+        @test length(records) == 2
+        @test occursin(r"^127\.0\.0\.1 - bob \[.*\]", records[2].message)
+
+        capture() do
+            # malformed base64 falls back to "-"
+            r = HTTP.get("$localhost/hello"; headers=Dict("Authorization" => "Basic !!!not-base64!!!"))
+            @test r.status == 200
+        end
+        records = test_logger.logs
+        @test length(records) == 3
+        @test occursin(r"^127\.0\.0\.1 - - \[.*\]", records[3].message)
+
+        capture() do
+            # no Authorization header falls back to "-"
+            r = HTTP.get("$localhost/hello")
+            @test r.status == 200
+        end
+        records = test_logger.logs
+        @test length(records) == 4
+        @test occursin(r"^127\.0\.0\.1 - - \[.*\]", records[4].message)
+    end
+
+    terminate()
+
+end
+
+module ErrorPathTests
+
+    using Test
+    using Logging
+    using HTTP
+    using Oxygen; @oxidize
+    using ...Constants
+
+    @get "/fail" function()
+        throw(ErrorException("boom"))
+    end
+
+    test_logger = Test.TestLogger(; min_level=Logging.Debug)
+    serve(middleware=[AccessLog()], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, catch_errors=false)
+
+    function capture(f)
+        previous = global_logger(test_logger)
+        try
+            return f()
+        finally
+            global_logger(previous)
+        end
+    end
+
+    @testset "AccessLog logs failed requests as 500" begin
+        r = capture() do
+            try
+                HTTP.get("$localhost/fail"; retry=false)
+            catch
+                nothing # connection may be torn down when catch_errors=false
+            end
+        end
+
+        records = [record for record in test_logger.logs if record.group == :access]
+        @test length(records) == 1
+        @test occursin(r"\"GET /fail HTTP/1\.1\" 500 ", records[1].message)
+    end
+
+    terminate()
+
+end
+
+module ServeKwargTests
+
+    using Test
+    using Logging
+    using HTTP
+    using Oxygen; @oxidize
+    using ...Constants
+
+    @get "/hello" function()
+        return text("world")
+    end
+
+    test_logger = Test.TestLogger()
+    serve(access_log=logfmt"$remote_addr \"$request\" $status", port=PORT, host=HOST, async=true, show_errors=false, show_banner=false)
+
+    @testset "access_log kwarg enables logging middleware" begin
+        previous = global_logger(test_logger)
+        try
+            r = HTTP.get("$localhost/hello")
+            @test r.status == 200
+        finally
+            global_logger(previous)
+        end
+
+        records = test_logger.logs
+        @test length(records) == 1
+        @test records[1].group == :access
+        @test occursin(r"^127\.0\.0\.1 \"GET /hello HTTP/1\.1\" 200$", records[1].message)
+    end
+
+    terminate()
+
+end
+
+module ServeKwargValidationTests
+
+    using Test
+    using Logging
+    using HTTP
+    using Oxygen; @oxidize
+    using ...Constants
+
+    @testset "invalid access_log kwarg errors early" begin
+        err = try
+            serve(access_log="not-a-function", port=PORT, host=HOST, async=true, show_banner=false, docs=false, metrics=false)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+    end
+
+end
+
 end

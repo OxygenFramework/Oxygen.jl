@@ -1075,8 +1075,12 @@ serve(middleware=[AccessLog(format=logfmt"[$time_iso8601] \"$request\" $status $
 Because entries go through the standard logging system, they can be captured, filtered or
 redirected to a file using the `Logging` / `LoggingExtras` APIs.
 
-The deprecated `access_log` kwarg is still accepted by `serve()` and `serveparallel()` for
-backwards compatibility, but it is ignored.
+The same middleware can be enabled through the `access_log` keyword of `serve()` /
+`serveparallel()`:
+
+```julia
+serve(access_log=logfmt"[$time_iso8601] \"$request\" $status $body_bytes_sent")
+```
 
 ## Middleware
 

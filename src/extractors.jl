@@ -190,8 +190,8 @@ Extracts Headers from a request and convert it into a custom struct
 """
 function extract(param::Param{Header{T}}, request::LazyRequest) :: Header{T}  where {T}
     headers = Types.headers(request)
-    instance = safe_extract(param) do 
-        struct_builder(T, headers) 
+    instance = safe_extract(param) do
+        struct_builder(T, headers; casesensitive=false)
     end
     valid_instance = try_validate(param, instance)
     return Header(valid_instance)

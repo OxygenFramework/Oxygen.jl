@@ -1055,14 +1055,23 @@ serve()
 ```
 ## Logging
 
-Request-level logging is provided by the built-in `AccessLog` middleware. It emits a log entry
+Since HTTP.jl 2.x no longer performs per-request access logging in the server, 
+we reintroduced request-level logging through the built-in `AccessLog` middleware. It emits a log entry
 for each request through Julia's logging system (at `Info` level with `_group=:access`) using
-NGINX-style format strings defined with the `logfmt"..."` macro:
+NGINX-style format strings defined with the `logfmt"..."` macro. 
+
+In practice, you'll rarely need to configure this middleware function yourself. The main entrypoint to configure the logging format is the `access_log` keyword in the `serve()` and `serverparallel()` function:
+
+```julia
+serve(access_log=logfmt"[$time_iso8601] \"$request\" $status $body_bytes_sent")
+```
+
+If you ever want to have additional request logging formats running alongside the default you can insert the middleware function like this:
 
 ```julia
 using Oxygen
 
-# Common Log Format (default)
+# Oxygen Log Format (default)
 serve(middleware=[AccessLog()])
 
 # Combined Log Format
@@ -1074,13 +1083,6 @@ serve(middleware=[AccessLog(format=logfmt"[$time_iso8601] \"$request\" $status $
 
 Because entries go through the standard logging system, they can be captured, filtered or
 redirected to a file using the `Logging` / `LoggingExtras` APIs.
-
-The same middleware can be enabled through the `access_log` keyword of `serve()` /
-`serveparallel()`:
-
-```julia
-serve(access_log=logfmt"[$time_iso8601] \"$request\" $status $body_bytes_sent")
-```
 
 ## Middleware
 

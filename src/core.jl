@@ -89,7 +89,7 @@ function ReviseHandler()
 end
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=common_logfmt, revise, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
 
 Start the webserver with your own custom request handler
 """

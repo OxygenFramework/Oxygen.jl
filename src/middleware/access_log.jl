@@ -6,7 +6,7 @@ using Base64: base64decode
 
 export AccessLog, common_logfmt, combined_logfmt, oxygen_logfmt, @logfmt_str
 
-@doc raw"""
+"""
     logfmt"..."
 
 Parse an [NGINX-style log format string](https://nginx.org/en/docs/http/ngx_http_log_module.html#log_format)

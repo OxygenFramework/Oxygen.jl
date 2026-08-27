@@ -816,17 +816,10 @@ end
 function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::String, schemapath::String)
     full_schema = "$docspath$schemapath"
 
-    # Emit the schema URL relative (no leading slash) in the HTML so it resolves
-    # correctly regardless of prefix-stripping reverse proxies.
-    #
-    # The relative URL that resolves to the schema differs depending on how deep
-    # the docs page sits. A browser resolves relative URLs against the page's
-    # base directory:
-    #   - /docs/swagger & /docs/redoc are nested under `docspath`, so their base
-    #     directory is `<docspath>/` and a relative "schema" -> <docspath>/schema.
-    #   - the bare /docs page is treated as a file whose base directory is "/",
-    #     so a relative "schema" would resolve to /schema (wrong). It must include
-    #     the docspath segment: "docs/schema" -> /docs/schema.
+    # Emit the schema URL relative (no leading slash) so it resolves regardless of
+    # prefix-stripping reverse proxies. Nested pages (/docs/swagger, /docs/redoc) resolve
+    # a bare "schema" against <docspath>/, but the bare /docs page needs the docspath
+    # segment ("docs/schema") since its base directory is "/".
     schema_url = String(lstrip(schemapath, '/'))
     bare_schema_url = String(lstrip("$docspath$schemapath", '/'))
 

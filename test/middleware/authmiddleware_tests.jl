@@ -59,22 +59,22 @@ serve(port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, ac
 @testset "BearerAuth Middleware Tests" begin
 
     # No Authorization header
-    @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/auth/protected")
+    @test_throws HTTP.StatusError  HTTP.get("$localhost/auth/protected")
 
     # Malformed header (wrong scheme)
-    @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Basic abcdef"))
+    @test_throws HTTP.StatusError  HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Basic abcdef"))
 
     # Malformed header (empty token)
-    @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Bearer "))
+    @test_throws HTTP.StatusError  HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Bearer "))
 
     # Malformed header (passes length check but token is whitespace -> stripped to empty)
-    @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Bearer  "))
+    @test_throws HTTP.StatusError  HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Bearer  "))
 
     # Malformed header (no trailing space - wrong format)
-    @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Bearer"))
+    @test_throws HTTP.StatusError  HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Bearer"))
 
     # Invalid token
-    @test_throws HTTP.Exceptions.StatusError HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Bearer badtoken"))
+    @test_throws HTTP.StatusError  HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Bearer badtoken"))
 
     # Valid token
     r = HTTP.get("$localhost/auth/protected"; headers=Dict("Authorization" => "Bearer $good_token"))

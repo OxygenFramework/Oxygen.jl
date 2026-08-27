@@ -26,8 +26,13 @@ include("repeattasks.jl");  @reexport using .RepeatTasks
 include("metrics.jl");      @reexport using .Metrics
 include("reflection.jl");   @reexport using .Reflection
 include("extractors.jl");   @reexport using .Extractors
-using .Extractors: Form  # Prefer over HTTP.Form
 include("autodoc.jl");      @reexport using .AutoDoc
+
+# Both HTTP and our Extractors module export a type named `Form`, which makes the
+# name ambiguous (and thus unbound) after `using HTTP` + `@reexport using .Extractors`.
+# The explicit import below resolves the ambiguity so `Oxygen.Form` is actually defined,
+# preferring our own extractor over HTTP.Form.
+using .Extractors: Form
 
 export start, serve, serveparallel, terminate,
     internalrequest, staticfiles, dynamicfiles
@@ -45,7 +50,7 @@ oxygen_title = raw"""
 function serverwelcome(external_url::String, prefix::Nullable{String}, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
     printstyled(oxygen_title, color=:blue, bold=true)
     server_url = join_url_path(external_url, prefix)
-    @info "📦 Version 1.10.2 (2026-04-18)"
+    @info "📦 Version 1.11.2 (2026-08-26)"
     if !isnothing(prefix)
         @info "🏷️  Global path prefix: $prefix"
     end
@@ -84,7 +89,7 @@ function ReviseHandler()
 end
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, revise, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=common_logfmt, revise, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -107,7 +112,7 @@ function serve(ctx::ServerContext;
     prefix      = nothing,
     context     = missing,
     revise      = :none, # :none, :lazy, :eager
-    access_log  = nothing, # (io::IO, req::HTTP.Request) -> nothing formatter
+    access_log  = oxygen_logfmt, # (io::IO, req::HTTP.Request) -> nothing formatter
     kwargs...) :: Server
 
     if !ismissing(context)
@@ -812,17 +817,24 @@ function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::S
     full_schema = "$docspath$schemapath"
 
     # Emit the schema URL relative (no leading slash) in the HTML so it resolves
-    # correctly regardless of prefix-stripping reverse proxies. Since every docs page
-    # (/docs, /docs/swagger, /docs/redoc) is a resource directly under `docspath`,
-    # the relative path to the schema is just `schemapath` without its leading slash.
-    # e.g. page at /docs + relative "schema" -> /docs/schema
+    # correctly regardless of prefix-stripping reverse proxies.
+    #
+    # The relative URL that resolves to the schema differs depending on how deep
+    # the docs page sits. A browser resolves relative URLs against the page's
+    # base directory:
+    #   - /docs/swagger & /docs/redoc are nested under `docspath`, so their base
+    #     directory is `<docspath>/` and a relative "schema" -> <docspath>/schema.
+    #   - the bare /docs page is treated as a file whose base directory is "/",
+    #     so a relative "schema" would resolve to /schema (wrong). It must include
+    #     the docspath segment: "docs/schema" -> /docs/schema.
     schema_url = String(lstrip(schemapath, '/'))
+    bare_schema_url = String(lstrip("$docspath$schemapath", '/'))
 
     # If a global prefix is assigned, then we need to make sure we inject it into the
     # "paths" of the open-api schema.
     prefixed_openapi_schema = prefix_schema_paths(schema, ctx.service.prefix[])
 
-    register_internal(ctx, router, "GET", "$docspath", () -> swaggerhtml(schema_url))
+    register_internal(ctx, router, "GET", "$docspath", () -> swaggerhtml(bare_schema_url))
     register_internal(ctx, router, "GET", "$docspath/swagger", () -> swaggerhtml(schema_url))
     register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(schema_url))
     register_internal(ctx, router, "GET", full_schema, () -> prefixed_openapi_schema)

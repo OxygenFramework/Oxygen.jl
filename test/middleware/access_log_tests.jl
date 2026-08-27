@@ -17,7 +17,7 @@ module DefaultFormatTests
     end
 
     test_logger = Test.TestLogger()
-    serve(middleware=[AccessLog()], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false)
+    serve(middleware=[AccessLog()], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
 
     # note: request handlers run in separate server tasks, so we must swap
     # the global logger (task-local loggers are not visible to them)
@@ -68,7 +68,7 @@ module CustomFormatTests
     custom_format = logfmt"$remote_addr:$remote_port \"$request\" $status $body_bytes_sent $sent_http_content_type"
 
     test_logger = Test.TestLogger()
-    serve(middleware=[AccessLog(format=custom_format)], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false)
+    serve(middleware=[AccessLog(format=custom_format)], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
 
     function capture(f)
         previous = global_logger(test_logger)
@@ -109,7 +109,7 @@ module CombinedFormatTests
     end
 
     test_logger = Test.TestLogger()
-    serve(middleware=[AccessLog(format=combined_logfmt)], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false)
+    serve(middleware=[AccessLog(format=combined_logfmt)], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
 
     function capture(f)
         previous = global_logger(test_logger)
@@ -172,7 +172,7 @@ module RemoteUserTests
     end
 
     test_logger = Test.TestLogger()
-    serve(middleware=[AccessLog(format=user_format)], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false)
+    serve(middleware=[AccessLog(format=user_format)], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
 
     function capture(f)
         previous = global_logger(test_logger)
@@ -245,7 +245,7 @@ module ErrorPathTests
     end
 
     test_logger = Test.TestLogger(; min_level=Logging.Debug)
-    serve(middleware=[AccessLog()], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, catch_errors=false)
+    serve(middleware=[AccessLog()], port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, catch_errors=false, access_log=nothing)
 
     function capture(f)
         previous = global_logger(test_logger)

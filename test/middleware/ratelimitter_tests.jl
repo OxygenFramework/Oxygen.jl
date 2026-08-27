@@ -47,7 +47,7 @@ serve(middleware=[RateLimiter(rate_limit=100, window=Second(3))], port=PORT, hos
             HTTP.get(client, "$localhost/ok"; retry=false)
             @test false  # Should not reach here
         catch e
-            @test e isa HTTP.Exceptions.StatusError
+            @test e isa HTTP.StatusError 
             @test e.response.status == 429
             @test HTTP.header(e.response, "X-RateLimit-Limit") == "100"
             @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
@@ -76,7 +76,7 @@ serve(middleware=[RateLimiter(rate_limit=100, window=Second(3))], port=PORT, hos
             HTTP.get(client, "$localhost/ok"; retry=false)
             @test false
         catch e
-            @test e isa HTTP.Exceptions.StatusError
+            @test e isa HTTP.StatusError 
             @test e.response.status == 429
             @test HTTP.header(e.response, "X-RateLimit-Limit") == "100"
             @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
@@ -113,7 +113,7 @@ sleep(5) # Ensure rate limiter window is completely reset and any background cle
             HTTP.get(client, "$localhost/limited/greet"; retry=false)
             @test false
         catch e
-            @test e isa HTTP.Exceptions.StatusError
+            @test e isa HTTP.StatusError 
             @test e.response.status == 429
             @test HTTP.header(e.response, "X-RateLimit-Limit") == "50"
             @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
@@ -142,7 +142,7 @@ sleep(5) # Ensure rate limiter window is completely reset and any background cle
             HTTP.get(client, "$localhost/limited/greet"; retry=false)
             @test false
         catch e
-            @test e isa HTTP.Exceptions.StatusError
+            @test e isa HTTP.StatusError 
             @test e.response.status == 429
             @test HTTP.header(e.response, "X-RateLimit-Limit") == "50"
             @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
@@ -224,7 +224,7 @@ serve(middleware=[rl], port=PORT, host=HOST, async=true, show_errors=false, show
         HTTP.get(client, "$localhost/ok"; retry=false)
         @test false
     catch e
-        @test e isa HTTP.Exceptions.StatusError
+        @test e isa HTTP.StatusError 
         @test e.response.status == 429
         @test HTTP.header(e.response, "X-RateLimit-Limit") == "1"
         @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"
@@ -275,7 +275,7 @@ serve(middleware=[RateLimiter(rate_limit=10, window=Second(1), exempt_paths=["/e
         HTTP.get(client, "$localhost/limited"; retry=false)
         @test false
     catch e
-        @test e isa HTTP.Exceptions.StatusError
+        @test e isa HTTP.StatusError 
         @test e.response.status == 429
         @test HTTP.header(e.response, "X-RateLimit-Limit") == "10"
         @test HTTP.header(e.response, "X-RateLimit-Remaining") == "0"

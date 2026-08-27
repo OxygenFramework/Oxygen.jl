@@ -4,7 +4,7 @@ using HTTP
 using Dates
 using Base64: base64decode
 
-export AccessLog, common_logfmt, combined_logfmt, @logfmt_str
+export AccessLog, common_logfmt, combined_logfmt, oxygen_logfmt, @logfmt_str
 
 @doc raw"""
     logfmt"..."
@@ -158,6 +158,14 @@ end
 """
     common_logfmt(io::IO, http::HTTP.Request)
 
+Format a log message in the non-standard Oxygen way and write to `io`.
+This format was chosen based on it's human readable format
+"""
+const oxygen_logfmt = logfmt"$time_iso8601 - $remote_addr:$remote_port - \"$request\" $status"
+
+"""
+    common_logfmt(io::IO, http::HTTP.Request)
+
 Format a log message in the Common Log Format and write to `io`.
 """
 const common_logfmt = logfmt"$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent"
@@ -189,17 +197,18 @@ serve(middleware=[AccessLog()], docs=false, metrics=false)
 serve(middleware=[AccessLog(format=logfmt"[\$time_iso8601] \\"\$request\\" \$status")])
 ```
 
-The same middleware can be enabled through the `access_log` keyword of `serve()` /
-`serveparallel()`, which accepts any `(io::IO, req::HTTP.Request) -> nothing` formatter
-(including `logfmt"..."` results):
+Access logging is enabled by default in `serve()` / `serveparallel()`, which uses
+[`common_logfmt`](@ref) unless a custom `access_log` value is provided. Pass
+`access_log=nothing` to disable it. The keyword accepts any
+`(io::IO, req::HTTP.Request) -> nothing` formatter (including `logfmt"..."` results):
 
 ```julia
-serve(access_log=common_logfmt)
+serve()                      # default: common_logfmt
+serve(access_log=nothing)    # disable access logging
+serve(access_log=logfmt"[\$time_iso8601] \\"\$request\\" \$status")
 ```
 """
-function AccessLog(;
-    format  :: Function = common_logfmt
-)
+function AccessLog(; format :: Function = common_logfmt)
     return function(handle::Function)
         return function(req::HTTP.Request)
             response = nothing

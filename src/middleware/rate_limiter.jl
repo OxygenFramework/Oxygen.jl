@@ -361,18 +361,21 @@ function set_rate_headers!(resp::HTTP.Response, rate_limit::Int, remaining_reque
     has_reset = false
     has_retry = false
     
-    # Loop over the headers once and try to find each header
+    # Loop over the headers once and try to find each header. HTTP header names
+    # are case-insensitive, and HTTP.jl canonicalizes them on write (e.g.
+    # X-RateLimit-Limit -> X-Ratelimit-Limit), so match on the lowercased name.
     for (k, _) in resp.headers
+        key = lowercase(k)
         # End if all headers are found
         if has_retry && has_limit && has_remaining && has_reset
             break
-        elseif !has_retry && k == "Retry-After"
+        elseif !has_retry && key == "retry-after"
             has_retry = true
-        elseif !has_limit && k == "X-RateLimit-Limit"
+        elseif !has_limit && key == "x-ratelimit-limit"
             has_limit = true
-        elseif !has_remaining && k == "X-RateLimit-Remaining"
+        elseif !has_remaining && key == "x-ratelimit-remaining"
             has_remaining = true
-        elseif !has_reset && k == "X-RateLimit-Reset"
+        elseif !has_reset && key == "x-ratelimit-reset"
             has_reset = true
         end
     end

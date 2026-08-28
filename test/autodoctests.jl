@@ -1,8 +1,9 @@
 module AutoDocTests
 
+import HTTP
+
 using Test
 using Dates
-using HTTP
 using Oxygen; @oxidize
 using ..Constants
 using ..TestUtils

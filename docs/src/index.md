@@ -1055,10 +1055,34 @@ serve()
 ```
 ## Logging
 
-HTTP.jl 2.x no longer does per-request access logging in the server, so the `access_log` keyword
-(and the `logfmt"..."` format macro) from earlier Oxygen versions is gone. The `access_log` kwarg
-is still accepted by `serve()` and `serveparallel()` for backwards compatibility, but it is ignored.
-If you need request logging, add it yourself with a small [middleware](#middleware) function.
+Since HTTP.jl 2.x no longer performs per-request access logging in the server, 
+we reintroduced request-level logging through the built-in `AccessLog` middleware. It emits a log entry
+for each request through Julia's logging system (at `Info` level with `_group=:access`) using
+NGINX-style format strings defined with the `logfmt"..."` macro. 
+
+In practice, you'll rarely need to configure this middleware function yourself. The main entrypoint to configure the logging format is the `access_log` keyword in the `serve()` and `serverparallel()` function:
+
+```julia
+serve(access_log=logfmt"[$time_iso8601] \"$request\" $status $body_bytes_sent")
+```
+
+If you ever want to have additional request logging formats running alongside the default you can insert the middleware function like this:
+
+```julia
+using Oxygen
+
+# Oxygen Log Format (default)
+serve(middleware=[AccessLog()])
+
+# Combined Log Format
+serve(middleware=[AccessLog(format=combined_logfmt)])
+
+# Custom format
+serve(middleware=[AccessLog(format=logfmt"[$time_iso8601] \"$request\" $status $body_bytes_sent")])
+```
+
+Because entries go through the standard logging system, they can be captured, filtered or
+redirected to a file using the `Logging` / `LoggingExtras` APIs.
 
 ## Middleware
 
@@ -1089,7 +1113,7 @@ function CorsMiddleware(handler)
     return function(req::HTTP.Request)
         println("CORS middleware")
         # determine if this is a pre-flight request from the browser
-        if req.method=="OPTIONS"
+        if HTTP.method(req)=="OPTIONS"
             return HTTP.Response(200, CORS_HEADERS)  
         else 
             return handler(req) # passes the request to the AuthMiddleware

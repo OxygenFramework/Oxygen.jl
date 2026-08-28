@@ -26,8 +26,13 @@ include("repeattasks.jl");  @reexport using .RepeatTasks
 include("metrics.jl");      @reexport using .Metrics
 include("reflection.jl");   @reexport using .Reflection
 include("extractors.jl");   @reexport using .Extractors
-using .Extractors: Form  # Prefer over HTTP.Form
 include("autodoc.jl");      @reexport using .AutoDoc
+
+# Both HTTP and our Extractors module export a type named `Form`, which makes the
+# name ambiguous (and thus unbound) after `using HTTP` + `@reexport using .Extractors`.
+# The explicit import below resolves the ambiguity so `Oxygen.Form` is actually defined,
+# preferring our own extractor over HTTP.Form.
+using .Extractors: Form
 
 export start, serve, serveparallel, terminate,
     internalrequest, staticfiles, dynamicfiles
@@ -84,7 +89,7 @@ function ReviseHandler()
 end
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, revise, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -107,6 +112,7 @@ function serve(ctx::ServerContext;
     prefix      = nothing,
     context     = missing,
     revise      = :none, # :none, :lazy, :eager
+    access_log  = oxygen_logfmt, # (io::IO, req::HTTP.Request) -> nothing formatter
     kwargs...) :: Server
 
     if !ismissing(context)
@@ -143,7 +149,7 @@ function serve(ctx::ServerContext;
     end
 
     # compose our middleware ahead of time (so it only has to be built up once)
-    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors)
+    configured_middelware = setupmiddleware(ctx; middleware, serialize, catch_errors, docs, metrics, show_errors, access_log)
 
     # setup the primary stream handler function (can be customized by the caller)
     handle_stream = handler(configured_middelware)
@@ -319,11 +325,11 @@ Compose the user & internally defined middleware functions together. Practically
 users to 'chain' middleware functions like `serve(handler1, handler2, handler3)` when starting their 
 application and have them execute in the order they were passed (left to right) for each incoming request
 """
-function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true)::Function
+function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=true, metrics::Bool=true, serialize::Bool=true, catch_errors::Bool=true, show_errors=true, access_log=nothing)::Function
 
     # determine if we have any special router or route-specific middleware
     raw_middleware = reverse(middleware)
-    
+
     processed_middleware = process_middleware(ctx, raw_middleware)
 
     custom_middleware = if !isempty(ctx.service.custommiddleware)
@@ -344,6 +350,14 @@ function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=t
     # check if we need to track metrics
     collect_metrics = metrics ? [MetricsMiddleware(ctx.service, metrics)] : []
 
+    # check if access logging was requested
+    access_loggers = if access_log !== nothing
+        access_log isa Function || throw(ArgumentError("access_log must be a formatter function `(io::IO, req::HTTP.Request) -> nothing`, e.g. a logfmt\"...\" value"))
+        [AccessLog(format=access_log)]
+    else
+        []
+    end
+
     # combine all our middleware functions
     return reduce(|>, [
         ctx.service.router,
@@ -351,6 +365,7 @@ function setupmiddleware(ctx::ServerContext; middleware::Vector=[], docs::Bool=t
         custom_middleware...,
         collect_metrics...,
         docs_middleware...,
+        access_loggers...,
         global_prefix_middleware...
     ])
 end
@@ -395,12 +410,11 @@ end
 
 
 """
-Removes deprecated keys from incoming keyword arguments, currently: :stream, :access_log, and :queuesize.
+Removes deprecated keys from incoming keyword arguments, currently: :stream and :queuesize.
 """
 function preprocesskwargs(kwargs)
     kwargs_dict = Dict{Symbol,Any}(kwargs)
     delete!(kwargs_dict, :stream)
-    delete!(kwargs_dict, :access_log)
     delete!(kwargs_dict, :queuesize)
     return kwargs_dict
 end
@@ -802,16 +816,20 @@ end
 function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::String, schemapath::String)
     full_schema = "$docspath$schemapath"
 
-    # If a global prefix is assigned, then we need to make sure we inject the prefixes into the source url as well.
-    prefixed_schema = join_url_path(ctx.service.prefix[], full_schema)
-    prefixed_docspath = join_url_path(ctx.service.prefix[], docspath)
+    # Emit the schema URL relative (no leading slash) so it resolves regardless of
+    # prefix-stripping reverse proxies. Nested pages (/docs/swagger, /docs/redoc) resolve
+    # a bare "schema" against <docspath>/, but the bare /docs page needs the docspath
+    # segment ("docs/schema") since its base directory is "/".
+    schema_url = String(lstrip(schemapath, '/'))
+    bare_schema_url = String(lstrip("$docspath$schemapath", '/'))
 
-    # Need to update the "path" in our open-api schema to include the global prefix
+    # If a global prefix is assigned, then we need to make sure we inject it into the
+    # "paths" of the open-api schema.
     prefixed_openapi_schema = prefix_schema_paths(schema, ctx.service.prefix[])
 
-    register_internal(ctx, router, "GET", "$docspath", () -> swaggerhtml(prefixed_schema, prefixed_docspath))
-    register_internal(ctx, router, "GET", "$docspath/swagger", () -> swaggerhtml(prefixed_schema, prefixed_docspath))
-    register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(prefixed_schema, prefixed_docspath))
+    register_internal(ctx, router, "GET", "$docspath", () -> swaggerhtml(bare_schema_url))
+    register_internal(ctx, router, "GET", "$docspath/swagger", () -> swaggerhtml(schema_url))
+    register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(schema_url))
     register_internal(ctx, router, "GET", full_schema, () -> prefixed_openapi_schema)
 end
 

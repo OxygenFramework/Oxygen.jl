@@ -5,10 +5,12 @@ authors = ["Nathan Ortega <nate.ortega95@gmail.com>"]
 repo = "https://github.com/OxygenFramework/Oxygen.jl.git"
 
 [deps]
+Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 LRUCache = "8ac3fa9e-de4c-5943-b1dc-09c6b5f20637"
 MIMEs = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
@@ -37,6 +39,7 @@ TimeZonesExt = "TimeZones"
 WGLMakieExt = ["WGLMakie", "Bonito"]
 
 [compat]
+Base64 = "^1"
 Bonito = "^5"
 CairoMakie = "^0.13, 0.15"
 DataStructures = "^0.18.15, 0.19"

@@ -437,7 +437,7 @@ validate(p::Person) = p.age >= 0
 end
 
 # In this case, both global and local validators are ran (this also makes sure the person is age 21+)
-# You can also use this sytnax instead: Json(Person, p -> p.age >= 21)
+# You can also use this syntax instead: Json(Person, p -> p.age >= 21)
 @post "/adult" function(req, newperson = Json{Person}(p -> p.age >= 21))
     return newperson.payload
 end

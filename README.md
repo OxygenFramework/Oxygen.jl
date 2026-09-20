@@ -50,6 +50,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Protocol Buffer Support
 - Route tagging
 - Repeat tasks
+- Model Context Protocol (MCP) server support
 
 ## Installation
 
@@ -71,6 +72,23 @@ end
 # start the web server
 serve()
 ```
+
+## MCP Server
+
+Oxygen can expose functions as [Model Context Protocol](https://modelcontextprotocol.io) tools and serve them over the stateless Streamable HTTP transport (protocol revision `2026-07-28`).
+
+```julia
+using Oxygen
+
+@tool "Add two integers" Dict(:a => "first number", :b => "second number") function add(a::Int, b::Int)
+    return a + b
+end
+
+serve() # exposes POST /mcp
+```
+
+Tools are registered per application instance (including `@oxidize` modules and `instance()` apps). The `/mcp` endpoint is exposed automatically as soon as a tool is registered; use `serve(mcp_path = "/custom/mcp")` to mount it elsewhere, or `serve(stdio = true)` to additionally speak the MCP stdio transport over stdin/stdout. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
+
 ## Handlers
 
 Handlers are used to connect your code to the server in a clean & straightforward way. 

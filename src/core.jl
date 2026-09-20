@@ -27,6 +27,7 @@ include("metrics.jl");      @reexport using .Metrics
 include("reflection.jl");   @reexport using .Reflection
 include("extractors.jl");   @reexport using .Extractors
 include("autodoc.jl");      @reexport using .AutoDoc
+include("mcp.jl");         @reexport using .MCP
 
 # Both HTTP and our Extractors module export a type named `Form`, which makes the
 # name ambiguous (and thus unbound) after `using HTTP` + `@reexport using .Extractors`.
@@ -48,7 +49,7 @@ oxygen_title = raw"""
 """
 
 function serverwelcome(external_url::String, prefix::Nullable{String}, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
-    printstyled(oxygen_title, color=:blue, bold=true)
+    printstyled(stderr, oxygen_title, color=:blue, bold=true)
     server_url = join_url_path(external_url, prefix)
     @info "📦 Version 1.11.0 (2026-08-28)"
     if !isnothing(prefix)
@@ -89,7 +90,7 @@ function ReviseHandler()
 end
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, mcp_path="/mcp", stdio=false, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -100,12 +101,14 @@ function serve(ctx::ServerContext;
     port        = 8080,
     async       = false,
     parallel    = false,
+    stdio       = false,
     serialize   = true,
     catch_errors= true,
     docs        = true,
     metrics     = true,
     show_errors = true,
     show_banner = true,
+    mcp_path    = "/mcp",
     docs_path   = "/docs",
     schema_path = "/schema",
     external_url = nothing,
@@ -129,6 +132,9 @@ function serve(ctx::ServerContext;
     ctx.docs.enabled[] = docs
     ctx.docs.docspath[] = docs_path
     ctx.docs.schemapath[] = schema_path
+
+    # choose where the MCP endpoint is mounted (relative to the global prefix)
+    ctx.mcp.path[] = normalize_mcp_path(mcp_path)
 
     # intitialize documenation router (used by docs and metrics)
     ctx.docs.router[] = Router()
@@ -174,7 +180,7 @@ function serve(ctx::ServerContext;
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
     try
-        return startserver(ctx; host, port, show_banner, docs, metrics, parallel, async, kwargs, start=(kwargs) ->
+        return startserver(ctx; host, port, show_banner, docs, metrics, stdio, parallel, async, kwargs, start=(kwargs) ->
             HTTP.listen!(handle_stream, host, port; kwargs...))
     finally
         if ctx.service.eager_revise[] !== nothing && async == false
@@ -374,15 +380,28 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(ctx::ServerContext; host, port, show_banner=false, docs=false, metrics=false, parallel=false, async=false, kwargs, start)::Server
+function startserver(ctx::ServerContext; host, port, show_banner=false, docs=false, metrics=false, stdio=false, parallel=false, async=false, kwargs, start)::Server
 
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
+    setupmcp(ctx)
 
     show_banner && serverwelcome(ctx.service.external_url[], ctx.service.prefix[], docs, metrics, parallel, ctx.docs.docspath[])
 
     # start the HTTP server
     ctx.service.server[] = start(preprocesskwargs(kwargs))
+
+    # optionally speak the MCP stdio transport over stdin/stdout. Per the spec,
+    # closing stdin is the graceful shutdown signal, so we terminate on EOF.
+    if stdio
+        errormonitor(@async begin
+            try
+                MCP.stdio_loop(ctx)
+            finally
+                terminate(ctx)
+            end
+        end)
+    end
 
     # Register & Start all repeat tasks
     registertasks(ctx)
@@ -401,7 +420,7 @@ function startserver(ctx::ServerContext; host, port, show_banner=false, docs=fal
         catch error
             !isa(error, InterruptException) && @error "ERROR: " exception = (error, catch_backtrace())
         finally
-            println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
+            println(stderr) # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end
     end
 
@@ -889,6 +908,44 @@ function setupmetrics(ctx::ServerContext, router::Router, history::History, docs
     end
 
     register_internal(ctx, router, GET, "$docspath/metrics/data/{window}/{latest}", innermetrics)
+end
+
+
+"""
+    normalize_mcp_path(path)
+
+Normalize a user supplied MCP mount path: ensure a single leading slash and no
+trailing slash (except for the root). The path is registered internally without
+the global prefix so that `PrefixStripMiddleware` can strip the prefix when the
+server runs behind a reverse proxy.
+"""
+function normalize_mcp_path(path)::String
+    trimmed = strip(string(path))
+    isempty(trimmed) && return "/mcp"
+    startswith(trimmed, "/") || (trimmed = "/" * trimmed)
+    length(trimmed) > 1 && endswith(trimmed, "/") && (trimmed = trimmed[1:end-1])
+    return trimmed
+end
+
+
+"""
+Register the MCP streamable HTTP endpoint when at least one tool has been
+registered. Only `POST` is supported; `GET` and `DELETE` (legacy session
+teardown) are rejected with `405`.
+"""
+function setupmcp(ctx::ServerContext)
+    isempty(ctx.mcp.tools) && return nothing
+
+    router = ctx.service.router
+    path = ctx.mcp.path[]
+
+    mcp_post(req::HTTP.Request) = MCP.handle(ctx, req)
+    method_not_allowed(_::HTTP.Request) = HTTP.Response(405, ["Allow" => "POST"], "Method Not Allowed")
+
+    register_internal(ctx, router, "POST", path, mcp_post)
+    register_internal(ctx, router, "GET", path, method_not_allowed)
+    register_internal(ctx, router, "DELETE", path, method_not_allowed)
+    return nothing
 end
 
 

@@ -52,6 +52,8 @@ export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route,
         # Docs
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 
+        # MCP
+        @tool, tool,
         # Tasks & Cron
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 

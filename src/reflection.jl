@@ -469,6 +469,88 @@ function struct_builder(::Type{T}, params::AbstractDict; casesensitive::Bool=tru
 end
 
 """
+    parse_array_value(::Type{T}, value) where {T <: AbstractArray}
+
+Coerce `value` into the array type `T`. Primitive arrays are converted directly;
+element-wise parsing handles enums, nested arrays and custom structs.
+"""
+function parse_array_value(::Type{T}, value) where {T <: AbstractArray}
+    value isa T && return value
+    try
+        return convert(T, value)
+    catch
+    end
+
+    parsed = parse_array_elements(eltype(T), value)
+    try
+        return convert(T, parsed)
+    catch
+        return parsed
+    end
+end
+
+# Parse `value` so that each element matches `E`, preserving the input shape.
+# Nested arrays are traversed until a leaf is reached (unless `E` is itself an array).
+parse_array_elements(::Type{E}, value::AbstractArray) where {E <: AbstractArray} = map(item -> parse_array_element(E, item), value)
+parse_array_elements(::Type{E}, value::AbstractArray) where {E} = map(item -> parse_array_elements(E, item), value)
+parse_array_elements(::Type{E}, value) where {E} = parse_array_element(E, value)
+
+parse_array_element(::Type{T}, value) where {T <: Enum} = T(value isa AbstractString ? parse(Int, value) : Int(value))
+parse_array_element(::Type{T}, value) where {T <: AbstractArray} = parse_array_value(T, value)
+function parse_array_element(::Type{T}, value) where {T}
+
+    # If the value and type agree, then we return it
+    value === nothing && Nothing <: T && return nothing
+    value === missing && Missing <: T && return missing
+    
+    # Extract the non-null type (from a union)
+    target = nonnull_type(T)
+    target === T || return parse_array_element(target, value)
+
+    # Try to convert the element based on the shape
+    if is_struct_type(T) && value isa AbstractDict
+        return struct_builder(T, value)
+    elseif value isa AbstractString && T <: Number
+        return parse_number(T, value)
+    else
+        return convert(T, value)
+    end
+end
+
+# Parse a numeric string into a value compatible with `T`. When `T` is abstract
+# (e.g. `Real`, `Integer`), choose a concrete representation that satisfies it.
+function parse_number(::Type{T}, value::AbstractString) where {T <: Number}
+    isconcretetype(T) && return parse(T, value)
+    for S in (Int, Float64, BigInt)
+        parsed = tryparse(S, value)
+        parsed !== nothing && parsed isa T && return parsed
+    end
+    return convert(T, parse(Float64, value))
+end
+
+# True for user-defined structs that `struct_builder` can populate from a dict.
+# Excludes Base/Core types (e.g. `Dict`, `NamedTuple`) that are not built that way.
+function is_struct_type(::Type{T}) where {T}
+    T isa DataType || return false
+    T.name.module ∉ (Base, Core) || return false
+    return isstructtype(T) && !isabstracttype(T)
+end
+
+"""
+    nonnull_type(T::Type)
+
+Return the single non-null type from `Union{T, Nothing}` or `Union{T, Missing}`.
+Returns `T` unchanged when it is not such a union.
+"""
+function nonnull_type(T::Type)
+    if T isa Union
+        rest = filter(x -> x !== Nothing && x !== Missing, Base.uniontypes(T))
+        length(rest) == 1 && return rest[1]
+    end
+    return T
+end
+
+"""
     kwarg_struct_builder(TargetType::Type{T}, params::AbstractDict) where {T}
 """
 function kwarg_struct_builder(TargetType::Type{T}, params::AbstractDict) where {T}
@@ -486,6 +568,8 @@ function kwarg_struct_builder(TargetType::Type{T}, params::AbstractDict) where {
             # Figure out how to parse the current param
             if target_type == Any || target_type == String
                 parsed_value = param_value
+            elseif target_type <: AbstractArray
+                parsed_value = parse_array_value(target_type, param_value)
             elseif isstructtype(target_type)
                 parsed_value = struct_builder(target_type, param_value)
             else

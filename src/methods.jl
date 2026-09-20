@@ -141,6 +141,16 @@ function adjustparams(path, func)
     end
 end
 
+function adjustparams(description, parameters, func)
+    # case 1: do ... end block syntax was used
+    if isa(description, Expr) && description.head == :->
+        parameters, func, description
+    # case 2: regular syntax was used
+    else
+        description, parameters, func
+    end
+end
+
 ### Core Routing Functions ###
 
 function route(methods::Vector{String}, path::Union{String,HOFRouter}, func::Function)
@@ -220,6 +230,41 @@ delete(func::Function, path::String)    = route([DELETE], path, func)
 delete(func::Function, path::HOFRouter) = route([DELETE], path, func)
 
 
+### MCP Tool Registration ###
+
+"""
+    tool(description::String, parameters, func::Function; name=nothing)
+
+Convenience function to register an MCP tool. Equivalent to `@tool`
+"""
+tool(description::String, parameters, func::Function; name=nothing) = Oxygen.Core.register_tool!(CONTEXT[], string(description), parameters, func; name=name)
+
+"""
+    tool(func::Function, description::String, parameters; name=nothing)
+Convenience function to register an MCP tool. Equivalent to `@tool`
+"""
+tool(func::Function, description::String, parameters; name=nothing) = tool(description, parameters, func; name=name)
+
+
+"""
+    @tool(description::String, parameters, func::Function)
+
+Used to register a function as an MCP tool. Metadata may span multiple lines,
+but the `function` keyword must sit on the same line as the closing metadata
+token. A block form is also supported (and reads closest to `@doc`):
+
+    @tool "description" Dict(:param => "description") begin
+        function name(...)
+            ...
+        end
+    end
+"""
+macro tool(description, parameters, func)
+    description, parameters, func = adjustparams(description, parameters, func)
+    return :(tool($(esc(description)), $(esc(parameters)), $(esc(func))))
+end
+
+
 
 """
     @staticfiles(folder::String, mountdir::String, headers::Vector{Pair{String,String}}=[])
@@ -227,7 +272,7 @@ delete(func::Function, path::HOFRouter) = route([DELETE], path, func)
 Mount all files inside the /static folder (or user defined mount point)
 """
 macro staticfiles(folder, mountdir="static", headers=[])
-    printstyled("@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
+    printstyled(stderr, "@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
     quote
         staticfiles($(esc(folder)), $(esc(mountdir)); headers=$(esc(headers))) 
     end
@@ -241,7 +286,7 @@ Mount all files inside the /static folder (or user defined mount point),
 but files are re-read on each request
 """
 macro dynamicfiles(folder, mountdir="static", headers=[])
-    printstyled("@dynamicfiles macro is deprecated, please use the dynamicfiles() function instead\n", color = :red, bold = true) 
+    printstyled(stderr, "@dynamicfiles macro is deprecated, please use the dynamicfiles() function instead\n", color = :red, bold = true) 
     quote
         dynamicfiles($(esc(folder)), $(esc(mountdir)); headers=$(esc(headers))) 
     end      

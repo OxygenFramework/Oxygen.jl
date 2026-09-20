@@ -15,7 +15,8 @@ export Server, History, HTTPTransaction, TaggedRoute, Nullable, Context,
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition,
     LifecycleMiddleware, startup, shutdown,
-    Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody
+    Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody,
+    MCPParam, MCPTool
 
 const Nullable{T} = Union{T, Nothing}
 
@@ -123,6 +124,25 @@ end
 
 function isrequired(p::Param{T}) where T
     return !p.hasdefault || (ismissing(p.default) && !(T <: Missing))
+end
+
+# A single tool parameter paired with its explicit (human readable) description
+struct MCPParam
+    param       :: Param
+    description :: String
+end
+
+# A registered MCP tool. `params` contains the positional arguments (in order)
+# followed by the keyword arguments. `argnames` identifies which parameters are
+# positional so handlers can be invoked correctly.
+struct MCPTool
+    name        :: String
+    description :: String
+    handler     :: Function
+    params      :: Vector{MCPParam}
+    argnames    :: Vector{Symbol}
+    has_context :: Bool          # handler wants `context` injected
+    has_request :: Bool          # handler wants `request` injected
 end
 
 # Lazily init frequently used components of a request to be used between parameters when parsing

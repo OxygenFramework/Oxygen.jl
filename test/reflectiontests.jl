@@ -3,7 +3,7 @@ module ReflectionTests
 using Test
 using Base: @kwdef
 using Oxygen: splitdef, Json
-using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder
+using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder, parse_array_value
 
 
 global message = Dict("message" => "Hello, World!")
@@ -13,9 +13,21 @@ struct Person
     age::Int
 end
 
+@enum Fruit apple = 1 banana = 2
+
 @kwdef struct Home
     address::String
     owner::Person
+end
+
+@kwdef struct Company
+    name::String
+    employees::Vector{Person} = Person[]
+    revenues::Vector{Int} = Int[]
+end
+
+@kwdef struct Roster
+    members::Vector{Union{Person, Nothing}} = Union{Person, Nothing}[]
 end
 
 
@@ -55,6 +67,51 @@ end
 
     @test converted == Home("123 main street", Person("joe", 25))
 
+end
+
+@testset "kwarg_struct_builder arrays" begin
+
+    company = kwarg_struct_builder(Company, Dict(
+        :name => "acme",
+        :employees => [Dict(:name => "joe", :age => 25)],
+        :revenues => ["100", "200"],
+    ))
+    @test company.name == "acme"
+    @test length(company.employees) == 1
+    @test company.employees[1].name == "joe"
+    @test company.employees[1].age == 25
+    @test company.revenues == [100, 200]
+
+    roster = kwarg_struct_builder(Roster, Dict(
+        :members => [Dict(:name => "joe", :age => 25), nothing],
+    ))
+    @test length(roster.members) == 2
+    @test roster.members[1].name == "joe"
+    @test roster.members[1].age == 25
+    @test roster.members[2] === nothing
+
+end
+
+@testset "parse_array_value element parsing" begin
+
+    # concrete numerics and enums parsed from strings
+    @test parse_array_value(Vector{Int}, ["1", "2"]) == [1, 2]
+    @test parse_array_value(Vector{Fruit}, ["1", "2"]) == [apple, banana]
+
+    # abstract element types resolve to concrete values
+    @test parse_array_value(Vector{Real}, ["1.5"]) == Real[1.5]
+
+    # unions with Nothing are handled element-wise
+    @test parse_array_value(Vector{Union{Int, Nothing}}, ["1", nothing]) == Union{Int, Nothing}[1, nothing]
+
+    # custom structs are built from dicts
+    @test parse_array_value(Vector{Person}, [Dict("name" => "joe", "age" => 25)]) == [Person("joe", 25)]
+
+    # dict-typed elements must not be routed through struct_builder
+    @test parse_array_value(Vector{Dict{String, Int}}, [Dict("a" => 1)]) == [Dict("a" => 1)]
+
+    # nested arrays keep their structure
+    @test parse_array_value(Vector{Vector{Int}}, [["1", "2"], ["3"]]) == [[1, 2], [3]]
 end
 
 @testset "splitdef tests" begin

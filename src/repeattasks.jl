@@ -32,7 +32,7 @@ function starttasks(tasks::TasksContext)
     # filter out any tasks that are already running
     filtered_tasks = filter(tasks.registered_tasks) do repeattask
         if repeattask.id in running_tasks
-            printstyled("[ Task: $(repeattask.name) is already running\n", color = :yellow)
+            printstyled(stderr, "[ Task: $(repeattask.name) is already running\n", color = :yellow)
             return false
         else
             return true
@@ -45,12 +45,12 @@ function starttasks(tasks::TasksContext)
     end
 
     # Start any remaining tasks
-    println()
-    printstyled("[ Starting $(length(filtered_tasks)) Repeat Task(s)\n", color = :magenta, bold = true)  
+    println(stderr)
+    printstyled(stderr, "[ Starting $(length(filtered_tasks)) Repeat Task(s)\n", color = :magenta, bold = true)  
     
     for task in filtered_tasks
-        printstyled("[ Task: ", color = :magenta, bold = true)  
-        println("{ interval: $(task.interval) seconds, name: $(task.name) }")
+        printstyled(stderr, "[ Task: ", color = :magenta, bold = true)  
+        println(stderr, "{ interval: $(task.interval) seconds, name: $(task.name) }")
 
         action = (timer) -> task.action()
         timer = Timer(action, 0, interval=task.interval)

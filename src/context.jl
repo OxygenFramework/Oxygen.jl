@@ -5,7 +5,7 @@ using HTTP
 using HTTP: Server, Router
 using ..Types
 
-export ServerContext, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen
+export ServerContext, CronContext, TasksContext, Documenation, EagerReviseService, Service, MCPContext, history, wait, close, isopen
 
 function defaultSchema() :: Dict
     Dict(
@@ -40,6 +40,15 @@ end
     taggedroutes    :: Dict{String, TaggedRoute}    = Dict{String, TaggedRoute}()       # used to group routes by tag
 end
 
+@kwdef struct MCPContext
+    path            :: Ref{String}               = Ref{String}("/mcp")
+    server_name     :: String                    = "Oxygen"
+    server_version  :: String                    = "1.11.0"
+    instructions    :: Nullable{String}          = nothing
+    tools           :: Dict{String, MCPTool}     = Dict{String, MCPTool}()  # keyed by wire name
+    allowed_origins :: Vector{String}            = String[]                 # DNS-rebinding guard
+end
+
 @kwdef struct EagerReviseService
     task::Task
     done::Ref{Bool}
@@ -68,6 +77,7 @@ end
     docs    :: Documenation     = Documenation()
     cron    :: CronContext      = CronContext()
     tasks   :: TasksContext     = TasksContext()
+    mcp     :: MCPContext       = MCPContext()
     mod     :: Nullable{Module} = nothing
     app_context :: Ref{Any}     = Ref{Any}(missing) # This stores a reference to an Context{T} object
 end

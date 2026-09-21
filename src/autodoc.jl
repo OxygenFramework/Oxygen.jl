@@ -11,7 +11,7 @@ using ..Constants
 using ..AppContext: ServerContext, Documenation
 using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, Param, isrequired
 using ..Extractors: isextractor, extracttype, isreqparam
-using ..Reflection: splitdef
+using ..Reflection: splitdef, is_builtin_type, nonnull_types
 
 export registerschema, swaggerhtml, redochtml, mergeschema
 
@@ -123,19 +123,15 @@ if it's not a Union. Returns Union{} if no valid non-null types are found.
 extract_non_null_type(Union{String, Nothing}) # Returns String
 extract_non_null_type(Union{Int, Missing}) # Returns Int
 extract_non_null_type(String) # Returns String (unchanged)
-extract_non_null_type(Union{String, Int}) # Warns and returns Union{}
+extract_non_null_type(Union{String, Int}) # Returns Union{}
 ```
 """
 function extract_non_null_type(T::Type)::Type
-    if !(T isa Union)
-        return T
-    end
-    
-    sub_types = Base.uniontypes(T)
-    non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+    rest = nonnull_types(T)
     # return a single non-null type 
-    if length(non_null_types) == 1
-        return non_null_types[1]
+    if length(rest) == 1
+        return rest[1]
+
     # If there are none or multiple non-null types, we don't return them
     else
         return Union{}
@@ -159,12 +155,10 @@ function is_nullable_union(T::Type)::Bool
     if !(T isa Union)
         return false
     end
-    
+
     sub_types = Base.uniontypes(T)
     has_null = Missing ∈ sub_types || Nothing ∈ sub_types
-    non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
-    
-    return has_null && length(non_null_types) == 1
+    return has_null && length(nonnull_types(T)) == 1
 end
 
 """
@@ -684,11 +678,9 @@ function is_custom_struct(T::Type) :: Bool
     end
 
     # Exclude types from Base, Core, Dates, and HTTP
-    if T.name.module ∉ (Base, Core, Dates, HTTP)
-        return isstructtype(T) || isabstracttype(T)
-    end
+    is_builtin_type(T, (Base, Core, Dates, HTTP)) && return false
 
-    return false
+    return isstructtype(T) || isabstracttype(T)
 end
 
 """

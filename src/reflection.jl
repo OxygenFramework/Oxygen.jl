@@ -528,12 +528,34 @@ function parse_number(::Type{T}, value::AbstractString) where {T <: Number}
     return convert(T, parse(Float64, value))
 end
 
+"""
+    is_builtin_type(::Type{T}, modules::Tuple = (Base, Core)) -> Bool
+
+Return `true` when `T` is a `DataType` whose defining module is one of `modules`.
+Used to distinguish user-defined structs from built-in/stdlib types. Non-`DataType`
+values (e.g. `Union`, `UnionAll`) return `false`.
+"""
+function is_builtin_type(::Type{T}, modules::Tuple = (Base, Core)) where {T}
+    return T isa DataType && T.name.module ∈ modules
+end
+
 # True for user-defined structs that `struct_builder` can populate from a dict.
 # Excludes Base/Core types (e.g. `Dict`, `NamedTuple`) that are not built that way.
 function is_struct_type(::Type{T}) where {T}
     T isa DataType || return false
-    T.name.module ∉ (Base, Core) || return false
+    is_builtin_type(T) && return false
     return isstructtype(T) && !isabstracttype(T)
+end
+
+"""
+    nonnull_types(T::Type) -> Vector{Type}
+
+Return the constituents of a `Union` excluding `Nothing` and `Missing`. For a
+non-`Union` type `T`, returns `Type[T]`.
+"""
+function nonnull_types(T::Type)
+    T isa Union || return Type[T]
+    return filter(x -> x !== Nothing && x !== Missing, Base.uniontypes(T))
 end
 
 """
@@ -543,10 +565,8 @@ Return the single non-null type from `Union{T, Nothing}` or `Union{T, Missing}`.
 Returns `T` unchanged when it is not such a union.
 """
 function nonnull_type(T::Type)
-    if T isa Union
-        rest = filter(x -> x !== Nothing && x !== Missing, Base.uniontypes(T))
-        length(rest) == 1 && return rest[1]
-    end
+    rest = nonnull_types(T)
+    length(rest) == 1 && return rest[1]
     return T
 end
 

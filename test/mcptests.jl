@@ -233,7 +233,7 @@ end
     body = parsebody(r)
     result = body["result"]
     @test result["resultType"] == "complete"
-    @test result["supportedVersions"] == ["2026-07-28"]
+    @test result["supportedVersions"] == ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
     @test haskey(result["capabilities"], "tools")
     @test result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "Oxygen"
     @test result["cacheScope"] == "public"
@@ -245,7 +245,7 @@ end
     result = parsebody(r)["result"]
     @test result["resultType"] == "complete"
     @test result["cacheScope"] == "public"
-    @test result["ttlMs"] isa Integer
+    @test result["ttlMs"] == 0
 
     names = [tool["name"] for tool in result["tools"]]
     @test names == sort(names)
@@ -265,36 +265,38 @@ end
     @test result["isError"] == false
     @test result["content"][1]["type"] == "text"
     @test result["content"][1]["text"] == "5"
-    @test result["structuredContent"] == 5
+    # scalars have no valid object form, so structuredContent is omitted
+    @test !haskey(result, "structuredContent")
 
     # strings are returned as text only
     r = call_tool("concatenate", Dict("a" => "ab", "b" => "cd"))
     result = parsebody(r)["result"]
     @test result["content"][1]["text"] == "abcd"
+    @test !haskey(result, "structuredContent")
 
     # defaulted positional argument
     r = call_tool("with_default", Dict("x" => 5))
-    @test parsebody(r)["result"]["structuredContent"] == 15
+    @test parsebody(r)["result"]["content"][1]["text"] == "15"
 
     # do..block registered tool
     r = call_tool("multiply", Dict("x" => 6, "y" => 7))
-    @test parsebody(r)["result"]["structuredContent"] == 42
+    @test parsebody(r)["result"]["content"][1]["text"] == "42"
 
     # @tool block form
     r = call_tool("block_tool", Dict("value" => 1))
-    @test parsebody(r)["result"]["structuredContent"] == 2
+    @test parsebody(r)["result"]["content"][1]["text"] == "2"
 
     # function + tool registered tool
     r = call_tool("subtract", Dict("a" => 10, "b" => 4))
-    @test parsebody(r)["result"]["structuredContent"] == 6
+    @test parsebody(r)["result"]["content"][1]["text"] == "6"
 
     # enum argument
     r = call_tool("enum_tool", Dict("color" => 2))
-    @test parsebody(r)["result"]["structuredContent"] == 2
+    @test parsebody(r)["result"]["content"][1]["text"] == "2"
 
     # vector argument
     r = call_tool("vector_tool", Dict("nums" => [1, 2, 3, 4]))
-    @test parsebody(r)["result"]["structuredContent"] == 10
+    @test parsebody(r)["result"]["content"][1]["text"] == "10"
 
     # struct argument
     r = call_tool("struct_tool", Dict("place" => Dict(
@@ -341,7 +343,9 @@ end
     @test parsebody(r)["result"]["isError"] == true
 
     r = call_tool("add_numbers", Dict("a" => 1, "b" => 1))
-    @test parsebody(r)["result"]["structuredContent"] == 2
+    result = parsebody(r)["result"]
+    @test result["content"][1]["text"] == "2"
+    @test !haskey(result, "structuredContent")
 end
 
 @testset "context injection" begin
@@ -398,7 +402,7 @@ end
     @test r.status == 400
     error = parsebody(r)["error"]
     @test error["code"] == -32022
-    @test error["data"]["supported"] == ["2026-07-28"]
+    @test error["data"]["supported"] == ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
     @test error["data"]["requested"] == unsupported
 end
 
@@ -407,7 +411,7 @@ end
     call_params = Dict("_meta" => req_meta(), "name" => "add_numbers", "arguments" => Dict("a" => 4, "b" => 5))
     r = rpc("tools/call", call_params; extra_headers=["Mcp-Name" => encoded])
     @test r.status == 200
-    @test parsebody(r)["result"]["structuredContent"] == 9
+    @test parsebody(r)["result"]["content"][1]["text"] == "9"
 
     @test MCP.decode_header_value(encoded) == "add_numbers"
     @test MCP.decode_header_value("add_numbers") == "add_numbers"
@@ -421,14 +425,41 @@ end
     r = raw_post(notification; headers=["MCP-Protocol-Version" => "2026-07-28", "Mcp-Method" => "tools/list"])
     @test r.status == 202
 
+    # client responses (result/error + id, no method) -> 202
+    client_response = Dict("jsonrpc" => "2.0", "id" => 1, "result" => Dict("ok" => true))
+    r = raw_post(client_response)
+    @test r.status == 202
+
+    # invalid JSON-RPC shape (no method, no result/error) -> 400 + -32600
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => 1))
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32600
+
     # unknown JSON-RPC method -> 404 + -32601
     r = rpc("does/not/exist", Dict("_meta" => req_meta()))
     @test r.status == 404
     @test parsebody(r)["error"]["code"] == -32601
 
-    # GET / DELETE -> 405
-    @test HTTP.request("GET", "$localhost/mcp"; status_exception=false, client=MCP_CLIENT).status == 405
+    # ping was removed from the modern era -> 404 + -32601
+    r = rpc("ping", Dict("_meta" => req_meta()))
+    @test r.status == 404
+    @test parsebody(r)["error"]["code"] == -32601
+
+    # GET serves a JSON health body; DELETE -> 405
+    r = HTTP.request("GET", "$localhost/mcp"; status_exception=false, client=MCP_CLIENT)
+    @test r.status == 200
+    @test parsebody(r)["status"] == "ok"
     @test HTTP.request("DELETE", "$localhost/mcp"; status_exception=false, client=MCP_CLIENT).status == 405
+
+    # a modern version header on GET is rejected with 405
+    r = HTTP.request("GET", "$localhost/mcp"; headers=["MCP-Protocol-Version" => "2026-07-28"],
+                     status_exception=false, client=MCP_CLIENT)
+    @test r.status == 405
+
+    # missing / wrong Content-Type -> 415
+    r = HTTP.request("POST", "$localhost/mcp", ["Content-Type" => "text/plain"], "{}";
+                     status_exception=false, client=MCP_CLIENT)
+    @test r.status == 415
 
     # invalid JSON -> 400 + -32700
     r = HTTP.request("POST", "$localhost/mcp",
@@ -436,6 +467,27 @@ end
         "{ not json"; status_exception=false, client=MCP_CLIENT)
     @test r.status == 400
     @test parsebody(r)["error"]["code"] == -32700
+
+    # SSE notification stream: held open with a priming comment
+    sse_client = HTTP.Client()
+    sse_received = Ref("")
+    @async begin
+        try
+            HTTP.open("GET", "$localhost/mcp", ["Accept" => "text/event-stream"]; client=sse_client) do io
+                while !eof(io)
+                    sse_received[] *= String(readavailable(io))
+                    occursin(": connected", sse_received[]) && break
+                end
+            end
+        catch
+            # connection closed when the test block exits
+        end
+    end
+    deadline = time() + 5
+    while time() < deadline && !occursin(": connected", sse_received[])
+        sleep(0.05)
+    end
+    @test occursin(": connected", sse_received[])
 end
 
 @testset "stdio transport" begin
@@ -454,22 +506,26 @@ end
 
     discover = JSON.parse(lines[1])
     @test discover["id"] == 1
-    @test discover["result"]["supportedVersions"] == ["2026-07-28"]
+    @test discover["result"]["supportedVersions"][1] == "2026-07-28"
 
     call = JSON.parse(lines[2])
-    @test call["result"]["structuredContent"] == 7
+    @test call["result"]["content"][1]["text"] == "7"
+    @test call["result"]["resultType"] == "complete"
 
     @test JSON.parse(lines[3])["error"]["code"] == -32700
     @test JSON.parse(lines[4])["error"]["code"] == -32601
 end
 
 @testset "stdio metadata validation" begin
-    # no headers on stdio, but _meta is still required
-    missing_meta = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "tools/list", "params" => Dict())
+    # no headers on stdio and no _meta: this is a LEGACY request and must succeed
+    legacy = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "tools/list", "params" => Dict())
     output = IOBuffer()
-    MCP.stdio_loop(CONTEXT[]; input=IOBuffer(JSON.json(missing_meta) * "\n"), output=output)
-    @test JSON.parse(String(take!(output)))["error"]["code"] == -32602
+    MCP.stdio_loop(CONTEXT[]; input=IOBuffer(JSON.json(legacy) * "\n"), output=output)
+    body = JSON.parse(String(take!(output)))
+    @test haskey(body["result"], "tools")
+    @test !haskey(body["result"], "resultType")
 
+    # an unsupported version in _meta marks a modern request -> -32022
     unsupported = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "tools/list",
                        "params" => Dict("_meta" => Dict(
                            "io.modelcontextprotocol/protocolVersion" => "1900-01-01",
@@ -477,6 +533,112 @@ end
     output = IOBuffer()
     MCP.stdio_loop(CONTEXT[]; input=IOBuffer(JSON.json(unsupported) * "\n"), output=output)
     @test JSON.parse(String(take!(output)))["error"]["code"] == -32022
+end
+
+@testset "legacy initialize handshake (HTTP)" begin
+    # initialize echoes a supported legacy version and advertises tools
+    init = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
+                "params" => Dict("protocolVersion" => "2025-06-18",
+                                 "capabilities" => Dict(),
+                                 "clientInfo" => Dict("name" => "legacy", "version" => "1.0")))
+    r = raw_post(init)
+    @test r.status == 200
+    result = parsebody(r)["result"]
+    @test result["protocolVersion"] == "2025-06-18"
+    @test haskey(result["capabilities"], "tools")
+    @test result["serverInfo"]["name"] == "Oxygen"
+    @test !haskey(result, "resultType")
+
+    # notifications/initialized is accepted silently
+    note = Dict("jsonrpc" => "2.0", "method" => "notifications/initialized")
+    @test raw_post(note).status == 202
+
+    # tools/list needs neither headers nor _meta in the legacy era
+    list = Dict("jsonrpc" => "2.0", "id" => 2, "method" => "tools/list", "params" => Dict())
+    r = raw_post(list)
+    @test r.status == 200
+    result = parsebody(r)["result"]
+    @test !haskey(result, "resultType")
+    @test !haskey(result, "ttlMs")
+    @test any(t -> t["name"] == "add_numbers", result["tools"])
+
+    # tools/call needs neither headers nor _meta; an object result keeps
+    # structuredContent under 2025-06-18
+    call = Dict("jsonrpc" => "2.0", "id" => 3, "method" => "tools/call",
+                "params" => Dict("name" => "echo_place", "arguments" => Dict(
+                    "place" => Dict("name" => "NYC",
+                                    "coordinates" => Dict("lat" => 40.7, "lon" => -74.0)))))
+    r = raw_post(call)
+    result = parsebody(r)["result"]
+    @test result["isError"] == false
+    @test result["structuredContent"]["name"] == "NYC"
+    @test !haskey(result, "resultType")
+
+    # scalar results carry text only (structuredContent must be an object)
+    call = Dict("jsonrpc" => "2.0", "id" => 4, "method" => "tools/call",
+                "params" => Dict("name" => "add_numbers", "arguments" => Dict("a" => 4, "b" => 6)))
+    result = parsebody(raw_post(call))["result"]
+    @test result["content"][1]["text"] == "10"
+    @test !haskey(result, "structuredContent")
+
+    # legacy ping returns an empty result object
+    ping = Dict("jsonrpc" => "2.0", "id" => 5, "method" => "ping", "params" => Dict())
+    @test isempty(parsebody(raw_post(ping))["result"])
+
+    @test MCP.negotiate_version("2025-06-18") == "2025-06-18"
+    @test MCP.negotiate_version("1900-01-01") == "2025-11-25"
+    @test MCP.negotiate_version(nothing) == "2025-11-25"
+end
+
+@testset "legacy structuredContent gating" begin
+    place_args = Dict("place" => Dict("name" => "A",
+                                      "coordinates" => Dict("lat" => 1.0, "lon" => 2.0)))
+
+    # an object-returning tool keeps structuredContent at >= 2025-06-18
+    init = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
+                "params" => Dict("protocolVersion" => "2025-06-18", "capabilities" => Dict()))
+    @test parsebody(raw_post(init))["result"]["protocolVersion"] == "2025-06-18"
+    call = Dict("jsonrpc" => "2.0", "id" => 2, "method" => "tools/call",
+                "params" => Dict("name" => "echo_place", "arguments" => place_args))
+    @test haskey(parsebody(raw_post(call))["result"], "structuredContent")
+
+    # an older revision withholds it
+    init = Dict("jsonrpc" => "2.0", "id" => 3, "method" => "initialize",
+                "params" => Dict("protocolVersion" => "2024-11-05", "capabilities" => Dict()))
+    @test parsebody(raw_post(init))["result"]["protocolVersion"] == "2024-11-05"
+    call = Dict("jsonrpc" => "2.0", "id" => 4, "method" => "tools/call",
+                "params" => Dict("name" => "echo_place", "arguments" => place_args))
+    result = parsebody(raw_post(call))["result"]
+    @test !isempty(result["content"])
+    @test !haskey(result, "structuredContent")
+end
+
+@testset "legacy stdio handshake" begin
+    messages = [
+        JSON.json(Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
+                       "params" => Dict("protocolVersion" => "2025-11-25", "capabilities" => Dict()))),
+        JSON.json(Dict("jsonrpc" => "2.0", "method" => "notifications/initialized")),
+        JSON.json(Dict("jsonrpc" => "2.0", "id" => 2, "method" => "tools/list", "params" => Dict())),
+        JSON.json(Dict("jsonrpc" => "2.0", "id" => 3, "method" => "tools/call",
+                       "params" => Dict("name" => "echo_place", "arguments" => Dict(
+                           "place" => Dict("name" => "SFO",
+                                           "coordinates" => Dict("lat" => 37.7, "lon" => -122.4)))))),
+    ]
+    output = IOBuffer()
+    MCP.stdio_loop(CONTEXT[]; input=IOBuffer(join(messages, "\n") * "\n"), output=output)
+    lines = split(strip(String(take!(output))), "\n")
+    @test length(lines) == 3
+
+    init = JSON.parse(lines[1])["result"]
+    @test init["protocolVersion"] == "2025-11-25"
+    @test !haskey(init, "resultType")
+
+    list = JSON.parse(lines[2])["result"]
+    @test haskey(list, "tools")
+    @test !haskey(list, "resultType")
+
+    call = JSON.parse(lines[3])["result"]
+    @test call["structuredContent"]["name"] == "SFO"
 end
 
 @testset "origin guard" begin

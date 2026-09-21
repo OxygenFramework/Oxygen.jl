@@ -4,7 +4,7 @@ module Errors
 export ValidationError, MCPRequestError,
     MCP_PARSE_ERROR, MCP_INVALID_REQUEST, MCP_METHOD_NOT_FOUND,
     MCP_INVALID_PARAMS, MCP_INTERNAL_ERROR, MCP_HEADER_MISMATCH,
-    MCP_UNSUPPORTED_PROTOCOL_VERSION
+    MCP_MISSING_REQUIRED_CLIENT_CAPABILITY, MCP_UNSUPPORTED_PROTOCOL_VERSION
 
 # This is used by the Extractors.jl module to signal that a validation error has occurred
 struct ValidationError <: Exception
@@ -43,7 +43,8 @@ const MCP_INVALID_PARAMS   :: Int = -32602
 const MCP_INTERNAL_ERROR   :: Int = -32603
 
 # MCP transport error codes (JSON-RPC server error range)
-const MCP_HEADER_MISMATCH              :: Int = -32020
-const MCP_UNSUPPORTED_PROTOCOL_VERSION :: Int = -32022
+const MCP_HEADER_MISMATCH                        :: Int = -32020
+const MCP_MISSING_REQUIRED_CLIENT_CAPABILITY     :: Int = -32021
+const MCP_UNSUPPORTED_PROTOCOL_VERSION           :: Int = -32022
 
 end

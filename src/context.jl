@@ -47,6 +47,8 @@ end
     instructions    :: Nullable{String}          = nothing
     tools           :: Dict{String, MCPTool}     = Dict{String, MCPTool}()  # keyed by wire name
     allowed_origins :: Vector{String}            = String[]                 # DNS-rebinding guard
+    session_version :: Ref{String}               = Ref{String}("2025-11-25") # negotiated legacy version
+    initialized     :: Ref{Bool}                 = Ref{Bool}(false)          # legacy handshake completed
 end
 
 @kwdef struct EagerReviseService

@@ -930,8 +930,10 @@ end
 
 """
 Register the MCP streamable HTTP endpoint when at least one tool has been
-registered. Only `POST` is supported; `GET` and `DELETE` (legacy session
-teardown) are rejected with `405`.
+registered. `POST` carries JSON-RPC traffic; `GET` is a streaming route that
+serves a JSON health body, or holds the connection open as an SSE notification
+stream when the client asks for `text/event-stream`. A GET declaring a modern
+version is `405`; `DELETE` (legacy session teardown) is also `405`.
 """
 function setupmcp(ctx::ServerContext)
     isempty(ctx.mcp.tools) && return nothing
@@ -940,10 +942,11 @@ function setupmcp(ctx::ServerContext)
     path = ctx.mcp.path[]
 
     mcp_post(req::HTTP.Request) = MCP.handle(ctx, req)
-    method_not_allowed(_::HTTP.Request) = HTTP.Response(405, ["Allow" => "POST"], "Method Not Allowed")
+    mcp_get(stream::HTTP.Stream) = MCP.handle_get(ctx, stream)
+    method_not_allowed(_::HTTP.Request) = HTTP.Response(405, ["Allow" => "POST, GET"], "Method Not Allowed")
 
     register_internal(ctx, router, "POST", path, mcp_post)
-    register_internal(ctx, router, "GET", path, method_not_allowed)
+    register_internal(ctx, router, STREAM, path, mcp_get)
     register_internal(ctx, router, "DELETE", path, method_not_allowed)
     return nothing
 end

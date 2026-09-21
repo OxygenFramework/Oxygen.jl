@@ -83,7 +83,17 @@ end
 end
 
 Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])
-Base.wait(service::Service)     = !isnothing(service.server[]) && wait(service.server[])
+
+# Poll with an interruptible `sleep` instead of blocking on the server's event.
+# This allows the repl to Ctr + C and quit the running session. Worth mentioning 
+# that when the server is running in async mode, the wait fucntion is never called
+function Base.wait(service::Service)
+    isnothing(service.server[]) && return nothing
+    while isopen(service)
+        sleep(0.5)
+    end
+    return nothing
+end
 function Base.close(service::Service)
     !isnothing(service.server[]) && close(service.server[])
     !isnothing(service.eager_revise[]) && close(service.eager_revise[])

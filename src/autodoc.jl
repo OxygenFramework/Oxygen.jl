@@ -318,7 +318,13 @@ end
 # Unwrap UnionAll (parametric) wrappers to the concrete/body type
 function unwrap_type(T::Type)::Type
     while T isa UnionAll
-        T = T.body
+        body = T.body
+        # The body of a `UnionAll` can contain free type variables (e.g.
+        # `Vector.body` is `Array{T,1}`). Dispatching on such malformed types
+        # trips Julia's static-parameter matching (JuliaLang/julia#61242), so
+        # leave the wrapper in place when the body is not well-formed.
+        Base.has_free_typevars(body) && break
+        T = body
     end
     return T
 end

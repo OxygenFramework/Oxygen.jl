@@ -531,17 +531,18 @@ end
 """
     is_builtin_type(::Type{T}, modules::Tuple = (Base, Core)) -> Bool
 
-Return `true` when `T` is a `DataType` whose defining module is one of `modules`.
-Used to distinguish user-defined structs from built-in/stdlib types. Non-`DataType`
-values (e.g. `Union`, `UnionAll`) return `false`.
+Return `true` when `T` is a `DataType` or `UnionAll` whose defining module is one
+of `modules`. Used to distinguish user-defined structs from built-in/stdlib types.
+Other `Type` values (e.g. `Union`) return `false`.
 """
-function is_builtin_type(::Type{T}, modules::Tuple = (Base, Core)) where {T}
-    return T isa DataType && T.name.module ∈ modules
+function is_builtin_type(T::Type, modules::Tuple = (Base, Core))
+    (T isa DataType || T isa UnionAll) || return false
+    return Base.unwrap_unionall(T).name.module ∈ modules
 end
 
 # True for user-defined structs that `struct_builder` can populate from a dict.
 # Excludes Base/Core types (e.g. `Dict`, `NamedTuple`) that are not built that way.
-function is_struct_type(::Type{T}) where {T}
+function is_struct_type(T::Type)
     T isa DataType || return false
     is_builtin_type(T) && return false
     return isstructtype(T) && !isabstracttype(T)

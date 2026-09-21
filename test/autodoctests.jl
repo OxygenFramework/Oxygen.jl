@@ -360,4 +360,28 @@ end
     terminate()
 end
 
+@testset "unwrap_type hardening" begin
+    AutoDoc = Oxygen.Core.AutoDoc
+
+    # `.body` of a bare UnionAll carries free type variables (e.g.
+    # `Vector.body` is `Array{T,1}`). Unwrapping those produces malformed types
+    # that trip Julia's static-parameter matching (JuliaLang/julia#61242), so
+    # they must be left wrapped.
+    @test AutoDoc.unwrap_type(Vector) === Vector
+    @test AutoDoc.unwrap_type(Dict) === Dict
+    @test AutoDoc.unwrap_type(HTTP.Response) === HTTP.Response
+    @test AutoDoc.unwrap_type(Vector{<:Integer}) isa UnionAll
+
+    # well-formed parametric types are still returned unchanged
+    @test AutoDoc.unwrap_type(Vector{Int}) === Vector{Int}
+    @test AutoDoc.unwrap_type(String) === String
+
+    # schema generation must not throw for a bare UnionAll return type
+    docs = Oxygen.Core.AppContext.Documenation()
+    @test begin
+        AutoDoc.registerschema(docs, "/readyz", "GET", [], [], [], [], Any[HTTP.Response])
+        true
+    end
+end
+
 end

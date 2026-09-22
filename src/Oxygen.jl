@@ -53,7 +53,7 @@ export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 
         # MCP
-        @tool, tool,
+        @tool, tool, @prompt, prompt,
         # Tasks & Cron
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 

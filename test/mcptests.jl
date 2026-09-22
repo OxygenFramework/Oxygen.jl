@@ -84,6 +84,14 @@ end
     return place
 end
 
+@tool "Returns HTML" Dict() function html_tool()
+    return html("<h1>hi</h1>")
+end
+
+@tool "Returns an image response" Dict() function image_tool()
+    return HTTP.Response(200, ["Content-Type" => "image/png"], UInt8[0x89, 0x50, 0x4e, 0x47])
+end
+
 # function + tool form
 function subtract(a::Int, b::Int)
     return a - b
@@ -93,6 +101,51 @@ tool("Subtract two integers", Dict(:a => "left", :b => "right"), subtract)
 # do..block form with an explicit wire name
 tool("Multiply two integers", Dict(:x => "left", :y => "right"); name="multiply") do x::Int, y::Int
     return x * y
+end
+
+### Registered prompts ###
+
+# arguments are inferred from the signature: `city` required, `tone` optional
+@prompt "Report on a city" function city_report(city::String, tone::String="formal")
+    return "Write a $tone report about $city"
+end
+
+@prompt "Review code" function code_review(language::String, code::String)
+    return ["user" => "Please review this $language code:", "user" => "```$language\n$code\n```"]
+end
+
+@prompt "Reads the injected context" function context_prompt(; context)
+    return context isa Missing ? "missing" : context.label
+end
+
+@prompt "Block form prompt" begin
+    function block_prompt(value::Int)
+        return "value is $value"
+    end
+end
+
+# function + prompt form with an explicit wire name
+function explain(term::String)
+    return "Explain $term"
+end
+prompt("Explain a term", explain; name="explain_term")
+
+# do..block form with an explicit wire name
+prompt("Greets a person"; name="greet") do name::String
+    return "Hello $name"
+end
+
+@prompt "Returns an HTTP.Response" function html_prompt()
+    return html("<p>hi</p>")
+end
+
+@prompt "Returns an assistant image message" function image_prompt(label::String)
+    return ["assistant" => Dict("type" => "image", "data" => "aGk=", "mimeType" => "image/png"),
+            "user" => label]
+end
+
+@prompt "Returns an invalid role" function bad_role_prompt()
+    return "system" => "nope"
 end
 
 ### Request helpers ###########################################################
@@ -130,6 +183,11 @@ end
 function call_tool(name::String, arguments::AbstractDict; extra_headers=[])::HTTP.Response
     params = Dict("_meta" => req_meta(), "name" => name, "arguments" => arguments)
     return rpc("tools/call", params; extra_headers=vcat(["Mcp-Name" => name], extra_headers))
+end
+
+function prompt_get(name::String, arguments::AbstractDict; extra_headers=[])::HTTP.Response
+    params = Dict("_meta" => req_meta(), "name" => name, "arguments" => arguments)
+    return rpc("prompts/get", params; extra_headers=vcat(["Mcp-Name" => name], extra_headers))
 end
 
 parsebody(r::HTTP.Response) = JSON.parse(String(r.body))
@@ -235,6 +293,7 @@ end
     @test result["resultType"] == "complete"
     @test result["supportedVersions"] == ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
     @test haskey(result["capabilities"], "tools")
+    @test haskey(result["capabilities"], "prompts")
     @test result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "Oxygen"
     @test result["cacheScope"] == "public"
 end
@@ -255,6 +314,129 @@ end
     add = only(filter(t -> t["name"] == "add_numbers", result["tools"]))
     @test add["description"] == "Add two integers"
     @test add["inputSchema"]["properties"]["a"]["type"] == "integer"
+end
+
+@testset "prompt registry" begin
+    prompts = CONTEXT[].mcp.prompts
+    for name in ["city_report", "code_review", "context_prompt", "block_prompt",
+                 "explain_term", "greet"]
+        @test haskey(prompts, name)
+    end
+
+    # nothing leaked into the global context
+    @test !haskey(Oxygen.CONTEXT[].mcp.prompts, "city_report")
+end
+
+@testset "prompt reflection" begin
+    city = CONTEXT[].mcp.prompts["city_report"]
+    @test city.argnames == [:city, :tone]
+    @test Oxygen.Core.isrequired(city.params[1].param)
+    @test !Oxygen.Core.isrequired(city.params[2].param)
+    @test city.params[2].param.default == "formal"
+
+    ctx_prompt = CONTEXT[].mcp.prompts["context_prompt"]
+    @test ctx_prompt.has_context == true
+    @test isempty(ctx_prompt.params)  # context is never a template variable
+end
+
+@testset "prompts/list" begin
+    r = rpc("prompts/list", Dict("_meta" => req_meta()))
+    @test r.status == 200
+    result = parsebody(r)["result"]
+    @test result["resultType"] == "complete"
+    @test result["cacheScope"] == "public"
+    @test result["ttlMs"] == 0
+
+    names = [p["name"] for p in result["prompts"]]
+    @test names == sort(names)
+    @test "city_report" in names
+    @test "greet" in names
+
+    city = only(filter(p -> p["name"] == "city_report", result["prompts"]))
+    @test city["description"] == "Report on a city"
+    @test city["arguments"] == [
+        Dict("name" => "city", "required" => true),
+        Dict("name" => "tone", "required" => false),
+    ]
+end
+
+@testset "prompts/get" begin
+    r = prompt_get("city_report", Dict("city" => "Paris"))
+    @test r.status == 200
+    result = parsebody(r)["result"]
+    @test result["resultType"] == "complete"
+    @test result["description"] == "Report on a city"
+    @test result["messages"] == [Dict(
+        "role" => "user",
+        "content" => Dict("type" => "text", "text" => "Write a formal report about Paris"),
+    )]
+
+    multi = parsebody(prompt_get("code_review",
+        Dict("language" => "Julia", "code" => "1 + 1")))["result"]
+    @test length(multi["messages"]) == 2
+    @test multi["messages"][1]["content"]["text"] == "Please review this Julia code:"
+    @test multi["messages"][2]["content"]["text"] == "```Julia\n1 + 1\n```"
+
+    # explicit wire names from the function and do..block forms
+    @test parsebody(prompt_get("explain_term", Dict("term" => "monads")))["result"]["messages"][1]["content"]["text"] == "Explain monads"
+    @test parsebody(prompt_get("greet", Dict("name" => "Ada")))["result"]["messages"][1]["content"]["text"] == "Hello Ada"
+end
+
+@testset "content serialization (MIME)" begin
+    # HTTP.Response with a text mime -> text block
+    r = call_tool("response_tool", Dict())
+    @test parsebody(r)["result"]["content"][1] == Dict("type" => "text", "text" => "plain response")
+
+    # HTML response -> text block (body extracted, not JSON-encoded)
+    r = call_tool("html_tool", Dict())
+    @test parsebody(r)["result"]["content"][1] == Dict("type" => "text", "text" => "<h1>hi</h1>")
+
+    # image response -> image block with base64 data
+    r = call_tool("image_tool", Dict())
+    block = parsebody(r)["result"]["content"][1]
+    @test block["type"] == "image"
+    @test block["mimeType"] == "image/png"
+    @test block["data"] == base64encode(UInt8[0x89, 0x50, 0x4e, 0x47])
+
+    # prompt returning an HTTP.Response gets the same treatment
+    msg = parsebody(prompt_get("html_prompt", Dict()))["result"]["messages"][1]
+    @test msg["role"] == "user"
+    @test msg["content"] == Dict("type" => "text", "text" => "<p>hi</p>")
+end
+
+@testset "prompt roles" begin
+    @test MCP.normalize_role(:assistant) == "assistant"
+    @test MCP.normalize_role("USER") == "user"
+    @test_throws ArgumentError MCP.normalize_role("system")
+
+    msgs = parsebody(prompt_get("image_prompt", Dict("label" => "look")))["result"]["messages"]
+    @test msgs[1]["role"] == "assistant"
+    @test msgs[1]["content"]["type"] == "image"
+    @test msgs[2]["role"] == "user"
+    @test msgs[2]["content"]["text"] == "look"
+
+    # a handler-authoring bug surfaces as an internal error, server stays up
+    err = parsebody(prompt_get("bad_role_prompt", Dict()))
+    @test err["error"]["code"] == MCP.MCP_INTERNAL_ERROR
+end
+
+@testset "prompts/get errors" begin
+    unknown = parsebody(prompt_get("does_not_exist", Dict()))
+    @test unknown["error"]["code"] == MCP.MCP_INVALID_PARAMS
+
+    missing_arg = parsebody(prompt_get("city_report", Dict()))
+    @test missing_arg["error"]["code"] == MCP.MCP_INVALID_PARAMS
+    @test occursin("city", missing_arg["error"]["message"])
+end
+
+@testset "prompt context injection" begin
+    r = prompt_get("context_prompt", Dict())
+    messages = parsebody(r)["result"]["messages"]
+    @test messages[1]["content"]["text"] == "injected"
+end
+
+@testset "prompt wire name collision" begin
+    @test_throws ArgumentError prompt("Duplicate", explain; name="city_report")
 end
 
 @testset "tools/call happy path" begin
@@ -745,9 +927,12 @@ end
 
 @testset "resetstate clears tools" begin
     Oxygen.tool("Resettable", Dict(), () -> "x"; name="resettable")
+    Oxygen.prompt("Resettable", () -> "x"; name="resettable")
     @test haskey(Oxygen.CONTEXT[].mcp.tools, "resettable")
+    @test haskey(Oxygen.CONTEXT[].mcp.prompts, "resettable")
     Oxygen.resetstate()
     @test isempty(Oxygen.CONTEXT[].mcp.tools)
+    @test isempty(Oxygen.CONTEXT[].mcp.prompts)
 end
 
 end

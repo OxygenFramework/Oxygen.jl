@@ -51,9 +51,56 @@ end
 
 Registering two tools with the same wire name throws an error.
 
+## Registering Prompts
+
+Prompts are user-controlled message templates exposed via `prompts/list` and
+`prompts/get`. Register one with `@prompt`; unlike `@tool`, there is no parameter
+description dictionary — the handler's own parameters *are* the prompt's arguments.
+Parameters without a default are required, and `context`/`request` are injected and
+excluded from the argument list.
+
+```julia
+@prompt "Report on a city" function city_report(city::String, tone::String = "formal")
+    return "Write a $tone report about $city"
+end
+```
+
+`prompts/list` advertises `city` (required) and `tone` (optional). Return values are
+normalized into MCP content blocks:
+
+- `String` → a `text` block (a bare `String` is a single user message)
+- `Pair` of `role => content`, or a vector mixing `Pair`s and content, → messages
+- `HTTP.Response` → honors its `Content-Type`: text-like media becomes a `text` block,
+  while `image/*` and `audio/*` become base64 media blocks
+- a pre-shaped content dict (e.g. `Dict("type" => "image", ...)`) passes through
+
+Message roles must be `"user"` or `"assistant"` (the values the spec allows); anything
+else is rejected. Tools share the same content-block serialization, so the
+`text`/`html`/`json`/`binary`/`file` helpers can be returned from either.
+
+```julia
+@prompt "Review code" function code_review(language::String, code::String)
+    return ["user" => "Please review this $language code:",
+            "user" => "```$language\n$code\n```"]
+end
+```
+
+For previously defined functions, or an explicit wire name, use `prompt`:
+
+```julia
+prompt("Explain a term", explain; name = "explain_term")
+
+prompt("Greets a person"; name = "greet") do name::String
+    "Hello $name"
+end
+```
+
+Registering two prompts with the same wire name throws an error, and the `/mcp`
+endpoint is mounted once at least one tool *or* prompt is registered.
+
 ## The MCP Endpoint
 
-The endpoint becomes available at `POST /mcp` automatically once at least one tool has been registered, so `serve()` is all you need. If no tools are registered, the route is not mounted at all.
+The endpoint becomes available at `POST /mcp` automatically once at least one tool or prompt has been registered, so `serve()` is all you need. If nothing is registered, the route is not mounted at all.
 
 Use the `mcp_path` keyword to mount it somewhere else:
 

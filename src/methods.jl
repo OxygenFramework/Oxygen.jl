@@ -265,6 +265,52 @@ macro tool(description, parameters, func)
 end
 
 
+### MCP Prompt Registration ###
+
+"""
+    prompt(description::String, func::Function; name=nothing)
+
+Convenience function to register an MCP prompt. Equivalent to `@prompt`.
+
+The prompt's arguments are inferred from `func`'s signature — each parameter
+(excluding the injected `context`/`request`) becomes a template variable, and
+parameters without a default are marked required. No parameter description map
+is needed; adding a parameter adds a template variable.
+"""
+prompt(description::String, func::Function; name=nothing) = Oxygen.Core.register_prompt!(CONTEXT[], string(description), func; name=name)
+
+"""
+    prompt(func::Function, description::String; name=nothing)
+
+Convenience function to register an MCP prompt. Equivalent to `@prompt`.
+"""
+prompt(func::Function, description::String; name=nothing) = prompt(description, func; name=name)
+
+
+"""
+    @prompt(description::String, func::Function)
+
+Used to register a function as an MCP prompt. The prompt's arguments are taken
+from the function signature, so the handler parameters *are* the template
+variables:
+
+    @prompt "Report on a city" function city_report(city::String, tone::String = "formal")
+        "Write a \$tone report about \$city"
+    end
+
+A block form is also supported:
+
+    @prompt "Report on a city" begin
+        function city_report(city::String)
+            "Write a report about \$city"
+        end
+    end
+"""
+macro prompt(description, func)
+    return :(prompt($(esc(description)), $(esc(func))))
+end
+
+
 
 """
     @staticfiles(folder::String, mountdir::String, headers::Vector{Pair{String,String}}=[])

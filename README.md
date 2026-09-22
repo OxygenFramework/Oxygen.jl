@@ -87,7 +87,15 @@ end
 serve() # exposes POST /mcp
 ```
 
-Tools are registered per application instance (including `@oxidize` modules and `instance()` apps). The `/mcp` endpoint is exposed automatically as soon as a tool is registered; use `serve(mcp_path = "/custom/mcp")` to mount it elsewhere, or `serve(stdio = true)` to additionally speak the MCP stdio transport over stdin/stdout. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
+Prompts are registered the same way, with the handler signature doubling as the argument list:
+
+```julia
+@prompt "Report on a city" function city_report(city::String)
+    return "Write a report about $city"
+end
+```
+
+Tools are registered per application instance (including `@oxidize` modules and `instance()` apps). The `/mcp` endpoint is exposed automatically as soon as a tool or prompt is registered; use `serve(mcp_path = "/custom/mcp")` to mount it elsewhere, or `serve(stdio = true)` to additionally speak the MCP stdio transport over stdin/stdout. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
 
 ## Handlers
 

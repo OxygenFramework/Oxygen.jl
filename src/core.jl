@@ -929,14 +929,14 @@ end
 
 
 """
-Register the MCP streamable HTTP endpoint when at least one tool has been
-registered. `POST` carries JSON-RPC traffic; `GET` is a streaming route that
+Register the MCP streamable HTTP endpoint when at least one tool or prompt has
+been registered. `POST` carries JSON-RPC traffic; `GET` is a streaming route that
 serves a JSON health body, or holds the connection open as an SSE notification
 stream when the client asks for `text/event-stream`. A GET declaring a modern
 version is `405`; `DELETE` (legacy session teardown) is also `405`.
 """
 function setupmcp(ctx::ServerContext)
-    isempty(ctx.mcp.tools) && return nothing
+    (isempty(ctx.mcp.tools) && isempty(ctx.mcp.prompts)) && return nothing
 
     router = ctx.service.router
     path = ctx.mcp.path[]

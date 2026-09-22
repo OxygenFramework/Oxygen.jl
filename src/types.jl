@@ -16,7 +16,7 @@ export Server, History, HTTPTransaction, TaggedRoute, Nullable, Context,
     ActiveCron, RegisteredCron, CronDefinition,
     LifecycleMiddleware, startup, shutdown,
     Param, isrequired, LazyRequest, headers, pathparams, queryvars, jsonbody, formbody, textbody,
-    MCPParam, MCPTool
+    MCPParam, MCPTool, MCPPrompt
 
 const Nullable{T} = Union{T, Nothing}
 
@@ -136,6 +136,19 @@ end
 # followed by the keyword arguments. `argnames` identifies which parameters are
 # positional so handlers can be invoked correctly.
 struct MCPTool
+    name        :: String
+    description :: String
+    handler     :: Function
+    params      :: Vector{MCPParam}
+    argnames    :: Vector{Symbol}
+    has_context :: Bool          # handler wants `context` injected
+    has_request :: Bool          # handler wants `request` injected
+end
+
+# A registered MCP prompt. The prompt arguments are the handler's own parameters
+# (minus `context`/`request`), so the signature doubles as the template variable
+# list. `argnames` identifies which parameters are positional.
+struct MCPPrompt
     name        :: String
     description :: String
     handler     :: Function

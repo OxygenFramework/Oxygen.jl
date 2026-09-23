@@ -8,6 +8,13 @@ using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder, pars
 
 global message = Dict("message" => "Hello, World!")
 
+# Defined at module scope so its method name (`#N`) differs from its closure
+# reference (`var"#N#M"`); this is the bare-anonymous-function case that used
+# to shift keyword-argument alignment in `extract_defaults`.
+const bare_anon = function(a::Int; b = nothing)
+    return a, b
+end
+
 struct Person
     name::String
     age::Int
@@ -250,6 +257,19 @@ end
         @test info.sig_map[:request].default isa Missing
         @test info.sig_map[:request].hasdefault == false
     end
+end
+
+@testset "splitdef bare anonymous function" begin
+    info = splitdef(bare_anon)
+
+    @test length(info.args) == 1
+    @test info.args[1].name == :a
+    @test info.args[1].hasdefault == false
+
+    @test length(info.kwargs) == 1
+    @test info.kwargs[1].name == :b
+    @test info.kwargs[1].hasdefault == true
+    @test info.kwargs[1].default === nothing
 end
 
 @testset "splitdef do..end syntax" begin

@@ -60,7 +60,7 @@ function walkargs(predicate::Function, expr)
     return false
 end 
 
-function reconstruct(info::Core.CodeInfo, func_name::Symbol)
+function reconstruct(info::Core.CodeInfo)
     
     # Track which index the function signature can be found on
     sig_index = nothing
@@ -123,17 +123,12 @@ function reconstruct(info::Core.CodeInfo, func_name::Symbol)
 
     default_values = []
 
-    for arg in evaled_sig.args
+    # Drop the callee unless it is `#self#`, which marks the kwarg/positional
+    # boundary.
+    sig_args = evaled_sig.args
+    start = (sig_args[1] isa Core.SlotNumber && sig_args[1].id == 1) ? 1 : 2
 
-        contains_func_name = walkargs(arg) do x
-            # Super generic check to see if the function name is in the expression
-            return contains("$x", "$func_name")
-        end
-
-        if contains_func_name || arg == NO_VALUES  || arg isa GlobalRef && contains("$(arg.name)", "$func_name")
-            continue            
-        end
-
+    for arg in @view sig_args[start:end]
         if arg isa Expr
             try
                 rebuilt = rebuild!(arg)
@@ -221,7 +216,7 @@ end
 """
 Given a list of CodeInfo objects, extract any default values assigned to parameters & keyword arguments
 """
-function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names::Vector{Symbol}, kwarg_names::Vector{Symbol})
+function extract_defaults(info::Vector{Core.CodeInfo}, param_names::Vector{Symbol}, kwarg_names::Vector{Symbol})
 
     # These store the mapping between parameter names and their default values
     param_defaults = Dict()
@@ -240,7 +235,7 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
         end
 
         # rebuild the function signature with the default values included
-        sig_args = reconstruct(c, func_name)
+        sig_args = reconstruct(c)
 
         param_values = []
         kwarg_values = []
@@ -352,7 +347,7 @@ function splitdef(info::Vector{Core.CodeInfo}, method_defs::Base.MethodList, fun
     param_names, param_types, kwarg_names = getsignames(method_defs)
 
     # Extract default values
-    param_defaults, kwarg_defaults = extract_defaults(info, func_name, param_names, kwarg_names)
+    param_defaults, kwarg_defaults = extract_defaults(info, param_names, kwarg_names)
 
     # Create a list of Param objects from parameters
     params = Vector{Param}()

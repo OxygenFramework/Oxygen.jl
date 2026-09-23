@@ -122,9 +122,9 @@ const History = CircularDeque{HTTPTransaction}
     hasdefault::Bool = false
 end
 
-function isrequired(p::Param{T}) where T
-    return !p.hasdefault || (ismissing(p.default) && !(T <: Missing))
-end
+# A parameter is required only when it has no default at all. A default of
+# `missing`/`nothing` is still a default, so the handler's own default applies.
+isrequired(p::Param) = !p.hasdefault
 
 # A single tool parameter paired with its explicit (human readable) description
 struct MCPParam

@@ -75,7 +75,7 @@ end
 function paramschema(p::MCPParam)
     schema, defs = typeschema(p.param.type)
     !isempty(p.description) && (schema["description"] = p.description)
-    if p.param.hasdefault && !ismissing(p.param.default)
+    if p.param.hasdefault
         schema["default"] = p.param.default
     end
     return schema, defs
@@ -184,10 +184,8 @@ function resolve_kwarg!(kwpairs::Vector{Pair{Symbol,Any}}, p::MCPParam, argument
     found, value = argument_value(arguments, name)
     if found
         push!(kwpairs, name => parse_tool_argument(p.param.type, value))
-    elseif !isrequired(p.param)
-        # Only forward the default when it is a concrete value; otherwise the
-        # handler's own default should apply.
-        !ismissing(p.param.default) && push!(kwpairs, name => p.param.default)
+    elseif p.param.hasdefault
+        push!(kwpairs, name => p.param.default)
     else
         throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required argument: $name"))
     end
@@ -235,8 +233,7 @@ function response_mime(resp::HTTP.Response)::String
     return lowercase(strip(split(String(header), ';')[1]))
 end
 
-text_block(content)::Dict{String,Any} =
-    Dict{String,Any}("type" => "text", "text" => string(content))
+text_block(content)::Dict{String,Any} = Dict{String,Any}("type" => "text", "text" => string(content))
 
 """
     binary_block(bytes, mime) :: Dict
@@ -279,19 +276,22 @@ values honor their `Content-Type` (so `html`/`json`/`text`/`binary`/`file` produ
 carrying a known content `type` passes through; anything else is JSON-encoded
 into a text block.
 """
-function content_block(value)::Dict{String,Any}
-    if value isa HTTP.Response
-        return response_block(value)
-    elseif value isa AbstractString
-        return text_block(String(value))
-    elseif value isa AbstractVector{UInt8}
-        return binary_block(value, HTTP.sniff(value))
-    elseif value isa AbstractDict && get(value, "type", nothing) in MCP_CONTENT_TYPES
+content_block(value::HTTP.Response) :: Dict{String,Any} = response_block(value)
+content_block(value::AbstractString) :: Dict{String,Any} = text_block(String(value))
+content_block(value::AbstractVector{UInt8}) :: Dict{String,Any} = binary_block(value, HTTP.sniff(value))
+
+# Dispatch is by type, not value, so the "known content type" test has to stay
+# inside the `AbstractDict` method; a plain dict falls back to JSON text here
+# because the `Any` method below can never be more specific than this one.
+function content_block(value::AbstractDict) :: Dict{String,Any}
+    if get(value, "type", nothing) in MCP_CONTENT_TYPES 
         return value
-    else
-        return text_block(JSON.json(value))
     end
+    return text_block(JSON.json(value))
 end
+
+# Default case: anything not matched above is JSON-encoded into a text block.
+content_block(value::Any) :: Dict{String,Any} = text_block(JSON.json(value))
 
 function content_result(block::Dict{String,Any}, structured_content=nothing)::Dict{String,Any}
     result = Dict{String,Any}(
@@ -303,9 +303,10 @@ function content_result(block::Dict{String,Any}, structured_content=nothing)::Di
 end
 
 function toolresult(value)::Dict{String,Any}
-    if value isa HTTP.Response || value isa AbstractString ||
-       value isa AbstractVector{UInt8} ||
-       (value isa AbstractDict && get(value, "type", nothing) in MCP_CONTENT_TYPES)
+    if value isa HTTP.Response || 
+        value isa AbstractString ||
+        value isa AbstractVector{UInt8} ||
+        (value isa AbstractDict && get(value, "type", nothing) in MCP_CONTENT_TYPES)
         return content_result(content_block(value))
     else
         encoded = JSON.json(value)
@@ -358,8 +359,7 @@ end
 # ----------------------------------------------------------------------------
 
 function json_response(body; status::Int=200)::HTTP.Response
-    payload = JSON.json(body)
-    return HTTP.Response(status, ["Content-Type" => "application/json; charset=utf-8"], payload)
+    return HTTP.Response(status, ["Content-Type" => "application/json; charset=utf-8"], JSON.json(body))
 end
 
 function result_body(id, result)::Dict{String,Any}

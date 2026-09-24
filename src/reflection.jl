@@ -123,10 +123,11 @@ function reconstruct(info::Core.CodeInfo)
 
     default_values = []
 
-    # Drop the callee unless it is `#self#`, which marks the kwarg/positional
-    # boundary.
+    # Drop the callee by position instead of guessing by name. Keep it when it
+    # is `#self#`, which marks the kwarg/positional boundary.
     sig_args = evaled_sig.args
-    start = (sig_args[1] isa Core.SlotNumber && sig_args[1].id == 1) ? 1 : 2
+    first_arg = first(sig_args)
+    start = (first_arg isa Core.SlotNumber && first_arg.id == 1) ? 1 : 2
 
     for arg in @view sig_args[start:end]
         if arg isa Expr

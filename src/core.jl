@@ -48,20 +48,37 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(external_url::String, prefix::Nullable{String}, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
+function server_welcome(;
+    external_url::String, 
+    prefix::Nullable{String},
+    docs::Bool, 
+    metrics::Bool, 
+    parallel::Bool, 
+    mcp::Bool,
+    docs_path::String, 
+    mcp_path::String)
+
     printstyled(stderr, oxygen_title, color=:blue, bold=true)
     server_url = join_url_path(external_url, prefix)
     @info "📦 Version 1.11.0 (2026-08-28)"
+    
     if !isnothing(prefix)
         @info "🏷️  Global path prefix: $prefix"
     end
+
     @info "✅ Started server: $server_url"
     if docs
-        @info "📖 Documentation: $(join_url_path(server_url, docspath))"
+        @info "📖 Documentation: $(join_url_path(server_url, docs_path))"
     end
+
+    if mcp
+        @info "🔌 MCP: $(join_url_path(server_url, mcp_path))"
+    end
+
     if docs && metrics
-        @info "📊 Metrics: $(join_url_path(server_url, "$docspath/metrics"))"
+        @info "📊 Metrics: $(join_url_path(server_url, "$docs_path/metrics"))"
     end
+
     if parallel
         @info "🚀 Running in parallel mode with $(Threads.nthreads()) threads"
         # Add a warning if the interactive threadpool is empty when running in parallel mode
@@ -90,7 +107,7 @@ function ReviseHandler()
 end
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, mcp_path="/mcp", stdio=false, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, mcp=true, mcp_path="/mcp", stdio=false, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -106,6 +123,7 @@ function serve(ctx::ServerContext;
     catch_errors= true,
     docs        = true,
     metrics     = true,
+    mcp         = true,
     show_errors = true,
     show_banner = true,
     mcp_path    = "/mcp",
@@ -134,7 +152,7 @@ function serve(ctx::ServerContext;
     ctx.docs.schemapath[] = schema_path
 
     # choose where the MCP endpoint is mounted (relative to the global prefix)
-    ctx.mcp.path[] = normalize_mcp_path(mcp_path)
+    ctx.mcp.path[] = mcp_path
 
     # intitialize documenation router (used by docs and metrics)
     ctx.docs.router[] = Router()
@@ -180,7 +198,7 @@ function serve(ctx::ServerContext;
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
     try
-        return startserver(ctx; host, port, show_banner, docs, metrics, stdio, parallel, async, kwargs, start=(kwargs) ->
+        return start_server(ctx; show_banner, docs, metrics, mcp, stdio, parallel, async, kwargs, start=(kwargs) ->
             HTTP.listen!(handle_stream, host, port; kwargs...))
     finally
         if ctx.service.eager_revise[] !== nothing && async == false
@@ -380,20 +398,29 @@ end
 """
 Internal helper function to launch the server in a consistent way
 """
-function startserver(ctx::ServerContext; host, port, show_banner=false, docs=false, metrics=false, stdio=false, parallel=false, async=false, kwargs, start)::Server
+function start_server(ctx::ServerContext; show_banner=false, docs=false, metrics=false, stdio=false, parallel=false, async=false, mcp=false, kwargs, start)::Server
 
     docs && setupdocs(ctx)
     metrics && setupmetrics(ctx)
-    setupmcp(ctx)
+    mcp && setupmcp(ctx)
 
-    show_banner && serverwelcome(ctx.service.external_url[], ctx.service.prefix[], docs, metrics, parallel, ctx.docs.docspath[])
+    show_banner && server_welcome(
+        external_url = ctx.service.external_url[], 
+        prefix = ctx.service.prefix[],
+        docs = docs, 
+        metrics = metrics, 
+        mcp = mcp,
+        parallel = parallel, 
+        docs_path = ctx.docs.docspath[], 
+        mcp_path = ctx.mcp.path[]
+    )
 
     # start the HTTP server
     ctx.service.server[] = start(preprocesskwargs(kwargs))
 
     # optionally speak the MCP stdio transport over stdin/stdout. Per the spec,
     # closing stdin is the graceful shutdown signal, so we terminate on EOF.
-    if stdio
+    if stdio && mcp
         errormonitor(@async begin
             try
                 MCP.stdio_loop(ctx)
@@ -401,6 +428,8 @@ function startserver(ctx::ServerContext; host, port, show_banner=false, docs=fal
                 terminate(ctx)
             end
         end)
+    elseif stdio
+        @warn "Ignoring `stdio = true` because MCP is disabled (`mcp = false`)"
     end
 
     # Register & Start all repeat tasks
@@ -982,23 +1011,6 @@ function setupmetrics(ctx::ServerContext, router::Router, history::History, docs
     end
 
     register_internal(ctx, router, GET, "$docspath/metrics/data/{window}/{latest}", innermetrics)
-end
-
-
-"""
-    normalize_mcp_path(path)
-
-Normalize a user supplied MCP mount path: ensure a single leading slash and no
-trailing slash (except for the root). The path is registered internally without
-the global prefix so that `PrefixStripMiddleware` can strip the prefix when the
-server runs behind a reverse proxy.
-"""
-function normalize_mcp_path(path)::String
-    trimmed = strip(string(path))
-    isempty(trimmed) && return "/mcp"
-    startswith(trimmed, "/") || (trimmed = "/" * trimmed)
-    length(trimmed) > 1 && endswith(trimmed, "/") && (trimmed = trimmed[1:end-1])
-    return trimmed
 end
 
 

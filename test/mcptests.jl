@@ -978,13 +978,24 @@ end
 
 terminate()
 
-@testset "normalize_mcp_path" begin
-    @test Oxygen.Core.normalize_mcp_path("mcp") == "/mcp"
-    @test Oxygen.Core.normalize_mcp_path("/mcp/") == "/mcp"
-    @test Oxygen.Core.normalize_mcp_path("  tools/mcp  ") == "/tools/mcp"
-    @test Oxygen.Core.normalize_mcp_path("") == "/mcp"
-    @test Oxygen.Core.normalize_mcp_path("/") == "/"
+### Top-level mcp = false disables the endpoint ###############################
+
+serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
+      access_log=nothing, mcp=false, mcp_path="/disabled/mcp", context=AppState("injected"))
+
+@testset "mcp disabled at serve" begin
+    payload = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "tools/list",
+                   "params" => Dict("_meta" => req_meta()))
+    headers = ["Content-Type" => "application/json",
+               "MCP-Protocol-Version" => "2026-07-28",
+               "Mcp-Method" => "tools/list"]
+    client = HTTP.Client()
+    r = HTTP.request("POST", "http://$HOST:$PORT/disabled/mcp", headers, JSON.json(payload);
+                     status_exception=false, client=client)
+    @test r.status == 404
 end
+
+terminate()
 
 @testset "resetstate clears tools" begin
     Oxygen.tool("Resettable", Dict(), () -> "x"; name="resettable")

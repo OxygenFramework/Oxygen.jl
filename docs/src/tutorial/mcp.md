@@ -191,7 +191,7 @@ endpoint is mounted once at least one tool *or* prompt is registered.
 
 ## The MCP Endpoint
 
-The endpoint becomes available at `POST /mcp` automatically once at least one tool or prompt has been registered, so `serve()` is all you need. If nothing is registered, the route is not mounted at all.
+The endpoint becomes available at `POST /mcp` automatically once at least one tool or prompt has been registered, so `serve()` is all you need. If nothing is registered, the route is not mounted at all. Pass `mcp = false` to `serve` to force-disable the endpoint even when tools or prompts are registered.
 
 Use the `mcp_path` keyword to mount it somewhere else:
 
@@ -269,7 +269,7 @@ The application context is the value passed to `serve(context = ...)`.
 
 ## stdio Transport
 
-MCP clients that launch the server as a subprocess can talk over standard streams instead of HTTP. Pass `stdio = true` to `serve` and Oxygen will read newline-delimited JSON-RPC messages from `stdin` and write responses to `stdout`, in addition to the HTTP endpoint.
+MCP clients that launch the server as a subprocess can talk over standard streams instead of HTTP. Pass `stdio = true` to `serve` and Oxygen will read newline-delimited JSON-RPC messages from `stdin` and write responses to `stdout`, in addition to the HTTP endpoint. Passing `mcp = false` disables the stdio transport as well.
 
 ```julia
 serve(stdio = true)

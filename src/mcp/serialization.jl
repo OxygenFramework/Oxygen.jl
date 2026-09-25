@@ -41,7 +41,9 @@ function typeschema(T::Type)
     end
 
     schema = _typeschema(resolved, defs)
-    nullable && (schema["nullable"] = true)
+    if nullable
+        schema["nullable"] = true
+    end
     return schema, defs
 end
 
@@ -64,7 +66,9 @@ function _typeschema(T::Type, defs::Dict{String,Any})
     else
         schema = Dict{String,Any}("type" => AutoDoc.gettype(T))
         format = AutoDoc.getformat(T)
-        !isnothing(format) && (schema["format"] = format)
+        if !isnothing(format)
+            schema["format"] = format
+        end
         if T <: Enum
             schema["enum"] = collect(Int.(Base.Enums.instances(T)))
         end
@@ -74,7 +78,9 @@ end
 
 function paramschema(p::MCPParam)
     schema, defs = typeschema(p.param.type)
-    !isempty(p.description) && (schema["description"] = p.description)
+    if !isempty(p.description)
+        schema["description"] = p.description
+    end
     if p.param.hasdefault
         schema["default"] = p.param.default
     end
@@ -96,16 +102,22 @@ function inputschema(tool::MCPTool)::Dict{String,Any}
     defs = Dict{String,Any}()
 
     for p in tool.params
-        name = String(p.param.name)
+        name = p.wirename
         schema, pdefs = paramschema(p)
         properties[name] = schema
         merge!(defs, pdefs)
-        isrequired(p.param) && push!(required, name)
+        if isrequired(p.param)
+            push!(required, name)
+        end
     end
 
     result = Dict{String,Any}("type" => "object", "properties" => properties)
-    isempty(required) || (result["required"] = required)
-    isempty(defs) || (result["\$defs"] = defs)
+    if !isempty(required)
+        result["required"] = required
+    end
+    if !isempty(defs)
+        result["\$defs"] = defs
+    end
     return result
 end
 
@@ -158,45 +170,63 @@ function getappcontext(ctx::ServerContext)
     return ismissing(app_ctx) ? missing : app_ctx.payload
 end
 
-# Look up an argument by its String or Symbol key.
-function argument_value(arguments, name::Symbol)
-    key = string(name)
-    haskey(arguments, key) && return (true, arguments[key])
-    haskey(arguments, name) && return (true, arguments[name])
+# Look up an argument by its MCP wire name, falling back to the Julia parameter
+# name (and its String form) so clients that send the reflected name still work.
+function argument_value(arguments, p::MCPParam)
+    wirename = p.wirename
+    if haskey(arguments, wirename)
+        return (true, arguments[wirename])
+    end
+
+    name = p.param.name
+    if haskey(arguments, name)
+        return (true, arguments[name])
+    end
+
+    stringname = string(name)
+    if haskey(arguments, stringname)
+        return (true, arguments[stringname])
+    end
+
     return (false, nothing)
 end
 
 function resolve_argument!(pos_values::Vector{Any}, p::MCPParam, arguments)
-    name = p.param.name
-    found, value = argument_value(arguments, name)
+    found, value = argument_value(arguments, p)
     if found
         push!(pos_values, parse_tool_argument(p.param.type, value))
     elseif !isrequired(p.param)
         push!(pos_values, p.param.default)
     else
-        throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required argument: $name"))
+        throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required argument: $(p.wirename)"))
     end
     return pos_values
 end
 
 function resolve_kwarg!(kwpairs::Vector{Pair{Symbol,Any}}, p::MCPParam, arguments)
-    name = p.param.name
-    found, value = argument_value(arguments, name)
+    found, value = argument_value(arguments, p)
     if found
-        push!(kwpairs, name => parse_tool_argument(p.param.type, value))
+        push!(kwpairs, p.param.name => parse_tool_argument(p.param.type, value))
     elseif p.param.hasdefault
-        push!(kwpairs, name => p.param.default)
+        push!(kwpairs, p.param.name => p.param.default)
     else
-        throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required argument: $name"))
+        throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required argument: $(p.wirename)"))
     end
     return kwpairs
 end
 
 function invoke_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, handler::Function,
                            params::Vector{MCPParam}, argnames::Vector{Symbol},
-                           has_context::Bool, has_request::Bool, arguments)
+                           has_context::Bool, has_request::Bool, arguments;
+                           inject_request::Bool=false)
     pos_values = Any[]
     kwpairs = Pair{Symbol,Any}[]
+
+    # Route-backed tools declare the injected request as their leading positional
+    # argument; provide it here so the shared invocation path can call them.
+    if inject_request
+        push!(pos_values, req)
+    end
 
     for p in params
         if p.param.name in argnames
@@ -206,8 +236,13 @@ function invoke_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
         end
     end
 
-    has_context && push!(kwpairs, :context => getappcontext(ctx))
-    has_request && push!(kwpairs, :request => req)
+    if has_context
+        push!(kwpairs, :context => getappcontext(ctx))
+    end
+    
+    if has_request
+        push!(kwpairs, :request => req)
+    end
 
     return handler(pos_values...; kwpairs...)
 end
@@ -298,7 +333,9 @@ function content_result(block::Dict{String,Any}, structured_content=nothing)::Di
         "content" => Any[block],
         "isError" => false,
     )
-    structured_content === nothing || (result["structuredContent"] = structured_content)
+    if structured_content !== nothing
+        result["structuredContent"] = structured_content
+    end
     return result
 end
 
@@ -334,7 +371,9 @@ function modern_envelope(ctx::ServerContext, result::Dict{String,Any})::Dict{Str
     result["resultType"] = "complete"
 
     meta = get(result, META_KEY, nothing)
-    meta isa AbstractDict || (meta = Dict{String,Any}())
+    if !(meta isa AbstractDict)
+        meta = Dict{String,Any}()
+    end
     meta[META_SERVER_INFO] = Dict{String,Any}(
         "name" => ctx.mcp.server_name,
         "version" => ctx.mcp.server_version,

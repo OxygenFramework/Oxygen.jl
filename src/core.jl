@@ -556,6 +556,19 @@ function parse_route(http_method::String, router::InnerRouter) :: String
 end
 
 
+"""
+    route_mcp_config(httpmethod, route) :: Nullable{MCPConfig}
+
+Resolve the effective MCP metadata for a route from the router/route HOF that
+defined it. Plain string routes carry no metadata; HOF routes resolve the
+enclosing router's config against the route-level config. This derives the
+metadata directly from the router object, so it needs no shared lookup table.
+"""
+route_mcp_config(::String, ::String) = nothing
+route_mcp_config(::String, router::OuterRouter) = resolve_mcp_config(router.mcp, nothing)
+route_mcp_config(::String, router::InnerRouter) = resolve_mcp_config(router.outer.mcp, router.mcp)
+
+
 function parse_func_params(route::String, func::Function)
 
     """
@@ -649,14 +662,52 @@ end
 
 
 """
+    mcp_compatible_route(httpmethod, func) :: Bool
+
+Whether a route's handler can be invoked as an MCP tool. Only plain request
+handlers qualify: streaming and websocket routes, and handlers whose leading
+argument is not an `HTTP.Request`, are excluded.
+"""
+function mcp_compatible_route(httpmethod::String, func::Function)::Bool
+    if httpmethod in (WEBSOCKET, STREAM) 
+        return false
+    end
+    arg_type = first_arg_type(first(methods(func)), httpmethod)
+    # The routing layer binds the leading positional argument to the request for
+    # every non-streaming handler (`select_handler`'s base case), including when
+    # the parameter is untyped. Treat `Any` the same as `HTTP.Request`.
+    return arg_type === Any || arg_type <: HTTP.Request
+end
+
+
+"""
     register(ctx::ServerContext, httpmethod::String, route::String, func::Function)
 
 Register a request handler function with a path to the ROUTER
 """
 function register(ctx::ServerContext, httpmethod::String, route::Union{String,HOFRouter}, func::Function)
+    # Resolve any MCP metadata the router/route HOF attached before parsing, so
+    # the HTTP route is always registered regardless of the tool outcome.
+    mcp_config = route_mcp_config(httpmethod, route)
+
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
+
+    # Expose the endpoint as an MCP tool when router/route metadata enabled it.
+    # Failures are contained so a bad tool never prevents the HTTP route from
+    # being served (mirroring how schema generation errors are handled below).
+    if !isnothing(mcp_config)
+        if mcp_compatible_route(httpmethod, func)
+            try
+                MCP.register_route_tool!(ctx, mcp_config, func; httpmethod=httpmethod, route=route)
+            catch error
+                @warn "Failed to register MCP tool for route: $route" exception=(error, catch_backtrace())
+            end
+        else
+            @warn "Skipping MCP tool for route: $route (handler is not MCP-compatible)"
+        end
+    end
 
     # only generate the schema if the docs are enabled
     if ctx.docs.enabled[]

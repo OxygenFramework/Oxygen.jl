@@ -6,7 +6,7 @@ Once enabled, Oxygen hosts a single `POST /mcp` endpoint that speaks JSON-RPC 2.
 
 ## Registering Tools
 
-Tools are registered with the `@tool` macro. The first argument is the tool description, the second is a `Dict` of parameter descriptions, and the final argument is the function itself.
+Tools are registered with the `@tool` macro. The first argument is the tool description, the second declares the parameters, and the final argument is the function itself.
 
 ```julia
 using Oxygen
@@ -19,7 +19,27 @@ using Oxygen
 end
 ```
 
+The parameter declaration accepts a `Dict` (with `Symbol` or `String` keys), a `NamedTuple`, or a vector of `Pair`s — the same forms are accepted by route-level `mcp` metadata:
+
+```julia
+@tool "Add two integers" (a = "the first addend", b = "the second addend") function add(a::Int, b::Int)
+    return a + b
+end
+```
+
 The parameter names must match the function's signature. Parameters without a default are marked as required in the generated JSON Schema, while parameters with defaults are optional.
+
+A parameter's value is normally its description, but it can also be a `NamedTuple`/`Dict` with a `description` and/or a `name` to override the MCP wire name (the JSON key clients see):
+
+```julia
+@tool "Rename a user" Dict(
+    :value => (description = "the new name", name = "new_name"),
+) function rename_user(value::String)
+    return value
+end
+```
+
+The schema then advertises `new_name`, and invocations may use either `new_name` or the Julia parameter name `value`.
 
 Metadata may span multiple lines, but the `function` keyword must sit on the same line as the closing metadata token. If you prefer the definition to have its own lines, use the block form:
 
@@ -50,6 +70,76 @@ end
 ```
 
 Registering two tools with the same wire name throws an error.
+
+## Exposing Routes as Tools
+
+Instead of registering a separate tool, you can expose existing HTTP routes over
+MCP by attaching `mcp` metadata to a router or to an individual route. The
+metadata is inherited and merged from the router down to the route, so shared
+descriptions only need to be written once.
+
+```julia
+api = router("/users",
+    mcp = (
+        description = "User management",
+        parameters = Dict(:id => "User ID"),
+    ),
+)
+
+@post api("/create", mcp = (
+    description = "Create a user",
+    parameters = Dict(:email => "Email address"),
+)) function create_user(req::HTTP.Request, email::String)
+    return "created $email"
+end
+
+@get api("/{id}", mcp = (description = "Get a user")) function get_user(req::HTTP.Request, id::Int)
+    return "user $id"
+end
+```
+
+The rules are:
+
+- `mcp = true` enables a router or a route with defaults, and a `NamedTuple`
+  (or `Dict`) enables it while supplying overrides. `mcp = false` disables the
+  group or route. A router-level `false` is authoritative — routes inside it
+  cannot opt back in — while a route-level `false` excludes just that route.
+- A router's `description` acts as a group prefix: the example above produces
+  `"User management: Create a user"` and `"User management: Get a user"`. When a
+  route has no description, the handler's docstring is used instead.
+- Parameter descriptions merge outer → inner, with route-level values winning.
+  In the example `id` is described as `"User ID"` at the router level but `get_user`
+  inherits it, while `create_user` adds `email`.
+- The tool name defaults to the handler's name, keeping it endpoint-specific. A
+  router-level `name` is ignored (it would collide across every route); a route
+  can set its own with `name = "..."`. Anonymous handlers fall back to a name
+  derived from the HTTP method and path.
+- A parameter can be exposed under a different JSON key by giving its metadata a
+  `name`:
+
+  ```julia
+  @post api("/rename", mcp = (
+      description = "Rename a user",
+      parameters = Dict(:value => (description = "the new name", name = "new_name")),
+  )) function rename_user(req::HTTP.Request, value::String)
+      return value
+  end
+  ```
+
+  The schema advertises `new_name`, and invocations may use either `new_name` or
+  the Julia parameter name.
+
+Route-backed tools reuse the route handler, so the leading positional argument
+(typically `HTTP.Request`) is injected by the framework and is not part of the
+schema. The injected value is the incoming MCP transport request, not a
+route-shaped request, so handler logic that reads the route path or query from it
+will not see the original endpoint's values. Only plain request handlers
+qualify: streaming and websocket routes, and handlers whose leading argument is
+not a request, are skipped (`@warn` is emitted when metadata requested a tool that
+cannot be built). The leading argument may be left untyped (`function(req, id)`)
+or annotated as `HTTP.Request`; both are accepted. As a convenience, a bare
+string is treated as the description (`mcp = "Get a user"`), which also makes the
+natural single-field form `mcp = (description = "Get a user")` work.
 
 ## Registering Prompts
 

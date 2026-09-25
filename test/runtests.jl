@@ -43,6 +43,7 @@ include("staticfilestests.jl")
 include("originaltests.jl")
 include("revise.jl")
 include("mcptests.jl")
+include("mcp_router_tests.jl")
 
 #### Scenario Tests ####
 include("./scenarios/thunderingherd.jl")

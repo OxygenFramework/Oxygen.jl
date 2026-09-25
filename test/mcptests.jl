@@ -103,6 +103,16 @@ tool("Multiply two integers", Dict(:x => "left", :y => "right"); name="multiply"
     return x * y
 end
 
+# NamedTuple parameters, including a per-parameter wire-name override
+@tool "Named tuple parameters" (left = "the left", right = (description = "the right", name = "rhs")) function named_params(left::Int, right::Int)
+    return left + right
+end
+
+# A vector of Pairs is accepted as well
+@tool "Pair vector parameters" [:x => "the x"] function pair_params(x::Int)
+    return x
+end
+
 ### Registered prompts ###
 
 # arguments are inferred from the signature: `city` required, `tone` optional
@@ -265,6 +275,31 @@ end
     @test haskey(struct_schema["\$defs"], "Place")
     @test haskey(struct_schema["\$defs"], "Coordinates")
     @test !occursin("#/components/schemas/", JSON.json(struct_schema))
+end
+
+@testset "parameter declaration forms" begin
+    tools = CONTEXT[].mcp.tools
+
+    named = tools["named_params"]
+    @test named.params[1].description == "the left"
+    @test named.params[1].wirename == "left"
+    @test named.params[2].description == "the right"
+    @test named.params[2].wirename == "rhs"
+
+    pair = tools["pair_params"]
+    @test pair.params[1].description == "the x"
+    @test pair.params[1].wirename == "x"
+
+    # the wire name shows up in the generated schema
+    schema = MCP.inputschema(named)
+    @test haskey(schema["properties"], "rhs")
+    @test schema["properties"]["rhs"]["description"] == "the right"
+
+    # invocation accepts the wire name (and falls back to the Julia name)
+    r = call_tool("named_params", Dict("left" => 1, "rhs" => 2))
+    @test parsebody(r)["result"]["content"][1]["text"] == "3"
+    r = call_tool("named_params", Dict("left" => 1, "right" => 2))
+    @test parsebody(r)["result"]["content"][1]["text"] == "3"
 end
 
 @testset "parse_tool_argument" begin

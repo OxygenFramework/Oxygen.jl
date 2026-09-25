@@ -380,7 +380,8 @@ internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false,
                 tags::Vector{String} = Vector{String}(), 
                 middleware::Nullable{Vector} = nothing, 
                 interval::Nullable{Real} = nothing,
-                cron::Nullable{String} = nothing)
+                cron::Nullable{String} = nothing,
+                mcp::Nullable{MCPMetadata} = nothing)
 
 Create a new router instance.
 
@@ -390,6 +391,11 @@ Create a new router instance.
 - `middleware::Nullable{Vector}`: Optional middleware to be applied to all routes in the router.
 - `interval::Nullable{Real}`: Optional interval for scheduling tasks.
 - `cron::Nullable{String}`: Optional cron expression for scheduling tasks.
+- `mcp`: Optional MCP metadata inherited by every route in the router. Use
+  `mcp = false` to exclude the group, `mcp = true` to expose each route with
+  defaults, or a `NamedTuple`/`Dict` such as
+  `(description = "User management", parameters = Dict(:id => "User ID"))` to
+  provide defaults that routes can override.
 
 # Returns
 A router instance that can be used to define and manage a set of related routes.
@@ -398,9 +404,10 @@ function router(prefix::String = "";
                 tags::Vector{String} = Vector{String}(), 
                 middleware::Nullable{Vector} = nothing, 
                 interval::Nullable{Real} = nothing,
-                cron::Nullable{String} = nothing)
+                cron::Nullable{String} = nothing,
+                mcp::Nullable{MCPMetadata} = nothing)
 
-    return Oxygen.Core.router(CONTEXT[], prefix; tags, middleware, interval, cron)
+    return Oxygen.Core.router(CONTEXT[], prefix; tags, middleware, interval, cron, mcp)
 end
 
 

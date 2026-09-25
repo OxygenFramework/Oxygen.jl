@@ -54,7 +54,8 @@ end
 # Route-level parameter metadata may rename the MCP wire name.
 @post things("/rename", mcp = (
     description = "Rename a thing",
-    parameters = Dict(:value => (description = "the value", name = "val")),
+    parameters = Dict(:value => "the value"),
+    names = Dict(:value => "val"),
 )) function route_rename_thing(req::HTTP.Request, value::Int)
     return value + 1
 end
@@ -136,7 +137,8 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false, ac
 
     config = MCP.normalize_mcp_config((
         description = "Group",
-        parameters = Dict(:id => "ID", :value => (description = "value", name = "val")),
+        parameters = Dict(:id => "ID", :value => "value"),
+        names = Dict(:value => "val"),
         name = "explicit",
     ))
     @test config.enabled == true
@@ -147,9 +149,12 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false, ac
 
     @test_throws ArgumentError MCP.normalize_mcp_config(42)
 
+    # metadata keys must be Symbols
+    @test_throws ArgumentError MCP.normalize_mcp_config(Dict("description" => "x"))
+
     # `parameters` accepts a Dict, a NamedTuple, or a vector of Pairs
     as_named = MCP.normalize_mcp_config((description = "Group",
-        parameters = (id = "ID", value = (description = "value", name = "val"))))
+        parameters = (id = "ID", value = "value"), names = Dict(:value => "val")))
     @test as_named.parameters == Dict(:id => "ID", :value => "value")
     @test as_named.names == Dict(:value => "val")
 
@@ -157,9 +162,12 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false, ac
     @test as_pairs.parameters == Dict(:id => "ID")
 
     # `parse_mcp_parameters` is the shared parser used by `@tool` too
-    descriptions, names = MCP.parse_mcp_parameters((a = "first", b = (description = "second", name = "B")))
+    descriptions = MCP.parse_mcp_parameters((a = "first", b = "second"))
     @test descriptions == Dict(:a => "first", :b => "second")
-    @test names == Dict(:b => "B")
+
+    # parameter keys must be Symbols and cannot carry a per-parameter override
+    @test_throws ArgumentError MCP.parse_mcp_parameters(Dict("a" => "first"))
+    @test_throws ArgumentError MCP.parse_mcp_parameters((a = (description = "x", name = "y"),))
 
     # router config -> route config resolution
     outer = MCP.normalize_mcp_config((description = "Group", parameters = Dict(:id => "ID")))

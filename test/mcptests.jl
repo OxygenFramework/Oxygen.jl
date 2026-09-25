@@ -103,8 +103,8 @@ tool("Multiply two integers", Dict(:x => "left", :y => "right"); name="multiply"
     return x * y
 end
 
-# NamedTuple parameters, including a per-parameter wire-name override
-@tool "Named tuple parameters" (left = "the left", right = (description = "the right", name = "rhs")) function named_params(left::Int, right::Int)
+# NamedTuple parameters (wire names default to the Julia parameter names)
+@tool "Named tuple parameters" (left = "the left", right = "the right") function named_params(left::Int, right::Int)
     return left + right
 end
 
@@ -284,22 +284,26 @@ end
     @test named.params[1].description == "the left"
     @test named.params[1].wirename == "left"
     @test named.params[2].description == "the right"
-    @test named.params[2].wirename == "rhs"
+    @test named.params[2].wirename == "right"
 
     pair = tools["pair_params"]
     @test pair.params[1].description == "the x"
     @test pair.params[1].wirename == "x"
 
-    # the wire name shows up in the generated schema
-    schema = MCP.inputschema(named)
-    @test haskey(schema["properties"], "rhs")
-    @test schema["properties"]["rhs"]["description"] == "the right"
-
-    # invocation accepts the wire name (and falls back to the Julia name)
-    r = call_tool("named_params", Dict("left" => 1, "rhs" => 2))
-    @test parsebody(r)["result"]["content"][1]["text"] == "3"
+    # invocation uses the Julia parameter names
     r = call_tool("named_params", Dict("left" => 1, "right" => 2))
     @test parsebody(r)["result"]["content"][1]["text"] == "3"
+end
+
+@testset "parameter metadata validation" begin
+    # a description key that does not name a parameter is rejected
+    @test_throws ArgumentError tool("Unknown key", Dict(:nope => "x"), subtract)
+    # every parameter must carry a description
+    @test_throws ArgumentError tool("Incomplete", Dict(:a => "left"), subtract)
+    # the per-parameter (description, name) form is no longer supported
+    @test_throws ArgumentError tool("Nested", Dict(:a => (description = "x", name = "y")), subtract)
+    # String keys are rejected
+    @test_throws ArgumentError tool("String key", Dict("a" => "left"), subtract)
 end
 
 @testset "parse_tool_argument" begin

@@ -568,6 +568,18 @@ route_mcp_config(::String, ::String) = nothing
 route_mcp_config(::String, router::OuterRouter) = resolve_mcp_config(router.mcp, nothing)
 route_mcp_config(::String, router::InnerRouter) = resolve_mcp_config(router.outer.mcp, router.mcp)
 
+"""
+    route_mcp_overrides(route) :: Nullable{MCPConfig}
+
+The route-level MCP overrides only (never the inherited router config), used to
+validate that explicitly declared parameter names match the handler signature.
+Router-level descriptions are shared across routes with different signatures, so
+only what the route itself declared can be checked for typos.
+"""
+route_mcp_overrides(::String) = nothing
+route_mcp_overrides(::OuterRouter) = nothing
+route_mcp_overrides(router::InnerRouter) = router.mcp
+
 
 function parse_func_params(route::String, func::Function)
 
@@ -687,18 +699,29 @@ Register a request handler function with a path to the ROUTER
 """
 function register(ctx::ServerContext, httpmethod::String, route::Union{String,HOFRouter}, func::Function)
     # Resolve any MCP metadata the router/route HOF attached before parsing, so
-    # the HTTP route is always registered regardless of the tool outcome.
+    # the HTTP route is always registered regardless of the tool outcome. The
+    # route-level overrides are kept separately so a mistyped parameter name is
+    # reported against only what the route itself declared (router-level
+    # descriptions are shared across routes with different signatures).
     mcp_config = route_mcp_config(httpmethod, route)
+    mcp_overrides = route_mcp_overrides(route)
 
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
 
     # Expose the endpoint as an MCP tool when router/route metadata enabled it.
-    # Failures are contained so a bad tool never prevents the HTTP route from
-    # being served (mirroring how schema generation errors are handled below).
     if !isnothing(mcp_config)
         if mcp_compatible_route(httpmethod, func)
+            # A mistyped route-level parameter is a developer error, so it is
+            # raised instead of contained.
+            if !isnothing(mcp_overrides) && mcp_overrides.enabled
+                MCP.validate_mcp_param_keys(func, mcp_overrides.parameters,
+                                            mcp_overrides.names; skip_first=true)
+            end
+            # Other tool-build failures are contained so a bad tool never
+            # prevents the HTTP route from being served (mirroring how schema
+            # generation errors are handled below).
             try
                 MCP.register_route_tool!(ctx, mcp_config, func; httpmethod=httpmethod, route=route)
             catch error

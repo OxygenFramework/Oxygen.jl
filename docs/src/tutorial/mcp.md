@@ -19,7 +19,7 @@ using Oxygen
 end
 ```
 
-The parameter declaration accepts a `Dict` (with `Symbol` or `String` keys), a `NamedTuple`, or a vector of `Pair`s — the same forms are accepted by route-level `mcp` metadata:
+The parameter declaration accepts a `Dict` or `NamedTuple` (with `Symbol` keys), or a vector of `Pair`s — the same forms are accepted by route-level `mcp` metadata:
 
 ```julia
 @tool "Add two integers" (a = "the first addend", b = "the second addend") function add(a::Int, b::Int)
@@ -27,19 +27,7 @@ The parameter declaration accepts a `Dict` (with `Symbol` or `String` keys), a `
 end
 ```
 
-The parameter names must match the function's signature. Parameters without a default are marked as required in the generated JSON Schema, while parameters with defaults are optional.
-
-A parameter's value is normally its description, but it can also be a `NamedTuple`/`Dict` with a `description` and/or a `name` to override the MCP wire name (the JSON key clients see):
-
-```julia
-@tool "Rename a user" Dict(
-    :value => (description = "the new name", name = "new_name"),
-) function rename_user(value::String)
-    return value
-end
-```
-
-The schema then advertises `new_name`, and invocations may use either `new_name` or the Julia parameter name `value`.
+The parameter names must match the function's signature, and every parameter must be described. A mistyped or extra key, or a parameter left without a description, throws an `ArgumentError`. Parameters without a default are marked as required in the generated JSON Schema, while parameters with defaults are optional. Tool parameters are always exposed under their Julia name; wire-name overrides are only available on route-backed tools via the `names` map (see below).
 
 Metadata may span multiple lines, but the `function` keyword must sit on the same line as the closing metadata token. If you prefer the definition to have its own lines, use the block form:
 
@@ -114,13 +102,13 @@ The rules are:
   router-level `name` is ignored (it would collide across every route); a route
   can set its own with `name = "..."`. Anonymous handlers fall back to a name
   derived from the HTTP method and path.
-- A parameter can be exposed under a different JSON key by giving its metadata a
-  `name`:
+- A parameter can be exposed under a different JSON key with a `names` map:
 
   ```julia
   @post api("/rename", mcp = (
       description = "Rename a user",
-      parameters = Dict(:value => (description = "the new name", name = "new_name")),
+      parameters = Dict(:value => "the new name"),
+      names = Dict(:value => "new_name"),
   )) function rename_user(req::HTTP.Request, value::String)
       return value
   end

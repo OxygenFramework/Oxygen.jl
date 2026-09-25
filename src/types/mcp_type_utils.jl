@@ -5,29 +5,20 @@ using ..MCPTypes: MCPConfig, MCPMetadata
 
 export parse_mcp_parameters, normalize_mcp_config, merge_mcp_configs, resolve_mcp_config
 
-# Pull a key out of user supplied metadata (NamedTuple or Dict with Symbol or
-# String keys), falling back to `default`.
-function _mcp_get(mcp, key::Symbol, default)
-    if mcp isa NamedTuple
-        return get(mcp, key, default)
-    end
-    if haskey(mcp, key)
-        return mcp[key]
-    end
-    stringkey = String(key)
-    if haskey(mcp, stringkey)
-        return mcp[stringkey]
-    end
-    return default
-end
+# Keys that identify a parameter or a metadata field must be Symbols. This keeps
+# them comparable to reflected parameter names without the String->Symbol
+# coercion that would silently mask a typo, and lets `get` work uniformly across
+# `NamedTuple` and `Dict` metadata.
+symbol_key(key::Symbol)::Symbol = key
+symbol_key(key) = throw(ArgumentError("MCP metadata and parameter names must be Symbols, got a $(typeof(key)): $(repr(key))"))
 
-_mcp_string(value)::String = string(value)
-_mcp_string(::Nothing)::String = ""
+mcp_string(value)::String = string(value)
+mcp_string(::Nothing)::String = ""
 
 # Normalize a collection of parameter declarations into an iterable of
-# `(key, value)` pairs. Both `Dict` (Symbol or String keys) and `NamedTuple`
-# are accepted, as is a vector of `Pair`s. `nothing` yields an empty iterable.
-function _mcp_entries(params)
+# `(key, value)` pairs. Both `Dict` and `NamedTuple` are accepted, as is a vector
+# of `Pair`s; keys must be Symbols. `nothing` yields an empty iterable.
+function mcp_entries(params)
     if params === nothing
         return ()
     end
@@ -40,79 +31,75 @@ function _mcp_entries(params)
 end
 
 """
-    parse_mcp_parameters(params) :: (Dict{Symbol,String}, Dict{Symbol,String})
+    parse_mcp_parameters(params) :: Dict{Symbol,String}
 
-Parse a collection of parameter declarations into `(descriptions, names)`.
+Parse a collection of parameter descriptions into a `Symbol => String` map.
 
-`params` may be a `Dict` (Symbol or String keys), a `NamedTuple`, or a vector of
-`Pair`s. Each value is either a plain description (anything string-convertible)
-or a `NamedTuple`/`Dict` carrying a `description` and/or a `name` wire-name
-override. This is the single parser shared by `@tool`/`tool` and by router/route
-`mcp` metadata so both accept the same forms.
+`params` may be a `NamedTuple` or a `Dict` (with `Symbol` keys), or a vector of
+`Pair`s. Each value is the parameter's human readable description. There is no
+per-parameter wire-name override: use the `names` map in `mcp` metadata to
+expose a parameter under a different JSON key. This is the single parser shared
+by `@tool`/`tool` and by router/route `mcp` metadata so both accept the same
+forms.
 """
 function parse_mcp_parameters(params)
     descriptions = Dict{Symbol,String}()
-    names = Dict{Symbol,String}()
-    for (key, value) in _mcp_entries(params)
-        name = Symbol(key)
+    for (key, value) in mcp_entries(params)
+        name = symbol_key(key)
         if value isa NamedTuple || value isa AbstractDict
-            desc = _mcp_string(_mcp_get(value, :description, ""))
-            wirename = _mcp_get(value, :name, nothing)
-            if !isempty(desc)
-                descriptions[name] = desc
-            end
-            if wirename !== nothing
-                names[name] = string(wirename)
-            end
-        else
-            desc = _mcp_string(value)
-            if !isempty(desc)
-                descriptions[name] = desc
-            end
+            throw(ArgumentError(
+                "Per-parameter `description`/`name` metadata is not supported; " *
+                "pass a plain description and use `names` to override wire names"))
+        end
+        desc = mcp_string(value)
+        if !isempty(desc)
+            descriptions[name] = desc
         end
     end
-    return descriptions, names
+    return descriptions
 end
 
 """
     normalize_mcp_config(mcp) :: Nullable{MCPConfig}
 
 Normalize the `mcp` metadata accepted by `router()` and route registration.
-Returns `nothing` when the metadata is `nothing` (meaning "not specified", so
-the enclosing router's value is inherited), an explicitly disabled config for
-`false`, an enabled config with defaults for `true`, an enabled config with a
-description for a `String`, and an enabled config for a `NamedTuple`/`Dict` of
-overrides. Any other value throws.
+Each accepted container gets its own method below: `nothing` (meaning "not
+specified", so the enclosing router's value is inherited), `false` (an
+explicitly disabled config), `true` (an enabled config with defaults), a
+`String` (an enabled config whose description is the string), and a
+`NamedTuple`/`Dict` of overrides. Any other value throws.
+
+The override container (`NamedTuple` or `Dict`) must use `Symbol` keys; the two
+are normalized by the same helper.
 """
-function normalize_mcp_config(mcp)::Nullable{MCPConfig}
-    if mcp === nothing
-        return nothing
-    end
-    if mcp === false
-        return MCPConfig(enabled=false)
-    end
-    if mcp === true
-        return MCPConfig()
-    end
-    # A bare string is a description shorthand. This also makes the natural
-    # single-field form `mcp = (description = "...")` work, since Julia parses a
-    # one-element `(key = value)` as an assignment rather than a NamedTuple.
-    if mcp isa AbstractString
-        return MCPConfig(enabled=true, description=String(mcp))
-    end
-    if !(mcp isa NamedTuple || mcp isa AbstractDict)
-        throw(ArgumentError("Invalid `mcp` metadata: expected true, false, a description string, a NamedTuple, or a Dict"))
+normalize_mcp_config(::Nothing)::Nullable{MCPConfig} = nothing
+normalize_mcp_config(mcp::Bool)::Nullable{MCPConfig} = MCPConfig(enabled=mcp)
+# A bare string is a description shorthand. This also makes the natural
+# single-field form `mcp = (description = "...")` work, since Julia parses a
+# one-element `(key = value)` as an assignment rather than a NamedTuple.
+normalize_mcp_config(mcp::AbstractString)::Nullable{MCPConfig} =
+    MCPConfig(enabled=true, description=String(mcp))
+normalize_mcp_config(mcp::NamedTuple)::Nullable{MCPConfig} = normalize_mcp_overrides(mcp)
+normalize_mcp_config(mcp::AbstractDict)::Nullable{MCPConfig} = normalize_mcp_overrides(mcp)
+normalize_mcp_config(mcp)::Nullable{MCPConfig} = throw(ArgumentError(
+    "Invalid `mcp` metadata: expected true, false, a description string, a NamedTuple, or a Dict"))
+
+# Parse the `description`/`parameters`/`names`/`name` overrides carried by a
+# `NamedTuple` or `Dict`, enforcing the symbols-only key policy.
+function normalize_mcp_overrides(mcp::Union{NamedTuple,AbstractDict})
+    for key in keys(mcp)
+        symbol_key(key)
     end
 
-    description = _mcp_string(_mcp_get(mcp, :description, ""))
-    parameters, names = parse_mcp_parameters(_mcp_get(mcp, :parameters, nothing))
+    description = mcp_string(get(mcp, :description, ""))
+    parameters = parse_mcp_parameters(get(mcp, :parameters, nothing))
 
-    rawnames = _mcp_get(mcp, :names, nothing)
-    for (key, value) in _mcp_entries(rawnames)
-        names[Symbol(key)] = string(value)
+    names = Dict{Symbol,String}()
+    for (key, value) in mcp_entries(get(mcp, :names, nothing))
+        names[symbol_key(key)] = string(value)
     end
 
-    toolname = _mcp_get(mcp, :name, nothing)
+    toolname = get(mcp, :name, nothing)
     return MCPConfig(
         enabled = true,
         description = description,

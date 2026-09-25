@@ -40,6 +40,53 @@ function reflect_mcp_params(func::Function, descriptions::Dict{Symbol,String},
     return info, argnames, mcp_params
 end
 
+# The set of handler parameters a client may supply: every reflected positional
+# and keyword parameter except the framework-injected `context`/`request`. For
+# route-backed tools the leading positional argument (the injected request) is
+# dropped too.
+function mcp_param_names(func::Function; skip_first::Bool=false)::Set{Symbol}
+    info = Reflection.splitdef(func; start=1)
+
+    positional = info.args
+    if skip_first && !isempty(info.args)
+        positional = info.args[2:end]
+    end
+
+    names = Set{Symbol}()
+    for p in positional
+        p.name in (:context, :request) && continue
+        push!(names, p.name)
+    end
+    for p in info.kwargs
+        p.name in (:context, :request) && continue
+        push!(names, p.name)
+    end
+    return names
+end
+
+# Guard against mistyped parameter metadata: every key in `descriptions`/`names`
+# must name a real handler parameter, and when `require_complete` is set every
+# handler parameter must carry a description. Throws `ArgumentError` otherwise.
+function validate_mcp_param_keys(func::Function, descriptions::Dict{Symbol,String},
+                                 names::Dict{Symbol,String}; skip_first::Bool=false,
+                                 require_complete::Bool=false)
+    allowed = mcp_param_names(func; skip_first=skip_first)
+
+    # Metadata keys that don't name a real handler parameter (mistyped or extra)
+    unknown = sort!(collect(setdiff(union(keys(descriptions), keys(names)), allowed)))
+
+    isempty(unknown) || throw(ArgumentError(
+        "Unknown MCP parameter name(s): $(join(string.(unknown), ", ")). " *
+        "Expected one of: $(join(string.(sort!(collect(allowed))), ", "))"))
+
+    if require_complete
+        missing = sort!(collect(setdiff(allowed, keys(descriptions))))
+        isempty(missing) || throw(ArgumentError(
+            "Missing description for MCP parameter(s): $(join(string.(missing), ", "))"))
+    end
+    return nothing
+end
+
 # Whether the handler declares an injected `context` / `request` keyword.
 function injected_kwargs(func::Function)
     kwdecl = Base.kwarg_decl(first(methods(func)))
@@ -80,14 +127,16 @@ end
 Reflect on `func`, merge the explicit `params` descriptions, and store the
 resulting `MCPTool` in `ctx.mcp.tools` keyed by its wire name.
 
-`params` accepts the same forms as route-level MCP metadata: a `Dict` (Symbol or
-`String` keys), a `NamedTuple`, or a vector of `Pair`s. Each value is either a
-description or a `NamedTuple`/`Dict` with a `description` and/or `name` (wire
-name override).
+`params` accepts the same forms as route-level MCP metadata: a `Dict` or
+`NamedTuple` (Symbol keys only), or a vector of `Pair`s. Each value is the
+parameter's description. Every handler parameter must be described and every key
+must name a real parameter, otherwise an `ArgumentError` is thrown. Wire names
+default to the Julia parameter name.
 """
 function register_tool!(ctx::ServerContext, desc, params, func::Function; name=nothing)
-    descriptions, names = parse_mcp_parameters(params)
-    info, argnames, mcp_params = reflect_mcp_params(func, descriptions, names)
+    descriptions = parse_mcp_parameters(params)
+    validate_mcp_param_keys(func, descriptions, Dict{Symbol,String}(); require_complete=true)
+    info, argnames, mcp_params = reflect_mcp_params(func, descriptions, Dict{Symbol,String}())
     has_context, has_request = injected_kwargs(func)
 
     wirename = isnothing(name) ? string(info.name) : string(name)

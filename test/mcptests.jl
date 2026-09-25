@@ -113,6 +113,19 @@ end
     return x
 end
 
+# The two-argument @tool form uses the handler's docstring as the description
+"""
+Adds two integers using the docstring as the tool description.
+"""
+@tool Dict(:a => "left", :b => "right") function documented_tool(a::Int, b::Int)
+    return a + b
+end
+
+# ...and an undocumented handler simply gets an empty description
+@tool Dict(:x => "the x") function undocumented_tool(x::Int)
+    return x
+end
+
 ### Registered prompts ###
 
 # arguments are inferred from the signature: `city` required, `tone` optional
@@ -304,6 +317,15 @@ end
     @test_throws ArgumentError tool("Nested", Dict(:a => (description = "x", name = "y")), subtract)
     # String keys are rejected
     @test_throws ArgumentError tool("String key", Dict("a" => "left"), subtract)
+end
+
+@testset "docstring tool description" begin
+    tools = CONTEXT[].mcp.tools
+    @test tools["documented_tool"].description == "Adds two integers using the docstring as the tool description."
+    @test tools["undocumented_tool"].description == ""
+
+    r = call_tool("documented_tool", Dict("a" => 1, "b" => 2))
+    @test parsebody(r)["result"]["content"][1]["text"] == "3"
 end
 
 @testset "parse_tool_argument" begin

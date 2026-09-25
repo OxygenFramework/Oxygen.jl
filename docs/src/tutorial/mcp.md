@@ -42,7 +42,20 @@ Metadata may span multiple lines, but the `function` keyword must sit on the sam
 end
 ```
 
-For previously defined functions, or when you want an explicit wire name, use `tool`:
+If the description would just repeat the handler's docstring, use the two-argument form and let the docstring supply it:
+
+```julia
+"""
+Create a user.
+"""
+@tool Dict(:name => "Full name of the user", :email => "Email address") function create_user(name::String, email::String)
+    return "created $name <$email>"
+end
+```
+
+An undocumented handler registered this way gets an empty description. The same works with `tool(params, func)` for previously defined functions.
+
+For previously defined functions, or when you want an explicit wire name, use the three-argument `tool`:
 
 ```julia
 function search_users(q::String, limit::Int = 10)

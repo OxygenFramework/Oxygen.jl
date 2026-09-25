@@ -245,6 +245,15 @@ Convenience function to register an MCP tool. Equivalent to `@tool`
 """
 tool(func::Function, description::String, parameters; name=nothing) = tool(description, parameters, func; name=name)
 
+"""
+    tool(parameters, func::Function; name=nothing)
+
+Convenience function to register an MCP tool without an explicit description:
+the function's own docstring is used as the tool description. Equivalent to the
+two-argument `@tool`.
+"""
+tool(parameters, func::Function; name=nothing) = Oxygen.Core.register_tool!(CONTEXT[], "", parameters, func; name=name)
+
 
 """
     @tool(description::String, parameters, func::Function)
@@ -262,6 +271,36 @@ token. A block form is also supported (and reads closest to `@doc`):
 macro tool(description, parameters, func)
     description, parameters, func = adjustparams(description, parameters, func)
     return :(tool($(esc(description)), $(esc(parameters)), $(esc(func))))
+end
+
+"""
+    @tool(parameters, func::Function)
+
+Used to register a function as an MCP tool using the function's docstring as the
+tool description. The handler must be a named definition written inline, so the
+macro can attach the preceding docstring to it:
+
+    \"\"\"
+    Add two integers together.
+    \"\"\"
+    @tool Dict(:a => "the first addend", :b => "the second addend") function add(a::Int, b::Int)
+        a + b
+    end
+
+An undocumented handler gets an empty description.
+"""
+macro tool(parameters, func)
+    parameters, func = adjustparams(parameters, func)
+    name = Oxygen.Core.Reflection.defname(func)
+    if isnothing(name)
+        return :(tool($(esc(parameters)), $(esc(func))))
+    end
+    # Split the definition into its own `@__doc__`-marked statement so Julia
+    # attaches the preceding docstring to the handler, then register it.
+    return esc(quote
+        Base.@__doc__ $func
+        tool($parameters, $name)
+    end)
 end
 
 

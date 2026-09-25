@@ -3,7 +3,7 @@ using StructTypes
 using Base: @kwdef
 using ..Types
 
-export splitdef, struct_builder, extract_struct_info
+export splitdef, struct_builder, extract_struct_info, defname
 
 """
 Helper function to access the underlying value of any global references
@@ -46,6 +46,24 @@ function getsignames(func_methods::Base.MethodList; start=2)
         end
     end
     return arg_names, arg_types, kwarg_names
+end
+
+"""
+    defname(def) :: Union{Symbol,Expr,Nothing}
+
+The name bound by a named function-definition expression (`function f(...) ... end`
+or the short `f(...) = ...` form), or `nothing` when `def` is not a named
+definition (an anonymous function or do-block has no binding to attach a
+docstring to). Used by macros that need to reference a handler after defining it.
+"""
+function defname(def)
+    if def isa Expr && (def.head === :function || def.head === :(=))
+        sig = def.args[1]
+        if sig isa Expr && sig.head == :call
+            return sig.args[1]
+        end
+    end
+    return nothing
 end
 
 function walkargs(predicate::Function, expr)

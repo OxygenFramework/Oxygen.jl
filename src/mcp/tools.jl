@@ -132,6 +132,9 @@ resulting `MCPTool` in `ctx.mcp.tools` keyed by its wire name.
 parameter's description. Every handler parameter must be described and every key
 must name a real parameter, otherwise an `ArgumentError` is thrown. Wire names
 default to the Julia parameter name.
+
+When `desc` is empty the handler's own docstring is used as the tool
+description, so the two-argument `@tool`/`tool` forms need not repeat it.
 """
 function register_tool!(ctx::ServerContext, desc, params, func::Function; name=nothing)
     descriptions = parse_mcp_parameters(params)
@@ -140,7 +143,9 @@ function register_tool!(ctx::ServerContext, desc, params, func::Function; name=n
     has_context, has_request = injected_kwargs(func)
 
     wirename = isnothing(name) ? string(info.name) : string(name)
-    store_tool!(ctx, wirename, string(desc), func, mcp_params, argnames,
+    own = string(desc)
+    description = isempty(own) ? function_docstring(func) : own
+    store_tool!(ctx, wirename, description, func, mcp_params, argnames,
                 has_context, has_request, false)
 end
 

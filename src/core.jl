@@ -67,16 +67,21 @@ function server_welcome(;
     end
 
     @info "✅ Started server: $server_url"
+    
     if docs
         @info "📖 Documentation: $(join_url_path(server_url, docs_path))"
+    end
+
+    if docs && metrics
+        @info "📊 Metrics: $(join_url_path(server_url, "$docs_path/metrics"))"
     end
 
     if mcp
         @info "🔌 MCP: $(join_url_path(server_url, mcp_path))"
     end
 
-    if docs && metrics
-        @info "📊 Metrics: $(join_url_path(server_url, "$docs_path/metrics"))"
+    if mcp && docs
+        @info "🧭 MCP Explorer: $(join_url_path(server_url, "$docs_path/mcp"))"
     end
 
     if parallel
@@ -400,7 +405,7 @@ Internal helper function to launch the server in a consistent way
 """
 function start_server(ctx::ServerContext; show_banner=false, docs=false, metrics=false, stdio=false, parallel=false, async=false, mcp=false, kwargs, start)::Server
 
-    docs && setupdocs(ctx)
+    docs && setupdocs(ctx; mcp=mcp)
     metrics && setupmetrics(ctx)
     mcp && setupmcp(ctx)
 
@@ -917,8 +922,8 @@ function registerhandler(ctx::ServerContext, router::Router, httpmethod::String,
     HTTP.register!(router, resolved_httpmethod, route, handle)
 end
 
-function setupdocs(ctx::ServerContext)
-    setupdocs(ctx, ctx.docs.router[], ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[])
+function setupdocs(ctx::ServerContext; mcp::Bool=true)
+    setupdocs(ctx, ctx.docs.router[], ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[]; mcp=mcp)
 end
 
 """
@@ -935,7 +940,7 @@ function prefix_schema_paths(schema::Dict, prefix::Nullable{String})
 end
 
 # add the swagger and swagger/schema routes 
-function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::String, schemapath::String)
+function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::String, schemapath::String; mcp::Bool=true)
     full_schema = "$docspath$schemapath"
 
     # Emit the schema URL relative (no leading slash) so it resolves regardless of
@@ -953,6 +958,16 @@ function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::S
     register_internal(ctx, router, "GET", "$docspath/swagger", () -> swaggerhtml(schema_url))
     register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(schema_url))
     register_internal(ctx, router, "GET", full_schema, () -> prefixed_openapi_schema)
+
+    if mcp 
+        # get the mcp endpoint url
+        endpoint = join_url_path(ctx.service.prefix[], ctx.mcp.path[])
+        # Make sure the mcp endpoint has a leading slash
+        if !startswith(endpoint, "/")
+            endpoint = "/$endpoint"
+        end
+        register_internal(ctx, router, "GET", "$docspath/mcp", () -> mcpexplorerhtml(endpoint))
+    end
 end
 
 

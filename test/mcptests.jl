@@ -250,6 +250,14 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
     @test !haskey(Oxygen.CONTEXT[].mcp.tools, "add_numbers")
 end
 
+@testset "mcp explorer docs page" begin
+    r = internalrequest(HTTP.Request("GET", "/docs/mcp"))
+    @test r.status == 200
+    body = text(r)
+    @test occursin("McpExplorer", body)
+    @test occursin("endpoint: \"/mcp\"", body)
+end
+
 @testset "reflection" begin
     tool = CONTEXT[].mcp.tools["add_numbers"]
     @test tool.has_context == false
@@ -1042,6 +1050,11 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
     r = HTTP.request("POST", "http://$HOST:$PORT/tools/mcp", headers, JSON.json(payload);
                      status_exception=false, client=client)
     @test r.status == 404
+
+    # the explorer page points at the prefixed endpoint
+    r = HTTP.request("GET", "http://$HOST:$PORT/api/docs/mcp"; status_exception=false, client=client)
+    @test r.status == 200
+    @test occursin("endpoint: \"/api/tools/mcp\"", String(r.body))
 end
 
 terminate()
@@ -1060,6 +1073,10 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
     client = HTTP.Client()
     r = HTTP.request("POST", "http://$HOST:$PORT/disabled/mcp", headers, JSON.json(payload);
                      status_exception=false, client=client)
+    @test r.status == 404
+
+    # the explorer page is not mounted either
+    r = HTTP.request("GET", "http://$HOST:$PORT/docs/mcp"; status_exception=false, client=client)
     @test r.status == 404
 end
 

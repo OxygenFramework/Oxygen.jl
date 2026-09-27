@@ -12,7 +12,7 @@ using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, Param, isr
 using ..Extractors: isextractor, extracttype, isreqparam
 using ..Reflection: splitdef, is_builtin_type, nonnull_types, dict_valtype
 
-export registerschema, swaggerhtml, redochtml, mergeschema
+export registerschema, swaggerhtml, redochtml, mcpexplorerhtml, mergeschema
 
 """
     mergeschema(route::String, customschema::Dict)
@@ -927,5 +927,42 @@ function swaggerhtml(schemapath::String) :: HTTP.Response
         </html>
     """)
 end
+
+
+"""
+    mcpexplorerhtml(endpoint::String) :: HTTP.Response
+
+Return an HTML page that mounts the MCP explorer against `endpoint`.
+"""
+function mcpexplorerhtml(endpoint::String) :: HTTP.Response
+
+    # load static content files
+    viewerjs = readstaticfile("$MCP_EXPLORER_VERSION/mcpexplorer.js")
+    viewerstyles = readstaticfile("$MCP_EXPLORER_VERSION/mcpexplorer.css")
+
+    html("""
+        <!DOCTYPE html>
+        <html lang="en">
+
+        <head>
+            <title>MCP Explorer</title>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <meta name="description" content="MCP Explorer" />
+            <style>$viewerstyles</style>
+        </head>
+
+        <body>
+            <div id="mcp-explorer"></div>
+            <script>$viewerjs</script>
+            <script>
+                window.McpExplorer({ endpoint: "$endpoint", domId: "mcp-explorer" });
+            </script>
+        </body>
+
+        </html>
+    """)
+end
+
 
 end

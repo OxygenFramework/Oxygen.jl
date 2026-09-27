@@ -956,7 +956,12 @@ function mcpexplorerhtml(endpoint::String) :: HTTP.Response
             <div id="mcp-explorer"></div>
             <script>$viewerjs</script>
             <script>
-                window.McpExplorer({ endpoint: "$endpoint", domId: "mcp-explorer", execEnabled: true });
+                window.McpExplorer({ 
+                    endpoint: "$endpoint", 
+                    domId: "mcp-explorer", 
+                    execEnabled: true,
+                    endpointEditable: false
+                });
             </script>
         </body>
 

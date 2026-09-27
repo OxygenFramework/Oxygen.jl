@@ -14,7 +14,7 @@ using ..Reflection
 using ..AutoDoc
 using ..Util: response_bytes
 
-export register_tool!, register_prompt!
+export register_tool!, register_prompt!, mcp_stream, emit, progress, check_cancelled
 
 # This server is dual-era: it serves the modern, stateless 2026-07-28 revision
 # and the legacy initialize-handshake revision that mainstream clients speak.
@@ -78,6 +78,7 @@ supports_structured_content(version::AbstractString)::Bool = version >= STRUCTUR
 
 include("mcp/serialization.jl")  # schemas, argument coercion, content blocks, envelopes
 include("mcp/errors.jl")         # error results and request validation
+include("mcp/streams.jl")        # streaming event model, channels, wire mapping
 include("mcp/tools.jl")          # tools/list, tools/call
 include("mcp/prompts.jl")        # prompts/list, prompts/get
 
@@ -143,8 +144,10 @@ end
 
 # Transport agnostic dispatch. Returns the JSON-RPC response body together with
 # the HTTP status code that should be used for it (stdio ignores the status).
+# A streamed `tools/call` returns its `StreamedCall` instead of a body, which
+# the transport consumes as JSON or SSE once the first event arrives.
 function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, method::String, payload;
-                  era::Symbol=:legacy)::Tuple{Dict{String,Any},Int}
+                  era::Symbol=:legacy)::Tuple{Union{Dict{String,Any},StreamedCall},Int}
     modern = era === :modern
     version = modern ? PROTOCOL_VERSION : ctx.mcp.session_version[]
 
@@ -201,8 +204,8 @@ end
 
 # Handle a single parsed JSON-RPC message. Returns `(body, status)`, where
 # `body` is `nothing` for notifications and client responses (no response is
-# written).
-function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request})::Tuple{Union{Nothing,Dict{String,Any}},Int}
+# written), a `StreamedCall` for a streamed tools/call, or a JSON-RPC body.
+function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request})::Tuple{Union{Nothing,Dict{String,Any},StreamedCall},Int}
     shape = message_shape(payload)
 
     if shape === :invalid
@@ -241,22 +244,102 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request}):
     return dispatch(ctx, req, id, method, payload; era=era)
 end
 
-"""
-    handle(ctx::ServerContext, req::HTTP.Request) :: HTTP.Response
+# The transport adapter decodes the request body before middleware runs, so the
+# stream's own message carries headers only; `decorate_request` stashes the
+# buffered request (body included) on the shared request context.
+function buffered_request(stream::HTTP.Stream)::HTTP.Request
+    request = get(stream.message.context, :buffered_request, stream.message)
+    return request isa HTTP.Request ? request : stream.message
+end
 
-Streamable HTTP transport entry point. Handles a single JSON-RPC request or
-notification over a stateless POST.
 """
-function handle(ctx::ServerContext, req::HTTP.Request)::HTTP.Response
+    accepts_event_stream(req) :: Bool
+
+Whether the request's `Accept` header allows a `text/event-stream` reply.
+An explicit `text/event-stream` range decides on its own (`q=0` refuses);
+otherwise `text/*` or `*/*` with a positive `q` accepts. A request with no
+`Accept` header is treated as JSON-only, which keeps legacy clients on exactly
+today's bytes.
+"""
+function accepts_event_stream(req::HTTP.Request)::Bool
+    # `Accept` may be spread across repeated header entries; gather them all.
+    accept = String[]
+    for (key, value) in req.headers
+        lowercase(String(key)) == "accept" && push!(accept, String(value))
+    end
+    isempty(accept) && return false
+
+    wildcard = false
+    for header in accept
+        for entry in split(header, ',')
+            fields = split(entry, ';')
+            media = lowercase(strip(fields[1]))
+            isempty(media) && continue
+            # Media-range parameters: `q` weights the range (default 1.0); a
+            # malformed weight is read as a refusal rather than as acceptance.
+            q = 1.0
+            for field in fields[2:end]
+                part = split(field, '='; limit=2)
+                if length(part) == 2 && lowercase(strip(part[1])) == "q"
+                    q = something(tryparse(Float64, strip(part[2])), 0.0)
+                end
+            end
+            # An exact `text/event-stream` range decides on its own; a wildcard
+            # only opts in, it never overrides an exact refusal.
+            if media == "text/event-stream"
+                return q > 0
+            elseif (media == "text/*" || media == "*/*") && q > 0
+                wildcard = true
+            end
+        end
+    end
+    return wildcard
+end
+
+function write_json_response(stream::HTTP.Stream, body; status::Int=200)
+    return write_stream_response(stream, status, "application/json; charset=utf-8", JSON.json(body))
+end
+
+function write_sse_frame(stream::HTTP.Stream, payload)
+    write(stream, "event: message\n")
+    write(stream, "data: ", JSON.json(payload), "\n\n")
+    flush(stream)
+    return nothing
+end
+
+"""
+    handle(ctx::ServerContext, stream::HTTP.Stream)
+
+Streamable HTTP transport entry point. The `POST` route is registered as a
+streaming route, so both the JSON and the SSE replies are written directly to
+the raw stream:
+
+- requests that are not `tools/call`, or whose tool never emits a
+  notification, are answered with the exact JSON bytes the buffered route used
+  to produce;
+- a streamed call whose first event is a notification upgrades to SSE
+  (`text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`),
+  flushes every frame, and keeps the stream alive with `: keepalive` comments
+  while the producer is idle.
+
+Origin checks, modern header validation, and body parsing all run before any
+streaming starts.
+"""
+function handle(ctx::ServerContext, stream::HTTP.Stream)
+    req = buffered_request(stream)
+
     origin_response = check_origin(ctx, req)
-    isnothing(origin_response) || return origin_response
+    if !isnothing(origin_response)
+        return write_stream_response(stream, origin_response.status, "text/plain; charset=utf-8", "Forbidden")
+    end
 
     # Explicit Content-Type: only JSON bodies are accepted. Accept-header
     # handling is deliberately lenient — clients that send no or partial Accept
     # headers still work.
     content_type = HTTP.header(req, "Content-Type", "")
-    startswith(String(content_type), "application/json") ||
-        return HTTP.Response(415, ["Content-Type" => "text/plain"], "Unsupported Media Type")
+    if !startswith(String(content_type), "application/json")
+        return write_stream_response(stream, 415, "text/plain", "Unsupported Media Type")
+    end
 
     # Version header handling is lenient for legacy traffic (no mirroring
     # required), but an unknown version is worth surfacing. Modern requests are
@@ -269,11 +352,108 @@ function handle(ctx::ServerContext, req::HTTP.Request)::HTTP.Response
     payload = try
         JSON.parse(String(req.body))
     catch
-        return json_response(error_body(nothing, MCP_PARSE_ERROR, "Parse error"); status=400)
+        return write_json_response(stream, error_body(nothing, MCP_PARSE_ERROR, "Parse error"); status=400)
     end
 
     body, status = process(ctx, payload, req)
-    return isnothing(body) ? HTTP.Response(status) : json_response(body; status=status)
+    if body isa StreamedCall
+        return stream_call(ctx, stream, req, body)
+    end
+    isnothing(body) && return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
+    return write_json_response(stream, body; status=status)
+end
+
+# Drain a stream that will not be written as SSE (no progress token, or the
+# client refused it) and return its terminal event. Notifications are dropped
+# rather than written; the channel is always drained so a producer can never
+# block on a full buffer.
+function drain_stream!(events::Channel)
+    terminal = nothing
+    while true
+        event = try
+            take!(events)
+        catch error
+            error isa InvalidStateException || rethrow()
+            break
+        end
+        (event isa FinalEvent || event isa ErrorEvent) && (terminal = event)
+    end
+    return terminal
+end
+
+"""
+    stream_call(ctx, stream, req, call::StreamedCall)
+
+Consume one streamed `tools/call`. The first event decides the wire shape:
+a terminal event (or a drained channel) stays plain JSON, while a notification
+upgrades the response to SSE. On a failed frame write (client disconnect) the
+channel is closed, which releases a producer blocked in `put!`.
+"""
+function stream_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request, call::StreamedCall)
+    events = call.stream.channel
+
+    if call.stream.token === nothing || !accepts_event_stream(req)
+        terminal = drain_stream!(events)
+        return write_json_response(stream, streamed_body(ctx, call, terminal))
+    end
+
+    first = try
+        take!(events)
+    catch error
+        error isa InvalidStateException || rethrow()
+        # The producer was cancelled before emitting; the client is gone.
+        cancel_stream!(call.stream)
+        return nothing
+    end
+
+    if first isa FinalEvent || first isa ErrorEvent
+        cancel_stream!(call.stream)
+        return write_json_response(stream, streamed_body(ctx, call, first))
+    end
+
+    # Upgrade to SSE. Headers go out before the first frame so proxies see the
+    # content type immediately; every frame is flushed for the same reason.
+    HTTP.setstatus(stream, 200)
+    HTTP.setheader(stream, "Content-Type" => "text/event-stream")
+    HTTP.setheader(stream, "Cache-Control" => "no-cache")
+    HTTP.setheader(stream, "X-Accel-Buffering" => "no")
+    HTTP.setheader(stream, "Connection" => "close")
+
+    try
+        HTTP.startwrite(stream)
+        notification = serialize_event(call.stream.token, first)
+        isnothing(notification) || write_sse_frame(stream, notification)
+        last_write = time()
+
+        while isopen(events) || isready(events)
+            if isready(events)
+                event = take!(events)
+                if event isa FinalEvent || event isa ErrorEvent
+                    write_sse_frame(stream, streamed_body(ctx, call, event))
+                    break
+                end
+                notification = serialize_event(call.stream.token, event)
+                isnothing(notification) || write_sse_frame(stream, notification)
+                last_write = time()
+            else
+                sleep(STREAM_POLL_SECONDS)
+                if time() - last_write >= SSE_KEEPALIVE_SECONDS
+                    write(stream, ": keepalive\n\n")
+                    flush(stream)
+                    last_write = time()
+                end
+            end
+        end
+    catch
+        # A failed write means the client disconnected — end quietly.
+    finally
+        cancel_stream!(call.stream)
+        try
+            HTTP.closewrite(stream)
+        catch
+        end
+    end
+    return nothing
 end
 
 """
@@ -399,7 +579,43 @@ function stdio_loop(ctx::ServerContext; input::IO=stdin, output::IO=stdout)
         end
 
         isnothing(body) && continue
-        respond(output, body)
+        if body isa StreamedCall
+            stream_stdio_call(ctx, output, body)
+        else
+            respond(output, body)
+        end
+    end
+    return nothing
+end
+
+"""
+    stream_stdio_call(ctx, output, call::StreamedCall)
+
+Consume one streamed call on stdio. There is no Accept/JSON decision here:
+progress notifications are written as newline-delimited JSON-RPC messages as
+they arrive, interleaving with the eventual response on the same output stream
+(that is how stdio clients correlate them via the token). A request without a
+token drains the channel and drops notifications.
+"""
+function stream_stdio_call(ctx::ServerContext, output::IO, call::StreamedCall)
+    events = call.stream.channel
+    token = call.stream.token
+
+    while true
+        event = try
+            take!(events)
+        catch error
+            error isa InvalidStateException || rethrow()
+            cancel_stream!(call.stream)
+            break
+        end
+        if event isa FinalEvent || event isa ErrorEvent
+            respond(output, streamed_body(ctx, call, event))
+            break
+        end
+        token === nothing && continue
+        notification = serialize_event(token, event)
+        isnothing(notification) || respond(output, notification)
     end
     return nothing
 end

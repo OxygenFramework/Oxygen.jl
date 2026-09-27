@@ -250,10 +250,18 @@ function resolve_kwarg!(kwpairs::Vector{Pair{Symbol,Any}}, p::MCPParam, argument
     return kwpairs
 end
 
-function invoke_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, handler::Function,
-                           params::Vector{MCPParam}, argnames::Vector{Symbol},
-                           has_context::Bool, has_request::Bool, arguments;
-                           inject_request::Bool=false)
+"""
+    resolve_registered(ctx, req, params, argnames, has_context, has_request, arguments;
+                       inject_request=false, has_stream=false, stream=nothing)
+
+Resolve the wire arguments into the positional values and keyword pairs that
+invoke the handler. Kept separate from the invocation so a streaming call can
+surface argument-validation errors before its producer task starts.
+"""
+function resolve_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+                            params::Vector{MCPParam}, argnames::Vector{Symbol},
+                            has_context::Bool, has_request::Bool, arguments;
+                            inject_request::Bool=false, has_stream::Bool=false, stream=nothing)
     pos_values = Any[]
     kwpairs = Pair{Symbol,Any}[]
 
@@ -279,6 +287,21 @@ function invoke_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
         push!(kwpairs, :request => req)
     end
 
+    if has_stream
+        push!(kwpairs, :stream => stream)
+    end
+
+    return pos_values, kwpairs
+end
+
+function invoke_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, handler::Function,
+                           params::Vector{MCPParam}, argnames::Vector{Symbol},
+                           has_context::Bool, has_request::Bool, arguments;
+                           inject_request::Bool=false, has_stream::Bool=false, stream=nothing)
+    pos_values, kwpairs = resolve_registered(ctx, req, params, argnames,
+                                             has_context, has_request, arguments;
+                                             inject_request=inject_request,
+                                             has_stream=has_stream, stream=stream)
     return handler(pos_values...; kwpairs...)
 end
 
@@ -432,10 +455,8 @@ end
 # JSON-RPC response helpers
 # ----------------------------------------------------------------------------
 
-function json_response(body; status::Int=200)::HTTP.Response
-    return HTTP.Response(status, ["Content-Type" => "application/json; charset=utf-8"], JSON.json(body))
-end
-
+# JSON-RPC response helper used by the buffered and streamed result paths
+# alike. Transport-specific writers live in `../mcp.jl`.
 function result_body(id, result)::Dict{String,Any}
     return Dict{String,Any}("jsonrpc" => "2.0", "id" => id, "result" => result)
 end

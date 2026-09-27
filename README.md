@@ -95,6 +95,21 @@ Prompts are registered the same way, with the handler signature doubling as the 
 end
 ```
 
+Long-running tools can stream progress while they run. The do-block's return value is still the final result:
+
+```julia
+@tool "Import a catalog" Dict(:urls => "catalog URLs") function import_catalog(urls::Vector{String})
+    return mcp_stream() do stream
+        for url in urls
+            put!(stream, "imported $url")  # auto-numbered progress notification
+        end
+        return "Imported $(length(urls)) records"
+    end
+end
+```
+
+A client that sends `_meta.progressToken` and accepts `text/event-stream` receives the notifications on the request-scoped SSE stream, terminated by the complete result. Without a token (or without SSE acceptance) notifications are dropped and the call returns the usual JSON, so no call fails for a client that did not opt in. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for the full streaming API.
+
 Tools are registered per application instance (including `@oxidize` modules and `instance()` apps). The `/mcp` endpoint is exposed automatically as soon as a tool or prompt is registered; use `serve(mcp_path = "/custom/mcp")` to mount it elsewhere, or `serve(stdio = true)` to additionally speak the MCP stdio transport over stdin/stdout. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
 
 ## Handlers

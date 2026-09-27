@@ -84,6 +84,21 @@ end
     )
 end
 
+# A streaming tool: progress notifications are emitted while the tool runs and
+# delivered on the request-scoped SSE stream when the client sends a
+# `_meta.progressToken`. The do-block's return value is still the final result;
+# see `demo/mcpstreamingdemo.jl` for the explicit `progress(...)` form and a
+# client that asserts frames arrive before the result.
+@tool "Import a catalog" Dict(:urls => "catalog URLs") function import_catalog(urls::Vector{String})
+    return mcp_stream() do stream
+        for url in urls
+            sleep(0.2)  # stand-in for real work
+            put!(stream, "imported $url")  # auto-numbered progress notification
+        end
+        return "Imported $(length(urls)) records"
+    end
+end
+
 ### Health check endpoints ####################################################
 
 # Captured once at startup so the health endpoints can report uptime.

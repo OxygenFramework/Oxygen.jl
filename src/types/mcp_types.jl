@@ -63,6 +63,7 @@ struct MCPTool
     argnames    :: Vector{Symbol}
     has_context :: Bool          # handler wants `context` injected
     has_request :: Bool          # handler wants `request` injected
+    has_stream  :: Bool          # handler wants a streaming `stream` handle injected
     inject_request :: Bool       # route tool: `request` is the leading positional arg
 end
 

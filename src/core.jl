@@ -296,6 +296,7 @@ function decorate_request(ip::IPAddr, stream::HTTP.Stream)
         return function (req::HTTP.Request)
             req.context[:ip] = ip
             req.context[:stream] = stream
+            req.context[:buffered_request] = req
             handle(req)
         end
     end
@@ -1031,10 +1032,12 @@ end
 
 """
 Register the MCP streamable HTTP endpoint when at least one tool or prompt has
-been registered. `POST` carries JSON-RPC traffic; `GET` is a streaming route that
-serves a JSON health body, or holds the connection open as an SSE notification
-stream when the client asks for `text/event-stream`. A GET declaring a modern
-version is `405`; `DELETE` (legacy session teardown) is also `405`.
+been registered. `POST` is a streaming route (it hand-writes either the same
+JSON bytes as before or an SSE notification stream); `GET` is a streaming route
+that serves a JSON health body, or holds the connection open as an SSE
+notification stream when the client asks for `text/event-stream`. A GET
+declaring a modern version is `405`; `DELETE` (legacy session teardown) is also
+`405`.
 """
 function setupmcp(ctx::ServerContext)
     (isempty(ctx.mcp.tools) && isempty(ctx.mcp.prompts)) && return nothing
@@ -1042,7 +1045,9 @@ function setupmcp(ctx::ServerContext)
     router = ctx.service.router
     path = ctx.mcp.path[]
 
-    mcp_post(req::HTTP.Request) = MCP.handle(ctx, req)
+    # Both handlers take the raw stream via `select_handler(::Type{HTTP.Stream})`
+    # so they can hold the connection open and write frames themselves.
+    mcp_post(stream::HTTP.Stream) = MCP.handle(ctx, stream)
     mcp_get(stream::HTTP.Stream) = MCP.handle_get(ctx, stream)
     method_not_allowed(_::HTTP.Request) = HTTP.Response(405, ["Allow" => "POST, GET"], "Method Not Allowed")
 

@@ -18,6 +18,17 @@ end
     tags::Vector{String} = String[]
 end
 
+@kwdef struct Site
+    label::String
+    place::Place
+end
+
+@kwdef struct Region
+    name::String
+    sites::Dict{String,Site} = Dict{String,Site}()
+    visits::Vector{Site} = Site[]
+end
+
 @enum TemperatureUnit celsius = 1 fahrenheit = 2
 
 ### MCP tools ###
@@ -58,6 +69,18 @@ end
         "lat" => place.coordinates.lat, 
         "lon" => place.coordinates.lon, 
         "tags" => place.tags
+    )
+end
+
+# A map (`Dict`) and an array of nested structs are reflected recursively into
+# the JSON Schema and decoded back into Julia values at call time.
+@tool "Summarize a region" Dict(:region => "the region to summarize") function summarize_region(region::Region)
+    return Dict(
+        "name" => uppercase(region.name),
+        "sites" => length(region.sites),
+        "visits" => length(region.visits),
+        "labels" => sort([site.label for site in values(region.sites)]),
+        "first_visit" => isempty(region.visits) ? nothing : region.visits[1].place,
     )
 end
 

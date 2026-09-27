@@ -105,7 +105,14 @@ function reconstruct(info::Core.CodeInfo)
 
     function rebuild!(slot::Core.SlotNumber)
         value = get(assignments, slot, NO_VALUES)
-        return value == NO_VALUES ? slot : rebuild!(value)
+        value === NO_VALUES && return slot
+        # Only resolve unevaluated references; evaluated defaults may be
+        # collections and must be returned as-is (broadcasting `rebuild!` over
+        # a vector value would mangle its element type, e.g. to `Any[]`).
+        if value isa Core.SlotNumber || value isa Core.SSAValue || value isa Expr
+            return rebuild!(value)
+        end
+        return value
     end
 
     function rebuild!(value::Any)
@@ -478,8 +485,23 @@ function struct_builder(::Type{T}, params::AbstractDict; casesensitive::Bool=tru
         return kwarg_struct_builder(T, params_with_symbols)
     else
         # case 2: Use faster converter to handle structs with no defaults
-        return StructTypes.constructfrom(T, params_with_symbols)
+        return StructTypes.constructfrom(T, parse_dict_fields(T, params_with_symbols))
     end
+end
+
+# Pre-parse fields declared as dictionaries so that dictionary values (which may
+# be custom structs) are coerced before `StructTypes` builds the struct.
+function parse_dict_fields(::Type{T}, params::AbstractDict) where {T}
+    parsed = Dict{Symbol,Any}()
+    for (name, value) in params
+        field = name isa Symbol && name in fieldnames(T) ? fieldtype(T, name) : nothing
+        if !isnothing(field) && nonnull_type(field) <: AbstractDict && value isa AbstractDict
+            parsed[name] = parse_dict_value(nonnull_type(field), value)
+        else
+            parsed[name] = value
+        end
+    end
+    return parsed
 end
 
 """
@@ -511,6 +533,7 @@ parse_array_elements(::Type{E}, value) where {E} = parse_array_element(E, value)
 
 parse_array_element(::Type{T}, value) where {T <: Enum} = T(value isa AbstractString ? parse(Int, value) : Int(value))
 parse_array_element(::Type{T}, value) where {T <: AbstractArray} = parse_array_value(T, value)
+parse_array_element(::Type{T}, value) where {T <: AbstractDict} = parse_dict_value(T, value)
 function parse_array_element(::Type{T}, value) where {T}
 
     # If the value and type agree, then we return it
@@ -520,6 +543,11 @@ function parse_array_element(::Type{T}, value) where {T}
     # Extract the non-null type (from a union)
     target = nonnull_type(T)
     target === T || return parse_array_element(target, value)
+
+    # A multi-type union has no single non-null type: try each member
+    if T isa Union
+        return parse_union_value(T, value)
+    end
 
     # Try to convert the element based on the shape
     if is_struct_type(T) && value isa AbstractDict
@@ -540,6 +568,76 @@ function parse_number(::Type{T}, value::AbstractString) where {T <: Number}
         parsed !== nothing && parsed isa T && return parsed
     end
     return convert(T, parse(Float64, value))
+end
+
+"""
+    parse_union_value(::Type{T}, value) where {T}
+
+Coerce `value` into the first member of the multi-type union `T` that can
+represent it. Throws the last member's error when none match.
+"""
+function parse_union_value(::Type{T}, value) where {T}
+    last_error = nothing
+    for member in nonnull_types(T)
+        try
+            return parse_array_element(member, value)
+        catch error
+            last_error = error
+        end
+    end
+    last_error === nothing && throw(MethodError(convert, (T, value)))
+    throw(last_error)
+end
+
+# Key/value types of a dictionary target, falling back to `Any` for
+# unparameterized wrappers like `Dict`, where Base's `keytype`/`valtype` throw.
+function dict_keytype(::Type{T}) where {T}
+    try
+        return keytype(T)
+    catch
+        return Any
+    end
+end
+
+function dict_valtype(::Type{T}) where {T}
+    try
+        return valtype(T)
+    catch
+        return Any
+    end
+end
+
+"""
+    parse_dict_value(::Type{T}, value) where {T <: AbstractDict}
+
+Coerce `value` into the dictionary type `T`. Keys are parsed to the dictionary's
+key type (Strings map to `Symbol` keys) and values are parsed element-wise via
+`parse_array_element`, so custom structs, nested arrays and dictionaries work.
+"""
+function parse_dict_value(::Type{T}, value) where {T <: AbstractDict}
+    value isa T && return value
+    value isa AbstractDict || return convert(T, value)
+
+    K = dict_keytype(T)
+    V = dict_valtype(T)
+    parsed = Dict(parse_dict_key(K, k) => parse_array_element(V, v) for (k, v) in value)
+    try
+        return convert(T, parsed)
+    catch
+        return parsed
+    end
+end
+
+# Parse a JSON object key (always a String on the wire) into the declared key type.
+function parse_dict_key(::Type{K}, key) where {K}
+    key isa K && return key
+    if K === Symbol
+        return Symbol(key)
+    elseif K <: AbstractString
+        return string(key)
+    else
+        return parsetype(K, key)
+    end
 end
 
 """
@@ -601,12 +699,21 @@ function kwarg_struct_builder(TargetType::Type{T}, params::AbstractDict) where {
             target_type = info.map[param_name]
 
             # Figure out how to parse the current param
-            if target_type == Any || target_type == String
+            resolved_type = nonnull_type(target_type)
+            if param_value === nothing && Nothing <: target_type
+                parsed_value = nothing
+            elseif param_value === missing && Missing <: target_type
+                parsed_value = missing
+            elseif target_type == Any || target_type == String
                 parsed_value = param_value
-            elseif target_type <: AbstractArray
-                parsed_value = parse_array_value(target_type, param_value)
-            elseif isstructtype(target_type)
-                parsed_value = struct_builder(target_type, param_value)
+            elseif resolved_type <: AbstractArray
+                parsed_value = parse_array_value(resolved_type, param_value)
+            elseif resolved_type <: AbstractDict
+                parsed_value = parse_dict_value(resolved_type, param_value)
+            elseif isstructtype(resolved_type)
+                parsed_value = struct_builder(resolved_type, param_value)
+            elseif resolved_type isa Union
+                parsed_value = parse_union_value(resolved_type, param_value)
             else
                 parsed_value = parsetype(target_type, param_value)
             end

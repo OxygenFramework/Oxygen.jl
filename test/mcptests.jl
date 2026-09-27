@@ -22,6 +22,11 @@ end
     tags::Vector{String} = String[]
 end
 
+@kwdef struct Region
+    name::String
+    sites::Dict{String,Coordinates} = Dict{String,Coordinates}()
+end
+
 @enum Color red = 1 blue = 2 green = 3
 
 ### Registered tools ###
@@ -48,6 +53,18 @@ end
 
 @tool "Takes a struct" Dict(:place => "a place") function struct_tool(place::Place)
     return place.name
+end
+
+@tool "Takes a dictionary" Dict(:sites => "sites by name") function dict_tool(sites::Dict{String,Coordinates})
+    return length(sites)
+end
+
+@tool "Takes a region" Dict(:region => "a region") function region_tool(region::Region)
+    return length(region.sites)
+end
+
+@tool "Takes mixed items" Dict(:items => "mixed items") function mixed_tool(items::Vector{Union{Coordinates,Place,Nothing}})
+    return length(items)
 end
 
 @tool "Takes a vector" Dict(:nums => "numbers") function vector_tool(nums::Vector{Int})
@@ -223,9 +240,9 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
 @testset "tool registry" begin
     tools = CONTEXT[].mcp.tools
     for name in ["add_numbers", "concatenate", "with_default", "no_args", "enum_tool",
-                 "struct_tool", "vector_tool", "throws_tool", "context_tool",
-                 "request_tool", "block_tool", "response_tool", "echo_place",
-                 "subtract", "multiply"]
+                 "struct_tool", "dict_tool", "region_tool", "mixed_tool", "vector_tool",
+                 "throws_tool", "context_tool", "request_tool", "block_tool", "response_tool",
+                 "echo_place", "subtract", "multiply"]
         @test haskey(tools, name)
     end
 
@@ -288,6 +305,24 @@ end
     @test haskey(struct_schema["\$defs"], "Place")
     @test haskey(struct_schema["\$defs"], "Coordinates")
     @test !occursin("#/components/schemas/", JSON.json(struct_schema))
+    @test struct_schema["\$defs"]["Place"]["properties"]["tags"]["default"] == String[]
+
+    dict_schema = MCP.inputschema(CONTEXT[].mcp.tools["dict_tool"])
+    @test dict_schema["properties"]["sites"]["type"] == "object"
+    @test dict_schema["properties"]["sites"]["additionalProperties"]["\$ref"] == "#/\$defs/Coordinates"
+    @test haskey(dict_schema["\$defs"], "Coordinates")
+
+    region_schema = MCP.inputschema(CONTEXT[].mcp.tools["region_tool"])
+    region_props = region_schema["\$defs"]["Region"]["properties"]
+    @test region_props["sites"]["type"] == "object"
+    @test region_props["sites"]["additionalProperties"]["\$ref"] == "#/\$defs/Coordinates"
+    @test region_props["sites"]["default"] == Dict{String,Coordinates}()
+
+    mixed_schema = MCP.inputschema(CONTEXT[].mcp.tools["mixed_tool"])
+    mixed_items = mixed_schema["properties"]["items"]["items"]
+    @test mixed_items["nullable"] == true
+    @test Set(ref["\$ref"] for ref in mixed_items["anyOf"]) ==
+          Set(["#/\$defs/Coordinates", "#/\$defs/Place"])
 end
 
 @testset "parameter declaration forms" begin
@@ -344,6 +379,20 @@ end
     @test MCP.parse_tool_argument(Vector{Union{Coordinates, Nothing}},
                                   [Dict("lat" => 1.0, "lon" => 2.0), nothing]) == [Coordinates(1.0, 2.0), nothing]
     @test MCP.parse_tool_argument(Vector{Union{Color, Nothing}}, [1, nothing]) == [red, nothing]
+    @test MCP.parse_tool_argument(Dict{String,Coordinates},
+                                  Dict("a" => Dict("lat" => 1.0, "lon" => 2.0))) ==
+          Dict("a" => Coordinates(1.0, 2.0))
+    @test MCP.parse_tool_argument(Dict{String,Int}, Dict("a" => "1")) == Dict("a" => 1)
+    mixed = MCP.parse_tool_argument(Vector{Union{Coordinates,Place,Nothing}},
+                                    [Dict("lat" => 1.0, "lon" => 2.0),
+                                     Dict("name" => "x", "coordinates" => Dict("lat" => 1.0, "lon" => 2.0)),
+                                     nothing])
+    @test length(mixed) == 3
+    @test mixed[1] == Coordinates(1.0, 2.0)
+    @test mixed[2] isa Place
+    @test mixed[2].name == "x"
+    @test mixed[2].coordinates == Coordinates(1.0, 2.0)
+    @test mixed[3] === nothing
 end
 
 @testset "server/discover" begin
@@ -547,6 +596,25 @@ end
         "coordinates" => Dict("lat" => 40.7, "lon" => -74.0),
     )))
     @test parsebody(r)["result"]["content"][1]["text"] == "NYC"
+
+    # dictionary argument with custom struct values
+    r = call_tool("dict_tool", Dict("sites" => Dict("a" => Dict("lat" => 1.0, "lon" => 2.0))))
+    @test parsebody(r)["result"]["content"][1]["text"] == "1"
+
+    # struct argument containing a dictionary field
+    r = call_tool("region_tool", Dict("region" => Dict(
+        "name" => "north",
+        "sites" => Dict("a" => Dict("lat" => 1.0, "lon" => 2.0)),
+    )))
+    @test parsebody(r)["result"]["content"][1]["text"] == "1"
+
+    # vector of mixed custom types (union elements)
+    r = call_tool("mixed_tool", Dict("items" => [
+        Dict("lat" => 1.0, "lon" => 2.0),
+        Dict("name" => "x", "coordinates" => Dict("lat" => 1.0, "lon" => 2.0)),
+        nothing,
+    ]))
+    @test parsebody(r)["result"]["content"][1]["text"] == "3"
 
     # struct return value mirrored into structuredContent
     r = call_tool("echo_place", Dict("place" => Dict(

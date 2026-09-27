@@ -50,7 +50,9 @@ end
 function _typeschema(T::Type, defs::Dict{String,Any})
     T = AutoDoc.unwrap_type(T)
 
-    if AutoDoc.is_custom_struct(T)
+    if T isa Union
+        return _unionschema(T, defs)
+    elseif AutoDoc.is_custom_struct(T)
         local_defs = Dict{String,Any}()
         AutoDoc.convertobject!(T, local_defs)
         for (_, value) in local_defs
@@ -63,6 +65,15 @@ function _typeschema(T::Type, defs::Dict{String,Any})
         item_schema, item_defs = typeschema(elem)
         merge!(defs, item_defs)
         return Dict{String,Any}("type" => "array", "items" => item_schema)
+    elseif T <: AbstractDict
+        schema = Dict{String,Any}("type" => "object")
+        value_type = Reflection.dict_valtype(T)
+        if value_type !== Any
+            value_schema, value_defs = typeschema(value_type)
+            merge!(defs, value_defs)
+            schema["additionalProperties"] = value_schema
+        end
+        return schema
     else
         schema = Dict{String,Any}("type" => AutoDoc.gettype(T))
         format = AutoDoc.getformat(T)
@@ -74,6 +85,26 @@ function _typeschema(T::Type, defs::Dict{String,Any})
         end
         return schema
     end
+end
+
+# Schema for a Union type: one member keeps its schema (marked `nullable` when
+# the union admits Nothing/Missing), several members become `anyOf`.
+function _unionschema(T::Union, defs::Dict{String,Any})
+    members = Dict{String,Any}[]
+    nullable = false
+
+    for member in Base.uniontypes(T)
+        if member === Nothing || member === Missing
+            nullable = true
+        else
+            push!(members, _typeschema(member, defs))
+        end
+    end
+
+    isempty(members) && return Dict{String,Any}()
+    schema = length(members) == 1 ? members[1] : Dict{String,Any}("anyOf" => members)
+    nullable && (schema["nullable"] = true)
+    return schema
 end
 
 function paramschema(p::MCPParam)
@@ -156,6 +187,10 @@ function parse_tool_argument(::Type{T}, value) where {T}
         return Reflection.struct_builder(target, value)
     elseif target <: AbstractArray && value isa AbstractVector
         return Reflection.parse_array_value(target, value)
+    elseif target <: AbstractDict && value isa AbstractDict
+        return Reflection.parse_dict_value(target, value)
+    elseif target isa Union
+        return Reflection.parse_union_value(target, value)
     else
         return convert(target, value)
     end

@@ -1,6 +1,5 @@
 module AutoDoc
 using HTTP
-using JSON
 using Dates
 using DataStructures
 using Reexport
@@ -11,7 +10,7 @@ using ..Constants
 using ..AppContext: ServerContext, Documenation
 using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, Param, isrequired
 using ..Extractors: isextractor, extracttype, isreqparam
-using ..Reflection: splitdef, is_builtin_type, nonnull_types
+using ..Reflection: splitdef, is_builtin_type, nonnull_types, dict_valtype
 
 export registerschema, swaggerhtml, redochtml, mergeschema
 
@@ -225,48 +224,110 @@ Create OpenAPI schema for array/vector fields, handling both custom structs and 
 - `Dict`: OpenAPI schema for the array field
 """
 function create_array_field_schema(array_type::Type, schemas::Dict, p)::Dict
-    field_schema = Dict{String,Any}("type" => "array", "items" => Dict())
+    field_schema = Dict{String,Any}("type" => "array")
 
-    # Extract and unwrap the nested element type
-    nested_type = get_element_type(array_type)
-    nested_type_name = string(nameof(nested_type))
-
-    # Handle custom structs
-    if is_custom_struct(nested_type)
-        field_schema["items"] = Dict("\$ref" => getcomponent(nested_type_name))
-        # Register type only if not already registered
-        if !haskey(schemas, nested_type_name)
-            convertobject!(nested_type, schemas)
-        end
-    else
-        # Handle non-custom nested types
-        field_schema["items"] = Dict{String,Any}("type" => gettype(nested_type))
-        
-        # Add enum values if nested type is an enum
-        if nested_type <: Enum
-            enum_values = collect(Int.(Base.Enums.instances(nested_type)))
-            field_schema["items"]["enum"] = enum_values
-        end
-        
-        format = getformat(nested_type)
-        
-        if !isnothing(format)
-            field_schema["items"]["format"] = format
-        end
-
-        # Add compatible example format for datetime objects within a vector
-        if nested_type <: DateTime
-            field_schema["items"]["example"] = example_datetime()
-            field_schema["items"]["description"] = datetime_hint()
-        end
+    item_schema = create_value_schema(get_element_type(array_type), schemas)
+    if !isnothing(item_schema)
+        field_schema["items"] = item_schema
     end
 
     # Add default value if it exists
     if p.hasdefault
-        field_schema["default"] = JSON.json(p.default) # for special defaults we need to convert to JSON
+        field_schema["default"] = p.default
     end
 
     return field_schema
+end
+
+"""
+    create_dict_field_schema(dict_type::Type, schemas::Dict, p) -> Dict
+
+Create the OpenAPI schema for a dictionary field. JSON object keys are always
+strings, so the value type is described through `additionalProperties`.
+"""
+function create_dict_field_schema(dict_type::Type, schemas::Dict, p)::Dict
+    field_schema = Dict{String,Any}("type" => "object")
+
+    value_schema = create_value_schema(dict_valtype(dict_type), schemas)
+    if !isnothing(value_schema)
+        field_schema["additionalProperties"] = value_schema
+    end
+
+    # Add default value if it exists
+    if p.hasdefault
+        field_schema["default"] = p.default
+    end
+
+    return field_schema
+end
+
+# Build the schema for a value nested inside a collection (array items or
+# dictionary values). Returns `nothing` when the type places no constraint.
+function create_value_schema(value_type::Type, schemas::Dict)
+    value_type = unwrap_type(value_type)
+
+    if value_type isa Union
+        return create_union_schema(value_type, schemas)
+    end
+
+    value_type = extract_non_null_type(value_type)
+
+    if value_type === Union{} || value_type === Any
+        return nothing
+    elseif is_custom_struct(value_type)
+        convertobject!(value_type, schemas)
+        return Dict{String,Any}("\$ref" => getcomponent(string(nameof(value_type))))
+    elseif value_type <: AbstractArray
+        schema = Dict{String,Any}("type" => "array")
+        item_schema = create_value_schema(get_element_type(value_type), schemas)
+        if !isnothing(item_schema)
+            schema["items"] = item_schema
+        end
+        return schema
+    elseif value_type <: AbstractDict
+        schema = Dict{String,Any}("type" => "object")
+        nested_schema = create_value_schema(dict_valtype(value_type), schemas)
+        if !isnothing(nested_schema)
+            schema["additionalProperties"] = nested_schema
+        end
+        return schema
+    else
+        schema = Dict{String,Any}("type" => gettype(value_type))
+        if value_type <: Enum
+            schema["enum"] = collect(Int.(Base.Enums.instances(value_type)))
+        end
+        format = getformat(value_type)
+        if !isnothing(format)
+            schema["format"] = format
+        end
+        if value_type <: DateTime
+            schema["example"] = example_datetime()
+            schema["description"] = datetime_hint()
+        end
+        return schema
+    end
+end
+
+# Build a schema for a Union type: a single member keeps its schema (with
+# `nullable` when the union admits Nothing/Missing), several members become
+# `anyOf`. Returns `nothing` for `Union{}`.
+function create_union_schema(value_type::Union, schemas::Dict)
+    members = Dict{String,Any}[]
+    nullable = false
+
+    for member in Base.uniontypes(value_type)
+        if member === Nothing || member === Missing
+            nullable = true
+        else
+            member_schema = create_value_schema(member, schemas)
+            isnothing(member_schema) || push!(members, member_schema)
+        end
+    end
+
+    isempty(members) && return nothing
+    schema = length(members) == 1 ? members[1] : Dict{String,Any}("anyOf" => members)
+    nullable && (schema["nullable"] = true)
+    return schema
 end
 
 """
@@ -308,8 +369,8 @@ function create_primitive_field_schema(field_type::Type, p)::Dict
     end
 
     # Add default value if it exists
-    if p.hasdefault 
-        field_schema["default"] = string(p.default)
+    if p.hasdefault
+        field_schema["default"] = p.default
     end
 
     return field_schema
@@ -761,7 +822,11 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         elseif current_type <: AbstractArray
             current_field = create_array_field_schema(current_type, schemas, p)
 
-        # Case 3: Convert the individual fields of the current type to it's openapi equivalent
+        # Case 3: Dictionary fields describe their value type
+        elseif current_type <: AbstractDict
+            current_field = create_dict_field_schema(current_type, schemas, p)
+
+        # Case 4: Convert the individual fields of the current type to it's openapi equivalent
         else
             current_field = create_primitive_field_schema(current_type, p)
         end

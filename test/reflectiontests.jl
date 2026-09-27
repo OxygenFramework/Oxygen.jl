@@ -3,7 +3,8 @@ module ReflectionTests
 using Test
 using Base: @kwdef
 using Oxygen: splitdef, Json
-using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder, parse_array_value
+using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder, parse_array_value,
+    parse_dict_value, parse_union_value, struct_builder
 
 
 global message = Dict("message" => "Hello, World!")
@@ -35,6 +36,35 @@ end
 
 @kwdef struct Roster
     members::Vector{Union{Person, Nothing}} = Union{Person, Nothing}[]
+end
+
+@kwdef struct Club
+    members::Dict{String, Person} = Dict{String, Person}()
+end
+
+struct Venue
+    name::String
+    seats::Dict{String, Person}
+end
+
+@kwdef struct Options
+    seats::Union{Dict{String, Person}, Nothing} = nothing
+    organizer::Union{Person, Nothing} = nothing
+end
+
+struct Cat
+    meow::String
+end
+
+@kwdef struct Shelter
+    residents::Vector{Union{Person, Cat, Nothing}} = Vector{Union{Person, Cat, Nothing}}()
+    lead::Union{Person, Cat, Nothing} = nothing
+end
+
+@kwdef struct Grid
+    label::String
+    grid::Vector{Vector{Int}} = Vector{Vector{Int}}()
+    people::Vector{Union{Person, Nothing}} = Vector{Union{Person, Nothing}}()
 end
 
 
@@ -119,6 +149,82 @@ end
 
     # nested arrays keep their structure
     @test parse_array_value(Vector{Vector{Int}}, [["1", "2"], ["3"]]) == [[1, 2], [3]]
+end
+
+@testset "parse_dict_value" begin
+
+    # values parsed from strings
+    @test parse_dict_value(Dict{String, Int}, Dict("a" => "1")) == Dict("a" => 1)
+
+    # JSON string keys map to Symbol keys
+    @test parse_dict_value(Dict{Symbol, Int}, Dict("a" => 1)) == Dict(:a => 1)
+
+    # custom struct values
+    @test parse_dict_value(Dict{String, Person}, Dict("joe" => Dict("name" => "joe", "age" => 25))) ==
+          Dict("joe" => Person("joe", 25))
+
+    # nested dictionaries and arrays
+    @test parse_dict_value(Dict{String, Dict{String, Int}}, Dict("a" => Dict("b" => "2"))) ==
+          Dict("a" => Dict("b" => 2))
+    @test parse_dict_value(Dict{String, Vector{Person}}, Dict("team" => [Dict("name" => "joe", "age" => 25)])) ==
+          Dict("team" => [Person("joe", 25)])
+
+    # unparameterized dictionaries fall back to Any
+    @test parse_dict_value(Dict, Dict("a" => 1)) == Dict("a" => 1)
+end
+
+@testset "struct_builder dictionaries" begin
+    club = kwarg_struct_builder(Club, Dict(:members => Dict("joe" => Dict(:name => "joe", :age => 25))))
+    @test club.members == Dict("joe" => Person("joe", 25))
+
+    venue = struct_builder(Venue, Dict("name" => "hall", "seats" => Dict("a" => Dict("name" => "joe", "age" => 25))))
+    @test venue.name == "hall"
+    @test venue.seats == Dict("a" => Person("joe", 25))
+
+    # nullable dictionary and struct fields
+    options = kwarg_struct_builder(Options, Dict(
+        :seats => Dict("a" => Dict(:name => "joe", :age => 25)),
+        :organizer => Dict(:name => "ann", :age => 30),
+    ))
+    @test options.seats == Dict("a" => Person("joe", 25))
+    @test options.organizer == Person("ann", 30)
+
+    empty_options = kwarg_struct_builder(Options, Dict(:seats => nothing, :organizer => nothing))
+    @test empty_options.seats === nothing
+    @test empty_options.organizer === nothing
+end
+
+@testset "union value parsing" begin
+
+    # heterogeneous vectors pick the union member that fits each element
+    @test parse_array_value(Vector{Union{Person, Cat, Nothing}},
+                            [Dict("name" => "joe", "age" => 25), Dict("meow" => "m"), nothing]) ==
+          Union{Person, Cat, Nothing}[Person("joe", 25), Cat("m"), nothing]
+
+    # primitive unions parse from strings
+    @test parse_union_value(Union{Int, String}, "5") === 5
+    @test parse_union_value(Union{Int, String}, "abc") == "abc"
+
+    shelter = kwarg_struct_builder(Shelter, Dict(
+        :residents => [Dict("name" => "joe", "age" => 25), Dict("meow" => "m")],
+        :lead => Dict("meow" => "m"),
+    ))
+    @test shelter.residents == Union{Person, Cat, Nothing}[Person("joe", 25), Cat("m")]
+    @test shelter.lead == Cat("m")
+
+    # omitted multi-type union fields still default to nothing
+    empty_shelter = kwarg_struct_builder(Shelter, Dict(:lead => nothing))
+    @test empty_shelter.lead === nothing
+end
+
+@testset "splitdef collection defaults" begin
+    info = splitdef(Grid)
+
+    # required fields before a defaulted field must not corrupt collection defaults
+    @test info.sig_map[:grid].default == Vector{Vector{Int}}()
+    @test info.sig_map[:grid].hasdefault == true
+    @test info.sig_map[:people].default == Vector{Union{Person, Nothing}}()
+    @test info.sig_map[:people].hasdefault == true
 end
 
 @testset "splitdef tests" begin

@@ -46,6 +46,16 @@ end
     tags::Union{Nothing, Vector{String}} = nothing
 end
 
+@kwdef struct Fleet
+    vehicles::Dict{String,Car} = Dict{String,Car}()
+    counts::Dict{String,Vector{Int}} = Dict{String,Vector{Int}}()
+end
+
+@kwdef struct Paddock
+    animals::Vector{Union{Car,Person,Nothing}} = Vector{Union{Car,Person,Nothing}}()
+    maybe::Vector{Union{Car,Nothing}} = Vector{Union{Car,Nothing}}()
+end
+
 @post "/test-nullable" function(req, body::Json{MyRequest})
     return body.payload
 end
@@ -56,6 +66,14 @@ end
 
 @post "/album2" function (req, album::Json{Album})
     return album.payload;
+end
+
+@post "/fleet" function(req, fleet::Json{Fleet})
+    return fleet.payload
+end
+
+@post "/paddock" function(req, paddock::Json{Paddock})
+    return paddock.payload
 end
 
 @post "/party-invite" function(req, party::Json{PartyInvite})
@@ -131,6 +149,23 @@ end
     @test person["properties"]["name"]["type"] == "string"
     @test person["properties"]["car"]["\$ref"] == "#/components/schemas/Car"
 
+    # ensure dictionary fields describe their value type
+    fleet = schemas["Fleet"]
+    @test fleet["properties"]["vehicles"]["type"] == "object"
+    @test fleet["properties"]["vehicles"]["additionalProperties"]["\$ref"] == "#/components/schemas/Car"
+    @test fleet["properties"]["vehicles"]["default"] == Dict{String,Car}()
+    @test fleet["properties"]["counts"]["additionalProperties"]["type"] == "array"
+    @test fleet["properties"]["counts"]["additionalProperties"]["items"]["type"] == "integer"
+
+    # nullable and heterogeneous union element schemas
+    paddock = schemas["Paddock"]
+    @test paddock["properties"]["maybe"]["items"]["\$ref"] == "#/components/schemas/Car"
+    @test paddock["properties"]["maybe"]["items"]["nullable"] == true
+    animals = paddock["properties"]["animals"]["items"]
+    @test animals["nullable"] == true
+    @test Set(ref["\$ref"] for ref in animals["anyOf"]) ==
+          Set(["#/components/schemas/Car", "#/components/schemas/Person"])
+
     # ensure the generated Party schema aligns
     party = schemas["Party"]
     # There should be no required key defined if no fields are required
@@ -138,7 +173,7 @@ end
     @test party["type"] == "object"
     @test party["properties"]["guests"]["type"] == "array"
     @test party["properties"]["guests"]["items"]["\$ref"] == "#/components/schemas/Person"
-    @test party["properties"]["guests"]["default"] == "[{\"name\":\"Alice\",\"car\":{\"name\":\"Toyota\"}},{\"name\":\"Bob\",\"car\":{\"name\":\"Honda\"}}]"
+    @test party["properties"]["guests"]["default"] == [Person("Alice", Car("Toyota")), Person("Bob", Car("Honda"))]
     
     # ensure the generated PartyInvite schema aligns
     party_invite = schemas["PartyInvite"]
@@ -224,11 +259,13 @@ end
 
     @test haskey(myreq["properties"]["max_items"], "nullable")
     @test myreq["properties"]["max_items"]["nullable"] == true
+    @test myreq["properties"]["max_items"]["default"] === nothing
 
     @test haskey(myreq["properties"]["tags"], "nullable")
     @test myreq["properties"]["tags"]["nullable"] == true
     @test myreq["properties"]["tags"]["type"] == "array"
     @test myreq["properties"]["tags"]["items"]["type"] == "string"
+    @test myreq["properties"]["tags"]["default"] === nothing
 
 end
 

@@ -27,7 +27,8 @@ include("metrics.jl");      @reexport using .Metrics
 include("reflection.jl");   @reexport using .Reflection
 include("extractors.jl");   @reexport using .Extractors
 include("autodoc.jl");      @reexport using .AutoDoc
-include("mcp.jl");         @reexport using .MCP
+include("streaming.jl");    @reexport using .Streaming
+include("mcp.jl");          @reexport using .MCP
 
 # Both HTTP and our Extractors module export a type named `Form`, which makes the
 # name ambiguous (and thus unbound) after `using HTTP` + `@reexport using .Extractors`.

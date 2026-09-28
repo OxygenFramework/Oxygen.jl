@@ -13,6 +13,11 @@ using ..Errors: MCPRequestError, MCP_PARSE_ERROR, MCP_INVALID_REQUEST,
 using ..Reflection
 using ..AutoDoc
 using ..Util: response_bytes
+using ..Streaming: StreamEvent, FinalEvent, ErrorEvent, StreamCancelled,
+    EventStream, enqueue!, start_stream!, pump_stream, drain_stream!,
+    cancel_stream!, check_cancelled,
+    STREAM_BUFFER_SIZE, SSE_KEEPALIVE_SECONDS
+import ..Streaming: emit, normalize_event
 
 export register_tool!, register_prompt!, mcp_stream, emit, progress, check_cancelled
 
@@ -51,9 +56,6 @@ const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 # notification.
 const DISCOVER_TTL_MS = 3_600_000
 const LIST_TTL_MS = 0
-
-# Interval between keep-alive comments on the legacy SSE notification stream.
-const SSE_KEEPALIVE_SECONDS = 3
 
 """
     negotiate_version(client_version) :: String
@@ -363,24 +365,6 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
     return write_json_response(stream, body; status=status)
 end
 
-# Drain a stream that will not be written as SSE (no progress token, or the
-# client refused it) and return its terminal event. Notifications are dropped
-# rather than written; the channel is always drained so a producer can never
-# block on a full buffer.
-function drain_stream!(events::Channel)
-    terminal = nothing
-    while true
-        event = try
-            take!(events)
-        catch error
-            error isa InvalidStateException || rethrow()
-            break
-        end
-        (event isa FinalEvent || event isa ErrorEvent) && (terminal = event)
-    end
-    return terminal
-end
-
 """
     stream_call(ctx, stream, req, call::StreamedCall)
 
@@ -390,15 +374,15 @@ upgrades the response to SSE. On a failed frame write (client disconnect) the
 channel is closed, which releases a producer blocked in `put!`.
 """
 function stream_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request, call::StreamedCall)
-    events = call.stream.channel
+    token = call.stream.protocol.token
 
-    if call.stream.token === nothing || !accepts_event_stream(req)
-        terminal = drain_stream!(events)
+    if token === nothing || !accepts_event_stream(req)
+        terminal = drain_stream!(call.stream)
         return write_json_response(stream, streamed_body(ctx, call, terminal))
     end
 
     first = try
-        take!(events)
+        take!(call.stream.channel)
     catch error
         error isa InvalidStateException || rethrow()
         # The producer was cancelled before emitting; the client is gone.
@@ -419,31 +403,30 @@ function stream_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request,
     HTTP.setheader(stream, "X-Accel-Buffering" => "no")
     HTTP.setheader(stream, "Connection" => "close")
 
+    last_write = Ref(time())
     try
         HTTP.startwrite(stream)
-        notification = serialize_event(call.stream.token, first)
+        notification = serialize_event(token, first)
         isnothing(notification) || write_sse_frame(stream, notification)
-        last_write = time()
 
-        while isopen(events) || isready(events)
-            if isready(events)
-                event = take!(events)
+        pump_stream(call.stream,
+            event -> begin
                 if event isa FinalEvent || event isa ErrorEvent
                     write_sse_frame(stream, streamed_body(ctx, call, event))
-                    break
+                    return false
                 end
-                notification = serialize_event(call.stream.token, event)
+                notification = serialize_event(token, event)
                 isnothing(notification) || write_sse_frame(stream, notification)
-                last_write = time()
-            else
-                sleep(STREAM_POLL_SECONDS)
-                if time() - last_write >= SSE_KEEPALIVE_SECONDS
+                last_write[] = time()
+                return true
+            end;
+            on_idle = () -> begin
+                if time() - last_write[] >= SSE_KEEPALIVE_SECONDS
                     write(stream, ": keepalive\n\n")
                     flush(stream)
-                    last_write = time()
+                    last_write[] = time()
                 end
-            end
-        end
+            end)
     catch
         # A failed write means the client disconnected — end quietly.
     finally
@@ -598,25 +581,23 @@ they arrive, interleaving with the eventual response on the same output stream
 token drains the channel and drops notifications.
 """
 function stream_stdio_call(ctx::ServerContext, output::IO, call::StreamedCall)
-    events = call.stream.channel
-    token = call.stream.token
+    token = call.stream.protocol.token
 
-    while true
-        event = try
-            take!(events)
-        catch error
-            error isa InvalidStateException || rethrow()
-            cancel_stream!(call.stream)
-            break
-        end
-        if event isa FinalEvent || event isa ErrorEvent
-            respond(output, streamed_body(ctx, call, event))
-            break
-        end
-        token === nothing && continue
-        notification = serialize_event(token, event)
-        isnothing(notification) || respond(output, notification)
-    end
+    pump_stream(call.stream,
+        event -> begin
+            if event isa FinalEvent || event isa ErrorEvent
+                respond(output, streamed_body(ctx, call, event))
+                return false
+            end
+            token === nothing && return true
+            notification = serialize_event(token, event)
+            isnothing(notification) || respond(output, notification)
+            return true
+        end)
+
+    # A closed channel without a terminal event means the producer was
+    # cancelled; make sure nothing is left blocked on it.
+    cancel_stream!(call.stream)
     return nothing
 end
 

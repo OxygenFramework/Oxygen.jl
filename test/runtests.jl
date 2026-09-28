@@ -45,6 +45,7 @@ include("revise.jl")
 include("mcptests.jl")
 include("mcp_streamtests.jl")
 include("mcp_router_tests.jl")
+include("ssestreamtests.jl")
 
 #### Scenario Tests ####
 include("./scenarios/thunderingherd.jl")

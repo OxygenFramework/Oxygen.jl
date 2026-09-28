@@ -256,6 +256,8 @@ end
     body = text(r)
     @test occursin("McpExplorer", body)
     @test occursin("endpoint: \"/mcp\"", body)
+    # The shipped compass icon is inlined as the page favicon.
+    @test occursin("<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,", body)
 end
 
 @testset "reflection" begin

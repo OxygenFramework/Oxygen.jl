@@ -1,6 +1,7 @@
 module AutoDoc
 using HTTP
 using Dates
+using Base64
 using DataStructures
 using Reexport
 using RelocatableFolders
@@ -939,6 +940,8 @@ function mcpexplorerhtml(endpoint::String) :: HTTP.Response
     # load static content files
     viewerjs = readstaticfile("$MCP_EXPLORER_VERSION/mcpexplorer.js")
     viewerstyles = readstaticfile("$MCP_EXPLORER_VERSION/mcpexplorer.css")
+    # Inline the shipped compass icon so the standalone page carries its own favicon.
+    viewericon = base64encode(readstaticfile("$MCP_EXPLORER_VERSION/icon.svg"))
 
     html("""
         <!DOCTYPE html>
@@ -949,6 +952,7 @@ function mcpexplorerhtml(endpoint::String) :: HTTP.Response
             <meta charset="utf-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1" />
             <meta name="description" content="MCP Explorer" />
+            <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,$viewericon">
             <style>$viewerstyles</style>
         </head>
 

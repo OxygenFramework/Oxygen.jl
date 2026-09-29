@@ -4,6 +4,7 @@ using Oxygen
 using HTTP
 using Dates
 using JSON
+using Base64
 
 ### MCP tool input / output types ####
 
@@ -99,6 +100,93 @@ end
     end
 end
 
+### MCP prompts ###
+
+# Prompts are user-controlled message templates exposed via `prompts/list` and
+# `prompts/get`. There is no parameter description dictionary; the handler's own
+# parameters are the prompt arguments. Parameters without a default are required.
+@prompt "Plan a trip to a place" function trip_plan(place::String, days::Int=3)
+    return "Plan a $days-day trip to $place."
+end
+
+# Returning a `String` produces a single user message; return `role => content`
+# pairs (or a vector mixing pairs and content) to build a multi-message prompt.
+# Only "user" and "assistant" roles are allowed.
+@prompt "Review a saved place" function review_place(place::String, style::String="concise")
+    return ["user" => "Write a $style review of $place.",
+            "assistant" => "Sure, what should it focus on?",
+            "user" => "Its coordinates, tags, and nearby sites."]
+end
+
+### MCP resources ###
+
+# Sample data used by the resource examples below.
+const PLACES = Dict(
+    "seattle" => Place("Seattle", Coordinates(47.61, -122.33), ["coffee", "rain"]),
+    "kyoto" => Place("Kyoto", Coordinates(35.01, 135.77), ["temples", "gardens"]),
+)
+
+# Static resources have a concrete URI and take no handler arguments beyond the
+# injected `context`/`request`. The returned value becomes the read result:
+# strings are `text`, raw bytes become a base64 `blob` for binary media, and
+# HTTP responses honor their Content-Type.
+@resource "oxygen://readme" "Project readme" function readme_resource()
+    return "# Oxygen MCP demo\n\nThis server exposes tools, prompts, and resources."
+end
+
+# A complete 1x1 PNG so clients can actually render the returned `blob`.
+const LOGO_PNG = base64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
+# Returning raw bytes or an `HTTP.Response` exercises the base64 `blob` path.
+@resource "oxygen://logo" "Demo icon" function logo_resource()
+    return HTTP.Response(200, ["Content-Type" => "image/png"], LOGO_PNG)
+end
+
+# A static resource returning JSON text. Returning a dictionary types the read
+# reply as `application/json`, matching the template below.
+@resource "oxygen://places" "All saved places" function places_resource()
+    return Dict("places" => sort([place.name for place in values(PLACES)]))
+end
+
+# A URI with `{var}` placeholders is a resource template: the handler's
+# parameters are the template variables, and captured values are percent-decoded
+# and coerced to the declared types. Returning a dictionary is serialized as
+# JSON text.
+@resource "oxygen://places/{name}" "Look up a place by name" function place_resource(name::String)
+    place = get(PLACES, lowercase(name), nothing)
+    isnothing(place) && return "Unknown place: $name"
+    return Dict(
+        "name" => place.name,
+        "lat" => place.coordinates.lat,
+        "lon" => place.coordinates.lon,
+        "tags" => place.tags,
+    )
+end
+
+# The function form supports explicit metadata; `mime_type` becomes the fallback
+# content type of the read reply.
+function config_resource()
+    return JSON.json(Dict("debug" => false, "retries" => 3))
+end
+
+resource("oxygen://config", "Server configuration", config_resource;
+         title="Server configuration", mime_type="application/json")
+
+# A mutation tool: after changing server state it calls
+# `notify_resource_updated`, so subscribed clients re-read `oxygen://places`.
+# Modern clients receive it on a `subscriptions/listen` stream, legacy clients
+# via `resources/subscribe`. List changes (`notify_tools_changed`, etc.) are
+# published automatically by the registration functions.
+@tool "Add a place to the demo registry" Dict(
+    :name => "the place name",
+    :lat => "latitude",
+    :lon => "longitude",
+    ) function add_place(name::String, lat::Float64, lon::Float64)
+    PLACES[lowercase(name)] = Place(name, Coordinates(lat, lon), String[])
+    notify_resource_updated("oxygen://places")
+    return "Added $name"
+end
+
 ### Health check endpoints ####################################################
 
 # Captured once at startup so the health endpoints can report uptime.
@@ -117,8 +205,8 @@ end
     return text("Welcome to the Oxygen MCP server")
 end
 
-# `serve` mounts the MCP endpoint at `/mcp` once at least one tool is
-# registered. Point an MCP client at http://127.0.0.1:8080/mcp.
+# `serve` mounts the MCP endpoint at `/mcp` once at least one tool, prompt, or
+# resource is registered. Point an MCP client at http://127.0.0.1:8080/mcp.
 serve()
 
 end

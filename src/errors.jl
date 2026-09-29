@@ -4,7 +4,8 @@ module Errors
 export ValidationError, MCPRequestError,
     MCP_PARSE_ERROR, MCP_INVALID_REQUEST, MCP_METHOD_NOT_FOUND,
     MCP_INVALID_PARAMS, MCP_INTERNAL_ERROR, MCP_HEADER_MISMATCH,
-    MCP_MISSING_REQUIRED_CLIENT_CAPABILITY, MCP_UNSUPPORTED_PROTOCOL_VERSION
+    MCP_MISSING_REQUIRED_CLIENT_CAPABILITY, MCP_UNSUPPORTED_PROTOCOL_VERSION,
+    MCP_RESOURCE_NOT_FOUND
 
 # This is used by the Extractors.jl module to signal that a validation error has occurred
 struct ValidationError <: Exception
@@ -46,5 +47,9 @@ const MCP_INTERNAL_ERROR   :: Int = -32603
 const MCP_HEADER_MISMATCH                        :: Int = -32020
 const MCP_MISSING_REQUIRED_CLIENT_CAPABILITY     :: Int = -32021
 const MCP_UNSUPPORTED_PROTOCOL_VERSION           :: Int = -32022
+
+# Resource-not-found, per the legacy resources spec. The modern revision folded
+# this case into `MCP_INVALID_PARAMS` (-32602); `read_resource` picks by era.
+const MCP_RESOURCE_NOT_FOUND                     :: Int = -32002
 
 end

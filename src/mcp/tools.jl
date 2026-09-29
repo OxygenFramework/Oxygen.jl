@@ -239,6 +239,7 @@ function store_tool!(ctx::ServerContext, wirename::String, description::String, 
     tool = MCPTool(wirename, description, func, mcp_params, argnames,
                    has_context, has_request, has_stream, inject_request)
     ctx.mcp.tools[wirename] = tool
+    notify_tools_changed(ctx)
     return tool
 end
 

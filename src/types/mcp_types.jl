@@ -3,7 +3,7 @@ module MCPTypes
 using Base: @kwdef
 using ..CoreTypes: Param, Nullable
 
-export MCPConfig, MCPMetadata, MCPParam, MCPTool, MCPPrompt
+export MCPConfig, MCPMetadata, MCPParam, MCPTool, MCPPrompt, MCPResource
 
 """
     MCPConfig
@@ -78,6 +78,28 @@ struct MCPPrompt
     argnames    :: Vector{Symbol}
     has_context :: Bool          # handler wants `context` injected
     has_request :: Bool          # handler wants `request` injected
+end
+
+# A registered MCP resource. Static resources use `uri` as their registry key and
+# take no handler arguments; templated ones (RFC 6570 level-1 `{var}`) use the
+# template as their key, and their handler parameters are the template variables.
+# `pattern` is the compiled matcher linking a requested URI back to the template,
+# and `vars` lists the capture names in pattern order.
+struct MCPResource
+    uri         :: String
+    name        :: String
+    title       :: Nullable{String}
+    description :: String
+    mime_type   :: Nullable{String}
+    size        :: Nullable{Int}     # static resources only
+    template    :: Bool
+    vars        :: Vector{String}    # template variable names, in capture order
+    pattern     :: Nullable{Regex}   # compiled matcher (templates only)
+    handler     :: Function
+    params      :: Vector{MCPParam}
+    argnames    :: Vector{Symbol}
+    has_context :: Bool              # handler wants `context` injected
+    has_request :: Bool              # handler wants `request` injected
 end
 
 end

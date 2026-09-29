@@ -350,6 +350,156 @@ macro prompt(description, func)
 end
 
 
+### MCP Resource Registration ###
+
+"""
+    resource(uri::String, description::String, func::Function; name=nothing, title=nothing, mime_type=nothing, size=nothing)
+
+Convenience function to register an MCP resource. Equivalent to `@resource`.
+
+A `uri` carrying `{var}` placeholders is registered as a resource template; the
+handler's parameters (excluding the injected `context`/`request`) are the
+template variables. A plain `uri` is registered as a static resource whose
+handler takes no arguments. `name` defaults to the handler's name, and
+`mime_type` becomes the default content type of `resources/read` replies.
+"""
+resource(uri::String, description::String, func::Function; kwargs...) =
+    Oxygen.Core.register_resource!(CONTEXT[], uri, string(description), func; kwargs...)
+
+"""
+    resource(uri::String, func::Function; name=nothing, ...)
+
+Convenience function to register an MCP resource without an explicit
+description: the function's own docstring is used as the resource description.
+Equivalent to the two-argument `@resource`.
+"""
+resource(uri::String, func::Function; kwargs...) =
+    Oxygen.Core.register_resource!(CONTEXT[], uri, "", func; kwargs...)
+
+
+"""
+    resource(func::Function, uri::String, description::String; name=nothing, ...)
+
+Convenience function to register an MCP resource. Equivalent to `@resource`, and
+supports the `do ... end` form.
+"""
+resource(func::Function, uri::String, description::String; kwargs...) =
+    resource(uri, description, func; kwargs...)
+
+"""
+    resource(func::Function, uri::String; name=nothing, ...)
+
+Convenience function to register an MCP resource using the handler's docstring
+as the description. Equivalent to the two-argument `@resource`, and supports the
+`do ... end` form.
+"""
+resource(func::Function, uri::String; kwargs...) =
+    resource(uri, func; kwargs...)
+
+
+"""
+    @resource(uri::String, description::String, func::Function)
+
+Used to register a function as an MCP resource or resource template. A URI with
+`{var}` placeholders makes the handler's parameters the template variables:
+
+    @resource "oxygen://docs/{page}" "Look up a docs page" function docs(page::String)
+        "docs for \$page"
+    end
+
+A URI without placeholders registers a static resource:
+
+    @resource "oxygen://readme" "Project readme" function readme()
+        read("README.md", String)
+    end
+
+The two-argument form uses the handler's docstring as the description:
+
+    \"\"\"
+    Project readme.
+    \"\"\"
+    @resource "oxygen://readme" function readme()
+        read("README.md", String)
+    end
+
+A block form is also supported (and reads closest to `@doc`):
+
+    @resource "oxygen://docs/{page}" "Look up a docs page" begin
+        function docs(page::String)
+            ...
+        end
+    end
+"""
+macro resource(uri, description, func)
+    uri, description, func = adjustparams(uri, description, func)
+    return :(resource($(esc(uri)), $(esc(description)), $(esc(func))))
+end
+
+"""
+    @resource(uri::String, func::Function)
+
+Used to register a function as an MCP resource using the function's own
+docstring as the description. The handler must be a named definition written
+inline, so the macro can attach the preceding docstring to it.
+"""
+macro resource(uri, func)
+    uri, func = adjustparams(uri, func)
+    name = Oxygen.Core.Reflection.defname(func)
+    if isnothing(name)
+        return :(resource($(esc(uri)), $(esc(func))))
+    end
+    return esc(quote
+        Base.@__doc__ $func
+        resource($uri, $name)
+    end)
+end
+
+
+
+### MCP Change Notifications ###
+
+"""
+    notify_resource_updated(uri::AbstractString)::Int
+
+Announce that a resource's contents changed: modern `subscriptions/listen`
+streams watching `uri` receive `notifications/resources/updated`, and a legacy
+session subscribed via `resources/subscribe` receives it on its server→client
+channel (stdio stdout or the GET SSE stream). Returns the number of streams the
+notification was enqueued on.
+"""
+notify_resource_updated(uri::AbstractString)::Int =
+    Oxygen.Core.MCP.notify_resource_updated(CONTEXT[], uri)
+
+"""
+    notify_resources_changed()::Int
+
+Announce that the server's resource list changed
+(`notifications/resources/list_changed`). Returns the number of streams the
+notification was enqueued on.
+"""
+notify_resources_changed()::Int =
+    Oxygen.Core.MCP.notify_resources_changed(CONTEXT[])
+
+"""
+    notify_tools_changed()::Int
+
+Announce that the server's tool list changed
+(`notifications/tools/list_changed`). Returns the number of streams the
+notification was enqueued on.
+"""
+notify_tools_changed()::Int =
+    Oxygen.Core.MCP.notify_tools_changed(CONTEXT[])
+
+"""
+    notify_prompts_changed()::Int
+
+Announce that the server's prompt list changed
+(`notifications/prompts/list_changed`). Returns the number of streams the
+notification was enqueued on.
+"""
+notify_prompts_changed()::Int =
+    Oxygen.Core.MCP.notify_prompts_changed(CONTEXT[])
+
 
 """
     @staticfiles(folder::String, mountdir::String, headers::Vector{Pair{String,String}}=[])

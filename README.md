@@ -95,6 +95,14 @@ Prompts are registered the same way, with the handler signature doubling as the 
 end
 ```
 
+Resources expose application-controlled data through `resources/list` and `resources/read`. A URI with `{var}` placeholders becomes a resource template whose handler parameters are the template variables:
+
+```julia
+@resource "oxygen://docs/{page}" "Look up a docs page" function docs(page::String)
+    return read("docs/$page.md", String)
+end
+```
+
 Long-running tools can stream progress while they run. The do-block's return value is still the final result:
 
 ```julia
@@ -110,7 +118,9 @@ end
 
 A client that sends `_meta.progressToken` and accepts `text/event-stream` receives the notifications on the request-scoped SSE stream, terminated by the complete result. Without a token (or without SSE acceptance) notifications are dropped and the call returns the usual JSON, so no call fails for a client that did not opt in. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for the full streaming API.
 
-Tools are registered per application instance (including `@oxidize` modules and `instance()` apps). The `/mcp` endpoint is exposed automatically as soon as a tool or prompt is registered; use `serve(mcp_path = "/custom/mcp")` to mount it elsewhere, or `serve(stdio = true)` to additionally speak the MCP stdio transport over stdin/stdout. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
+Clients can also subscribe to changes instead of polling. Publish updates with `notify_resource_updated(uri)` and `notify_{tools,prompts,resources}_changed()`; modern clients receive them on a `subscriptions/listen` SSE stream, and legacy clients on their `resources/subscribe` channel. Registration functions publish list changes automatically. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for the subscription APIs.
+
+Tools are registered per application instance (including `@oxidize` modules and `instance()` apps). The `/mcp` endpoint is exposed automatically as soon as a tool, prompt, or resource is registered; use `serve(mcp_path = "/custom/mcp")` to mount it elsewhere, or `serve(stdio = true)` to additionally speak the MCP stdio transport over stdin/stdout. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
 
 ## Handlers
 

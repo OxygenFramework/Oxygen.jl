@@ -122,7 +122,8 @@ end
 Enforce the modern-era (2026-07-28) per-request contract: a supported
 `_meta.protocolVersion`, the required `_meta.clientCapabilities`, and — over
 HTTP — mirrored standard headers (`MCP-Protocol-Version`, `Mcp-Method`, and
-`Mcp-Name` for `tools/call`/`prompts/get`). Legacy requests skip all of this.
+`Mcp-Name` for `tools/call`/`prompts/get`/`resources/read`). Legacy requests
+skip all of this.
 """
 function validate_modern_request(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, method::String, params)
     meta = get(params, META_KEY, Dict{String,Any}())
@@ -157,7 +158,17 @@ function validate_modern_request(ctx::ServerContext, req::Union{Nothing,HTTP.Req
     header_method === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Missing required Mcp-Method header"))
     String(header_method) != method && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Header mismatch: Mcp-Method header value '$header_method' does not match body value '$method'"))
 
-    if method == "tools/call" || method == "prompts/get"
+    # `Mcp-Name` mirrors the body field that addresses the request: the name for
+    # tools/prompts, the URI for resources.
+    source = if method == "tools/call" || method == "prompts/get"
+        "name"
+    elseif method == "resources/read"
+        "uri"
+    else
+        nothing
+    end
+
+    if !isnothing(source)
 
         header_name = mcp_standard_header(req, "Mcp-Name")
         header_name === :invalid && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Mcp-Name header is duplicated or contains unsafe characters"))
@@ -165,7 +176,7 @@ function validate_modern_request(ctx::ServerContext, req::Union{Nothing,HTTP.Req
 
         decoded = decode_header_value(String(header_name))
         decoded === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Mcp-Name header carries a malformed Base64 sentinel value"))
-        body_name = get(params, "name", nothing)
+        body_name = get(params, source, nothing)
         
         if !(body_name isa AbstractString) || decoded != String(body_name)
             throw(MCPRequestError(MCP_HEADER_MISMATCH,

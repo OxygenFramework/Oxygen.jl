@@ -47,9 +47,16 @@ end
     instructions    :: Nullable{String}          = nothing
     tools           :: Dict{String, MCPTool}     = Dict{String, MCPTool}()  # keyed by wire name
     prompts         :: Dict{String, MCPPrompt}   = Dict{String, MCPPrompt}() # keyed by wire name
+    resources       :: Dict{String, MCPResource}   = Dict{String, MCPResource}()  # keyed by URI
+    resource_templates :: Dict{String, MCPResource} = Dict{String, MCPResource}() # keyed by uriTemplate
     allowed_origins :: Vector{String}            = String[]                 # DNS-rebinding guard
     session_version :: Ref{String}               = Ref{String}("2025-11-25") # negotiated legacy version
     initialized     :: Ref{Bool}                 = Ref{Bool}(false)          # legacy handshake completed
+    handshake_complete :: Ref{Bool}              = Ref{Bool}(false)          # initialize response sent
+    broker          :: Ref{Any}                  = Ref{Any}(nothing)         # lazy PubSub.Broker{StreamEvent}
+    subscriptions_lock :: ReentrantLock          = ReentrantLock()           # guards listens + legacy set
+    legacy_subscriptions :: Set{String}          = Set{String}()             # wire_subscriptions
+    listens         :: Dict{String,Any}          = Dict{String,Any}()        # id => listen record
 end
 
 @kwdef struct EagerReviseService

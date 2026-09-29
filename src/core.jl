@@ -28,6 +28,7 @@ include("reflection.jl");   @reexport using .Reflection
 include("extractors.jl");   @reexport using .Extractors
 include("autodoc.jl");      @reexport using .AutoDoc
 include("streaming.jl");    @reexport using .Streaming
+include("pubsub.jl");       @reexport using .PubSub
 include("mcp.jl");          @reexport using .MCP
 
 # Both HTTP and our Extractors module export a type named `Form`, which makes the
@@ -256,6 +257,9 @@ function terminate(context::ServerContext)
 
         # clear any cached middleware strategies so new servers pick up updated middleware
         empty!(context.service.middleware_cache)
+
+        # gracefully close any open MCP subscription streams before the server goes away
+        MCP.close_listens!(context)
 
         # Set the external url to nothing when the server is terminated
         context.service.external_url[] = nothing
@@ -1032,16 +1036,19 @@ end
 
 
 """
-Register the MCP streamable HTTP endpoint when at least one tool or prompt has
-been registered. `POST` is a streaming route (it hand-writes either the same
-JSON bytes as before or an SSE notification stream); `GET` is a streaming route
-that serves a JSON health body, or holds the connection open as an SSE
-notification stream when the client asks for `text/event-stream`. A GET
+Register the MCP streamable HTTP endpoint when at least one tool, prompt, or
+resource has been registered. `POST` is a streaming route (it hand-writes either
+the same JSON bytes as before or an SSE notification stream); `GET` is a
+streaming route that serves a JSON health body, or holds the connection open as
+an SSE notification stream when the client asks for `text/event-stream`. A GET
 declaring a modern version is `405`; `DELETE` (legacy session teardown) is also
 `405`.
 """
 function setupmcp(ctx::ServerContext)
-    (isempty(ctx.mcp.tools) && isempty(ctx.mcp.prompts)) && return nothing
+    if isempty(ctx.mcp.tools) && isempty(ctx.mcp.prompts) &&
+       isempty(ctx.mcp.resources) && isempty(ctx.mcp.resource_templates)
+        return nothing
+    end
 
     router = ctx.service.router
     path = ctx.mcp.path[]

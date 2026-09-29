@@ -9,9 +9,10 @@ using ..AppContext: ServerContext, MCPContext
 using ..Errors: MCPRequestError, MCP_PARSE_ERROR, MCP_INVALID_REQUEST,
     MCP_METHOD_NOT_FOUND, MCP_INVALID_PARAMS, MCP_INTERNAL_ERROR,
     MCP_HEADER_MISMATCH, MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
-    MCP_UNSUPPORTED_PROTOCOL_VERSION
+    MCP_UNSUPPORTED_PROTOCOL_VERSION, MCP_RESOURCE_NOT_FOUND
 using ..Reflection
 using ..AutoDoc
+using ..PubSub
 using ..Util: response_bytes
 using ..Streaming: StreamEvent, FinalEvent, ErrorEvent, StreamCancelled,
     EventStream, enqueue!, start_stream!, pump_stream, drain_stream!,
@@ -19,7 +20,7 @@ using ..Streaming: StreamEvent, FinalEvent, ErrorEvent, StreamCancelled,
     STREAM_BUFFER_SIZE, SSE_KEEPALIVE_SECONDS
 import ..Streaming: emit, normalize_event
 
-export register_tool!, register_prompt!, mcp_stream, emit, progress, check_cancelled
+export register_tool!, register_prompt!, register_resource!, mcp_stream, emit, progress, check_cancelled
 
 # This server is dual-era: it serves the modern, stateless 2026-07-28 revision
 # and the legacy initialize-handshake revision that mainstream clients speak.
@@ -52,8 +53,7 @@ const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 # Cache hints for list/discovery results (SEP-2549). Discovery advertises a
 # static shape for the process lifetime, so a long TTL fits; list methods
 # default to 0 (immediately stale) because the registries are mutable at
-# runtime and we advertise `listChanged: false`, so we never push a change
-# notification.
+# runtime and we push `list_changed` notifications when they change.
 const DISCOVER_TTL_MS = 3_600_000
 const LIST_TTL_MS = 0
 
@@ -83,19 +83,26 @@ include("mcp/errors.jl")         # error results and request validation
 include("mcp/streams.jl")        # streaming event model, channels, wire mapping
 include("mcp/tools.jl")          # tools/list, tools/call
 include("mcp/prompts.jl")        # prompts/list, prompts/get
+include("mcp/resources.jl")      # resources/list, resources/templates/list, resources/read
+include("mcp/subscriptions.jl")  # subscriptions/listen, resources/subscribe, notify_*
 
 # ----------------------------------------------------------------------------
 # Discovery / initialization
 # ----------------------------------------------------------------------------
 
 # Capabilities advertised in both `server/discover` and `initialize`: tools are
-# always served; prompts only when at least one is registered.
+# always served; prompts and resources only when at least one is registered.
+# Registration functions push list-changed notifications, so every advertised
+# `listChanged` flag is truthful; resources also support subscriptions.
 function server_capabilities(ctx::ServerContext; legacy::Bool=false)::Dict{String,Any}
     capabilities = Dict{String,Any}(
-        "tools" => legacy ? Dict{String,Any}("listChanged" => false) : Dict{String,Any}()
+        "tools" => Dict{String,Any}("listChanged" => true)
     )
     if !isempty(ctx.mcp.prompts)
-        capabilities["prompts"] = legacy ? Dict{String,Any}("listChanged" => false) : Dict{String,Any}()
+        capabilities["prompts"] = Dict{String,Any}("listChanged" => true)
+    end
+    if has_resources(ctx)
+        capabilities["resources"] = Dict{String,Any}("subscribe" => true, "listChanged" => true)
     end
     return capabilities
 end
@@ -125,6 +132,9 @@ function initialize_result(ctx::ServerContext, params)::Dict{String,Any}
     client_version isa AbstractString || (client_version = nothing)
     negotiated = negotiate_version(client_version)
     ctx.mcp.session_version[] = negotiated
+    # Armed for legacy server→client delivery only after a real initialize
+    # response (a bare `notifications/initialized` is not proof of a handshake).
+    ctx.mcp.handshake_complete[] = true
 
     result = Dict{String,Any}(
         "protocolVersion" => negotiated,
@@ -146,10 +156,10 @@ end
 
 # Transport agnostic dispatch. Returns the JSON-RPC response body together with
 # the HTTP status code that should be used for it (stdio ignores the status).
-# A streamed `tools/call` returns its `StreamedCall` instead of a body, which
-# the transport consumes as JSON or SSE once the first event arrives.
+# A streamed `tools/call` returns its `StreamedCall` and a `subscriptions/listen`
+# returns its `ListenCall`; the transport consumes those directly.
 function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, method::String, payload;
-                  era::Symbol=:legacy)::Tuple{Union{Dict{String,Any},StreamedCall},Int}
+                  era::Symbol=:legacy)::Tuple{Union{Dict{String,Any},StreamedCall,ListenCall},Int}
     modern = era === :modern
     version = modern ? PROTOCOL_VERSION : ctx.mcp.session_version[]
 
@@ -175,6 +185,34 @@ function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, meth
         params = get(payload, "params", Dict{String,Any}())
         params isa AbstractDict || (params = Dict{String,Any}())
         return get_prompt(ctx, req, id, params; modern=modern)
+    elseif method == "resources/list"
+        result = resources_list(ctx; modern=modern)
+        modern && (result = modern_envelope(ctx, result))
+        return result_body(id, result), 200
+    elseif method == "resources/templates/list"
+        result = resource_templates_list(ctx; modern=modern)
+        modern && (result = modern_envelope(ctx, result))
+        return result_body(id, result), 200
+    elseif method == "resources/read"
+        params = get(payload, "params", Dict{String,Any}())
+        params isa AbstractDict || (params = Dict{String,Any}())
+        return read_resource(ctx, req, id, params; modern=modern)
+    elseif method == "subscriptions/listen"
+        # subscriptions/listen exists only in the modern era.
+        modern || return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
+        params = get(payload, "params", Dict{String,Any}())
+        params isa AbstractDict || (params = Dict{String,Any}())
+        return listen_call(ctx, req, id, params)
+    elseif method == "resources/subscribe"
+        modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
+        params = get(payload, "params", Dict{String,Any}())
+        params isa AbstractDict || (params = Dict{String,Any}())
+        return subscribe_resource_legacy(ctx, id, params)
+    elseif method == "resources/unsubscribe"
+        modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
+        params = get(payload, "params", Dict{String,Any}())
+        params isa AbstractDict || (params = Dict{String,Any}())
+        return unsubscribe_resource_legacy(ctx, id, params)
     elseif method == "ping"
         # ping was removed from the modern era; it exists only in legacy.
         modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
@@ -206,8 +244,9 @@ end
 
 # Handle a single parsed JSON-RPC message. Returns `(body, status)`, where
 # `body` is `nothing` for notifications and client responses (no response is
-# written), a `StreamedCall` for a streamed tools/call, or a JSON-RPC body.
-function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request})::Tuple{Union{Nothing,Dict{String,Any},StreamedCall},Int}
+# written), a `StreamedCall` for a streamed tools/call, a `ListenCall` for a
+# subscriptions/listen stream, or a JSON-RPC body.
+function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request})::Tuple{Union{Nothing,Dict{String,Any},StreamedCall,ListenCall},Int}
     shape = message_shape(payload)
 
     if shape === :invalid
@@ -225,7 +264,18 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request}):
     method = String(method)
 
     if shape === :notification
-        method == "notifications/initialized" && (ctx.mcp.initialized[] = true)
+        if method == "notifications/initialized"
+            ctx.mcp.initialized[] = true
+        elseif method == "notifications/cancelled" && req === nothing
+            # Only routeless (stdio) listen streams can be cancelled in-band;
+            # on HTTP a notification can arrive on any connection (see
+            # `cancel_listen!`). Per JSON-RPC, a cancelled request gets no
+            # response.
+            params = get(payload, "params", nothing)
+            params isa AbstractDict || return nothing, 202
+            request_id = get(params, "requestId", nothing)
+            request_id === nothing || cancel_listen!(ctx, request_id)
+        end
         return nothing, 202
     end
 
@@ -360,9 +410,61 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
     body, status = process(ctx, payload, req)
     if body isa StreamedCall
         return stream_call(ctx, stream, req, body)
+    elseif body isa ListenCall
+        return stream_listen_call(ctx, stream, req, body)
     end
     isnothing(body) && return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
     return write_json_response(stream, body; status=status)
+end
+
+"""
+    stream_sse(connection, source, write_event; initial=nothing, cleanup)
+
+Write the SSE response headers and pump `source` to `connection`, calling
+`write_event(event) -> Bool` for every event (returning `false` stops the
+pump). Keep-alive comments are written once the stream has been quiet for
+`SSE_KEEPALIVE_SECONDS`. `cleanup` runs in the `finally`, before the write side
+of the connection is closed.
+"""
+function stream_sse(connection::HTTP.Stream, source::EventStream, write_event::Function;
+                    initial=nothing, cleanup::Function=() -> nothing)
+    HTTP.setstatus(connection, 200)
+    HTTP.setheader(connection, "Content-Type" => "text/event-stream")
+    HTTP.setheader(connection, "Cache-Control" => "no-cache")
+    HTTP.setheader(connection, "X-Accel-Buffering" => "no")
+    HTTP.setheader(connection, "Connection" => "close")
+
+    last_write = Ref(time())
+    keep = true
+    try
+        HTTP.startwrite(connection)
+        if initial !== nothing
+            keep = write_event(initial) !== false
+            keep && (last_write[] = time())
+        end
+        keep && pump_stream(source,
+            event -> begin
+                keep = write_event(event) !== false
+                keep && (last_write[] = time())
+                return keep
+            end;
+            on_idle = () -> begin
+                if time() - last_write[] >= SSE_KEEPALIVE_SECONDS
+                    write(connection, ": keepalive\n\n")
+                    flush(connection)
+                    last_write[] = time()
+                end
+            end)
+    catch
+        # A failed write means the client disconnected — end quietly.
+    finally
+        cleanup()
+        try
+            HTTP.closewrite(connection)
+        catch
+        end
+    end
+    return nothing
 end
 
 """
@@ -397,46 +499,58 @@ function stream_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request,
 
     # Upgrade to SSE. Headers go out before the first frame so proxies see the
     # content type immediately; every frame is flushed for the same reason.
-    HTTP.setstatus(stream, 200)
-    HTTP.setheader(stream, "Content-Type" => "text/event-stream")
-    HTTP.setheader(stream, "Cache-Control" => "no-cache")
-    HTTP.setheader(stream, "X-Accel-Buffering" => "no")
-    HTTP.setheader(stream, "Connection" => "close")
+    return stream_sse(stream, call.stream,
+        event -> begin
+            if event isa FinalEvent || event isa ErrorEvent
+                write_sse_frame(stream, streamed_body(ctx, call, event))
+                return false
+            end
+            notification = serialize_event(token, event)
+            isnothing(notification) || write_sse_frame(stream, notification)
+            return true
+        end;
+        initial = first,
+        cleanup = () -> cancel_stream!(call.stream))
+end
 
-    last_write = Ref(time())
-    try
-        HTTP.startwrite(stream)
-        notification = serialize_event(token, first)
-        isnothing(notification) || write_sse_frame(stream, notification)
+"""
+    stream_listen_call(ctx, stream, req, call::ListenCall)
 
-        pump_stream(call.stream,
-            event -> begin
-                if event isa FinalEvent || event isa ErrorEvent
-                    write_sse_frame(stream, streamed_body(ctx, call, event))
-                    return false
-                end
-                notification = serialize_event(token, event)
-                isnothing(notification) || write_sse_frame(stream, notification)
-                last_write[] = time()
-                return true
-            end;
-            on_idle = () -> begin
-                if time() - last_write[] >= SSE_KEEPALIVE_SECONDS
-                    write(stream, ": keepalive\n\n")
-                    flush(stream)
-                    last_write[] = time()
-                end
-            end)
-    catch
-        # A failed write means the client disconnected — end quietly.
-    finally
+Consume one modern `subscriptions/listen` stream. The response is SSE-only: a
+request without an `Accept: text/event-stream` range is rejected with a JSON-RPC
+error and the stream is torn down. The first frame is always the acknowledgement
+(enqueued by `listen_call` before registration), every frame carries the
+subscription id under `params._meta`, and a `FinalEvent` is written as the
+JSON-RPC response that closes the stream gracefully. On disconnect the stream is
+cancelled (which prunes the broker subscription) and the record removed.
+"""
+function stream_listen_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request, call::ListenCall)
+    if !accepts_event_stream(req)
+        remove_listen!(ctx, call.id)
         cancel_stream!(call.stream)
-        try
-            HTTP.closewrite(stream)
-        catch
-        end
+        return write_json_response(stream,
+            error_body(call.id, MCP_INVALID_REQUEST,
+                       "subscriptions/listen requires Accept: text/event-stream");
+            status=400)
     end
-    return nothing
+
+    return stream_sse(stream, call.stream,
+        event -> begin
+            if event isa FinalEvent
+                write_sse_frame(stream, event.value)
+                return false
+            elseif event isa ErrorEvent
+                write_sse_frame(stream, error_body(call.id, MCP_INTERNAL_ERROR,
+                                                   sprint(showerror, event.error)))
+                return false
+            end
+            write_sse_frame(stream, serialize_listen_event(call.id, event))
+            return true
+        end;
+        cleanup = () -> begin
+            cancel_stream!(call.stream)
+            remove_listen!(ctx, call.id)
+        end)
 end
 
 """
@@ -489,7 +603,7 @@ function handle_get(ctx::ServerContext, stream::HTTP.Stream)
     accept = join((String(v) for (k, v) in req.headers
                    if lowercase(String(k)) == "accept"), ",")
     if occursin("text/event-stream", accept)
-        return stream_notifications(stream)
+        return stream_notifications(ctx, stream)
     end
 
     body = JSON.json(Dict{String,Any}(
@@ -500,33 +614,56 @@ function handle_get(ctx::ServerContext, stream::HTTP.Stream)
 end
 
 """
-    stream_notifications(stream::HTTP.Stream)
+    stream_notifications(ctx, stream::HTTP.Stream)
 
-Hold the legacy server→client notification channel open as an SSE stream. This
-server emits no unsolicited notifications yet, so the stream carries a priming
-comment followed by periodic keep-alive comments; it stays open until the client
-disconnects. This is what stops mainstream clients from tearing the stream down
-and reconnecting once per second.
+Hold the legacy server→client notification channel open as an SSE stream: a
+broker subscription forwards `notifications/resources/updated` for the
+session's `resources/subscribe` set and capability-gated `list_changed`
+notifications, interleaved with periodic keep-alive comments. It stays open
+until the client disconnects (delivery is a single-client channel in the legacy
+era). This is what stops mainstream clients from tearing the stream down and
+reconnecting once per second.
 """
-function stream_notifications(stream::HTTP.Stream)
+function stream_notifications(ctx::ServerContext, stream::HTTP.Stream)
+    mcp_broker = broker(ctx)
+    sub = try
+        subscribe_legacy!(ctx; label="legacy-http")
+    catch error
+        error isa PubSub.CapacityError || rethrow()
+        return write_stream_response(stream, 503, "text/plain; charset=utf-8",
+                                     "Notification capacity exhausted")
+    end
+    source = EventStream(sub.queue, nothing)
+
     HTTP.setstatus(stream, 200)
     HTTP.setheader(stream, "Content-Type" => "text/event-stream")
     HTTP.setheader(stream, "Cache-Control" => "no-cache")
     HTTP.setheader(stream, "Connection" => "keep-alive")
     HTTP.startwrite(stream)
 
+    last_write = Ref(time())
     try
         # Priming comment: lets the client see the stream is live immediately.
         write(stream, ": connected\n\n")
         flush(stream)
-        while true
-            sleep(SSE_KEEPALIVE_SECONDS)
-            write(stream, ": keepalive\n\n")
-            flush(stream)
-        end
+        pump_stream(source,
+            event -> begin
+                event isa SubscriptionNotification || return true
+                write_sse_frame(stream, notification(event.method, event.params))
+                last_write[] = time()
+                return true
+            end;
+            on_idle = () -> begin
+                if time() - last_write[] >= SSE_KEEPALIVE_SECONDS
+                    write(stream, ": keepalive\n\n")
+                    flush(stream)
+                    last_write[] = time()
+                end
+            end)
     catch
         # The client disconnected (write failed) — end the stream quietly.
     finally
+        PubSub.unsubscribe!(mcp_broker, sub)
         try
             HTTP.closewrite(stream)
         catch
@@ -536,43 +673,141 @@ function stream_notifications(stream::HTTP.Stream)
 end
 
 """
+    StdioNotifier
+
+Owns a stdio transport's output stream: a write lock serializing every
+response and notification onto the one shared channel, the forwarding tasks
+(one per listen stream plus the legacy sink), and the broker subscriptions to
+close on shutdown.
+"""
+mutable struct StdioNotifier
+    output :: IO
+    lock   :: ReentrantLock
+    tasks  :: Vector{Task}
+    subs   :: Vector{PubSub.Subscription}
+end
+
+StdioNotifier(output::IO) = StdioNotifier(output, ReentrantLock(), Task[], PubSub.Subscription[])
+
+"""
     stdio_loop(ctx::ServerContext; input=stdin, output=stdout)
 
 stdio transport entry point. Reads newline-delimited JSON-RPC messages from
 `input`, dispatches them, and writes responses to `output`. Notifications
 produce no output. The loop returns when `input` reaches end-of-file, which is
-the standard graceful-shutdown signal for stdio MCP servers.
+the standard graceful-shutdown signal for stdio MCP servers; on the way out all
+listen streams are closed gracefully and the notifier's tasks drained.
 """
 function stdio_loop(ctx::ServerContext; input::IO=stdin, output::IO=stdout)
-    for line in eachline(input)
-        message = strip(line)
-        isempty(message) && continue
+    notifier = StdioNotifier(output)
+    subscribe_legacy_stdio!(ctx, notifier)
 
-        payload = try
-            JSON.parse(message)
-        catch
-            respond(output, error_body(nothing, MCP_PARSE_ERROR, "Parse error"))
-            continue
-        end
+    try
+        for line in eachline(input)
+            message = strip(line)
+            isempty(message) && continue
 
-        body = try
-            first(process(ctx, payload, nothing))
-        catch
-            error_body(nothing, MCP_INTERNAL_ERROR, "Internal error")
-        end
+            payload = try
+                JSON.parse(message)
+            catch
+                respond(notifier, error_body(nothing, MCP_PARSE_ERROR, "Parse error"))
+                continue
+            end
 
-        isnothing(body) && continue
-        if body isa StreamedCall
-            stream_stdio_call(ctx, output, body)
-        else
-            respond(output, body)
+            body = try
+                first(process(ctx, payload, nothing))
+            catch
+                error_body(nothing, MCP_INTERNAL_ERROR, "Internal error")
+            end
+
+            isnothing(body) && continue
+            if body isa StreamedCall
+                stream_stdio_call(ctx, notifier, body)
+            elseif body isa ListenCall
+                forward_listen_call(ctx, notifier, body)
+            else
+                respond(notifier, body)
+            end
         end
+    finally
+        close_listens!(ctx)
+        close_notifier!(notifier)
     end
     return nothing
 end
 
+# The legacy stdio sink: one broker subscription forwarding resource updates
+# for subscribed URIs and capability-gated list changes as plain newline JSON.
+# Gated at delivery on a completed handshake by `legacy_event_wanted`.
+function subscribe_legacy_stdio!(ctx::ServerContext, notifier::StdioNotifier)
+    sub = try
+        subscribe_legacy!(ctx; label="legacy-stdio")
+    catch error
+        error isa PubSub.CapacityError || rethrow()
+        @warn "stdio legacy notification sink disabled: subscription capacity exhausted"
+        return nothing
+    end
+    push!(notifier.subs, sub)
+
+    source = EventStream(sub.queue, nothing)
+    task = @async pump_stream(source,
+        event -> begin
+            event isa SubscriptionNotification || return true
+            respond(notifier, notification(event.method, event.params))
+            return true
+        end)
+    push!(notifier.tasks, task)
+    return sub
+end
+
+# One forwarding task per listen stream: serialized JSON lines, each tagged
+# with the subscription id, ending with the JSON-RPC response on `FinalEvent`
+# (or an error response on `ErrorEvent`). The record is removed when the task
+# exits, whatever the reason.
+function forward_listen_call(ctx::ServerContext, notifier::StdioNotifier, call::ListenCall)
+    push!(notifier.tasks, @async begin
+        try
+            pump_stream(call.stream,
+                event -> begin
+                    if event isa FinalEvent
+                        respond(notifier, event.value)
+                        return false
+                    elseif event isa ErrorEvent
+                        respond(notifier, error_body(call.id, MCP_INTERNAL_ERROR,
+                                                     sprint(showerror, event.error)))
+                        return false
+                    end
+                    respond(notifier, serialize_listen_event(call.id, event))
+                    return true
+                end)
+        finally
+            remove_listen!(ctx, call.id)
+        end
+    end)
+    return nothing
+end
+
+# End the notifier's subscriptions (releasing the forwarding tasks blocked in
+# `take!`) and wait for them to drain their remaining frames.
+function close_notifier!(notifier::StdioNotifier)
+    for sub in notifier.subs
+        close(sub)
+    end
+    empty!(notifier.subs)
+
+    for task in notifier.tasks
+        task === current_task() && continue
+        try
+            wait(task)
+        catch
+        end
+    end
+    empty!(notifier.tasks)
+    return nothing
+end
+
 """
-    stream_stdio_call(ctx, output, call::StreamedCall)
+    stream_stdio_call(ctx, notifier, call::StreamedCall)
 
 Consume one streamed call on stdio. There is no Accept/JSON decision here:
 progress notifications are written as newline-delimited JSON-RPC messages as
@@ -580,24 +815,33 @@ they arrive, interleaving with the eventual response on the same output stream
 (that is how stdio clients correlate them via the token). A request without a
 token drains the channel and drops notifications.
 """
-function stream_stdio_call(ctx::ServerContext, output::IO, call::StreamedCall)
+function stream_stdio_call(ctx::ServerContext, notifier::StdioNotifier, call::StreamedCall)
     token = call.stream.protocol.token
 
     pump_stream(call.stream,
         event -> begin
             if event isa FinalEvent || event isa ErrorEvent
-                respond(output, streamed_body(ctx, call, event))
+                respond(notifier, streamed_body(ctx, call, event))
                 return false
             end
             token === nothing && return true
             notification = serialize_event(token, event)
-            isnothing(notification) || respond(output, notification)
+            isnothing(notification) || respond(notifier, notification)
             return true
         end)
 
     # A closed channel without a terminal event means the producer was
     # cancelled; make sure nothing is left blocked on it.
     cancel_stream!(call.stream)
+    return nothing
+end
+
+# All stdio writes go through here (and only here), under the notifier lock, so
+# interleaved responses and notifications stay line-atomic.
+function respond(notifier::StdioNotifier, body)
+    lock(notifier.lock) do
+        respond(notifier.output, body)
+    end
     return nothing
 end
 

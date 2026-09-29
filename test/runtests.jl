@@ -45,6 +45,9 @@ include("revise.jl")
 include("mcptests.jl")
 include("mcp_streamtests.jl")
 include("mcp_router_tests.jl")
+include("mcp_resourcetests.jl")
+include("pubsubtests.jl")
+include("mcp_subscriptiontests.jl")
 include("ssestreamtests.jl")
 
 #### Scenario Tests ####

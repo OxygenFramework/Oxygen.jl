@@ -10,7 +10,10 @@
 # held while doing channel ops on subscriber queues; never take a consumer or
 # transport lock while holding `broker.lock`. Delivery happens under the lock,
 # which makes ordering (e.g. ack-before-broadcast, close-last) a lock invariant
-# rather than a race to reason about.
+# rather than a race to reason about. Matcher predicates also run under the lock,
+# so they must be quick and side-effect free: they must not block, take other
+# locks, or call back into the broker (`publish!`/`subscribe!`/`unsubscribe!`).
+# Re-entrant work belongs in a `callback`, which runs after the lock is released.
 
 module PubSub
 
@@ -56,8 +59,9 @@ One subscriber's view of the broker: a bounded queue carrying values of type
 - `matcher::Function`: `(topic, value) -> Bool`, the pattern/predicate test
 - `queue::Channel{T}`: the bounded delivery queue (a pre-created channel may be
   supplied so an acknowledgement can be written into it before registration)
-- `callback::Union{Nothing,Function}`: `(topic, value) -> nothing`, invoked on
-  the publisher's task after the queue write
+- `callback::Union{Nothing,Function}`: `(topic, value) -> nothing`, an observer
+  invoked on the publisher's task after the lock is released; it sees every
+  matching value even when the queue dropped or disconnected it
 - `policy::Symbol`: `:drop_newest` | `:drop_oldest` | `:disconnect`
 - `drops::Threads.Atomic{Int}`: how many values `:drop_newest` discarded
 - `active::Threads.Atomic{Bool}`: cleared when the subscription ends
@@ -185,9 +189,15 @@ function deliver!(sub::Subscription{T}, value::T) where {T}
     try_put!(sub.queue, value) && return true
 
     if sub.policy === :drop_oldest
+        # Make room by discarding the oldest queued value. If there is nothing
+        # to take (unbuffered queue) or the requeue still fails (closed queue),
+        # the incoming value is lost too and counts as a drop.
         _, removed = try_take!(sub.queue)
-        removed || return false
-        return try_put!(sub.queue, value)
+        if removed && try_put!(sub.queue, value)
+            return true
+        end
+        atomic_add!(sub.drops, 1)
+        return false
     elseif sub.policy === :disconnect
         # Keep already-buffered frames drainable: the consumer sees the close
         # only after emptying the queue.
@@ -327,8 +337,9 @@ end
 
 Deliver `value` to every subscriber whose topic matches, non-blocking. Returns
 the number of queues the value was enqueued into (a `:drop_newest` drop or a
-`:disconnect` closure does not count). Callbacks fire after the lock is released
-and their errors are logged and swallowed.
+`:disconnect` closure does not count). Callbacks are observers, not consumers:
+they fire for every matching value after the lock is released, including values
+their own queue dropped. Callback errors are logged and swallowed.
 """
 function publish!(broker::Broker{T}, topic::AbstractString, value::T)::Int where {T}
     key = String(topic)

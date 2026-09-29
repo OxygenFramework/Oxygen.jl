@@ -226,10 +226,24 @@ function argument_value(arguments, p::MCPParam)
     return (false, nothing)
 end
 
+# Coerce one wire value, translating any coercion failure into a JSON-RPC
+# params error. Without this, a bad client-supplied value (e.g. a URI capture
+# that does not parse as Int) escapes as a raw exception and is reported as an
+# internal error instead of `-32602`.
+function coerce_argument(p::MCPParam, value)
+    try
+        return parse_tool_argument(p.param.type, value)
+    catch error
+        error isa MCPRequestError && rethrow()
+        throw(MCPRequestError(MCP_INVALID_PARAMS,
+            "Invalid value for argument `$(p.wirename)`: $(sprint(showerror, error))"))
+    end
+end
+
 function resolve_argument!(pos_values::Vector{Any}, p::MCPParam, arguments)
     found, value = argument_value(arguments, p)
     if found
-        push!(pos_values, parse_tool_argument(p.param.type, value))
+        push!(pos_values, coerce_argument(p, value))
     elseif !isrequired(p.param)
         push!(pos_values, p.param.default)
     else
@@ -241,7 +255,7 @@ end
 function resolve_kwarg!(kwpairs::Vector{Pair{Symbol,Any}}, p::MCPParam, arguments)
     found, value = argument_value(arguments, p)
     if found
-        push!(kwpairs, p.param.name => parse_tool_argument(p.param.type, value))
+        push!(kwpairs, p.param.name => coerce_argument(p, value))
     elseif p.param.hasdefault
         push!(kwpairs, p.param.name => p.param.default)
     else

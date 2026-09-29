@@ -673,6 +673,27 @@ end
     @test sort([JSON.parse(line)["i"] for line in lines]) == collect(1:100)
 end
 
+@testset "stdio notifier prunes finished forwarding tasks" begin
+    ctx = fresh_ctx()
+    notifier = MCP.StdioNotifier(IOBuffer())
+
+    for id in 1:5
+        call, status = adapter_listen(ctx, id, Dict("toolsListChanged" => true))
+        @test status == 200
+        MCP.forward_listen_call(ctx, notifier, call)
+        MCP.close_listens!(ctx)
+        deadline = time() + 5
+        while time() < deadline && !all(istaskdone, notifier.tasks)
+            sleep(0.01)
+        end
+    end
+
+    # Finished tasks are dropped on the next push, so a long-lived notifier
+    # holds at most the live task instead of one per closed stream.
+    @test length(notifier.tasks) <= 1
+    MCP.close_notifier!(notifier)
+end
+
 ### Regression / lifecycle #####################################################
 
 @testset "a notify inside a tool handler never lands on its progress stream" begin
@@ -729,14 +750,6 @@ end
     @test disconnect_listen(io_ref, 51)
 end
 
-@testset "resetstate clears subscription state" begin
-    Oxygen.resetstate()
-    ctx = Oxygen.CONTEXT[]
-    @test isempty(ctx.mcp.listens)
-    @test isempty(ctx.mcp.legacy_subscriptions)
-    @test ctx.mcp.broker[] === nothing
-end
-
 @testset "instance subscriptions are isolated" begin
     app = Oxygen.instance()
     app.resource("iso://sub", "Instance resource", () -> "iso"; name="iso_sub")
@@ -750,5 +763,25 @@ end
 ### Teardown ###################################################################
 
 terminate()
+
+@testset "resetstate clears subscription state" begin
+    # `resetstate` only resets the module-global context (the `@__MODULE__`
+    # guard in methods.jl), so seed subscription state in Oxygen's context and
+    # verify the whole context — broker included — is replaced.
+    ctx = Oxygen.CONTEXT[]
+    MCP.broker(ctx)
+    lock(ctx.mcp.subscriptions_lock) do
+        push!(ctx.mcp.legacy_subscriptions, "sub://alpha")
+    end
+    @test ctx.mcp.broker[] !== nothing
+    @test !isempty(ctx.mcp.legacy_subscriptions)
+
+    Oxygen.resetstate()
+
+    @test Oxygen.CONTEXT[] !== ctx
+    @test Oxygen.CONTEXT[].mcp.broker[] === nothing
+    @test isempty(Oxygen.CONTEXT[].mcp.listens)
+    @test isempty(Oxygen.CONTEXT[].mcp.legacy_subscriptions)
+end
 
 end

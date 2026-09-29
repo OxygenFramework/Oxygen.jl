@@ -86,6 +86,13 @@ end
     @test queued(sub) == [2]
     @test PubSub.drops(sub) == 0
 
+    # on an unbuffered queue there is nothing to make room with, so the value
+    # is lost and counted instead of silently vanishing
+    broker = Broker{Int}()
+    sub = PubSub.subscribe!(broker, "a"; csize=0, policy=:drop_oldest)
+    @test PubSub.publish!(broker, "a", 1) == 0
+    @test PubSub.drops(sub) == 1
+
     # :disconnect closes the queue; buffered frames stay drainable and the
     # record is pruned
     broker = Broker{Int}()

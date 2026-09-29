@@ -977,6 +977,12 @@ end
     r = rpc("tools/list", params; extra_headers=["Origin" => "http://allowed.example.com"])
     @test r.status == 200
     empty!(CONTEXT[].mcp.allowed_origins)
+
+    # the legacy GET notification sink enforces the same guard
+    r = HTTP.request("GET", "$localhost/mcp",
+                     ["Origin" => "http://evil.example.com", "Accept" => "text/event-stream"];
+                     status_exception=false, client=MCP_CLIENT)
+    @test r.status == 403
 end
 
 @testset "wire name collision" begin

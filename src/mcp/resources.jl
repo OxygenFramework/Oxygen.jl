@@ -92,9 +92,19 @@ end
 
 # A resource's handler parameters are either empty (static resource) or exactly
 # the template variables (templated resource); anything else is an authoring
-# error rather than a runtime surprise.
+# error rather than a runtime surprise. `positional` carries every positional
+# parameter name, including the injected names `reflect_mcp_params` drops from
+# the schema: a positional `request`/`context`/`stream` would be silently
+# dropped and then fail at invocation time, because injection is keyword-based.
 function validate_resource_params(uri::String, template::Bool, vars::Vector{String},
-                                  mcp_params::Vector{MCPParam})
+                                  mcp_params::Vector{MCPParam}, positional::Vector{Symbol})
+    for name in positional
+        name in (:context, :request, :stream) && throw(ArgumentError(
+            "MCP resource `$uri` declares a positional argument named `$name`; " *
+            "injected `context`/`request` must be keyword arguments and resources " *
+            "cannot take a `stream` handle"))
+    end
+
     supplied = Set(string(p.param.name) for p in mcp_params)
 
     if !template
@@ -139,6 +149,9 @@ function register_resource!(ctx::ServerContext, uri::String, desc, func::Functio
 
     # A stray `}` without `{` is malformed too; `template_vars` rejects it.
     template = occursin('{', uri) || occursin('}', uri)
+    template && !isnothing(size) && throw(ArgumentError(
+        "MCP resource template `$uri` cannot declare `size`: the field exists only " *
+        "on static resources (templates describe no single byte length)"))
     vars = template ? template_vars(uri) : String[]
     pattern = template ? compile_template(uri, vars) : nothing
 
@@ -146,7 +159,7 @@ function register_resource!(ctx::ServerContext, uri::String, desc, func::Functio
     has_context, has_request, has_stream = injected_kwargs(func)
     has_stream && throw(ArgumentError("MCP resources cannot declare an injected `stream` handle"))
 
-    validate_resource_params(uri, template, vars, mcp_params)
+    validate_resource_params(uri, template, vars, mcp_params, [p.name for p in info.args])
 
     wirename = if isnothing(name)
         Base.isgensym(info.name) ? uri : string(info.name)

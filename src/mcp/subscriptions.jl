@@ -435,7 +435,9 @@ end
 """
     notify_resource_updated(ctx, uri) :: Int
 
-Announce that a resource's contents changed.
+Announce that a resource's contents changed. Returns the number of subscriber
+queues the notification was enqueued into; a queue that dropped the value
+(`:drop_newest`) or was disconnected does not count.
 """
 function notify_resource_updated(ctx::ServerContext, uri::AbstractString)::Int
     target = String(uri)
@@ -447,6 +449,8 @@ end
     notify_list_changed(ctx, kind) :: Int
 
 Announce that a component list changed (`:tools`, `:prompts` or `:resources`).
+Returns the number of subscriber queues the notification was enqueued into;
+`:drop_newest` drops and disconnected queues do not count.
 """
 function notify_list_changed(ctx::ServerContext, kind::Symbol)::Int
     kind in (:tools, :prompts, :resources) || throw(ArgumentError(

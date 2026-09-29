@@ -203,6 +203,13 @@ end
     # resources are not streamed
     @test_throws ArgumentError resource("oxygen://bad-stream", "bad", (; stream) -> stream)
 
+    # injected names must be keyword arguments, not positional ones
+    @test_throws ArgumentError resource("oxygen://bad-request", "bad", (request) -> "x")
+    @test_throws ArgumentError resource("oxygen://bad-context", "bad", (context) -> "x")
+
+    # `size` describes a static resource; templates cannot declare it
+    @test_throws ArgumentError resource("oxygen://sized/{x}", "bad", (x::String) -> x; size=10)
+
     # malformed URIs
     @test_throws ArgumentError resource("", "bad", () -> "x")
     @test_throws ArgumentError resource("oxygen://bad uri", "bad", () -> "x")
@@ -333,6 +340,11 @@ end
     # declared parameter types coerce the captured string
     content = only(parsebody(read_uri("oxygen://typed/21"))["result"]["contents"])
     @test content["text"] == "42"
+
+    # a captured value that cannot be coerced is a params error, not internal
+    body = parsebody(read_uri("oxygen://typed/not-a-number"))
+    @test body["error"]["code"] == -32602
+    @test occursin("value", body["error"]["message"])
 
     # captured values are percent-decoded
     content = only(parsebody(read_uri("oxygen://docs/hello%20world"))["result"]["contents"])

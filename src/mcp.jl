@@ -50,11 +50,12 @@ const META_CLIENT_INFO = "io.modelcontextprotocol/clientInfo"
 const META_CLIENT_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities"
 const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 
-# Cache hints for list/discovery results (SEP-2549). Discovery advertises a
-# static shape for the process lifetime, so a long TTL fits; list methods
-# default to 0 (immediately stale) because the registries are mutable at
-# runtime and we push `list_changed` notifications when they change.
-const DISCOVER_TTL_MS = 3_600_000
+# Cache hints for list/discovery results (SEP-2549). Supported versions and
+# instructions are static, but discovery's capabilities are derived from the
+# mutable tool/prompt/resource registries, so a cached discovery response goes
+# stale the moment anything is registered. Both hints are therefore 0 (no
+# caching); `list_changed` notifications cover the list case.
+const DISCOVER_TTL_MS = 0
 const LIST_TTL_MS = 0
 
 """
@@ -94,7 +95,7 @@ include("mcp/subscriptions.jl")  # subscriptions/listen, resources/subscribe, no
 # always served; prompts and resources only when at least one is registered.
 # Registration functions push list-changed notifications, so every advertised
 # `listChanged` flag is truthful; resources also support subscriptions.
-function server_capabilities(ctx::ServerContext; legacy::Bool=false)::Dict{String,Any}
+function server_capabilities(ctx::ServerContext)::Dict{String,Any}
     capabilities = Dict{String,Any}(
         "tools" => Dict{String,Any}("listChanged" => true)
     )
@@ -138,7 +139,7 @@ function initialize_result(ctx::ServerContext, params)::Dict{String,Any}
 
     result = Dict{String,Any}(
         "protocolVersion" => negotiated,
-        "capabilities" => server_capabilities(ctx; legacy=true),
+        "capabilities" => server_capabilities(ctx),
         "serverInfo" => Dict{String,Any}(
             "name" => ctx.mcp.server_name,
             "version" => ctx.mcp.server_version,
@@ -594,6 +595,14 @@ either answer with a fixed body or hold the connection open for SSE.
 function handle_get(ctx::ServerContext, stream::HTTP.Stream)
     req = stream.message
 
+    # The legacy notification stream is a privileged sink too: without this
+    # check a DNS-rebinding page could read server-initiated notifications. The
+    # guard runs before every GET reply, matching `handle`.
+    origin_response = check_origin(ctx, req)
+    if !isnothing(origin_response)
+        return write_stream_response(stream, origin_response.status, "text/plain; charset=utf-8", "Forbidden")
+    end
+
     version = HTTP.header(req, "MCP-Protocol-Version", "")
     if strip(String(version)) in MODERN_VERSIONS
         return write_stream_response(stream, 405, "text/plain", "Method Not Allowed";
@@ -765,6 +774,10 @@ end
 # (or an error response on `ErrorEvent`). The record is removed when the task
 # exits, whatever the reason.
 function forward_listen_call(ctx::ServerContext, notifier::StdioNotifier, call::ListenCall)
+    # Finished forwarding tasks are never waited on again, so drop them here
+    # instead of letting a long-lived session accumulate one dead task per
+    # closed listen stream.
+    filter!(task -> !istaskdone(task), notifier.tasks)
     push!(notifier.tasks, @async begin
         try
             pump_stream(call.stream,

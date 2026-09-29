@@ -21,7 +21,8 @@ using ..Streaming: StreamEvent, FinalEvent, ErrorEvent, StreamCancelled,
     STREAM_BUFFER_SIZE, SSE_KEEPALIVE_SECONDS
 import ..Streaming: emit, normalize_event
 
-export register_tool!, register_prompt!, register_resource!, mcp_stream, emit, progress, check_cancelled
+export register_tool!, register_prompt!, register_resource!, register_resource_folder!,
+    mcp_stream, emit, progress, check_cancelled
 
 # This server is dual-era: it serves the modern, stateless 2026-07-28 revision
 # and the legacy initialize-handshake revision that mainstream clients speak.
@@ -75,6 +76,10 @@ end
 
 # Whether a negotiated (legacy) version predates `structuredContent`.
 supports_structured_content(version::AbstractString)::Bool = version >= STRUCTURED_CONTENT_VERSION
+
+# `icons` on resource entries were introduced in the same 2025-06-18 revision;
+# older clients may reject unknown fields, so entries gate the field by version.
+supports_resource_icons(version::AbstractString)::Bool = version >= STRUCTURED_CONTENT_VERSION
 
 # ----------------------------------------------------------------------------
 # Submodules
@@ -151,8 +156,8 @@ function initialize_result(ctx::ServerContext, params; session::Union{Nothing,MC
         "protocolVersion" => negotiated,
         "capabilities" => server_capabilities(ctx),
         "serverInfo" => Dict{String,Any}(
-            "name" => ctx.mcp.server_name,
-            "version" => ctx.mcp.server_version,
+            "name" => ctx.mcp.server_name[],
+            "version" => ctx.mcp.server_version[],
         ),
     )
     if !isnothing(ctx.mcp.instructions)
@@ -198,11 +203,11 @@ function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, meth
         params isa AbstractDict || (params = Dict{String,Any}())
         return get_prompt(ctx, req, id, params; modern=modern)
     elseif method == "resources/list"
-        result = resources_list(ctx; modern=modern)
+        result = resources_list(ctx; modern=modern, version=version)
         modern && (result = modern_envelope(ctx, result))
         return result_body(id, result), 200
     elseif method == "resources/templates/list"
-        result = resource_templates_list(ctx; modern=modern)
+        result = resource_templates_list(ctx; modern=modern, version=version)
         modern && (result = modern_envelope(ctx, result))
         return result_body(id, result), 200
     elseif method == "resources/read"
@@ -680,7 +685,7 @@ cancelled (which prunes the broker subscription) and the record removed.
 """
 function stream_listen_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request, call::ListenCall)
     if !accepts_event_stream(req)
-        remove_listen!(ctx, call.id)
+        remove_listen!(ctx, call.record)
         cancel_stream!(call.stream)
         return write_json_response(stream,
             error_body(call.id, MCP_INVALID_REQUEST,
@@ -703,7 +708,7 @@ function stream_listen_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.R
         end;
         cleanup = () -> begin
             cancel_stream!(call.stream)
-            remove_listen!(ctx, call.id)
+            remove_listen!(ctx, call.record)
         end)
 end
 
@@ -1006,7 +1011,7 @@ function forward_listen_call(ctx::ServerContext, notifier::StdioNotifier, call::
                     return true
                 end)
         finally
-            remove_listen!(ctx, call.id)
+            remove_listen!(ctx, call.record)
         end
     end)
     return nothing

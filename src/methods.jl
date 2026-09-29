@@ -353,15 +353,18 @@ end
 ### MCP Resource Registration ###
 
 """
-    resource(uri::String, description::String, func::Function; name=nothing, title=nothing, mime_type=nothing, size=nothing)
+    resource(uri::String, description::String, func::Function; name=nothing, title=nothing, mime_type=nothing, size=nothing, annotations=nothing, icons=nothing)
 
 Convenience function to register an MCP resource. Equivalent to `@resource`.
 
-A `uri` carrying `{var}` placeholders is registered as a resource template; the
-handler's parameters (excluding the injected `context`/`request`) are the
-template variables. A plain `uri` is registered as a static resource whose
-handler takes no arguments. `name` defaults to the handler's name, and
-`mime_type` becomes the default content type of `resources/read` replies.
+A `uri` carrying `{var}` (or reserved `{+var}`) placeholders is registered as a
+resource template; the handler's parameters (excluding the injected
+`context`/`request`) are the template variables. A plain `uri` is registered as
+a static resource whose handler takes no arguments. `name` defaults to the
+handler's name, and `mime_type` becomes the default content type of
+`resources/read` replies. `annotations` accepts the spec's
+`audience`/`priority`/`lastModified` fields and `icons` a `src` string or an
+icon dict/vector.
 """
 resource(uri::String, description::String, func::Function; kwargs...) =
     Oxygen.Core.register_resource!(CONTEXT[], uri, string(description), func; kwargs...)
@@ -395,6 +398,30 @@ as the description. Equivalent to the two-argument `@resource`, and supports the
 """
 resource(func::Function, uri::String; kwargs...) =
     resource(uri, func; kwargs...)
+
+
+"""
+    resource_folder(prefix::String, directory::String; name=nothing, description=nothing,
+                    title=nothing, hidden=false, mime_types=nothing,
+                    annotations=nothing, icons=nothing)
+
+Register a resource template at `prefix * "{+path}"` that serves regular files
+below `directory`, so nested paths work:
+
+    resource_folder("file:///srv/data", "/srv/data")
+    # file:///srv/data/readme.md reads /srv/data/readme.md
+
+Requests are sanitized before touching the filesystem: `.`/`..`/backslash
+segments, NUL bytes (`:` on Windows), and (unless `hidden=true`) dotfiles are
+rejected, and the resolved target is verified with `realpath` to still be
+inside `directory`, so symlinks cannot escape. `mime_types` maps an extension
+(with or without the leading dot, matched case-insensitively) to a MIME type;
+otherwise a small built-in table and `HTTP.sniff` decide. A missing or
+non-regular file is reported as the spec's resource-not-found error for the
+request's protocol era.
+"""
+resource_folder(prefix::AbstractString, directory::AbstractString; kwargs...) =
+    Oxygen.Core.MCP.register_resource_folder!(CONTEXT[], string(prefix), string(directory); kwargs...)
 
 
 """

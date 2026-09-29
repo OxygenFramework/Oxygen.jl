@@ -868,6 +868,7 @@ end
     @test result["protocolVersion"] == "2025-06-18"
     @test haskey(result["capabilities"], "tools")
     @test result["serverInfo"]["name"] == "Oxygen"
+    @test result["serverInfo"]["version"] == "1.0.0"
     @test !haskey(result, "resultType")
 
     # notifications/initialized is accepted silently
@@ -1203,7 +1204,8 @@ terminate()
 ### Custom mount path behind a reverse-proxy prefix ##########################
 
 serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
-      access_log=nothing, mcp_path="tools/mcp", prefix="/api", context=AppState("injected"))
+      access_log=nothing, mcp_path="tools/mcp", mcp_server_name="McpCustom",
+      mcp_server_version=v"9.9.9", prefix="/api", context=AppState("injected"))
 
 @testset "custom mcp path behind a prefix" begin
     payload = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "tools/list",
@@ -1218,7 +1220,23 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
     r = HTTP.request("POST", "http://$HOST:$PORT/api/tools/mcp", headers, JSON.json(payload);
                      status_exception=false, client=client)
     @test r.status == 200
-    @test length(JSON.parse(String(r.body))["result"]["tools"]) > 0
+    body = JSON.parse(String(r.body))
+    @test length(body["result"]["tools"]) > 0
+
+    # the modern result meta advertises the configured server identity
+    meta_info = body["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]
+    @test meta_info["name"] == "McpCustom"
+    @test meta_info["version"] == "9.9.9"
+
+    # so does the legacy initialize handshake
+    init = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
+                "params" => Dict("protocolVersion" => "2025-06-18", "capabilities" => Dict()))
+    r = HTTP.request("POST", "http://$HOST:$PORT/api/tools/mcp", ["Content-Type" => "application/json"],
+                     JSON.json(init); status_exception=false, client=client)
+    @test r.status == 200
+    server_info = JSON.parse(String(r.body))["result"]["serverInfo"]
+    @test server_info["name"] == "McpCustom"
+    @test server_info["version"] == "9.9.9"
 
     # without the prefix the request is rejected by the prefix middleware
     r = HTTP.request("POST", "http://$HOST:$PORT/tools/mcp", headers, JSON.json(payload);
@@ -1232,6 +1250,17 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
 end
 
 terminate()
+
+### mcp_server_version must be valid semver ###################################
+
+@testset "mcp server version requires semver" begin
+    @test_throws ArgumentError serve(port=PORT, host=HOST, async=true, show_banner=false,
+                                     show_errors=false, access_log=nothing,
+                                     mcp_server_version="not-a-version")
+    @test_throws MethodError serve(port=PORT, host=HOST, async=true, show_banner=false,
+                                   show_errors=false, access_log=nothing,
+                                   mcp_server_version=1.0)
+end
 
 ### Top-level mcp = false disables the endpoint ###############################
 

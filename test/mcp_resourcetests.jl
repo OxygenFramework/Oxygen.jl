@@ -114,6 +114,76 @@ end
     return "template:$id"
 end
 
+### Normalized / decorated resources ###
+
+# Pre-shaped contents missing `uri`/`mimeType` are normalized on the way out
+@resource "oxygen://partial-shape" "Partial shape" function partial_shape_resource()
+    return Dict("contents" => [Dict("text" => "partial")])
+end
+
+# ... and a declared mime_type fills the content's default
+resource("oxygen://shaped-fallback", "Shaped fallback",
+         () -> Dict("text" => "fallback"); mime_type="text/markdown")
+
+# An entry carrying both `text` and `blob` is a server bug
+@resource "oxygen://bad-shape" "Bad shape" function bad_shape_resource()
+    return Dict("text" => "x", "blob" => base64encode(UInt8[0x78]))
+end
+
+# ... and so is a pre-shaped entry carrying neither
+@resource "oxygen://empty-shape" "Empty shape" function empty_shape_resource()
+    return Dict("contents" => [Dict("uri" => "oxygen://empty-shape")])
+end
+
+# Extra content keys survive normalization
+@resource "oxygen://annotated-content" "Annotated content" function annotated_content_resource()
+    return Dict("uri" => "oxygen://annotated-content", "text" => "annotated",
+                "annotations" => Dict("audience" => ["user"]))
+end
+
+### Annotated / icon resources ###
+
+const ICON = Dict("src" => "https://example.com/icon.png", "mimeType" => "image/png",
+                  "sizes" => ["48x48"], "theme" => "light")
+
+resource("oxygen://decorated", "Decorated resource", () -> "decorated";
+         name="decorated",
+         annotations=(audience=["user", "assistant"], priority=0.75,
+                      lastModified="2025-01-12T15:00:58Z"),
+         icons=[ICON])
+
+resource("oxygen://decorated/{id}", "Decorated template", (id::String) -> "decorated $id";
+         name="decorated_template", annotations=(priority=0.25,),
+         icons=["https://example.com/template-icon.png"])
+
+### Folder-backed resources ###
+
+const FOLDER_ROOT = mktempdir()
+write(joinpath(FOLDER_ROOT, "readme.md"), "# folder readme\n")
+write(joinpath(FOLDER_ROOT, "notes.txt"), "some notes\n")
+mkdir(joinpath(FOLDER_ROOT, "nested"))
+write(joinpath(FOLDER_ROOT, "nested", "deep.txt"), "nested text\n")
+write(joinpath(FOLDER_ROOT, "pixel.png"),
+      base64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+write(joinpath(FOLDER_ROOT, "config.toml"), "key = 1\n")
+write(joinpath(FOLDER_ROOT, "config.yaml"), "key: 1\n")
+write(joinpath(FOLDER_ROOT, "shout.XYZ"), "custom\n")
+write(joinpath(FOLDER_ROOT, ".secret"), "hidden file\n")
+
+const FOLDER_OUTSIDE = mktempdir()
+write(joinpath(FOLDER_OUTSIDE, "escape.txt"), "escaped\n")
+const FOLDER_HAS_SYMLINK = !Sys.iswindows() && try
+    symlink(joinpath(FOLDER_OUTSIDE, "escape.txt"), joinpath(FOLDER_ROOT, "escape.txt"))
+    true
+catch
+    false
+end
+
+resource_folder("testfs://", FOLDER_ROOT)
+resource_folder("hiddenfs://", FOLDER_ROOT; hidden=true, name="hidden_folder")
+# caller-supplied MIME keys are matched case-insensitively, dot optional
+resource_folder("typedfs://", FOLDER_ROOT; mime_types=Dict(".XYZ" => "text/x-custom"))
+
 ### Request helpers ###########################################################
 
 struct AppState
@@ -195,10 +265,13 @@ end
     @test_throws ArgumentError resource("oxygen://bad/{x}", "bad", (y::String) -> y)
     @test_throws ArgumentError resource("oxygen://bad/{x}/{y}", "bad", (x::String) -> x)
 
-    # only simple `{var}` expressions with identifier-safe names
-    @test_throws ArgumentError resource("oxygen://bad/{+x}", "bad", () -> "x")
+    # only simple `{var}` and reserved `{+var}` expressions with identifier-safe names
+    @test_throws ArgumentError resource("oxygen://bad/{?x}", "bad", () -> "x")
     @test_throws ArgumentError resource("oxygen://bad/{x", "bad", (x::String) -> x)
     @test_throws ArgumentError resource("oxygen://bad/x}", "bad", () -> "x")
+
+    # a trailing newline must not slip through the template-variable anchor
+    @test_throws ArgumentError MCP.template_vars("oxygen://bad/{x\n}")
 
     # resources are not streamed
     @test_throws ArgumentError resource("oxygen://bad-stream", "bad", (; stream) -> stream)
@@ -378,6 +451,129 @@ end
     @test occursin("boom", body["error"]["message"])
 end
 
+@testset "resource content normalization" begin
+    # pre-shaped contents missing uri/mimeType are filled in
+    content = only(parsebody(read_uri("oxygen://partial-shape"))["result"]["contents"])
+    @test content["uri"] == "oxygen://partial-shape"
+    @test content["text"] == "partial"
+    @test !haskey(content, "mimeType")
+
+    # a declared mime_type is the fallback for pre-shaped dicts too
+    content = only(parsebody(read_uri("oxygen://shaped-fallback"))["result"]["contents"])
+    @test content["uri"] == "oxygen://shaped-fallback"
+    @test content["mimeType"] == "text/markdown"
+    @test content["text"] == "fallback"
+
+    # extra keys survive normalization
+    content = only(parsebody(read_uri("oxygen://annotated-content"))["result"]["contents"])
+    @test content["uri"] == "oxygen://annotated-content"
+    @test content["annotations"] == Dict("audience" => ["user"])
+
+    # both text and blob is a server bug, not a client error
+    body = parsebody(read_uri("oxygen://bad-shape"))
+    @test body["error"]["code"] == -32603
+    @test occursin("mutually exclusive", body["error"]["message"])
+
+    # neither text nor blob in a shaped entry is a server bug too
+    body = parsebody(read_uri("oxygen://empty-shape"))
+    @test body["error"]["code"] == -32603
+    @test occursin("exactly one", body["error"]["message"])
+end
+
+@testset "resource annotations and icons" begin
+    result = parsebody(rpc("resources/list", Dict("_meta" => req_meta())))["result"]
+    decorated = only(filter(entry -> entry["uri"] == "oxygen://decorated", result["resources"]))
+    @test decorated["annotations"]["audience"] == ["user", "assistant"]
+    @test decorated["annotations"]["priority"] == 0.75
+    @test decorated["annotations"]["lastModified"] == "2025-01-12T15:00:58Z"
+    @test decorated["icons"] == [ICON]
+
+    result = parsebody(rpc("resources/templates/list", Dict("_meta" => req_meta())))["result"]
+    template = only(filter(entry -> entry["uriTemplate"] == "oxygen://decorated/{id}",
+                           result["resourceTemplates"]))
+    @test template["annotations"] == Dict("priority" => 0.25)
+    @test template["icons"] == [Dict("src" => "https://example.com/template-icon.png")]
+
+    # icons postdate the oldest legacy revisions, so entries gate them by version
+    decorated_resource = CONTEXT[].mcp.resources["oxygen://decorated"]
+    @test haskey(MCP.resource_entry(decorated_resource; version="2025-11-25"), "icons")
+    @test !haskey(MCP.resource_entry(decorated_resource; version="2025-03-26"), "icons")
+    @test !haskey(MCP.resource_entry(decorated_resource; version="2024-11-05"), "icons")
+
+    # invalid metadata never registers anything
+    @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=(audience=["robot"],))
+    @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=(priority=1.5,))
+    @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=(audience="user",))
+    @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=(mood="happy",))
+    @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=(lastModified="yesterday",))
+    @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=(lastModified=20250112,))
+    @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=(lastModified="2025-01-12\n",))
+    @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=Any[])
+    @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=[Dict("mimeType" => "image/png")])
+    @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=[Dict("src" => "x", "theme" => "blue")])
+    @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=[Dict("src" => "x", "sizes" => [48])])
+    @test !haskey(CONTEXT[].mcp.resources, "oxygen://bad-annotation")
+    @test !haskey(CONTEXT[].mcp.resources, "oxygen://bad-icon")
+end
+
+@testset "resource folder" begin
+    # text file with extension-derived MIME type
+    content = only(parsebody(read_uri("testfs:///readme.md"))["result"]["contents"])
+    @test content["uri"] == "testfs:///readme.md"
+    @test content["mimeType"] == "text/markdown"
+    @test content["text"] == "# folder readme\n"
+
+    # nested paths work through the reserved expansion
+    content = only(parsebody(read_uri("testfs:///nested/deep.txt"))["result"]["contents"])
+    @test content["text"] == "nested text\n"
+    @test content["mimeType"] == "text/plain"
+
+    # binary files become base64 blobs
+    content = only(parsebody(read_uri("testfs:///pixel.png"))["result"]["contents"])
+    @test content["mimeType"] == "image/png"
+    @test content["blob"] == base64encode(read(joinpath(FOLDER_ROOT, "pixel.png")))
+    @test !haskey(content, "text")
+
+    # unknown extensions fall back to sniffing
+    write(joinpath(FOLDER_ROOT, "mystery.dat"), UInt8[0x00, 0x01, 0x02, 0x03])
+    content = only(parsebody(read_uri("testfs:///mystery.dat"))["result"]["contents"])
+    @test content["mimeType"] == HTTP.sniff(UInt8[0x00, 0x01, 0x02, 0x03])
+
+    # toml/yaml are textual content, not base64 blobs
+    content = only(parsebody(read_uri("testfs:///config.toml"))["result"]["contents"])
+    @test content["mimeType"] == "application/toml"
+    @test content["text"] == "key = 1\n"
+    @test !haskey(content, "blob")
+    content = only(parsebody(read_uri("testfs:///config.yaml"))["result"]["contents"])
+    @test content["mimeType"] == "application/yaml"
+    @test content["text"] == "key: 1\n"
+
+    # caller-supplied MIME keys match case-insensitively, with or without the dot
+    content = only(parsebody(read_uri("typedfs:///shout.XYZ"))["result"]["contents"])
+    @test content["mimeType"] == "text/x-custom"
+    @test content["text"] == "custom\n"
+
+    # traversal, dotfiles, malformed escapes, and missing files are all not-found
+    for uri in ["testfs:///../outside.txt", "testfs:///%2e%2e/outside.txt",
+                "testfs:///.secret", "testfs:///nested/../../outside.txt",
+                "testfs:///nope.txt", "testfs:///bad%", "testfs:///bad%2",
+                "testfs:///bad%zz"]
+        body = parsebody(read_uri(uri))
+        @test body["error"]["code"] == -32602
+        @test body["error"]["message"] == "Resource not found"
+    end
+
+    # symlink escapes are rejected after realpath
+    if FOLDER_HAS_SYMLINK
+        body = parsebody(read_uri("testfs:///escape.txt"))
+        @test body["error"]["code"] == -32602
+    end
+
+    # hidden=true opts dotfiles in
+    content = only(parsebody(read_uri("hiddenfs:///.secret"))["result"]["contents"])
+    @test content["text"] == "hidden file\n"
+end
+
 @testset "modern Mcp-Name validation" begin
     params = Dict("_meta" => req_meta(), "uri" => "oxygen://readme")
 
@@ -432,6 +628,24 @@ end
     # a missing URI is invalid params regardless of era
     read = Dict("jsonrpc" => "2.0", "id" => 5, "method" => "resources/read", "params" => Dict())
     @test parsebody(raw_post(read))["error"]["code"] == -32602
+
+    # a malformed percent-escape is not-found on legacy, not an internal crash
+    read = Dict("jsonrpc" => "2.0", "id" => 6, "method" => "resources/read",
+                "params" => Dict("uri" => "testfs:///bad%"))
+    body = parsebody(raw_post(read))
+    @test body["error"]["code"] == -32002
+    @test body["error"]["message"] == "Resource not found"
+
+    # icons (2025-06-18) are gated off for revisions that predate them
+    old_init = Dict("jsonrpc" => "2.0", "id" => 7, "method" => "initialize",
+                    "params" => Dict("protocolVersion" => "2024-11-05",
+                                     "capabilities" => Dict(),
+                                     "clientInfo" => Dict("name" => "old", "version" => "1.0")))
+    raw_post(old_init)
+    list = Dict("jsonrpc" => "2.0", "id" => 8, "method" => "resources/list", "params" => Dict())
+    result = parsebody(raw_post(list))["result"]
+    decorated = only(filter(entry -> entry["uri"] == "oxygen://decorated", result["resources"]))
+    @test !haskey(decorated, "icons")
 end
 
 @testset "stdio resource requests" begin

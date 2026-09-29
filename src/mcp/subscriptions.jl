@@ -203,18 +203,6 @@ end
 # ----------------------------------------------------------------------------
 
 """
-    ListenCall
-
-A live `subscriptions/listen` stream returned by dispatch. `stream.channel` is
-the broker subscription queue; `id` is the listen request's JSON-RPC id, also
-used as the wire subscription id.
-"""
-struct ListenCall
-    stream :: EventStream
-    id     :: Any
-end
-
-"""
     ListenRecord
 
 One registered listen stream.
@@ -236,17 +224,45 @@ mutable struct ListenRecord
     cancellable :: Bool
 end
 
-# JSON-RPC ids are String or Int; stringifying makes the `listens` dictionary
-# keyable. Collisions between an Int and its string form are rejected as
-# duplicates, which is conservative and load-bearing on stdio.
+"""
+    ListenCall
+
+A live `subscriptions/listen` stream returned by dispatch. `stream.channel` is
+the broker subscription queue; `id` is the listen request's JSON-RPC id, also
+used as the wire subscription id, and `record` is the registered `ListenRecord`.
+Teardown hands the record back to the registry directly: JSON-RPC ids are unique
+per connection, not per server, so looking a stream up by id would let one
+connection tear down another's.
+"""
+struct ListenCall
+    stream :: EventStream
+    id     :: Any
+    record :: ListenRecord
+end
+
+# JSON-RPC ids are String or Int; stringifying makes ids comparable regardless
+# of wire form. The registry is not keyed by id: ids are only unique within one
+# connection, so cross-client duplicates are legal. Only the routeless (stdio)
+# records — all owned by the single stdio client — are addressable by id.
 listen_key(id) = string(id)
+
+# The stdio (cancellable) record carrying `id`, if any. HTTP streams are not
+# addressable by id: two clients sharing an id are two independent streams, and
+# neither may cancel the other. Callers hold `subscriptions_lock`.
+function stdio_listen(ctx::ServerContext, id)
+    key = listen_key(id)
+    for record in ctx.mcp.listens
+        record.cancellable && listen_key(record.id) == key && return record
+    end
+    return nothing
+end
 
 # Remove records whose stream closed without a transport teardown (defensive:
 # the transports unregister in their `finally`). Callers hold subscriptions_lock.
 function sweep_listens!(ctx::ServerContext)
     isempty(ctx.mcp.listens) && return nothing
-    for (key, record) in collect(ctx.mcp.listens)
-        isopen(record.sub) || delete!(ctx.mcp.listens, key)
+    for record in collect(ctx.mcp.listens)
+        isopen(record.sub) || delete!(ctx.mcp.listens, record)
     end
     return nothing
 end
@@ -255,9 +271,10 @@ end
     listen_call(ctx, req, id, params) :: Union{Tuple{Dict,Int},Tuple{ListenCall,Int}}
 
 Open a `subscriptions/listen` stream: validate the filter and id, enforce the
-capacity and duplicate-id limits, enqueue the acknowledgement as the stream's
-FIRST message, register the broker subscription, and return the `ListenCall`.
-A violation is rejected with a JSON-RPC error instead of a stream.
+capacity limit (and, on stdio, the duplicate-id limit), enqueue the
+acknowledgement as the stream's FIRST message, register the broker subscription,
+and return the `ListenCall`. A violation is rejected with a JSON-RPC error
+instead of a stream.
 """
 function listen_call(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params)
     requested = parse_subscription_filter(get(params, "notifications", nothing))
@@ -274,18 +291,21 @@ function listen_call(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, p
     # Capacity/duplicate precheck. The authoritative check runs at registration;
     # this one avoids building a stream that is certain to be rejected. The
     # sweep keeps 64 dead streams from denying the surface on a quiet server.
+    # A duplicate is rejected only on the routeless (stdio) transport: on HTTP
+    # each listen stream is its own connection, so two clients using the same id
+    # are two independent subscriptions.
     precheck = lock(ctx.mcp.subscriptions_lock) do
         sweep_listens!(ctx)
         if length(ctx.mcp.listens) >= MAX_LISTEN_SUBSCRIPTIONS
             return :capacity
         end
-        return haskey(ctx.mcp.listens, key) ? :duplicate : :ok
+        return (req === nothing && stdio_listen(ctx, id) !== nothing) ? :duplicate : :ok
     end
     precheck === :capacity && return error_body(
         id, MCP_INTERNAL_ERROR,
         "subscriptions/listen: active subscription limit reached ($(MAX_LISTEN_SUBSCRIPTIONS))"), 400
     precheck === :duplicate && return error_body(
-        id, MCP_INVALID_REQUEST, "subscriptions/listen id duplicates an active subscription"), 400
+        id, MCP_INVALID_REQUEST, "subscriptions/listen id is already active on this connection"), 400
 
     honored = honored_filter(ctx, requested)
     mcp_broker = broker(ctx)
@@ -319,7 +339,11 @@ function listen_call(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, p
         if length(ctx.mcp.listens) >= MAX_LISTEN_SUBSCRIPTIONS
             return :capacity
         end
-        return haskey(ctx.mcp.listens, key) ? :duplicate : (ctx.mcp.listens[key] = record; :ok)
+        if record.cancellable && stdio_listen(ctx, id) !== nothing
+            return :duplicate
+        end
+        push!(ctx.mcp.listens, record)
+        return :ok
     end
 
     if registered !== :ok
@@ -327,35 +351,25 @@ function listen_call(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, p
         return registered === :capacity ? error_body(
             id, MCP_INTERNAL_ERROR,
             "subscriptions/listen: active subscription limit reached ($(MAX_LISTEN_SUBSCRIPTIONS))") :
-            error_body(id, MCP_INVALID_REQUEST, "subscriptions/listen id duplicates an active subscription"), 400
+            error_body(id, MCP_INVALID_REQUEST, "subscriptions/listen id is already active on this connection"), 400
     end
 
-    return ListenCall(stream, id), 200
+    return ListenCall(stream, id, record), 200
 end
 
 """
-    detach_listen!(ctx, id) :: Union{Nothing,ListenRecord}
+    remove_listen!(ctx, record::ListenRecord)
 
-Remove the listen record for `id` from the registry (if present) and return it.
-No channel or broker operations happen here.
+Tombstone and remove a listen record: the transport hands back the record it
+owns because the stream is closed (or about to close). Removing by record — not
+by id — is what keeps one connection's teardown from pruning another
+connection's stream when both use the same JSON-RPC id.
 """
-function detach_listen!(ctx::ServerContext, id)::Union{Nothing,ListenRecord}
-    return lock(ctx.mcp.subscriptions_lock) do
-        pop!(ctx.mcp.listens, listen_key(id), nothing)
+function remove_listen!(ctx::ServerContext, record::ListenRecord)
+    lock(ctx.mcp.subscriptions_lock) do
+        delete!(ctx.mcp.listens, record)
     end
-end
-
-"""
-    remove_listen!(ctx, id)
-
-Tombstone and remove a listen record: the transport has already closed (or is
-about to close) the stream.
-"""
-function remove_listen!(ctx::ServerContext, id)
-    record = detach_listen!(ctx, id)
-    if record !== nothing
-        record.sub.active[] = false
-    end
+    record.sub.active[] = false
     return nothing
 end
 
@@ -364,14 +378,15 @@ end
 
 Cancel a routeless (stdio) listen stream by its request id — the
 `notifications/cancelled` path. Per JSON-RPC cancellation semantics no response
-is sent. Returns `true` when an active cancellable stream was cancelled.
+is sent. Only stdio streams are addressable by id; HTTP streams are never
+cancellable this way (see `ListenRecord.cancellable`). Returns `true` when an
+active cancellable stream was cancelled.
 """
 function cancel_listen!(ctx::ServerContext, id)::Bool
     record = lock(ctx.mcp.subscriptions_lock) do
-        key = listen_key(id)
-        found = get(ctx.mcp.listens, key, nothing)
-        (found === nothing || !found.cancellable) && return nothing
-        delete!(ctx.mcp.listens, key)
+        found = stdio_listen(ctx, id)
+        found === nothing && return nothing
+        delete!(ctx.mcp.listens, found)
         return found
     end
 
@@ -391,7 +406,7 @@ orderly server shutdown from an abrupt drop. Called during `terminate`.
 """
 function close_listens!(ctx::ServerContext)
     records = lock(ctx.mcp.subscriptions_lock) do
-        found = collect(values(ctx.mcp.listens))
+        found = collect(ctx.mcp.listens)
         empty!(ctx.mcp.listens)
         return found
     end

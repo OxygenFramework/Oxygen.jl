@@ -54,7 +54,7 @@ export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route,
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 
         # MCP
-        @tool, tool, @prompt, prompt, @resource, resource,
+        @tool, tool, @prompt, prompt, @resource, resource, resource_folder,
         mcp_stream, emit, progress, check_cancelled,
         notify_resource_updated, notify_resources_changed,
         notify_tools_changed, notify_prompts_changed,

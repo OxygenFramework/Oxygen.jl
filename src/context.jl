@@ -42,8 +42,8 @@ end
 
 @kwdef struct MCPContext
     path            :: Ref{String}               = Ref{String}("/mcp")
-    server_name     :: String                    = "Oxygen"
-    server_version  :: String                    = "1.11.0"
+    server_name     :: Ref{String}               = Ref{String}("Oxygen")
+    server_version  :: Ref{String}               = Ref{String}("1.0.0")
     instructions    :: Nullable{String}          = nothing
     tools           :: Dict{String, MCPTool}     = Dict{String, MCPTool}()  # keyed by wire name
     prompts         :: Dict{String, MCPPrompt}   = Dict{String, MCPPrompt}() # keyed by wire name
@@ -58,7 +58,7 @@ end
     broker          :: Ref{Any}                  = Ref{Any}(nothing)         # lazy PubSub.Broker{StreamEvent}
     subscriptions_lock :: ReentrantLock          = ReentrantLock()           # guards listens + legacy set
     legacy_subscriptions :: Set{String}          = Set{String}()             # anonymous wire subscriptions
-    listens         :: Dict{String,Any}          = Dict{String,Any}()        # id => listen record
+    listens         :: Set{Any}                  = Set{Any}()                # active listen records
 end
 
 @kwdef struct EagerReviseService

@@ -204,9 +204,10 @@ end
 ```
 
 Captured values are percent-decoded and coerced to the parameter's declared type,
-so `oxygen://users/{id}` with `id::Int` hands the handler an `Int`. This
-identifier-safe `{var}` form is the only URI-template syntax supported; anything
-else (`{+var}`, `{?var}`, ...) is rejected when the resource is registered.
+so `oxygen://users/{id}` with `id::Int` hands the handler an `Int`. A simple
+`{var}` captures one path segment; the reserved `{+var}` form captures across
+`/`, which is what folder-style resources need. Any other template operator
+(`{?var}`, `{#var}`, ...) is rejected when the resource is registered.
 
 A URI without placeholders is a static resource, and its handler takes no
 arguments beyond the injected `context`/`request`:
@@ -218,12 +219,19 @@ end
 ```
 
 The resource `name` defaults to the handler's name. Use the function form for an
-explicit name, a display title, a default MIME type, or a size:
+explicit name, a display title, a default MIME type, a size, spec annotations, or
+icons:
 
 ```julia
 resource("oxygen://config", "Server config", read_config;
-         name = "config", title = "Server configuration", mime_type = "application/json")
+         name = "config", title = "Server configuration", mime_type = "application/json",
+         annotations = (audience = ["user", "assistant"], priority = 0.5),
+         icons = [Dict("src" => "https://example.com/config.png", "mimeType" => "image/png")])
 ```
+
+`annotations` accepts the spec's `audience` (`"user"`/`"assistant"`), `priority`
+(`0.0`–`1.0`), and `lastModified` (ISO 8601) fields. Annotations and icons are
+validated at registration and appear on both static resources and templates.
 
 Return values are normalized into `resources/read` contents:
 
@@ -231,8 +239,10 @@ Return values are normalized into `resources/read` contents:
 - `Vector{UInt8}` → `text` for textual media, base64 `blob` otherwise
 - `HTTP.Response` → honors its `Content-Type` the same way
 - a vector of the above → multiple contents; a `Pair` may restate the URI per entry
-- a pre-shaped content dict (`"uri"` plus `"text"`/`"blob"`), or a whole
-  `Dict("contents" => [...])`, passes through
+- a pre-shaped content dict (`"uri"` plus exactly one of `"text"`/`"blob"`), or a
+  whole `Dict("contents" => [...])`, is normalized: a missing `uri` or `mimeType`
+  is filled in and extra fields (like `annotations`) are preserved. An entry with
+  both `text` and `blob`, or neither, is reported as `-32603`.
 
 Reading an unknown URI returns the spec's not-found error (`-32002` on the legacy
 era, `-32602` on the modern one). A captured value that cannot be coerced into
@@ -240,6 +250,24 @@ the parameter's declared type is also `-32602`; handler exceptions become
 `-32603`. Once at least one resource or resource template is registered the
 `resources` capability is advertised with both `subscribe` and `listChanged` set
 to `true`; see [Resource Subscriptions & Change Notifications](#resource-subscriptions--change-notifications).
+
+### Serving a Folder
+
+`resource_folder` registers a `{+path}` template that serves regular files below
+a directory, with traversal protection built in:
+
+```julia
+resource_folder("file:///srv/data", "/srv/data")
+# file:///srv/data/readme.md serves /srv/data/readme.md
+```
+
+Requests are rejected when any path segment is `.`, `..`, `:` on Windows, or
+(unless `hidden = true`) a dotfile, and the resolved target is checked with
+`realpath` to still be inside the directory, so symlinks cannot escape; the
+read itself uses a no-follow handle on POSIX. `mime_types` overrides the
+extension table (`Dict(".foo" => "application/x-foo")`); otherwise a built-in
+table and `HTTP.sniff` decide the content type. A missing or non-regular file
+reports the spec's resource-not-found error for the request's era.
 
 ## The MCP Endpoint
 
@@ -256,6 +284,12 @@ When the server runs behind a reverse proxy, pass the proxy's path prefix to `se
 ```julia
 serve(prefix = "/api", mcp_path = "/tools/mcp")
 # the endpoint is reached at POST /api/tools/mcp
+```
+
+The `serverInfo` block returned by `initialize` (and the modern result `_meta`) identifies this server as `Oxygen` version `1.0.0` by default. Override it with `mcp_server_name` and `mcp_server_version`; the version accepts a `VersionNumber` (or a string that parses as one) so semantic versioning is enforced:
+
+```julia
+serve(mcp_server_name = "MyServer", mcp_server_version = v"2.3.0")
 ```
 
 Requests must include the `MCP-Protocol-Version`, `Mcp-Method` headers, plus `Mcp-Name` for `tools/call`, `prompts/get`, and `resources/read` (carrying the request's name or URI). Oxygen validates that the headers match the request body and rejects mismatches with `400 Bad Request`. `DELETE` returns `405`. A `GET` declaring a modern protocol version also returns `405`; a legacy `GET` replies with a JSON health body, or holds the connection open as the legacy server→client notification stream when it declares `Accept: text/event-stream`.

@@ -330,7 +330,8 @@ const MCP_CONTENT_TYPES = ("text", "image", "audio", "resource_link", "resource"
 function is_text_mime(mime::AbstractString)::Bool
     m = lowercase(mime)
     return startswith(m, "text/") ||
-           m in ("application/json", "application/xml", "application/javascript") ||
+           m in ("application/json", "application/xml", "application/javascript",
+                 "application/toml", "application/yaml", "application/x-yaml") ||
            endswith(m, "+json") || endswith(m, "+xml")
 end
 
@@ -447,8 +448,8 @@ function modern_envelope(ctx::ServerContext, result::Dict{String,Any})::Dict{Str
         meta = Dict{String,Any}()
     end
     meta[META_SERVER_INFO] = Dict{String,Any}(
-        "name" => ctx.mcp.server_name,
-        "version" => ctx.mcp.server_version,
+        "name" => ctx.mcp.server_name[],
+        "version" => ctx.mcp.server_version[],
     )
     result[META_KEY] = meta
     return result

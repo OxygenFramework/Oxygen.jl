@@ -81,10 +81,10 @@ struct MCPPrompt
 end
 
 # A registered MCP resource. Static resources use `uri` as their registry key and
-# take no handler arguments; templated ones (RFC 6570 level-1 `{var}`) use the
-# template as their key, and their handler parameters are the template variables.
-# `pattern` is the compiled matcher linking a requested URI back to the template,
-# and `vars` lists the capture names in pattern order.
+# take no handler arguments; templated ones (RFC 6570 `{var}` and `{+var}`
+# expansions) use the template as their key, and their handler parameters are the
+# template variables. `pattern` is the compiled matcher linking a requested URI
+# back to the template, and `vars` lists the capture names in pattern order.
 struct MCPResource
     uri         :: String
     name        :: String
@@ -92,6 +92,8 @@ struct MCPResource
     description :: String
     mime_type   :: Nullable{String}
     size        :: Nullable{Int}     # static resources only
+    annotations :: Nullable{Dict{String,Any}}        # spec `annotations` object
+    icons       :: Nullable{Vector{Dict{String,Any}}} # spec `icons` array
     template    :: Bool
     vars        :: Vector{String}    # template variable names, in capture order
     pattern     :: Nullable{Regex}   # compiled matcher (templates only)

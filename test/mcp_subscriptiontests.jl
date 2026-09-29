@@ -147,6 +147,21 @@ function no_frame(frames; wait=0.4)
     return !isready(frames)
 end
 
+# The listen registry is a Set of records (ids are only unique per connection,
+# so they cannot key it); this is the by-id view the tests assert on.
+has_listen(ctx, id) = any(r -> MCP.listen_key(r.id) == MCP.listen_key(id), ctx.mcp.listens)
+
+# Wait until the broker holds exactly `n` subscriptions, i.e. all transport
+# teardowns have pruned. Necessary when two streams share an id, where
+# `has_listen` cannot tell which one is still live.
+function wait_subscribers(n; timeout=15)
+    deadline = time() + timeout
+    while time() < deadline && MCP.subscribers(MCP.broker(CONTEXT[])) != n
+        sleep(0.05)
+    end
+    return MCP.subscribers(MCP.broker(CONTEXT[])) == n
+end
+
 # Disconnect a listen and nudge the server into writing, so the teardown does
 # not have to wait out the keepalive interval.
 function disconnect_listen(io_ref, id)
@@ -156,10 +171,10 @@ function disconnect_listen(io_ref, id)
     notify_resources_changed()
     notify_resource_updated("sub://alpha")
     deadline = time() + 15
-    while time() < deadline && haskey(CONTEXT[].mcp.listens, string(id))
+    while time() < deadline && has_listen(CONTEXT[], id)
         sleep(0.05)
     end
-    return !haskey(CONTEXT[].mcp.listens, string(id))
+    return !has_listen(CONTEXT[], id)
 end
 
 ### Adapter-level helpers ######################################################
@@ -346,14 +361,6 @@ end
             id="x"^(MCP.MAX_SUBSCRIPTION_ID_LENGTH + 1))
     @test parsebody(r)["error"]["code"] == -32600
 
-    # duplicate ids are rejected
-    io_ref, events, _ = open_listen(Dict("toolsListChanged" => true); id=14)
-    take_frame(events)
-    r = rpc("subscriptions/listen", listen_params(Dict("toolsListChanged" => true)); id=14)
-    @test r.status == 400
-    @test parsebody(r)["error"]["code"] == -32600
-    @test disconnect_listen(io_ref, 14)
-
     # the modern request contract still applies to listen
     payload = Dict{String,Any}("jsonrpc" => "2.0", "id" => 1, "method" => "subscriptions/listen",
                                "params" => listen_params(Dict("toolsListChanged" => true)))
@@ -375,19 +382,48 @@ end
     @test parsebody(r)["error"]["code"] == -32601
 end
 
+@testset "listen ids are scoped to a connection" begin
+    count_id(id) = count(r -> MCP.listen_key(r.id) == MCP.listen_key(id), CONTEXT[].mcp.listens)
+
+    # JSON-RPC ids are unique per client, not per server: two connections (two
+    # clients behind a dev server) reusing an id are two independent streams.
+    io_a, events_a, _ = open_listen(Dict("toolsListChanged" => true); id=14)
+    @test take_frame(events_a)["params"]["_meta"][META_ID] == 14
+    io_b, events_b, _ = open_listen(Dict("toolsListChanged" => true); id=14)
+    @test take_frame(events_b)["params"]["_meta"][META_ID] == 14
+    @test count_id(14) == 2
+
+    # both are live and independently tagged
+    @test notify_tools_changed() == 2
+    @test take_frame(events_a)["params"]["_meta"][META_ID] == 14
+    @test take_frame(events_b)["params"]["_meta"][META_ID] == 14
+
+    # one client's disconnect must never prune the other's stream
+    close(io_a[])
+    notify_tools_changed()  # nudge the failed write that tears io_a down
+    @test wait_subscribers(1)
+    @test count_id(14) == 1
+    @test take_frame(events_b)["method"] == "notifications/tools/list_changed"
+
+    close(io_b[])
+    notify_tools_changed()
+    @test wait_subscribers(0)
+    @test !has_listen(CONTEXT[], 14)
+end
+
 @testset "disconnect prunes the listen record" begin
     io_ref, events, _ = open_listen(Dict("resourcesListChanged" => true); id=15)
     take_frame(events)
-    @test haskey(CONTEXT[].mcp.listens, "15")
+    @test has_listen(CONTEXT[], 15)
 
     close(io_ref[])
     notify_resources_changed()  # force the failed write that tears the stream down
 
     deadline = time() + 15
-    while time() < deadline && haskey(CONTEXT[].mcp.listens, "15")
+    while time() < deadline && has_listen(CONTEXT[], 15)
         sleep(0.05)
     end
-    @test !haskey(CONTEXT[].mcp.listens, "15")
+    @test !has_listen(CONTEXT[], 15)
     @test MCP.subscribers(MCP.broker(CONTEXT[])) == 0
 end
 
@@ -665,11 +701,32 @@ end
     send(input, Dict("jsonrpc" => "2.0", "method" => "notifications/cancelled",
                      "params" => Dict("requestId" => 5)))
     deadline = time() + 5
-    while time() < deadline && haskey(CONTEXT[].mcp.listens, "5")
+    while time() < deadline && has_listen(CONTEXT[], 5)
         sleep(0.02)
     end
-    @test !haskey(CONTEXT[].mcp.listens, "5")
+    @test !has_listen(CONTEXT[], 5)
     @test notify_resource_updated("sub://alpha") == 0
+
+    stop_stdio(task, input, output)
+end
+
+@testset "stdio listen: duplicate ids are rejected" begin
+    task, input, output, lines, reader = start_stdio()
+
+    send(input, Dict("jsonrpc" => "2.0", "id" => 7, "method" => "subscriptions/listen",
+                     "params" => listen_params(Dict("toolsListChanged" => true))))
+    ack = next_line(lines)
+    @test ack["method"] == "notifications/subscriptions/acknowledged"
+    @test ack["params"]["_meta"][META_ID] == 7
+
+    # one connection owns every stdio stream, so a reused id would make the
+    # wire subscription id and `notifications/cancelled` ambiguous
+    send(input, Dict("jsonrpc" => "2.0", "id" => 7, "method" => "subscriptions/listen",
+                     "params" => listen_params(Dict("toolsListChanged" => true))))
+    body = next_line(lines)
+    @test body["id"] == 7
+    @test body["error"]["code"] == -32600
+    @test occursin("already active", body["error"]["message"])
 
     stop_stdio(task, input, output)
 end

@@ -258,8 +258,10 @@ function terminate(context::ServerContext)
         # clear any cached middleware strategies so new servers pick up updated middleware
         empty!(context.service.middleware_cache)
 
-        # gracefully close any open MCP subscription streams before the server goes away
+        # gracefully close any open MCP subscription streams and legacy sessions
+        # before the server goes away
         MCP.close_listens!(context)
+        MCP.close_sessions!(context)
 
         # Set the external url to nothing when the server is terminated
         context.service.external_url[] = nothing
@@ -1057,11 +1059,11 @@ function setupmcp(ctx::ServerContext)
     # so they can hold the connection open and write frames themselves.
     mcp_post(stream::HTTP.Stream) = MCP.handle(ctx, stream)
     mcp_get(stream::HTTP.Stream) = MCP.handle_get(ctx, stream)
-    method_not_allowed(_::HTTP.Request) = HTTP.Response(405, ["Allow" => "POST, GET"], "Method Not Allowed")
+    mcp_delete(req::HTTP.Request) = MCP.handle_delete(ctx, req)
 
     register_internal(ctx, router, "POST", path, mcp_post)
     register_internal(ctx, router, STREAM, path, mcp_get)
-    register_internal(ctx, router, "DELETE", path, method_not_allowed)
+    register_internal(ctx, router, "DELETE", path, mcp_delete)
     return nothing
 end
 

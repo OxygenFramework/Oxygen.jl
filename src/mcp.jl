@@ -3,6 +3,7 @@ module MCP
 using HTTP
 using JSON
 using Base64
+import UUIDs
 
 using ..Types
 using ..AppContext: ServerContext, MCPContext
@@ -82,6 +83,7 @@ supports_structured_content(version::AbstractString)::Bool = version >= STRUCTUR
 include("mcp/serialization.jl")  # schemas, argument coercion, content blocks, envelopes
 include("mcp/errors.jl")         # error results and request validation
 include("mcp/streams.jl")        # streaming event model, channels, wire mapping
+include("mcp/sessions.jl")       # legacy Streamable HTTP sessions (Mcp-Session-Id)
 include("mcp/tools.jl")          # tools/list, tools/call
 include("mcp/prompts.jl")        # prompts/list, prompts/get
 include("mcp/resources.jl")      # resources/list, resources/templates/list, resources/read
@@ -122,20 +124,28 @@ function discover_result(ctx::ServerContext)::Dict{String,Any}
 end
 
 """
-    initialize_result(ctx, params) :: Dict
+    initialize_result(ctx, params; session=nothing) :: Dict
 
 Build the legacy `initialize` response. The client's version is echoed when
 supported, otherwise the latest legacy revision is offered; the negotiated
-version is remembered on the context for later feature gating.
+version is remembered on `session` (or on the context-wide anonymous state for
+stdio and header-less HTTP clients) for later feature gating.
 """
-function initialize_result(ctx::ServerContext, params)::Dict{String,Any}
+function initialize_result(ctx::ServerContext, params; session::Union{Nothing,MCPSession}=nothing)::Dict{String,Any}
     client_version = get(params, "protocolVersion", nothing)
     client_version isa AbstractString || (client_version = nothing)
     negotiated = negotiate_version(client_version)
-    ctx.mcp.session_version[] = negotiated
-    # Armed for legacy server→client delivery only after a real initialize
-    # response (a bare `notifications/initialized` is not proof of a handshake).
-    ctx.mcp.handshake_complete[] = true
+    if session === nothing
+        ctx.mcp.session_version[] = negotiated
+        # Armed for legacy server→client delivery only after a real initialize
+        # response (a bare `notifications/initialized` is not proof of a handshake).
+        ctx.mcp.handshake_complete[] = true
+    else
+        lock(session.lock) do
+            session.version = negotiated
+            session.handshake_complete = true
+        end
+    end
 
     result = Dict{String,Any}(
         "protocolVersion" => negotiated,
@@ -160,14 +170,15 @@ end
 # A streamed `tools/call` returns its `StreamedCall` and a `subscriptions/listen`
 # returns its `ListenCall`; the transport consumes those directly.
 function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, method::String, payload;
-                  era::Symbol=:legacy)::Tuple{Union{Dict{String,Any},StreamedCall,ListenCall},Int}
+                  era::Symbol=:legacy,
+                  session::Union{Nothing,MCPSession}=nothing)::Tuple{Union{Dict{String,Any},StreamedCall,ListenCall},Int}
     modern = era === :modern
-    version = modern ? PROTOCOL_VERSION : ctx.mcp.session_version[]
+    version = modern ? PROTOCOL_VERSION : legacy_version(ctx, session)
 
     if method == "initialize"
         # initialize exists only in the legacy era.
         modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        return result_body(id, initialize_result(ctx, get(payload, "params", Dict{String,Any}()))), 200
+        return result_body(id, initialize_result(ctx, get(payload, "params", Dict{String,Any}()); session=session)), 200
     elseif method == "server/discover"
         return result_body(id, modern_envelope(ctx, discover_result(ctx))), 200
     elseif method == "tools/list"
@@ -208,12 +219,12 @@ function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, meth
         modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
         params = get(payload, "params", Dict{String,Any}())
         params isa AbstractDict || (params = Dict{String,Any}())
-        return subscribe_resource_legacy(ctx, id, params)
+        return subscribe_resource_legacy(ctx, id, params; session=session)
     elseif method == "resources/unsubscribe"
         modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
         params = get(payload, "params", Dict{String,Any}())
         params isa AbstractDict || (params = Dict{String,Any}())
-        return unsubscribe_resource_legacy(ctx, id, params)
+        return unsubscribe_resource_legacy(ctx, id, params; session=session)
     elseif method == "ping"
         # ping was removed from the modern era; it exists only in legacy.
         modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
@@ -243,11 +254,43 @@ function message_shape(payload)::Symbol
     return :invalid
 end
 
+"""
+    validate_envelope(payload) :: Union{Nothing,Dict}
+
+Enforce the JSON-RPC 2.0 envelope MCP requires: `jsonrpc` must be exactly
+`"2.0"`, `method` must be a string, and an `id` may only be a string or a
+number (a null id is forbidden by the MCP schema). Returns an error body, or
+`nothing` when the envelope is well formed.
+"""
+function validate_envelope(payload)::Union{Nothing,Dict{String,Any}}
+    version = get(payload, "jsonrpc", nothing)
+    if !(version isa AbstractString) || String(version) != "2.0"
+        return error_body(get(payload, "id", nothing), MCP_INVALID_REQUEST,
+                          "Invalid Request: jsonrpc must be exactly \"2.0\"")
+    end
+
+    method = get(payload, "method", nothing)
+    if !(method isa AbstractString)
+        return error_body(get(payload, "id", nothing), MCP_INVALID_REQUEST, "Invalid Request")
+    end
+
+    if haskey(payload, "id")
+        id = payload["id"]
+        if !(id isa AbstractString || (id isa Integer && !(id isa Bool)))
+            return error_body(nothing, MCP_INVALID_REQUEST,
+                              "Invalid Request: id must be a string or a number")
+        end
+    end
+    return nothing
+end
+
 # Handle a single parsed JSON-RPC message. Returns `(body, status)`, where
 # `body` is `nothing` for notifications and client responses (no response is
 # written), a `StreamedCall` for a streamed tools/call, a `ListenCall` for a
-# subscriptions/listen stream, or a JSON-RPC body.
-function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request})::Tuple{Union{Nothing,Dict{String,Any},StreamedCall,ListenCall},Int}
+# `subscriptions/listen` stream, or a JSON-RPC body. `session` carries the
+# legacy Streamable HTTP session resolved by the transport, when any.
+function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request};
+                 session::Union{Nothing,MCPSession}=nothing)::Tuple{Union{Nothing,Dict{String,Any},StreamedCall,ListenCall},Int}
     shape = message_shape(payload)
 
     if shape === :invalid
@@ -260,13 +303,15 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request}):
         return nothing, 202
     end
 
+    envelope = validate_envelope(payload)
+    isnothing(envelope) || return envelope, 400
+
     method = payload["method"]
-    method isa AbstractString || return error_body(get(payload, "id", nothing), MCP_INVALID_REQUEST, "Invalid Request"), 400
     method = String(method)
 
     if shape === :notification
         if method == "notifications/initialized"
-            ctx.mcp.initialized[] = true
+            mark_initialized!(ctx, session)
         elseif method == "notifications/cancelled" && req === nothing
             # Only routeless (stdio) listen streams can be cancelled in-band;
             # on HTTP a notification can arrive on any connection (see
@@ -294,7 +339,7 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request}):
         end
     end
 
-    return dispatch(ctx, req, id, method, payload; era=era)
+    return dispatch(ctx, req, id, method, payload; era=era, session=session)
 end
 
 # The transport adapter decodes the request body before middleware runs, so the
@@ -349,8 +394,10 @@ function accepts_event_stream(req::HTTP.Request)::Bool
     return wildcard
 end
 
-function write_json_response(stream::HTTP.Stream, body; status::Int=200)
-    return write_stream_response(stream, status, "application/json; charset=utf-8", JSON.json(body))
+function write_json_response(stream::HTTP.Stream, body; status::Int=200,
+                             headers::Vector{Pair{String,String}}=Pair{String,String}[])
+    return write_stream_response(stream, status, "application/json; charset=utf-8", JSON.json(body);
+                                 headers=headers)
 end
 
 function write_sse_frame(stream::HTTP.Stream, payload)
@@ -358,6 +405,69 @@ function write_sse_frame(stream::HTTP.Stream, payload)
     write(stream, "data: ", JSON.json(payload), "\n\n")
     flush(stream)
     return nothing
+end
+
+"""
+    request_is_modern(req, payload) :: Bool
+
+Whether a parsed HTTP request belongs to the modern (stateless) era: its
+message carries `_meta.protocolVersion`, its method is `server/discover`, or
+the `MCP-Protocol-Version` header names a modern revision. Sessions exist only
+in the legacy era, so modern requests never resolve one.
+"""
+function request_is_modern(req::HTTP.Request, payload)::Bool
+    if payload isa AbstractDict
+        method = get(payload, "method", nothing)
+        method isa AbstractString || (method = "")
+        params = get(payload, "params", nothing)
+        params isa AbstractDict || (params = Dict{String,Any}())
+        return request_era(req, String(method), params) === :modern
+    end
+    header_version = mcp_standard_header(req, "MCP-Protocol-Version")
+    return header_version isa String && strip(String(header_version)) in MODERN_VERSIONS
+end
+
+"""
+    process_batch(ctx, payload, req; session) :: (body, status)
+
+Handle a JSON-RPC batch. Batching existed only in the `2025-03-26` revision
+(it was removed in `2025-06-18`), so a batch is accepted only when the
+effective legacy version is exactly that revision. Notifications produce no
+entries; a batch of only notifications answers `202` with no body. Streamed
+tool calls are drained to their terminal JSON body (batches never upgrade to
+SSE), and `subscriptions/listen` is rejected because it is a modern-only
+stream.
+"""
+function process_batch(ctx::ServerContext, payload::AbstractVector,
+                       req::Union{Nothing,HTTP.Request};
+                       session::Union{Nothing,MCPSession}=nothing)
+    isempty(payload) && return error_body(nothing, MCP_INVALID_REQUEST, "Invalid Request: empty batch"), 400
+
+    if request_era(req, "", Dict{String,Any}()) === :modern
+        return error_body(nothing, MCP_INVALID_REQUEST,
+                          "Batch requests are not supported in the modern era"), 400
+    end
+
+    version = legacy_version(ctx, session)
+    version == "2025-03-26" || return error_body(
+        nothing, MCP_INVALID_REQUEST,
+        "Batch requests require the 2025-03-26 protocol revision"), 400
+
+    responses = Any[]
+    for entry in payload
+        body, _ = process(ctx, entry, req; session=session)
+        if body isa StreamedCall
+            body = streamed_body(ctx, body, drain_stream!(body.stream))
+        elseif body isa ListenCall
+            cancel_stream!(body.stream)
+            body = error_body(body.id, MCP_INVALID_REQUEST,
+                              "subscriptions/listen is not available in a batch")
+        end
+        isnothing(body) || push!(responses, body)
+    end
+
+    isempty(responses) && return nothing, 202
+    return responses, 200
 end
 
 """
@@ -376,7 +486,9 @@ the raw stream:
   while the producer is idle.
 
 Origin checks, modern header validation, and body parsing all run before any
-streaming starts.
+streaming starts. Legacy HTTP clients get a session id from `initialize` (see
+`mcp/sessions.jl`); clients that echo it are isolated, while header-less
+requests keep using the context-wide anonymous state.
 """
 function handle(ctx::ServerContext, stream::HTTP.Stream)
     req = buffered_request(stream)
@@ -408,14 +520,55 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
         return write_json_response(stream, error_body(nothing, MCP_PARSE_ERROR, "Parse error"); status=400)
     end
 
-    body, status = process(ctx, payload, req)
+    modern = request_is_modern(req, payload)
+
+    # Sessions only exist in the legacy era. A supplied id must name a live
+    # session (404 otherwise, per the Streamable HTTP transport).
+    session = nothing
+    had_session_header = false
+    if !modern
+        resolved = resolve_session(ctx, req)
+        if resolved === :invalid
+            return write_json_response(stream,
+                error_body(nothing, MCP_INVALID_REQUEST, "Invalid Mcp-Session-Id header"); status=400)
+        elseif resolved === :unknown
+            return write_json_response(stream,
+                error_body(nothing, MCP_INVALID_REQUEST, "Unknown or expired session"); status=404)
+        elseif resolved isa MCPSession
+            session = resolved
+            had_session_header = true
+        end
+    end
+
+    if payload isa AbstractVector
+        body, status = process_batch(ctx, payload, req; session=session)
+        isnothing(body) && return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
+        return write_json_response(stream, body; status=status)
+    end
+
+    method = payload isa AbstractDict ? get(payload, "method", "") : ""
+
+    # A header-less initialize mints a session and returns its id; the response
+    # is the only place the client learns it.
+    if !modern && !had_session_header && method == "initialize"
+        session = new_session!(ctx)
+    end
+
+    body, status = process(ctx, payload, req; session=session)
+
+    response_headers = Pair{String,String}[]
+    if !modern && method == "initialize" && session isa MCPSession
+        had_session_header || mirror_anonymous!(ctx, session)
+        push!(response_headers, SESSION_HEADER => session.id)
+    end
+
     if body isa StreamedCall
         return stream_call(ctx, stream, req, body)
     elseif body isa ListenCall
         return stream_listen_call(ctx, stream, req, body)
     end
     isnothing(body) && return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
-    return write_json_response(stream, body; status=status)
+    return write_json_response(stream, body; status=status, headers=response_headers)
 end
 
 """
@@ -609,17 +762,64 @@ function handle_get(ctx::ServerContext, stream::HTTP.Stream)
                                      headers=["Allow" => "POST"])
     end
 
+    resolved = resolve_session(ctx, req)
+    if resolved === :invalid
+        return write_stream_response(stream, 400, "application/json; charset=utf-8",
+                                     JSON.json(error_body(nothing, MCP_INVALID_REQUEST,
+                                                          "Invalid Mcp-Session-Id header")))
+    elseif resolved === :unknown
+        return write_stream_response(stream, 404, "application/json; charset=utf-8",
+                                     JSON.json(error_body(nothing, MCP_INVALID_REQUEST,
+                                                          "Unknown or expired session")))
+    end
+    session = resolved isa MCPSession ? resolved : nothing
+
     accept = join((String(v) for (k, v) in req.headers
                    if lowercase(String(k)) == "accept"), ",")
     if occursin("text/event-stream", accept)
-        return stream_notifications(ctx, stream)
+        return stream_notifications(ctx, stream; session=session)
     end
 
     body = JSON.json(Dict{String,Any}(
         "status" => "ok",
-        "protocol_version" => ctx.mcp.session_version[],
+        "protocol_version" => legacy_version(ctx, session),
     ))
     return write_stream_response(stream, 200, "application/json; charset=utf-8", body)
+end
+
+"""
+    handle_delete(ctx, req) :: HTTP.Response
+
+Terminate the legacy session named by `Mcp-Session-Id`. A DELETE without the
+header is `405` (the server does not accept anonymous termination), an unknown
+or expired id is `404`, and the modern era — which has no sessions — is `405`.
+An accepted termination closes the session's notification streams and removes
+its state; later requests naming it get `404`.
+"""
+function handle_delete(ctx::ServerContext, req::HTTP.Request)::HTTP.Response
+    header_version = mcp_standard_header(req, "MCP-Protocol-Version")
+    if header_version isa String && strip(String(header_version)) in MODERN_VERSIONS
+        return HTTP.Response(405, ["Allow" => "POST, GET"], "Method Not Allowed")
+    end
+
+    resolved = resolve_session(ctx, req)
+    if resolved === nothing
+        return HTTP.Response(405, ["Allow" => "POST, GET"], "Method Not Allowed")
+    elseif resolved === :invalid
+        return HTTP.Response(400, ["Content-Type" => "application/json; charset=utf-8"],
+            JSON.json(error_body(nothing, MCP_INVALID_REQUEST, "Invalid Mcp-Session-Id header")))
+    elseif resolved === :unknown
+        return HTTP.Response(404, ["Content-Type" => "application/json; charset=utf-8"],
+            JSON.json(error_body(nothing, MCP_INVALID_REQUEST, "Unknown or expired session")))
+    end
+
+    session = resolved::MCPSession
+    terminate_session!(ctx, session)
+    lock(ctx.mcp.sessions_lock) do
+        delete!(ctx.mcp.sessions, session.id)
+    end
+    return HTTP.Response(200, ["Content-Type" => "application/json; charset=utf-8"],
+                         JSON.json(Dict{String,Any}("status" => "terminated")))
 end
 
 """
@@ -627,20 +827,27 @@ end
 
 Hold the legacy server→client notification channel open as an SSE stream: a
 broker subscription forwards `notifications/resources/updated` for the
-session's `resources/subscribe` set and capability-gated `list_changed`
-notifications, interleaved with periodic keep-alive comments. It stays open
-until the client disconnects (delivery is a single-client channel in the legacy
-era). This is what stops mainstream clients from tearing the stream down and
-reconnecting once per second.
+connection's `resources/subscribe` set and capability-gated `list_changed`
+notifications, interleaved with periodic keep-alive comments. A session-scoped
+sink reads the session's own set and the stream is closed when that session is
+terminated with `DELETE`; a header-less sink keeps using the anonymous set. It
+stays open until the client disconnects. This is what stops mainstream clients
+from tearing the stream down and reconnecting once per second.
 """
-function stream_notifications(ctx::ServerContext, stream::HTTP.Stream)
+function stream_notifications(ctx::ServerContext, stream::HTTP.Stream;
+                              session::Union{Nothing,MCPSession}=nothing)
     mcp_broker = broker(ctx)
     sub = try
-        subscribe_legacy!(ctx; label="legacy-http")
+        subscribe_legacy!(ctx; label="legacy-http", session=session)
     catch error
         error isa PubSub.CapacityError || rethrow()
         return write_stream_response(stream, 503, "text/plain; charset=utf-8",
                                      "Notification capacity exhausted")
+    end
+    if isnothing(sub)
+        return write_stream_response(stream, 404, "application/json; charset=utf-8",
+                                     JSON.json(error_body(nothing, MCP_INVALID_REQUEST,
+                                                          "Unknown or expired session")))
     end
     source = EventStream(sub.queue, nothing)
 
@@ -673,6 +880,7 @@ function stream_notifications(ctx::ServerContext, stream::HTTP.Stream)
         # The client disconnected (write failed) — end the stream quietly.
     finally
         PubSub.unsubscribe!(mcp_broker, sub)
+        session isa MCPSession && remove_sink!(session, sub)
         try
             HTTP.closewrite(stream)
         catch
@@ -724,7 +932,11 @@ function stdio_loop(ctx::ServerContext; input::IO=stdin, output::IO=stdout)
             end
 
             body = try
-                first(process(ctx, payload, nothing))
+                if payload isa AbstractVector
+                    first(process_batch(ctx, payload, nothing))
+                else
+                    first(process(ctx, payload, nothing))
+                end
             catch
                 error_body(nothing, MCP_INTERNAL_ERROR, "Internal error")
             end

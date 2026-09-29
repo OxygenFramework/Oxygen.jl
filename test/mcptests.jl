@@ -934,6 +934,172 @@ end
     @test !haskey(result, "structuredContent")
 end
 
+@testset "JSON-RPC envelope validation" begin
+    # missing jsonrpc -> -32600
+    r = raw_post(Dict("id" => 1, "method" => "ping", "params" => Dict()))
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32600
+
+    # wrong jsonrpc version -> -32600
+    r = raw_post(Dict("jsonrpc" => "1.0", "id" => 1, "method" => "ping", "params" => Dict()))
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32600
+
+    # structured id -> -32600 (ids are strings or numbers)
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => Dict("x" => 1), "method" => "ping", "params" => Dict()))
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32600
+
+    # null id -> -32600 (forbidden by the MCP schema)
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => nothing, "method" => "ping", "params" => Dict()))
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32600
+
+    # a well-formed notification is still accepted silently
+    r = raw_post(Dict("jsonrpc" => "2.0", "method" => "notifications/initialized"))
+    @test r.status == 202
+end
+
+@testset "legacy HTTP sessions" begin
+    ctx = CONTEXT[]
+    sid_of(r) = HTTP.header(r, MCP.SESSION_HEADER)
+    init(version) = raw_post(Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
+                                  "params" => Dict("protocolVersion" => version, "capabilities" => Dict())))
+    echo(sid, id) = raw_post(
+        Dict("jsonrpc" => "2.0", "id" => id, "method" => "tools/call",
+             "params" => Dict("name" => "echo_place",
+                              "arguments" => Dict("place" => Dict("name" => "S",
+                                                                  "coordinates" => Dict("lat" => 1.0, "lon" => 2.0)))));
+        headers=[MCP.SESSION_HEADER => sid])
+
+    # initialize mints a session and returns its id; header-less initialize also
+    # keeps the anonymous state in sync for old clients
+    r = init("2024-11-05")
+    sid1 = sid_of(r)
+    @test r.status == 200
+    @test sid1 isa String && !isempty(sid1)
+    @test haskey(ctx.mcp.sessions, sid1)
+    @test ctx.mcp.session_version[] == "2024-11-05"
+
+    # echoing the id scopes feature gating to the session's negotiated version
+    result = parsebody(echo(sid1, 2))["result"]
+    @test !haskey(result, "structuredContent")
+
+    # a second session negotiates a newer version independently
+    r = init("2025-11-25")
+    sid2 = sid_of(r)
+    @test sid2 isa String && sid2 != sid1
+    @test haskey(parsebody(echo(sid2, 3))["result"], "structuredContent")
+    # ...and the first session is unaffected
+    @test !haskey(parsebody(echo(sid1, 4))["result"], "structuredContent")
+
+    # an unknown session id is rejected with 404
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => 5, "method" => "ping", "params" => Dict());
+                 headers=[MCP.SESSION_HEADER => "00000000-0000-0000-0000-000000000000"])
+    @test r.status == 404
+    @test parsebody(r)["error"]["code"] == -32600
+
+    # DELETE terminates the session; later requests naming it get 404
+    r = HTTP.request("DELETE", "$localhost/mcp", [MCP.SESSION_HEADER => sid2];
+                     status_exception=false, client=MCP_CLIENT)
+    @test r.status == 200
+    @test !haskey(ctx.mcp.sessions, sid2)
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => 6, "method" => "ping", "params" => Dict());
+                 headers=[MCP.SESSION_HEADER => sid2])
+    @test r.status == 404
+
+    # DELETE without a session header (and the modern era) stay 405
+    @test HTTP.request("DELETE", "$localhost/mcp"; status_exception=false, client=MCP_CLIENT).status == 405
+    r = HTTP.request("DELETE", "$localhost/mcp", ["Mcp-Session-Id" => sid1, "MCP-Protocol-Version" => "2026-07-28"];
+                     status_exception=false, client=MCP_CLIENT)
+    @test r.status == 405
+    @test haskey(ctx.mcp.sessions, sid1)
+
+    # expired sessions are swept when a new one is minted
+    adapter_ctx = Oxygen.Core.ServerContext()
+    stale = MCP.MCPSession("stale")
+    stale.last_seen = time() - MCP.SESSION_TTL_SECONDS - 1
+    lock(adapter_ctx.mcp.sessions_lock) do
+        adapter_ctx.mcp.sessions["stale"] = stale
+    end
+    fresh = MCP.new_session!(adapter_ctx)
+    @test !haskey(adapter_ctx.mcp.sessions, "stale")
+    @test adapter_ctx.mcp.sessions[fresh.id] === fresh
+    @test MCP.legacy_version(adapter_ctx, fresh) == "2025-11-25"
+    @test MCP.legacy_version(adapter_ctx, nothing) == adapter_ctx.mcp.session_version[]
+
+    # restore the anonymous default for the tests that follow
+    init("2025-11-25")
+    ctx.mcp.initialized[] = false
+    ctx.mcp.handshake_complete[] = false
+end
+
+@testset "JSON-RPC batching (2025-03-26)" begin
+    init(version) = raw_post(Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
+                                  "params" => Dict("protocolVersion" => version, "capabilities" => Dict())))
+    add_call(id) = Dict("jsonrpc" => "2.0", "id" => id, "method" => "tools/call",
+                        "params" => Dict("name" => "add_numbers", "arguments" => Dict("a" => 1, "b" => 2)))
+    note = Dict("jsonrpc" => "2.0", "method" => "notifications/initialized")
+    unknown = Dict("jsonrpc" => "2.0", "id" => 99, "method" => "does/not/exist")
+
+    # batching was removed after 2025-03-26
+    init("2025-11-25")
+    r = raw_post([add_call(1)])
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32600
+
+    # ...and supported under it: responses only for requests, in order
+    init("2025-03-26")
+    r = raw_post([add_call(1), note, unknown])
+    @test r.status == 200
+    batch = parsebody(r)
+    @test batch isa Vector && length(batch) == 2
+    by_id = Dict(entry["id"] => entry for entry in batch)
+    @test by_id[1]["result"]["content"][1]["text"] == "3"
+    @test by_id[99]["error"]["code"] == -32601
+
+    # an all-notification batch answers 202 with no body
+    r = raw_post([note])
+    @test r.status == 202
+    @test isempty(r.body)
+
+    # malformed entries become per-entry errors instead of failing the batch
+    r = raw_post([add_call(2), "nope", Dict("jsonrpc" => "1.0", "id" => 3, "method" => "ping")])
+    @test r.status == 200
+    batch = parsebody(r)
+    @test [entry["id"] for entry in batch] == [2, nothing, 3]
+    @test haskey(batch[1], "result")
+    @test batch[2]["error"]["code"] == -32600
+    @test batch[3]["error"]["code"] == -32600
+
+    # an empty batch is an invalid request
+    r = raw_post(Any[])
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32600
+
+    # the modern era removed batching
+    init("2025-11-25")
+    r = raw_post([add_call(4)]; headers=["MCP-Protocol-Version" => MCP.PROTOCOL_VERSION,
+                                         "Mcp-Method" => "tools/call"])
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32600
+
+    # stdio supports batches under the same revision gate
+    stdio_initialize = JSON.json(Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
+                                      "params" => Dict("protocolVersion" => "2025-03-26",
+                                                       "capabilities" => Dict())))
+    output = IOBuffer()
+    MCP.stdio_loop(CONTEXT[]; input=IOBuffer(stdio_initialize * "\n"), output=output)
+    @test JSON.parse(String(take!(output)))["result"]["protocolVersion"] == "2025-03-26"
+
+    output = IOBuffer()
+    MCP.stdio_loop(CONTEXT[]; input=IOBuffer(JSON.json([add_call(10), note]) * "\n"), output=output)
+    batch = JSON.parse(String(take!(output)))
+    @test batch isa Vector && length(batch) == 1
+    @test batch[1]["id"] == 10
+    @test batch[1]["result"]["content"][1]["text"] == "3"
+end
+
 @testset "legacy stdio handshake" begin
     messages = [
         JSON.json(Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",

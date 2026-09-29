@@ -104,13 +104,13 @@ function open_listen(notifications; id=1, accept="text/event-stream")
     return io_ref, events, task
 end
 
-function open_legacy_sink()
+function open_legacy_sink(; headers=Pair{String,String}[])
     io_ref = Ref{Any}(nothing)
     priming = Ref(false)
     frames = Channel{Any}(128)
     task = @async begin
         try
-            HTTP.open("GET", SUB_URL, ["Accept" => "text/event-stream"];
+            HTTP.open("GET", SUB_URL, vcat(["Accept" => "text/event-stream"], headers);
                       client=HTTP.Client()) do io
                 io_ref[] = io
                 for line in eachline(io)
@@ -536,6 +536,67 @@ end
         sleep(0.05)
     end
     @test MCP.subscribers(broker) == 0
+end
+
+@testset "legacy sessions isolate subscriptions" begin
+    ctx = CONTEXT[]
+    session_init(version) = raw_post(Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
+                                          "params" => Dict("protocolVersion" => version, "capabilities" => Dict())))
+    subscribe(sid, uri, id) = raw_post(
+        Dict("jsonrpc" => "2.0", "id" => id, "method" => "resources/subscribe",
+             "params" => Dict("uri" => uri));
+        headers=Pair{String,String}["Mcp-Session-Id" => sid])
+
+    sid1 = HTTP.header(session_init("2025-11-25"), MCP.SESSION_HEADER)
+    sid2 = HTTP.header(session_init("2025-11-25"), MCP.SESSION_HEADER)
+    @test sid1 isa String && sid2 isa String && sid1 != sid2
+
+    for sid in (sid1, sid2)
+        raw_post(Dict("jsonrpc" => "2.0", "method" => "notifications/initialized");
+                 headers=Pair{String,String}["Mcp-Session-Id" => sid])
+    end
+
+    @test parsebody(subscribe(sid1, "sub://alpha", 2))["result"] == Dict{String,Any}()
+    @test parsebody(subscribe(sid2, "sub://beta", 3))["result"] == Dict{String,Any}()
+
+    io1, frames1, _ = open_legacy_sink(headers=Pair{String,String}["Mcp-Session-Id" => sid1])
+    io2, frames2, _ = open_legacy_sink(headers=Pair{String,String}["Mcp-Session-Id" => sid2])
+    @test io1[] !== nothing && io2[] !== nothing
+
+    # each sink only sees the update its own session subscribed to
+    @test notify_resource_updated("sub://alpha") == 1
+    @test take_frame(frames1)["params"]["uri"] == "sub://alpha"
+    @test no_frame(frames2)
+
+    @test notify_resource_updated("sub://beta") == 1
+    @test take_frame(frames2)["params"]["uri"] == "sub://beta"
+    @test no_frame(frames1)
+
+    # DELETE terminates the session and its notification stream
+    r = HTTP.request("DELETE", SUB_URL, ["Mcp-Session-Id" => sid1];
+                     status_exception=false, client=MCP_CLIENT)
+    @test r.status == 200
+    @test !haskey(ctx.mcp.sessions, sid1)
+    deadline = time() + 10
+    while time() < deadline && MCP.subscribers(MCP.broker(ctx)) > 1
+        sleep(0.05)
+    end
+    @test MCP.subscribers(MCP.broker(ctx)) == 1   # the other session's sink only
+    @test notify_resource_updated("sub://alpha") == 0
+
+    # a request naming the terminated session is rejected
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => 5, "method" => "ping", "params" => Dict());
+                 headers=Pair{String,String}["Mcp-Session-Id" => sid1])
+    @test r.status == 404
+
+    # clean up the remaining sink
+    close(io2[])
+    notify_resource_updated("sub://beta")
+    deadline = time() + 10
+    while time() < deadline && MCP.subscribers(MCP.broker(ctx)) > 0
+        sleep(0.05)
+    end
+    @test MCP.subscribers(MCP.broker(ctx)) == 0
 end
 
 @testset "legacy delivery requires a completed handshake" begin

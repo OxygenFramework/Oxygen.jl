@@ -501,10 +501,39 @@ Legacy clients call `resources/subscribe` with a URI (and
 
 Both are idempotent and return an empty result. Updates arrive as
 `notifications/resources/updated` on the legacy server→client channel: the GET
-`text/event-stream` connection over HTTP, or `stdout` over stdio. Legacy
-delivery is single-session — one subscription set and one notification channel
-per server — and only starts after a completed `initialize` handshake, so
-legacy HTTP notifications reach a single GET listener.
+`text/event-stream` connection over HTTP, or `stdout` over stdio. Delivery only
+starts after a completed `initialize` handshake.
+
+### Legacy HTTP sessions
+
+Over Streamable HTTP, `initialize` mints a session and returns its id in the
+`Mcp-Session-Id` response header. Echoing that header on later requests scopes
+the negotiated protocol version, the handshake flags, and the
+`resources/subscribe` set to that session, so concurrent legacy clients never
+observe each other's subscriptions. A request naming an unknown or expired id
+is rejected with `404`; sessions idle for an hour are swept automatically, and
+at most 1,024 live sessions are kept (the oldest is evicted first).
+
+```http
+Mcp-Session-Id: 3f2a...
+```
+
+Send `DELETE /mcp` with the header to terminate a session and close its GET
+notification stream. Clients that never echo the id keep working through the
+server-wide anonymous session — the original single-client behavior — so two
+header-less clients still share one subscription set. The modern
+(2026-07-28) era is stateless and ignores sessions entirely.
+
+### JSON-RPC batching
+
+The `2025-03-26` revision added JSON-RPC batching and `2025-06-18` removed it,
+so `POST /mcp` accepts an array of messages only while the client has
+negotiated `2025-03-26`. Requests produce positional responses, notifications
+produce none (a batch of only notifications answers `202` with no body), and a
+non-conforming entry becomes an error object without failing the batch.
+Streamed tool calls inside a batch are drained to their final JSON result
+rather than upgrading to SSE, and `subscriptions/listen` (modern-only) is
+rejected.
 
 ## stdio Transport
 

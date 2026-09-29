@@ -50,12 +50,14 @@ end
     resources       :: Dict{String, MCPResource}   = Dict{String, MCPResource}()  # keyed by URI
     resource_templates :: Dict{String, MCPResource} = Dict{String, MCPResource}() # keyed by uriTemplate
     allowed_origins :: Vector{String}            = String[]                 # DNS-rebinding guard
-    session_version :: Ref{String}               = Ref{String}("2025-11-25") # negotiated legacy version
-    initialized     :: Ref{Bool}                 = Ref{Bool}(false)          # legacy handshake completed
-    handshake_complete :: Ref{Bool}              = Ref{Bool}(false)          # initialize response sent
+    session_version :: Ref{String}               = Ref{String}("2025-11-25") # default/stdio negotiated legacy version
+    initialized     :: Ref{Bool}                 = Ref{Bool}(false)          # default/stdio handshake completed
+    handshake_complete :: Ref{Bool}              = Ref{Bool}(false)          # default/stdio initialize response sent
+    sessions        :: Dict{String,Any}          = Dict{String,Any}()        # Mcp-Session-Id => MCPSession
+    sessions_lock   :: ReentrantLock             = ReentrantLock()           # guards `sessions`
     broker          :: Ref{Any}                  = Ref{Any}(nothing)         # lazy PubSub.Broker{StreamEvent}
     subscriptions_lock :: ReentrantLock          = ReentrantLock()           # guards listens + legacy set
-    legacy_subscriptions :: Set{String}          = Set{String}()             # wire_subscriptions
+    legacy_subscriptions :: Set{String}          = Set{String}()             # anonymous wire subscriptions
     listens         :: Dict{String,Any}          = Dict{String,Any}()        # id => listen record
 end
 

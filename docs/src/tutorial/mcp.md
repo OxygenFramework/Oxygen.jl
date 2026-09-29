@@ -405,33 +405,39 @@ before it returns the JSON error result.
 The per-request event channel is bounded (64 events), so a slow client
 backpressures the producer instead of buffering without limit. When the client
 disconnects, the channel is closed and a producer blocked in `put!` unwinds;
-cooperative loops can call `check_cancelled(stream)` between steps to stop
-promptly, and `emit(stream, ...)` throws once the request has been cancelled.
+cooperative loops can call `Oxygen.check_cancelled(stream)` between steps to
+stop promptly, and `emit(stream, ...)` throws once the request has been
+cancelled.
 
 Streaming works on both the modern and legacy POST paths. Over stdio there is
 no SSE: progress notifications are written as newline-delimited JSON-RPC
 messages, interleaved with the eventual response. Only tool handlers can
 stream; route-backed tools invoke the route's own request and never emit.
 
-`mcp_stream`, `emit`, `progress`, and `check_cancelled` are exported by Oxygen.
+`mcp_stream`, `emit`, and `progress` are exported by Oxygen;
+`Oxygen.check_cancelled(stream)` is available for cooperative loops but is not
+exported.
 
 ## Resource Subscriptions & Change Notifications
 
 Clients can subscribe to changes instead of polling. Publish a change from
-anywhere in your app with the exported helpers:
+anywhere in your app:
 
 ```julia
 notify_resource_updated("oxygen://readme")  # contents of one resource changed
-notify_resources_changed()                  # resources/list changed
-notify_tools_changed()                      # tools/list changed
-notify_prompts_changed()                    # prompts/list changed
+
+Oxygen.notify_resources_changed()           # resources/list changed
+Oxygen.notify_tools_changed()               # tools/list changed
+Oxygen.notify_prompts_changed()             # prompts/list changed
 ```
 
 Each returns the number of subscriber queues the notification was enqueued into
-(a queue that dropped the value does not count). The
-`notify_*_changed` helpers are also called automatically whenever a tool,
-prompt, or resource is registered, so the advertised `listChanged` capability
-is always truthful. A notification published inside a tool handler goes to the
+(a queue that dropped the value does not count). Only
+`notify_resource_updated` is exported; the list-changed helpers are also called
+automatically whenever a tool, prompt, or resource is registered, so the
+advertised `listChanged` capability is always truthful and manual calls are
+rarely needed — reach for them qualified (`Oxygen.notify_tools_changed()`) when
+the list changes without a registration, such as disk-backed resources. A notification published inside a tool handler goes to the
 subscribers, never onto that call's own progress stream:
 
 ```julia

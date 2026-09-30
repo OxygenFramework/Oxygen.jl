@@ -158,7 +158,27 @@ function resolve_session(ctx::ServerContext, req::HTTP.Request)
     return session === nothing ? :unknown : session
 end
 
+"""
+    resolve_session_or_error(ctx, req) :: Union{Nothing,MCPSession,Tuple{Int,Dict}}
+
+Resolve the `Mcp-Session-Id` header, translating a malformed or unknown id into
+the `(status, body)` HTTP error every transport responds with. Returns the live
+`MCPSession`, `nothing` for the anonymous case, or that error tuple.
+"""
+function resolve_session_or_error(ctx::ServerContext, req::HTTP.Request)
+    resolved = resolve_session(ctx, req)
+    resolved === :invalid && return (400, error_body(nothing, MCP_INVALID_REQUEST,
+                                                     "Invalid Mcp-Session-Id header"))
+    resolved === :unknown && return (404, error_body(nothing, MCP_INVALID_REQUEST,
+                                                     "Unknown or expired session"))
+    return resolved
+end
+
 # --- Accessors shared by dispatch and the notification filters --------------
+
+# The anonymous (header-less) transport keeps its state on `MCPContext`; a real
+# session keeps the same fields on `MCPSession`. These accessors read or write
+# whichever is in effect, so callers do not repeat the ternary.
 
 legacy_version(ctx::ServerContext, session::Union{Nothing,MCPSession})::String =
     session === nothing ? ctx.mcp.session_version[] : session.version
@@ -169,6 +189,61 @@ function mark_initialized!(ctx::ServerContext, session::Union{Nothing,MCPSession
     else
         lock(session.lock) do
             session.initialized = true
+        end
+    end
+    return nothing
+end
+
+# Record a negotiated `initialize` handshake: the version plus the flag that
+# arms legacy server→client delivery.
+function set_handshake!(ctx::ServerContext, session::Union{Nothing,MCPSession}, version::String)
+    if session === nothing
+        ctx.mcp.session_version[] = version
+        ctx.mcp.handshake_complete[] = true
+    else
+        lock(session.lock) do
+            session.version = version
+            session.handshake_complete = true
+        end
+    end
+    return nothing
+end
+
+# Whether the client completed an `initialize` handshake (see
+# `legacy_event_wanted` for why `notifications/initialized` alone is not proof).
+function handshake_ready(ctx::ServerContext, session::Union{Nothing,MCPSession})::Bool
+    if session === nothing
+        return ctx.mcp.initialized[] && ctx.mcp.handshake_complete[]
+    end
+    return lock(session.lock) do
+        session.initialized && session.handshake_complete
+    end
+end
+
+# Legacy `resources/subscribe` membership for the anonymous state or a session.
+function legacy_subscribed(ctx::ServerContext, session::Union{Nothing,MCPSession},
+                           uri::String)::Bool
+    if session === nothing
+        return lock(ctx.mcp.subscriptions_lock) do
+            uri in ctx.mcp.legacy_subscriptions
+        end
+    end
+    return lock(session.lock) do
+        uri in session.subscriptions
+    end
+end
+
+function set_legacy_subscribed(ctx::ServerContext, session::Union{Nothing,MCPSession},
+                               uri::String; subscribed::Bool)
+    if session === nothing
+        lock(ctx.mcp.subscriptions_lock) do
+            subscribed ? push!(ctx.mcp.legacy_subscriptions, uri) :
+                         delete!(ctx.mcp.legacy_subscriptions, uri)
+        end
+    else
+        lock(session.lock) do
+            subscribed ? push!(session.subscriptions, uri) :
+                         delete!(session.subscriptions, uri)
         end
     end
     return nothing

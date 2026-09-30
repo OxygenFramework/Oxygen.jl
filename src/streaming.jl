@@ -19,7 +19,7 @@ import ..Util: format_response, format_sse_message
 
 export StreamEvent, DataEvent, FinalEvent, ErrorEvent, StreamCancelled,
     EventStream, stream_events, emit, pump_stream, drain_stream!,
-    cancel_stream!, check_cancelled, sse_stream, SSEEvent,
+    cancel_stream!, check_cancelled, sse_stream, SSEEvent, stream_sse,
     STREAM_BUFFER_SIZE, STREAM_POLL_SECONDS, SSE_KEEPALIVE_SECONDS
 
 # ----------------------------------------------------------------------------
@@ -367,39 +367,77 @@ function write_sse_event(stream::HTTP.Stream, event::StreamEvent)
 end
 
 function write_sse_response(stream::HTTP.Stream, source::EventStream)
-    HTTP.setstatus(stream, 200)
-    HTTP.setheader(stream, "Content-Type" => "text/event-stream")
-    HTTP.setheader(stream, "Cache-Control" => "no-cache")
-    HTTP.setheader(stream, "X-Accel-Buffering" => "no")
-    HTTP.setheader(stream, "Connection" => "close")
+    stream_sse(stream, source,
+        event -> begin
+            keep = write_sse_event(stream, event)
+            flush(stream)
+            return keep
+        end;
+        cleanup = () -> cancel_stream!(source))
+    return HTTP.Response(200, "")
+end
 
+# Write one keep-alive comment when the connection has been quiet for the full
+# interval. Shared by every SSE writer.
+function keepalive!(connection::HTTP.Stream, last_write::Ref{Float64})
+    if time() - last_write[] >= SSE_KEEPALIVE_SECONDS
+        write(connection, ": keepalive\n\n")
+        flush(connection)
+        last_write[] = time()
+    end
+    return nothing
+end
+
+"""
+    stream_sse(connection, source, write_event; initial=nothing, cleanup=() -> nothing,
+               on_open=nothing, connection_header="close")
+
+Low-level SSE response writer shared by the generic adapter and MCP: writes the
+SSE headers, optionally calls `on_open` (for a priming comment), writes `initial`
+through `write_event`, then pumps `source`, calling `write_event(event) -> Bool`
+for every event (returning `false` stops the pump) and writing keep-alive
+comments while the producer is idle. `cleanup` runs in the `finally`, before the
+write side of the connection is closed.
+"""
+function stream_sse(connection::HTTP.Stream, source::EventStream, write_event::Function;
+                    initial=nothing, cleanup::Function=() -> nothing,
+                    on_open::Union{Nothing,Function}=nothing,
+                    connection_header::String="close")
+    HTTP.setstatus(connection, 200)
+    HTTP.setheader(connection, "Content-Type" => "text/event-stream")
+    HTTP.setheader(connection, "Cache-Control" => "no-cache")
+    HTTP.setheader(connection, "X-Accel-Buffering" => "no")
+    HTTP.setheader(connection, "Connection" => connection_header)
+
+    last_write = Ref(time())
+    keep = true
     try
-        HTTP.startwrite(stream)
-        last_write = Ref(time())
-        pump_stream(source,
+        HTTP.startwrite(connection)
+        if on_open !== nothing
+            on_open()
+            last_write[] = time()
+        end
+        if initial !== nothing
+            keep = write_event(initial) !== false
+            keep && (last_write[] = time())
+        end
+        keep && pump_stream(source,
             event -> begin
-                keep = write_sse_event(stream, event)
-                flush(stream)
+                keep = write_event(event) !== false
                 keep && (last_write[] = time())
                 return keep
             end;
-            on_idle = () -> begin
-                if time() - last_write[] >= SSE_KEEPALIVE_SECONDS
-                    write(stream, ": keepalive\n\n")
-                    flush(stream)
-                    last_write[] = time()
-                end
-            end)
+            on_idle = () -> keepalive!(connection, last_write))
     catch
         # A failed write means the client disconnected — end quietly.
     finally
-        cancel_stream!(source)
+        cleanup()
         try
-            HTTP.closewrite(stream)
+            HTTP.closewrite(connection)
         catch
         end
     end
-    return HTTP.Response(200, "")
+    return nothing
 end
 
 # A regular handler that returns a stream is answered with SSE when there is a

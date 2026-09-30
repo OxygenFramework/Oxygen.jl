@@ -3,7 +3,7 @@ module MCPTypes
 using Base: @kwdef
 using ..CoreTypes: Param, Nullable
 
-export MCPConfig, MCPMetadata, MCPParam, MCPTool, MCPPrompt, MCPResource
+export MCPConfig, MCPMetadata, MCPParam, MCPTool, MCPPrompt, MCPResource, MCPCallable
 
 """
     MCPConfig
@@ -52,10 +52,19 @@ end
 # Keeps the common case (wire name mirrors the Julia parameter name) terse.
 MCPParam(param::Param, description::AbstractString) = MCPParam(param, String(description), string(param.name))
 
+"""
+    MCPCallable
+
+Common supertype of the registered components that invoke a Julia handler with
+resolved arguments (`MCPTool`, `MCPPrompt`, `MCPResource`). It is the dispatch
+hook for the shared invocation/resolution path.
+"""
+abstract type MCPCallable end
+
 # A registered MCP tool. `params` contains the positional arguments (in order)
 # followed by the keyword arguments. `argnames` identifies which parameters are
 # positional so handlers can be invoked correctly.
-struct MCPTool
+struct MCPTool <: MCPCallable
     name        :: String
     description :: String
     handler     :: Function
@@ -70,7 +79,7 @@ end
 # A registered MCP prompt. The prompt arguments are the handler's own parameters
 # (minus `context`/`request`), so the signature doubles as the template variable
 # list. `argnames` identifies which parameters are positional.
-struct MCPPrompt
+struct MCPPrompt <: MCPCallable
     name        :: String
     description :: String
     handler     :: Function
@@ -85,7 +94,7 @@ end
 # expansions) use the template as their key, and their handler parameters are the
 # template variables. `pattern` is the compiled matcher linking a requested URI
 # back to the template, and `vars` lists the capture names in pattern order.
-struct MCPResource
+struct MCPResource <: MCPCallable
     uri         :: String
     name        :: String
     title       :: Nullable{String}

@@ -9,7 +9,7 @@ using ..Types
 using ..AppContext: ServerContext, MCPContext
 using ..Errors: MCPRequestError, MCP_PARSE_ERROR, MCP_INVALID_REQUEST,
     MCP_METHOD_NOT_FOUND, MCP_INVALID_PARAMS, MCP_INTERNAL_ERROR,
-    MCP_HEADER_MISMATCH, MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
+    MCP_HEADER_MISMATCH,
     MCP_UNSUPPORTED_PROTOCOL_VERSION, MCP_RESOURCE_NOT_FOUND
 using ..Reflection
 using ..AutoDoc
@@ -18,7 +18,7 @@ using ..Util: response_bytes
 using ..Streaming: StreamEvent, FinalEvent, ErrorEvent, StreamCancelled,
     EventStream, enqueue!, start_stream!, pump_stream, drain_stream!,
     cancel_stream!, check_cancelled,
-    STREAM_BUFFER_SIZE, SSE_KEEPALIVE_SECONDS
+    STREAM_BUFFER_SIZE, stream_sse
 import ..Streaming: emit, normalize_event
 
 export register_tool!, register_prompt!, register_resource!, register_resource_folder!,
@@ -140,17 +140,9 @@ function initialize_result(ctx::ServerContext, params; session::Union{Nothing,MC
     client_version = get(params, "protocolVersion", nothing)
     client_version isa AbstractString || (client_version = nothing)
     negotiated = negotiate_version(client_version)
-    if session === nothing
-        ctx.mcp.session_version[] = negotiated
-        # Armed for legacy server→client delivery only after a real initialize
-        # response (a bare `notifications/initialized` is not proof of a handshake).
-        ctx.mcp.handshake_complete[] = true
-    else
-        lock(session.lock) do
-            session.version = negotiated
-            session.handshake_complete = true
-        end
-    end
+    # A header-less initialize arms the context-wide anonymous state; a session
+    # is armed on itself. Delivery additionally requires a completed handshake.
+    set_handshake!(ctx, session, negotiated)
 
     result = Dict{String,Any}(
         "protocolVersion" => negotiated,
@@ -183,60 +175,49 @@ function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, meth
     if method == "initialize"
         # initialize exists only in the legacy era.
         modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        return result_body(id, initialize_result(ctx, get(payload, "params", Dict{String,Any}()); session=session)), 200
+        return result_response(ctx, id,
+                               initialize_result(ctx, request_params(payload); session=session))
     elseif method == "server/discover"
-        return result_body(id, modern_envelope(ctx, discover_result(ctx))), 200
+        return result_response(ctx, id, discover_result(ctx); modern=modern)
     elseif method == "tools/list"
-        result = tools_list(ctx; modern=modern)
-        modern && (result = modern_envelope(ctx, result))
-        return result_body(id, result), 200
+        return result_response(ctx, id, tools_list(ctx; modern=modern); modern=modern)
     elseif method == "tools/call"
-        params = get(payload, "params", Dict{String,Any}())
-        params isa AbstractDict || (params = Dict{String,Any}())
-        return call_tool(ctx, req, id, params; modern=modern, version=version)
+        return call_tool(ctx, req, id, request_params(payload); modern=modern, version=version)
     elseif method == "prompts/list"
-        result = prompts_list(ctx; modern=modern)
-        modern && (result = modern_envelope(ctx, result))
-        return result_body(id, result), 200
+        return result_response(ctx, id, prompts_list(ctx; modern=modern); modern=modern)
     elseif method == "prompts/get"
-        params = get(payload, "params", Dict{String,Any}())
-        params isa AbstractDict || (params = Dict{String,Any}())
-        return get_prompt(ctx, req, id, params; modern=modern)
+        return get_prompt(ctx, req, id, request_params(payload); modern=modern)
     elseif method == "resources/list"
-        result = resources_list(ctx; modern=modern, version=version)
-        modern && (result = modern_envelope(ctx, result))
-        return result_body(id, result), 200
+        return result_response(ctx, id, resources_list(ctx; modern=modern, version=version);
+                               modern=modern)
     elseif method == "resources/templates/list"
-        result = resource_templates_list(ctx; modern=modern, version=version)
-        modern && (result = modern_envelope(ctx, result))
-        return result_body(id, result), 200
+        return result_response(ctx, id, resource_templates_list(ctx; modern=modern, version=version);
+                               modern=modern)
     elseif method == "resources/read"
-        params = get(payload, "params", Dict{String,Any}())
-        params isa AbstractDict || (params = Dict{String,Any}())
-        return read_resource(ctx, req, id, params; modern=modern)
+        return read_resource(ctx, req, id, request_params(payload); modern=modern)
     elseif method == "subscriptions/listen"
         # subscriptions/listen exists only in the modern era.
         modern || return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        params = get(payload, "params", Dict{String,Any}())
-        params isa AbstractDict || (params = Dict{String,Any}())
-        return listen_call(ctx, req, id, params)
+        return listen_call(ctx, req, id, request_params(payload))
     elseif method == "resources/subscribe"
         modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        params = get(payload, "params", Dict{String,Any}())
-        params isa AbstractDict || (params = Dict{String,Any}())
-        return subscribe_resource_legacy(ctx, id, params; session=session)
+        return subscribe_resource_legacy(ctx, id, request_params(payload); session=session)
     elseif method == "resources/unsubscribe"
         modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        params = get(payload, "params", Dict{String,Any}())
-        params isa AbstractDict || (params = Dict{String,Any}())
-        return unsubscribe_resource_legacy(ctx, id, params; session=session)
+        return unsubscribe_resource_legacy(ctx, id, request_params(payload); session=session)
     elseif method == "ping"
         # ping was removed from the modern era; it exists only in legacy.
         modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        return result_body(id, Dict{String,Any}()), 200
+        return result_response(ctx, id, Dict{String,Any}())
     else
         return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
     end
+end
+
+# The `params` object of a request, empty when absent or not an object.
+function request_params(payload)::AbstractDict
+    params = get(payload, "params", Dict{String,Any}())
+    return params isa AbstractDict ? params : Dict{String,Any}()
 end
 
 # ----------------------------------------------------------------------------
@@ -331,8 +312,7 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request};
     end
 
     id = payload["id"]
-    params = get(payload, "params", Dict{String,Any}())
-    params isa AbstractDict || (params = Dict{String,Any}())
+    params = request_params(payload)
 
     era = request_era(req, method, params)
     if era === :modern
@@ -340,7 +320,7 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request};
             validate_modern_request(ctx, req, method, params)
         catch error
             error isa MCPRequestError || rethrow()
-            return error_body(id, error.code, error.message, error.data), 400
+            return request_error_body(id, error), 400
         end
     end
 
@@ -424,12 +404,9 @@ function request_is_modern(req::HTTP.Request, payload)::Bool
     if payload isa AbstractDict
         method = get(payload, "method", nothing)
         method isa AbstractString || (method = "")
-        params = get(payload, "params", nothing)
-        params isa AbstractDict || (params = Dict{String,Any}())
-        return request_era(req, String(method), params) === :modern
+        return request_era(req, String(method), request_params(payload)) === :modern
     end
-    header_version = mcp_standard_header(req, "MCP-Protocol-Version")
-    return header_version isa String && strip(String(header_version)) in MODERN_VERSIONS
+    return request_era(req, "", Dict{String,Any}()) === :modern
 end
 
 """
@@ -532,13 +509,10 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
     session = nothing
     had_session_header = false
     if !modern
-        resolved = resolve_session(ctx, req)
-        if resolved === :invalid
-            return write_json_response(stream,
-                error_body(nothing, MCP_INVALID_REQUEST, "Invalid Mcp-Session-Id header"); status=400)
-        elseif resolved === :unknown
-            return write_json_response(stream,
-                error_body(nothing, MCP_INVALID_REQUEST, "Unknown or expired session"); status=404)
+        resolved = resolve_session_or_error(ctx, req)
+        if resolved isa Tuple
+            status, body = resolved
+            return write_json_response(stream, body; status=status)
         elseif resolved isa MCPSession
             session = resolved
             had_session_header = true
@@ -577,56 +551,6 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
 end
 
 """
-    stream_sse(connection, source, write_event; initial=nothing, cleanup)
-
-Write the SSE response headers and pump `source` to `connection`, calling
-`write_event(event) -> Bool` for every event (returning `false` stops the
-pump). Keep-alive comments are written once the stream has been quiet for
-`SSE_KEEPALIVE_SECONDS`. `cleanup` runs in the `finally`, before the write side
-of the connection is closed.
-"""
-function stream_sse(connection::HTTP.Stream, source::EventStream, write_event::Function;
-                    initial=nothing, cleanup::Function=() -> nothing)
-    HTTP.setstatus(connection, 200)
-    HTTP.setheader(connection, "Content-Type" => "text/event-stream")
-    HTTP.setheader(connection, "Cache-Control" => "no-cache")
-    HTTP.setheader(connection, "X-Accel-Buffering" => "no")
-    HTTP.setheader(connection, "Connection" => "close")
-
-    last_write = Ref(time())
-    keep = true
-    try
-        HTTP.startwrite(connection)
-        if initial !== nothing
-            keep = write_event(initial) !== false
-            keep && (last_write[] = time())
-        end
-        keep && pump_stream(source,
-            event -> begin
-                keep = write_event(event) !== false
-                keep && (last_write[] = time())
-                return keep
-            end;
-            on_idle = () -> begin
-                if time() - last_write[] >= SSE_KEEPALIVE_SECONDS
-                    write(connection, ": keepalive\n\n")
-                    flush(connection)
-                    last_write[] = time()
-                end
-            end)
-    catch
-        # A failed write means the client disconnected — end quietly.
-    finally
-        cleanup()
-        try
-            HTTP.closewrite(connection)
-        catch
-        end
-    end
-    return nothing
-end
-
-"""
     stream_call(ctx, stream, req, call::StreamedCall)
 
 Consume one streamed `tools/call`. The first event decides the wire shape:
@@ -660,13 +584,9 @@ function stream_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request,
     # content type immediately; every frame is flushed for the same reason.
     return stream_sse(stream, call.stream,
         event -> begin
-            if event isa FinalEvent || event isa ErrorEvent
-                write_sse_frame(stream, streamed_body(ctx, call, event))
-                return false
-            end
-            notification = serialize_event(token, event)
-            isnothing(notification) || write_sse_frame(stream, notification)
-            return true
+            body, terminal = streamed_frame(ctx, call, event)
+            isnothing(body) || write_sse_frame(stream, body)
+            return !terminal
         end;
         initial = first,
         cleanup = () -> cancel_stream!(call.stream))
@@ -695,16 +615,9 @@ function stream_listen_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.R
 
     return stream_sse(stream, call.stream,
         event -> begin
-            if event isa FinalEvent
-                write_sse_frame(stream, event.value)
-                return false
-            elseif event isa ErrorEvent
-                write_sse_frame(stream, error_body(call.id, MCP_INTERNAL_ERROR,
-                                                   sprint(showerror, event.error)))
-                return false
-            end
-            write_sse_frame(stream, serialize_listen_event(call.id, event))
-            return true
+            body, terminal = listen_frame(call, event)
+            write_sse_frame(stream, body)
+            return !terminal
         end;
         cleanup = () -> begin
             cancel_stream!(call.stream)
@@ -767,15 +680,10 @@ function handle_get(ctx::ServerContext, stream::HTTP.Stream)
                                      headers=["Allow" => "POST"])
     end
 
-    resolved = resolve_session(ctx, req)
-    if resolved === :invalid
-        return write_stream_response(stream, 400, "application/json; charset=utf-8",
-                                     JSON.json(error_body(nothing, MCP_INVALID_REQUEST,
-                                                          "Invalid Mcp-Session-Id header")))
-    elseif resolved === :unknown
-        return write_stream_response(stream, 404, "application/json; charset=utf-8",
-                                     JSON.json(error_body(nothing, MCP_INVALID_REQUEST,
-                                                          "Unknown or expired session")))
+    resolved = resolve_session_or_error(ctx, req)
+    if resolved isa Tuple
+        status, body = resolved
+        return write_json_response(stream, body; status=status)
     end
     session = resolved isa MCPSession ? resolved : nothing
 
@@ -785,11 +693,11 @@ function handle_get(ctx::ServerContext, stream::HTTP.Stream)
         return stream_notifications(ctx, stream; session=session)
     end
 
-    body = JSON.json(Dict{String,Any}(
+    body = Dict{String,Any}(
         "status" => "ok",
         "protocol_version" => legacy_version(ctx, session),
-    ))
-    return write_stream_response(stream, 200, "application/json; charset=utf-8", body)
+    )
+    return write_json_response(stream, body)
 end
 
 """
@@ -807,15 +715,13 @@ function handle_delete(ctx::ServerContext, req::HTTP.Request)::HTTP.Response
         return HTTP.Response(405, ["Allow" => "POST, GET"], "Method Not Allowed")
     end
 
-    resolved = resolve_session(ctx, req)
-    if resolved === nothing
+    resolved = resolve_session_or_error(ctx, req)
+    if resolved isa Tuple
+        status, body = resolved
+        return HTTP.Response(status, ["Content-Type" => "application/json; charset=utf-8"],
+                             JSON.json(body))
+    elseif resolved === nothing
         return HTTP.Response(405, ["Allow" => "POST, GET"], "Method Not Allowed")
-    elseif resolved === :invalid
-        return HTTP.Response(400, ["Content-Type" => "application/json; charset=utf-8"],
-            JSON.json(error_body(nothing, MCP_INVALID_REQUEST, "Invalid Mcp-Session-Id header")))
-    elseif resolved === :unknown
-        return HTTP.Response(404, ["Content-Type" => "application/json; charset=utf-8"],
-            JSON.json(error_body(nothing, MCP_INVALID_REQUEST, "Unknown or expired session")))
     end
 
     session = resolved::MCPSession
@@ -854,44 +760,23 @@ function stream_notifications(ctx::ServerContext, stream::HTTP.Stream;
                                      JSON.json(error_body(nothing, MCP_INVALID_REQUEST,
                                                           "Unknown or expired session")))
     end
-    source = EventStream(sub.queue, nothing)
 
-    HTTP.setstatus(stream, 200)
-    HTTP.setheader(stream, "Content-Type" => "text/event-stream")
-    HTTP.setheader(stream, "Cache-Control" => "no-cache")
-    HTTP.setheader(stream, "Connection" => "keep-alive")
-    HTTP.startwrite(stream)
-
-    last_write = Ref(time())
-    try
-        # Priming comment: lets the client see the stream is live immediately.
-        write(stream, ": connected\n\n")
-        flush(stream)
-        pump_stream(source,
-            event -> begin
-                event isa SubscriptionNotification || return true
-                write_sse_frame(stream, notification(event.method, event.params))
-                last_write[] = time()
-                return true
-            end;
-            on_idle = () -> begin
-                if time() - last_write[] >= SSE_KEEPALIVE_SECONDS
-                    write(stream, ": keepalive\n\n")
-                    flush(stream)
-                    last_write[] = time()
-                end
-            end)
-    catch
-        # The client disconnected (write failed) — end the stream quietly.
-    finally
-        PubSub.unsubscribe!(mcp_broker, sub)
-        session isa MCPSession && remove_sink!(session, sub)
-        try
-            HTTP.closewrite(stream)
-        catch
-        end
-    end
-    return nothing
+    return stream_sse(stream, EventStream(sub.queue, nothing),
+        event -> begin
+            event isa SubscriptionNotification || return true
+            write_sse_frame(stream, notification(event.method, event.params))
+            return true
+        end;
+        on_open = () -> begin
+            # Priming comment: lets the client see the stream is live immediately.
+            write(stream, ": connected\n\n")
+            flush(stream)
+        end,
+        connection_header = "keep-alive",
+        cleanup = () -> begin
+            PubSub.unsubscribe!(mcp_broker, sub)
+            session isa MCPSession && remove_sink!(session, sub)
+        end)
 end
 
 """
@@ -999,16 +884,9 @@ function forward_listen_call(ctx::ServerContext, notifier::StdioNotifier, call::
         try
             pump_stream(call.stream,
                 event -> begin
-                    if event isa FinalEvent
-                        respond(notifier, event.value)
-                        return false
-                    elseif event isa ErrorEvent
-                        respond(notifier, error_body(call.id, MCP_INTERNAL_ERROR,
-                                                     sprint(showerror, event.error)))
-                        return false
-                    end
-                    respond(notifier, serialize_listen_event(call.id, event))
-                    return true
+                    body, terminal = listen_frame(call, event)
+                    respond(notifier, body)
+                    return !terminal
                 end)
         finally
             remove_listen!(ctx, call.record)
@@ -1046,18 +924,11 @@ they arrive, interleaving with the eventual response on the same output stream
 token drains the channel and drops notifications.
 """
 function stream_stdio_call(ctx::ServerContext, notifier::StdioNotifier, call::StreamedCall)
-    token = call.stream.protocol.token
-
     pump_stream(call.stream,
         event -> begin
-            if event isa FinalEvent || event isa ErrorEvent
-                respond(notifier, streamed_body(ctx, call, event))
-                return false
-            end
-            token === nothing && return true
-            notification = serialize_event(token, event)
-            isnothing(notification) || respond(notifier, notification)
-            return true
+            body, terminal = streamed_frame(ctx, call, event)
+            isnothing(body) || respond(notifier, body)
+            return !terminal
         end)
 
     # A closed channel without a terminal event means the producer was

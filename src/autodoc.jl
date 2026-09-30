@@ -938,8 +938,8 @@ Return an HTML page that mounts the MCP explorer against `endpoint`.
 function mcpexplorerhtml(endpoint::String) :: HTTP.Response
 
     # load static content files
-    viewerjs = readstaticfile("$MCP_EXPLORER_VERSION/mcpexplorer.js")
-    viewerstyles = readstaticfile("$MCP_EXPLORER_VERSION/mcpexplorer.css")
+    viewerjs = readstaticfile("$MCP_EXPLORER_VERSION/index.js")
+    viewerstyles = readstaticfile("$MCP_EXPLORER_VERSION/styles.css")
     # Inline the shipped compass icon so the standalone page carries its own favicon.
     viewericon = base64encode(readstaticfile("$MCP_EXPLORER_VERSION/icon.svg"))
 

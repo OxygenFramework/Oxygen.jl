@@ -30,7 +30,7 @@ struct SubscriptionNotification <: StreamEvent
 end
 
 function SubscriptionNotification(method::AbstractString, params::AbstractDict)::SubscriptionNotification
-    return SubscriptionNotification(String(method), Dict{String,Any}(String(k) => v for (k, v) in params), nothing)
+    return SubscriptionNotification(String(method), string_keyed(params), nothing)
 end
 
 # The broker payload is the generic engine's event type, so a listen stream's
@@ -47,6 +47,11 @@ const MAX_RESOURCE_SUBSCRIPTIONS = 256
 const MAX_SUBSCRIPTION_ID_LENGTH = 128
 const LISTEN_BACKLOG_CAP         = 256
 const LEGACY_NOTIFICATION_CAP    = 1000
+
+const LISTEN_LIMIT_MESSAGE =
+    "subscriptions/listen: active subscription limit reached ($(MAX_LISTEN_SUBSCRIPTIONS))"
+const LISTEN_DUPLICATE_MESSAGE =
+    "subscriptions/listen id is already active on this connection"
 
 # ----------------------------------------------------------------------------
 # Filter
@@ -268,6 +273,31 @@ function sweep_listens!(ctx::ServerContext)
 end
 
 """
+    listen_admission(ctx, id; cancellable, record=nothing) :: Symbol
+
+The admission decision for a listen stream: `:ok`, `:capacity`, or `:duplicate`.
+When `record` is given it is registered on success. A `cancellable` stream (a
+routeless stdio stream) also rejects duplicate ids, because all of one
+connection's streams share the registry; on HTTP each listen stream is its own
+connection, so two clients using the same id are two independent subscriptions.
+"""
+function listen_admission(ctx::ServerContext, id; cancellable::Bool,
+                          record::Union{Nothing,ListenRecord}=nothing)::Symbol
+    return lock(ctx.mcp.subscriptions_lock) do
+        sweep_listens!(ctx)
+        length(ctx.mcp.listens) >= MAX_LISTEN_SUBSCRIPTIONS && return :capacity
+        cancellable && stdio_listen(ctx, id) !== nothing && return :duplicate
+        record === nothing || push!(ctx.mcp.listens, record)
+        return :ok
+    end
+end
+
+function listen_error(id, reason::Symbol)
+    reason === :capacity && return error_body(id, MCP_INTERNAL_ERROR, LISTEN_LIMIT_MESSAGE), 400
+    return error_body(id, MCP_INVALID_REQUEST, LISTEN_DUPLICATE_MESSAGE), 400
+end
+
+"""
     listen_call(ctx, req, id, params) :: Union{Tuple{Dict,Int},Tuple{ListenCall,Int}}
 
 Open a `subscriptions/listen` stream: validate the filter and id, enforce the
@@ -291,21 +321,8 @@ function listen_call(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, p
     # Capacity/duplicate precheck. The authoritative check runs at registration;
     # this one avoids building a stream that is certain to be rejected. The
     # sweep keeps 64 dead streams from denying the surface on a quiet server.
-    # A duplicate is rejected only on the routeless (stdio) transport: on HTTP
-    # each listen stream is its own connection, so two clients using the same id
-    # are two independent subscriptions.
-    precheck = lock(ctx.mcp.subscriptions_lock) do
-        sweep_listens!(ctx)
-        if length(ctx.mcp.listens) >= MAX_LISTEN_SUBSCRIPTIONS
-            return :capacity
-        end
-        return (req === nothing && stdio_listen(ctx, id) !== nothing) ? :duplicate : :ok
-    end
-    precheck === :capacity && return error_body(
-        id, MCP_INTERNAL_ERROR,
-        "subscriptions/listen: active subscription limit reached ($(MAX_LISTEN_SUBSCRIPTIONS))"), 400
-    precheck === :duplicate && return error_body(
-        id, MCP_INVALID_REQUEST, "subscriptions/listen id is already active on this connection"), 400
+    precheck = listen_admission(ctx, id; cancellable=req === nothing)
+    precheck === :ok || return listen_error(id, precheck)
 
     honored = honored_filter(ctx, requested)
     mcp_broker = broker(ctx)
@@ -327,31 +344,16 @@ function listen_call(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, p
         # registration can exhaust it between the precheck and here.
         error isa PubSub.CapacityError || rethrow()
         close(channel)
-        return error_body(id, MCP_INTERNAL_ERROR,
-            "subscriptions/listen: active subscription limit reached ($(MAX_LISTEN_SUBSCRIPTIONS))"), 400
+        return error_body(id, MCP_INTERNAL_ERROR, LISTEN_LIMIT_MESSAGE), 400
     end
 
     stream = EventStream(channel, nothing)
     record = ListenRecord(id, honored, sub, stream, req === nothing)
 
-    registered = lock(ctx.mcp.subscriptions_lock) do
-        sweep_listens!(ctx)
-        if length(ctx.mcp.listens) >= MAX_LISTEN_SUBSCRIPTIONS
-            return :capacity
-        end
-        if record.cancellable && stdio_listen(ctx, id) !== nothing
-            return :duplicate
-        end
-        push!(ctx.mcp.listens, record)
-        return :ok
-    end
-
+    registered = listen_admission(ctx, id; cancellable=record.cancellable, record=record)
     if registered !== :ok
         PubSub.unsubscribe!(mcp_broker, sub)
-        return registered === :capacity ? error_body(
-            id, MCP_INTERNAL_ERROR,
-            "subscriptions/listen: active subscription limit reached ($(MAX_LISTEN_SUBSCRIPTIONS))") :
-            error_body(id, MCP_INVALID_REQUEST, "subscriptions/listen id is already active on this connection"), 400
+        return listen_error(id, registered)
     end
 
     return ListenCall(stream, id, record), 200
@@ -494,26 +496,13 @@ notify_resources_changed(ctx::ServerContext)::Int = notify_list_changed(ctx, :re
 # state, preserving the original single-session behavior.
 function legacy_event_wanted(ctx::ServerContext, event::SubscriptionNotification;
                              session::Union{Nothing,MCPSession}=nothing)::Bool
-    if session === nothing
-        (ctx.mcp.initialized[] && ctx.mcp.handshake_complete[]) || return false
-    else
-        lock(session.lock) do
-            (session.initialized && session.handshake_complete) || return false
-        end
-    end
+    handshake_ready(ctx, session) || return false
 
     method = event.method
     if method == "notifications/resources/updated"
         uri = event.uri
         uri === nothing && return false
-        if session === nothing
-            return lock(ctx.mcp.subscriptions_lock) do
-                uri in ctx.mcp.legacy_subscriptions
-            end
-        end
-        return lock(session.lock) do
-            uri in session.subscriptions
-        end
+        return legacy_subscribed(ctx, session, uri)
     elseif method == "notifications/tools/list_changed"
         return list_changed_capable(ctx, :tools)
     elseif method == "notifications/prompts/list_changed"
@@ -544,45 +533,27 @@ function subscribe_legacy!(ctx::ServerContext; csize::Integer=LEGACY_NOTIFICATIO
     return sub
 end
 
-# Legacy `resources/subscribe`: record the URI (idempotent). The URI need not
-# be registered — the spec has servers acknowledge subscriptions they can
-# deliver, and a template may match it later.
-function subscribe_resource_legacy(ctx::ServerContext, id, params;
-                                   session::Union{Nothing,MCPSession}=nothing)
+# Legacy `resources/subscribe` / `resources/unsubscribe`: record or remove the
+# URI (both idempotent). The URI need not be registered — the spec has servers
+# acknowledge subscriptions they can deliver, and a template may match it later.
+function resource_subscription_legacy(ctx::ServerContext, id, params;
+                                      session::Union{Nothing,MCPSession}=nothing,
+                                      subscribe::Bool)
     uri = get(params, "uri", nothing)
     if !(uri isa AbstractString) || isempty(uri)
         return error_body(id, MCP_INVALID_PARAMS, "Missing resource URI"), 200
     end
-    if session === nothing
-        lock(ctx.mcp.subscriptions_lock) do
-            push!(ctx.mcp.legacy_subscriptions, String(uri))
-        end
-    else
-        lock(session.lock) do
-            push!(session.subscriptions, String(uri))
-        end
-    end
-    return result_body(id, Dict{String,Any}()), 200
+    set_legacy_subscribed(ctx, session, String(uri); subscribed=subscribe)
+    return result_response(ctx, id, Dict{String,Any}())
 end
 
-# Legacy `resources/unsubscribe`: remove the URI (idempotent).
-function unsubscribe_resource_legacy(ctx::ServerContext, id, params;
-                                     session::Union{Nothing,MCPSession}=nothing)
-    uri = get(params, "uri", nothing)
-    if !(uri isa AbstractString) || isempty(uri)
-        return error_body(id, MCP_INVALID_PARAMS, "Missing resource URI"), 200
-    end
-    if session === nothing
-        lock(ctx.mcp.subscriptions_lock) do
-            delete!(ctx.mcp.legacy_subscriptions, String(uri))
-        end
-    else
-        lock(session.lock) do
-            delete!(session.subscriptions, String(uri))
-        end
-    end
-    return result_body(id, Dict{String,Any}()), 200
-end
+subscribe_resource_legacy(ctx::ServerContext, id, params;
+                          session::Union{Nothing,MCPSession}=nothing) =
+    resource_subscription_legacy(ctx, id, params; session=session, subscribe=true)
+
+unsubscribe_resource_legacy(ctx::ServerContext, id, params;
+                            session::Union{Nothing,MCPSession}=nothing) =
+    resource_subscription_legacy(ctx, id, params; session=session, subscribe=false)
 
 # ----------------------------------------------------------------------------
 # Wire serialization
@@ -599,8 +570,24 @@ function serialize_listen_event(subscription_id, event::SubscriptionNotification
     params = Dict{String,Any}(event.params)
     existing = get(params, META_KEY, nothing)
     meta = existing isa AbstractDict ?
-        Dict{String,Any}(String(k) => v for (k, v) in existing) : Dict{String,Any}()
+        string_keyed(existing) : Dict{String,Any}()
     meta[META_SUBSCRIPTION_ID] = subscription_id
     params[META_KEY] = meta
     return notification(event.method, params)
+end
+
+"""
+    listen_frame(call, event) :: (body, terminal)
+
+Map one `subscriptions/listen` stream event to the JSON-RPC message a transport
+should write and whether the stream ended. Shared by the HTTP and stdio listen
+transports.
+"""
+function listen_frame(call::ListenCall, event)::Tuple{Dict{String,Any},Bool}
+    if event isa FinalEvent
+        return event.value, true
+    elseif event isa ErrorEvent
+        return error_body(call.id, MCP_INTERNAL_ERROR, sprint(showerror, event.error)), true
+    end
+    return serialize_listen_event(call.id, event), false
 end

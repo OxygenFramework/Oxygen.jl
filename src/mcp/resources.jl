@@ -123,7 +123,7 @@ end
 # A resource's handler parameters are either empty (static resource) or exactly
 # the template variables (templated resource); anything else is an authoring
 # error rather than a runtime surprise. `positional` carries every positional
-# parameter name, including the injected names `reflect_mcp_params` drops from
+# parameter name, including the injected names `reflect_handler` drops from
 # the schema: a positional `request`/`context`/`stream` would be silently
 # dropped and then fail at invocation time, because injection is keyword-based.
 function validate_resource_params(uri::String, template::Bool, vars::Vector{String},
@@ -182,7 +182,7 @@ function normalize_annotations(annotations)::Nullable{Dict{String,Any}}
     annotations isa Union{NamedTuple,AbstractDict} || throw(ArgumentError(
         "MCP resource annotations must be a NamedTuple or a Dict, got $(typeof(annotations))"))
 
-    normalized = Dict{String,Any}(String(key) => value for (key, value) in pairs(annotations))
+    normalized = string_keyed(annotations)
     for key in keys(normalized)
         key in ("audience", "priority", "lastModified") || throw(ArgumentError(
             "Unknown MCP resource annotation `$key`; expected audience, priority, or lastModified"))
@@ -237,7 +237,7 @@ function normalize_icon(icon)::Dict{String,Any}
     icon isa Union{NamedTuple,AbstractDict} || throw(ArgumentError(
         "MCP resource icons must be a `src` string or a NamedTuple/Dict, got $(typeof(icon))"))
 
-    normalized = Dict{String,Any}(String(key) => value for (key, value) in pairs(icon))
+    normalized = string_keyed(icon)
     src = get(normalized, "src", nothing)
     (src isa AbstractString && !isempty(src)) || throw(ArgumentError(
         "MCP resource icon requires a non-empty `src` string"))
@@ -305,14 +305,14 @@ function register_resource!(ctx::ServerContext, uri::String, desc, func::Functio
     normalized_annotations = normalize_annotations(annotations)
     normalized_icons = normalize_icons(icons)
 
-    info, argnames, mcp_params = reflect_mcp_params(func, Dict{Symbol,String}(), Dict{Symbol,String}())
-    has_context, has_request, has_stream = injected_kwargs(func)
-    has_stream && throw(ArgumentError("MCP resources cannot declare an injected `stream` handle"))
+    signature = reflect_handler(func)
+    signature.has_stream && throw(ArgumentError("MCP resources cannot declare an injected `stream` handle"))
 
-    validate_resource_params(uri, template, vars, mcp_params, [p.name for p in info.args])
+    validate_resource_params(uri, template, vars, signature.params,
+                             [p.name for p in signature.info.args])
 
     wirename = if isnothing(name)
-        Base.isgensym(info.name) ? uri : string(info.name)
+        Base.isgensym(signature.info.name) ? uri : string(signature.info.name)
     else
         string(name)
     end
@@ -326,8 +326,8 @@ function register_resource!(ctx::ServerContext, uri::String, desc, func::Functio
                            isnothing(mime_type) ? nothing : string(mime_type),
                            isnothing(size) ? nothing : Int(size),
                            normalized_annotations, normalized_icons,
-                           template, vars, pattern, func, mcp_params, argnames,
-                           has_context, has_request)
+                           template, vars, pattern, func, signature.params, signature.argnames,
+                           signature.has_context, signature.has_request)
 
     if template
         haskey(ctx.mcp.resource_templates, uri) && throw(ArgumentError(
@@ -340,12 +340,6 @@ function register_resource!(ctx::ServerContext, uri::String, desc, func::Functio
     end
     notify_resources_changed(ctx)
     return resource
-end
-
-function invoke_resource(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-                         resource::MCPResource, arguments)
-    return invoke_registered(ctx, req, resource.handler, resource.params, resource.argnames,
-                             resource.has_context, resource.has_request, arguments)
 end
 
 # ----------------------------------------------------------------------------
@@ -371,7 +365,7 @@ end
 # so it surfaces as -32603 rather than a client params error.
 function normalize_content_entry(uri::String, declared_mime::Nullable{String},
                                  entry::AbstractDict)::Dict{String,Any}
-    content = Dict{String,Any}(String(key) => value for (key, value) in entry)
+    content = string_keyed(entry)
 
     has_text = haskey(content, "text")
     has_blob = haskey(content, "blob")
@@ -448,7 +442,7 @@ function resource_result(resource::MCPResource, uri::String, value)::Dict{String
         raw = value["contents"]
         (raw isa AbstractVector && !(raw isa AbstractVector{UInt8})) || throw(MCPRequestError(
             MCP_INTERNAL_ERROR, "Invalid resource result: `contents` must be an array"))
-        result = Dict{String,Any}(String(key) => item for (key, item) in value)
+        result = string_keyed(value)
         result["contents"] = Any[contents_entry(resource, uri, item) for item in raw]
         return result
     elseif value isa AbstractVector && !(value isa AbstractVector{UInt8})
@@ -483,32 +477,20 @@ function resource_entry(resource::MCPResource;
     return entry
 end
 
+function resource_list(entries::Dict{String,MCPResource}, key::String;
+                       modern::Bool=true, version::Union{Nothing,AbstractString}=nothing)::Dict{String,Any}
+    items = [resource_entry(entries[uri]; version=version) for uri in sort(collect(keys(entries)))]
+    return list_result(key, items; modern=modern)
+end
+
 function resources_list(ctx::ServerContext; modern::Bool=true,
                         version::Union{Nothing,AbstractString}=nothing)::Dict{String,Any}
-    resources = Dict{String,Any}[]
-    for uri in sort(collect(keys(ctx.mcp.resources)))
-        push!(resources, resource_entry(ctx.mcp.resources[uri]; version=version))
-    end
-    result = Dict{String,Any}("resources" => resources)
-    if modern
-        result["ttlMs"] = LIST_TTL_MS
-        result["cacheScope"] = "public"
-    end
-    return result
+    return resource_list(ctx.mcp.resources, "resources"; modern=modern, version=version)
 end
 
 function resource_templates_list(ctx::ServerContext; modern::Bool=true,
                                  version::Union{Nothing,AbstractString}=nothing)::Dict{String,Any}
-    templates = Dict{String,Any}[]
-    for uri in sort(collect(keys(ctx.mcp.resource_templates)))
-        push!(templates, resource_entry(ctx.mcp.resource_templates[uri]; version=version))
-    end
-    result = Dict{String,Any}("resourceTemplates" => templates)
-    if modern
-        result["ttlMs"] = LIST_TTL_MS
-        result["cacheScope"] = "public"
-    end
-    return result
+    return resource_list(ctx.mcp.resource_templates, "resourceTemplates"; modern=modern, version=version)
 end
 
 # Resolve a requested URI to its resource. Exact registrations win over
@@ -544,14 +526,13 @@ function read_resource(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id,
 
     resource, arguments = resolved
     try
-        value = invoke_resource(ctx, req, resource, arguments)
+        value = invoke_registered(ctx, req, resource, arguments)
         result = resource_result(resource, uri, value)
         if modern
             result["ttlMs"] = LIST_TTL_MS
             result["cacheScope"] = "private"
-            result = modern_envelope(ctx, result)
         end
-        return result_body(id, result), 200
+        return result_response(ctx, id, result; modern=modern)
     catch error
         if error isa MCPRequestError
             # A handler that cannot resolve its URI (e.g. the folder helper)
@@ -559,7 +540,7 @@ function read_resource(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id,
             # unresolved-URI path above.
             code = (modern && error.code == MCP_RESOURCE_NOT_FOUND) ?
                 MCP_INVALID_PARAMS : error.code
-            return error_body(id, code, error.message, error.data), 200
+            return request_error_body(id, error, code), 200
         end
         return error_body(id, MCP_INTERNAL_ERROR, sprint(showerror, error)), 200
     end

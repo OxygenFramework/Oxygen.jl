@@ -110,23 +110,15 @@ end
 
 function adopt_stream(channel::AbstractChannel, token)
     stream = MCPStream(STREAM_BUFFER_SIZE; token=token, managed=true)
-    @async begin
-        try
-            for value in channel
-                enqueue!(stream, value)
-            end
-            put!(stream.channel, FinalEvent(nothing))
-        catch error
-            if !stream.cancel[] && isopen(stream.channel)
-                try
-                    put!(stream.channel, ErrorEvent(error))
-                catch
-                end
-            end
-        finally
-            close(stream.channel)
+    # Raw channels have no return value to carry, so an exhausted channel ends
+    # the stream with an empty result. This is exactly `produce_stream`'s
+    # producer contract; reuse it instead of duplicating the error handling.
+    start_stream!(stream, _ -> begin
+        for value in channel
+            enqueue!(stream, value)
         end
-    end
+        return nothing
+    end)
     return stream
 end
 
@@ -237,10 +229,7 @@ struct StreamedCall
 end
 
 function streamed_body(ctx::ServerContext, call::StreamedCall, event::FinalEvent)::Dict{String,Any}
-    result = toolresult(event.value)
-    if !call.modern && !supports_structured_content(call.version)
-        strip_unstructured!(result)
-    end
+    result = tool_success_result(event.value; version=call.version)
     call.modern && (result = modern_envelope(ctx, result))
     return result_body(call.id, result)
 end
@@ -255,4 +244,18 @@ end
 # a producer bug). Be explicit rather than writing a half response.
 function streamed_body(ctx::ServerContext, call::StreamedCall, ::Nothing)::Dict{String,Any}
     return streamed_body(ctx, call, ErrorEvent(ErrorException("tool stream ended without a result")))
+end
+
+"""
+    streamed_frame(ctx, call, event) :: (body, terminal)
+
+Map one event of a streamed `tools/call` to the JSON-RPC body a transport should
+write — `nothing` when the client did not opt into the notification — and
+whether the stream ended.
+"""
+function streamed_frame(ctx::ServerContext, call::StreamedCall, event)::Tuple{Union{Nothing,Dict{String,Any}},Bool}
+    if event isa FinalEvent || event isa ErrorEvent
+        return streamed_body(ctx, call, event), true
+    end
+    return serialize_event(call.stream.protocol.token, event), false
 end

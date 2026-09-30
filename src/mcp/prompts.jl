@@ -13,42 +13,19 @@ by its wire name. Unlike `register_tool!`, no parameter description map is taken
 the handler's own parameters *are* the prompt's template variables.
 """
 function register_prompt!(ctx::ServerContext, desc, func::Function; name=nothing)
-    info = Reflection.splitdef(func; start=1)
+    signature = reflect_handler(func)
 
-    method = first(methods(func))
-    kwdecl = Base.kwarg_decl(method)
-    has_context = :context in kwdecl
-    has_request = :request in kwdecl
-
-    argnames = Symbol[]
-    mcp_params = MCPParam[]
-
-    for p in info.args
-        push!(argnames, p.name)
-        push!(mcp_params, MCPParam(p, ""))
-    end
-
-    for p in info.kwargs
-        # `context` / `request` are injected by the framework, never template variables
-        p.name in (:context, :request) && continue
-        push!(mcp_params, MCPParam(p, ""))
-    end
-
-    wirename = isnothing(name) ? string(info.name) : string(name)
+    wirename = isnothing(name) ? string(signature.info.name) : string(name)
 
     if haskey(ctx.mcp.prompts, wirename)
         throw(ArgumentError("An MCP prompt named `$wirename` is already registered"))
     end
 
-    prompt = MCPPrompt(wirename, string(desc), func, mcp_params, argnames, has_context, has_request)
+    prompt = MCPPrompt(wirename, string(desc), func, signature.params, signature.argnames,
+                       signature.has_context, signature.has_request)
     ctx.mcp.prompts[wirename] = prompt
     notify_prompts_changed(ctx)
     return prompt
-end
-
-function invoke_prompt(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, prompt::MCPPrompt, arguments)
-    return invoke_registered(ctx, req, prompt.handler, prompt.params, prompt.argnames,
-                             prompt.has_context, prompt.has_request, arguments)
 end
 
 # ----------------------------------------------------------------------------
@@ -125,43 +102,21 @@ function prompts_list(ctx::ServerContext; modern::Bool=true)::Dict{String,Any}
             "arguments" => prompt_arguments(prompt),
         ))
     end
-    result = Dict{String,Any}("prompts" => prompts)
-    if modern
-        result["ttlMs"] = LIST_TTL_MS
-        result["cacheScope"] = "public"
-    end
-    return result
+    return list_result("prompts", prompts; modern=modern)
 end
 
 function get_prompt(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
                     modern::Bool=false)::Tuple{Dict{String,Any},Int}
-    body_name = get(params, "name", nothing)
-    if isnothing(body_name)
-        return error_body(id, MCP_INVALID_PARAMS, "Missing prompt name"), 200
-    end
-
-    wirename = String(body_name)
-    prompt = get(ctx.mcp.prompts, wirename, nothing)
-    if isnothing(prompt)
-        return error_body(id, MCP_INVALID_PARAMS, "Unknown prompt: $wirename"), 200
-    end
-
-    arguments = get(params, "arguments", Dict{String,Any}())
-    isnothing(arguments) && (arguments = Dict{String,Any}())
-    if !(arguments isa AbstractDict)
-        return error_body(id, MCP_INVALID_PARAMS, "Invalid arguments: expected an object"), 200
-    end
+    prompt, arguments = resolve_registered_node(ctx.mcp.prompts, id, params, "prompt")
+    isnothing(prompt) && return arguments
 
     try
-        value = invoke_prompt(ctx, req, prompt, arguments)
+        value = invoke_registered(ctx, req, prompt, arguments)
         result = Dict{String,Any}("messages" => prompt_result(value))
         isempty(prompt.description) || (result["description"] = prompt.description)
-        modern && (result = modern_envelope(ctx, result))
-        return result_body(id, result), 200
+        return result_response(ctx, id, result; modern=modern)
     catch error
-        if error isa MCPRequestError
-            return error_body(id, error.code, error.message, error.data), 200
-        end
+        error isa MCPRequestError && return request_error_body(id, error), 200
         return error_body(id, MCP_INTERNAL_ERROR, sprint(showerror, error)), 200
     end
 end

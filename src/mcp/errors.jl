@@ -116,6 +116,17 @@ function request_era(req::Union{Nothing,HTTP.Request}, method::String, params)::
     return :legacy
 end
 
+# A required, well-formed standard header: throws the transport's
+# `-32020` error when the header is missing, duplicated, or unsafe.
+function required_header(req::HTTP.Request, name::String)::String
+    value = mcp_standard_header(req, name)
+    value === :invalid && throw(MCPRequestError(MCP_HEADER_MISMATCH,
+        "$name header is duplicated or contains unsafe characters"))
+    value === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH,
+        "Missing required $name header"))
+    return String(value)
+end
+
 """
     validate_modern_request(ctx, req, method, params)
 
@@ -148,15 +159,13 @@ function validate_modern_request(ctx::ServerContext, req::Union{Nothing,HTTP.Req
     # The remaining checks are specific to the Streamable HTTP transport.
     req === nothing && return nothing
 
-    header_version = mcp_standard_header(req, "MCP-Protocol-Version")
-    header_version === :invalid && throw(MCPRequestError(MCP_HEADER_MISMATCH, "MCP-Protocol-Version header is duplicated or contains unsafe characters"))
-    header_version === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Missing required MCP-Protocol-Version header"))
-    String(header_version) != String(body_version) && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Header mismatch: MCP-Protocol-Version header value '$header_version' does not match body value '$body_version'"))
+    header_version = required_header(req, "MCP-Protocol-Version")
+    String(header_version) != String(body_version) && throw(MCPRequestError(MCP_HEADER_MISMATCH,
+        "Header mismatch: MCP-Protocol-Version header value '$header_version' does not match body value '$body_version'"))
 
-    header_method = mcp_standard_header(req, "Mcp-Method")
-    header_method === :invalid && throw(MCPRequestError(MCP_HEADER_MISMATCH,"Mcp-Method header is duplicated or contains unsafe characters"))
-    header_method === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Missing required Mcp-Method header"))
-    String(header_method) != method && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Header mismatch: Mcp-Method header value '$header_method' does not match body value '$method'"))
+    header_method = required_header(req, "Mcp-Method")
+    String(header_method) != method && throw(MCPRequestError(MCP_HEADER_MISMATCH,
+        "Header mismatch: Mcp-Method header value '$header_method' does not match body value '$method'"))
 
     # `Mcp-Name` mirrors the body field that addresses the request: the name for
     # tools/prompts, the URI for resources.
@@ -169,15 +178,11 @@ function validate_modern_request(ctx::ServerContext, req::Union{Nothing,HTTP.Req
     end
 
     if !isnothing(source)
-
-        header_name = mcp_standard_header(req, "Mcp-Name")
-        header_name === :invalid && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Mcp-Name header is duplicated or contains unsafe characters"))
-        header_name === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Missing required Mcp-Name header"))
-
-        decoded = decode_header_value(String(header_name))
-        decoded === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH, "Mcp-Name header carries a malformed Base64 sentinel value"))
+        decoded = decode_header_value(required_header(req, "Mcp-Name"))
+        decoded === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH,
+            "Mcp-Name header carries a malformed Base64 sentinel value"))
         body_name = get(params, source, nothing)
-        
+
         if !(body_name isa AbstractString) || decoded != String(body_name)
             throw(MCPRequestError(MCP_HEADER_MISMATCH,
                 "Header mismatch: Mcp-Name header value '$decoded' does not match body value '$(body_name)'"))

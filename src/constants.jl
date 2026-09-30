@@ -48,6 +48,6 @@ const TYPE_ALIASES :: Dict{String, Type} = Dict(
 
 const SWAGGER_VERSION   :: String = "swagger@5.7.2"
 const REDOC_VERSION     :: String = "redoc@2.1.2"
-const MCP_EXPLORER_VERSION :: String = "mcp-explorer@1.0.0"
+const MCP_EXPLORER_VERSION :: String = "mcp-explorer@0.2.1"
 
 end

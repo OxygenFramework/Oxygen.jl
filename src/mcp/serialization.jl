@@ -3,6 +3,16 @@
 # `../mcp.jl`.
 
 # ----------------------------------------------------------------------------
+# Shared helpers
+# ----------------------------------------------------------------------------
+
+# Copy any keyed container (`Dict`, `NamedTuple`, ...) into a `Dict{String,Any}`
+# with stringified keys. The MCP wire layer accepts symbol- and string-keyed
+# input uniformly, so validation and serialization normalize through here.
+string_keyed(entries)::Dict{String,Any} =
+    Dict{String,Any}(String(key) => value for (key, value) in pairs(entries))
+
+# ----------------------------------------------------------------------------
 # Schema generation
 # ----------------------------------------------------------------------------
 
@@ -175,9 +185,7 @@ function parse_tool_argument(::Type{T}, value) where {T}
         return value
     elseif target <: AbstractString
         return string(value)
-    elseif target <: Bool
-        return value isa AbstractString ? parse(Bool, value) : convert(Bool, value)
-    elseif target <: Integer
+    elseif target <: Integer    # also covers Bool, which is an Integer subtype
         return value isa AbstractString ? parse(target, value) : convert(target, value)
     elseif target <: AbstractFloat
         return value isa AbstractString ? parse(target, value) : convert(target, value)
@@ -240,28 +248,13 @@ function coerce_argument(p::MCPParam, value)
     end
 end
 
-function resolve_argument!(pos_values::Vector{Any}, p::MCPParam, arguments)
+# The value to bind to a parameter: the coerced wire value when supplied, else
+# the declared default, else a `-32602` params error.
+function resolved_value(p::MCPParam, arguments)
     found, value = argument_value(arguments, p)
-    if found
-        push!(pos_values, coerce_argument(p, value))
-    elseif !isrequired(p.param)
-        push!(pos_values, p.param.default)
-    else
-        throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required argument: $(p.wirename)"))
-    end
-    return pos_values
-end
-
-function resolve_kwarg!(kwpairs::Vector{Pair{Symbol,Any}}, p::MCPParam, arguments)
-    found, value = argument_value(arguments, p)
-    if found
-        push!(kwpairs, p.param.name => coerce_argument(p, value))
-    elseif p.param.hasdefault
-        push!(kwpairs, p.param.name => p.param.default)
-    else
-        throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required argument: $(p.wirename)"))
-    end
-    return kwpairs
+    found && return coerce_argument(p, value)
+    p.param.hasdefault && return p.param.default
+    throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required argument: $(p.wirename)"))
 end
 
 """
@@ -286,10 +279,11 @@ function resolve_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request}
     end
 
     for p in params
+        value = resolved_value(p, arguments)
         if p.param.name in argnames
-            resolve_argument!(pos_values, p, arguments)
+            push!(pos_values, value)
         else
-            resolve_kwarg!(kwpairs, p, arguments)
+            push!(kwpairs, p.param.name => value)
         end
     end
 
@@ -317,6 +311,20 @@ function invoke_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
                                              inject_request=inject_request,
                                              has_stream=has_stream, stream=stream)
     return handler(pos_values...; kwpairs...)
+end
+
+# Node-based entry points: dispatch on the registered component once instead of
+# threading its fields through every call site.
+function resolve_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+                            node::MCPCallable, arguments; kwargs...)
+    return resolve_registered(ctx, req, node.params, node.argnames, node.has_context,
+                              node.has_request, arguments; kwargs...)
+end
+
+function invoke_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+                           node::MCPCallable, arguments; kwargs...)
+    return invoke_registered(ctx, req, node.handler, node.params, node.argnames,
+                             node.has_context, node.has_request, arguments; kwargs...)
 end
 
 # ----------------------------------------------------------------------------
@@ -354,10 +362,9 @@ binary content block.
 function binary_block(bytes::Vector{UInt8}, mime::String)::Dict{String,Any}
     mime = String(strip(split(mime, ';')[1]))
     m = lowercase(mime)
-    if startswith(m, "image/")
-        return Dict{String,Any}("type" => "image", "data" => base64encode(bytes), "mimeType" => mime)
-    elseif startswith(m, "audio/")
-        return Dict{String,Any}("type" => "audio", "data" => base64encode(bytes), "mimeType" => mime)
+    kind = startswith(m, "image/") ? "image" : startswith(m, "audio/") ? "audio" : nothing
+    if kind !== nothing
+        return Dict{String,Any}("type" => kind, "data" => base64encode(bytes), "mimeType" => mime)
     elseif is_text_mime(m)
         return text_block(String(bytes))
     else
@@ -428,9 +435,68 @@ function toolresult(value)::Dict{String,Any}
     end
 end
 
+"""
+    tool_success_result(value; version) :: Dict
+
+The result of a completed tool call: the handler's return value serialized into
+content blocks, with `structuredContent` dropped for legacy versions that
+predate it. Shared by the buffered and streamed `tools/call` paths so both
+produce identical bytes.
+"""
+function tool_success_result(value; version::String=LATEST_LEGACY)::Dict{String,Any}
+    result = toolresult(value)
+    supports_structured_content(version) || strip_unstructured!(result)
+    return result
+end
+
+"""
+    resolve_registered_node(registry, id, params, label) :: (node, arguments) or (nothing, response)
+
+Look up the component named by the request `params` in `registry` and read its
+`arguments` object. On a missing/unknown name or a malformed arguments value,
+returns `(nothing, response)` where `response` is the `(error_body, 200)` tuple
+the caller should return. Shared by `tools/call` and `prompts/get`.
+"""
+function resolve_registered_node(registry, id, params, label::String)
+    body_name = get(params, "name", nothing)
+    if isnothing(body_name)
+        return nothing, (error_body(id, MCP_INVALID_PARAMS, "Missing $label name"), 200)
+    end
+
+    wirename = String(body_name)
+    node = get(registry, wirename, nothing)
+    if isnothing(node)
+        return nothing, (error_body(id, MCP_INVALID_PARAMS, "Unknown $label: $wirename"), 200)
+    end
+
+    arguments = get(params, "arguments", Dict{String,Any}())
+    isnothing(arguments) && (arguments = Dict{String,Any}())
+    if !(arguments isa AbstractDict)
+        return nothing, (error_body(id, MCP_INVALID_PARAMS, "Invalid arguments: expected an object"), 200)
+    end
+
+    return node, arguments
+end
+
 # ----------------------------------------------------------------------------
 # Result envelope
 # ----------------------------------------------------------------------------
+
+"""
+    list_result(key, items; modern) :: Dict
+
+Build a `*/list` result under `key`, adding the cache hints the modern revision
+requires. Legacy results carry neither (legacy clients reject unknown fields).
+"""
+function list_result(key::String, items::Vector{Dict{String,Any}};
+                     modern::Bool=true)::Dict{String,Any}
+    result = Dict{String,Any}(key => items)
+    if modern
+        result["ttlMs"] = LIST_TTL_MS
+        result["cacheScope"] = "public"
+    end
+    return result
+end
 
 """
     modern_envelope(ctx, result) :: Dict
@@ -474,4 +540,27 @@ end
 # alike. Transport-specific writers live in `../mcp.jl`.
 function result_body(id, result)::Dict{String,Any}
     return Dict{String,Any}("jsonrpc" => "2.0", "id" => id, "result" => result)
+end
+
+"""
+    result_response(ctx, id, result; modern) :: (body, status)
+
+Apply the modern result envelope when `modern` and wrap `result` in its JSON-RPC
+body. The single place the era envelope is applied to successful results.
+"""
+function result_response(ctx::ServerContext, id, result::Dict{String,Any};
+                         modern::Bool=false)::Tuple{Dict{String,Any},Int}
+    modern && (result = modern_envelope(ctx, result))
+    return result_body(id, result), 200
+end
+
+"""
+    request_error_body(id, error, code) :: Dict
+
+The JSON-RPC error body for a thrown `MCPRequestError`, normally using the
+error's own code. `read_resource` overrides the code to translate the legacy
+not-found error by era.
+"""
+function request_error_body(id, error::MCPRequestError, code::Int=error.code)::Dict{String,Any}
+    return error_body(id, code, error.message, error.data)
 end

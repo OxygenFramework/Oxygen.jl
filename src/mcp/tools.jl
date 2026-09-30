@@ -5,12 +5,40 @@
 # Registration (the only write path to the registry)
 # ----------------------------------------------------------------------------
 
-# Reflect a handler into its positional argument names and `MCPParam`s. The
-# explicit `descriptions`/`names` maps override the reflected values, and
-# `skip_first` drops the leading positional handler argument (the HTTP request /
-# stream / websocket injected by the routing layer for route-backed tools).
-function reflect_mcp_params(func::Function, descriptions::Dict{Symbol,String},
-                            names::Dict{Symbol,String}; skip_first::Bool=false)
+# The framework-injected handler parameters. They are never part of a schema;
+# `context`/`request` are injected as keywords, while `stream` is the Surface A
+# entry point (the framework creates the channel, injects it, and routes the
+# call through the streaming path).
+const INJECTED_PARAMS = (:context, :request, :stream)
+
+"""
+    HandlerSignature
+
+The reflected view of a handler: `info` is the `splitdef` result, `argnames`
+are the positional parameter names included in schemas (in order), `params`
+are the positional-then-keyword `MCPParam`s (injected names dropped), and the
+flags say which injected keywords the handler declares.
+"""
+struct HandlerSignature
+    info        :: NamedTuple
+    argnames    :: Vector{Symbol}
+    params      :: Vector{MCPParam}
+    has_context :: Bool
+    has_request :: Bool
+    has_stream  :: Bool
+end
+
+mcp_param(p, descriptions, names) =
+    MCPParam(p, get(descriptions, p.name, ""), get(names, p.name, string(p.name)))
+
+# Single reflection walk shared by tools, prompts, and resources. The explicit
+# `descriptions`/`names` maps override the reflected values, and `skip_first`
+# drops the leading positional handler argument (the HTTP request / stream /
+# websocket injected by the routing layer for route-backed tools).
+function reflect_handler(func::Function;
+                         descriptions::Dict{Symbol,String}=Dict{Symbol,String}(),
+                         names::Dict{Symbol,String}=Dict{Symbol,String}(),
+                         skip_first::Bool=false)::HandlerSignature
     info = Reflection.splitdef(func; start=1)
 
     positional = info.args
@@ -20,49 +48,19 @@ function reflect_mcp_params(func::Function, descriptions::Dict{Symbol,String},
 
     argnames = Symbol[]
     mcp_params = MCPParam[]
-
     for p in positional
-        if p.name in (:context, :request, :stream)
-            continue
-        end
+        p.name in INJECTED_PARAMS && continue
         push!(argnames, p.name)
-        push!(mcp_params, MCPParam(p, get(descriptions, p.name, ""), get(names, p.name, string(p.name))))
-    end
-
-    for p in info.kwargs
-        # `context` / `request` / `stream` are injected by the framework, never
-        # part of the schema
-        if p.name in (:context, :request, :stream)
-            continue
-        end
-        push!(mcp_params, MCPParam(p, get(descriptions, p.name, ""), get(names, p.name, string(p.name))))
-    end
-
-    return info, argnames, mcp_params
-end
-
-# The set of handler parameters a client may supply: every reflected positional
-# and keyword parameter except the framework-injected `context`/`request`/
-# `stream`. For route-backed tools the leading positional argument (the injected
-# request) is dropped too.
-function mcp_param_names(func::Function; skip_first::Bool=false)::Set{Symbol}
-    info = Reflection.splitdef(func; start=1)
-
-    positional = info.args
-    if skip_first && !isempty(info.args)
-        positional = info.args[2:end]
-    end
-
-    names = Set{Symbol}()
-    for p in positional
-        p.name in (:context, :request, :stream) && continue
-        push!(names, p.name)
+        push!(mcp_params, mcp_param(p, descriptions, names))
     end
     for p in info.kwargs
-        p.name in (:context, :request, :stream) && continue
-        push!(names, p.name)
+        p.name in INJECTED_PARAMS && continue
+        push!(mcp_params, mcp_param(p, descriptions, names))
     end
-    return names
+
+    kwdecl = Tuple(p.name for p in info.kwargs)
+    return HandlerSignature(info, argnames, mcp_params,
+                            :context in kwdecl, :request in kwdecl, :stream in kwdecl)
 end
 
 # Guard against mistyped parameter metadata: every key in `descriptions`/`names`
@@ -71,7 +69,13 @@ end
 function validate_mcp_param_keys(func::Function, descriptions::Dict{Symbol,String},
                                  names::Dict{Symbol,String}; skip_first::Bool=false,
                                  require_complete::Bool=false)
-    allowed = mcp_param_names(func; skip_first=skip_first)
+    return validate_mcp_param_keys(reflect_handler(func; skip_first=skip_first),
+                                   descriptions, names; require_complete=require_complete)
+end
+
+function validate_mcp_param_keys(signature::HandlerSignature, descriptions::Dict{Symbol,String},
+                                 names::Dict{Symbol,String}; require_complete::Bool=false)
+    allowed = Set(p.param.name for p in signature.params)
 
     # Metadata keys that don't name a real handler parameter (mistyped or extra)
     unknown = sort!(collect(setdiff(union(keys(descriptions), keys(names)), allowed)))
@@ -86,14 +90,6 @@ function validate_mcp_param_keys(func::Function, descriptions::Dict{Symbol,Strin
             "Missing description for MCP parameter(s): $(join(string.(missing), ", "))"))
     end
     return nothing
-end
-
-# Whether the handler declares injected `context` / `request` / `stream`
-# keywords. `stream` is the Surface A entry point: the framework creates the
-# channel, injects it, and routes the call through the streaming path.
-function injected_kwargs(func::Function)
-    kwdecl = Base.kwarg_decl(first(methods(func)))
-    return (:context in kwdecl, :request in kwdecl, :stream in kwdecl)
 end
 
 # Extract a handler's docstring, if one was attached to its binding. Returns an
@@ -141,15 +137,13 @@ description, so the two-argument `@tool`/`tool` forms need not repeat it.
 """
 function register_tool!(ctx::ServerContext, desc, params, func::Function; name=nothing)
     descriptions = parse_mcp_parameters(params)
-    validate_mcp_param_keys(func, descriptions, Dict{Symbol,String}(); require_complete=true)
-    info, argnames, mcp_params = reflect_mcp_params(func, descriptions, Dict{Symbol,String}())
-    has_context, has_request, has_stream = injected_kwargs(func)
+    signature = reflect_handler(func; descriptions=descriptions)
+    validate_mcp_param_keys(signature, descriptions, Dict{Symbol,String}(); require_complete=true)
 
-    wirename = isnothing(name) ? string(info.name) : string(name)
+    wirename = isnothing(name) ? string(signature.info.name) : string(name)
     own = string(desc)
     description = isempty(own) ? function_docstring(func) : own
-    store_tool!(ctx, wirename, description, func, mcp_params, argnames,
-                has_context, has_request, has_stream, false)
+    store_tool!(ctx, wirename, description, func, signature, false)
 end
 
 """
@@ -165,10 +159,9 @@ route metadata supplies `name`.
 """
 function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Function;
                               httpmethod::String="", route::String="")
-    info, argnames, mcp_params = reflect_mcp_params(func, config.parameters, config.names;
-                                                    skip_first=true)
-    has_context, has_request, _ = injected_kwargs(func)
-    inject_request = !isempty(info.args)
+    signature = reflect_handler(func; descriptions=config.parameters, names=config.names,
+                                skip_first=true)
+    inject_request = !isempty(signature.info.args)
 
     own = !isempty(config.description) ? config.description : function_docstring(func)
     description = if !isempty(config.group) && !isempty(own)
@@ -181,8 +174,8 @@ function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Funct
 
     wirename = if !isnothing(config.toolname)
         string(config.toolname)
-    elseif !Base.isgensym(info.name)
-        string(info.name)
+    elseif !Base.isgensym(signature.info.name)
+        string(signature.info.name)
     else
         # Anonymous/do-block handlers have no usable name; derive one from the
         # endpoint so it stays specific and collision-free.
@@ -192,7 +185,7 @@ function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Funct
     # An explicit name (route `name = ...` or a named handler) must be unique. An
     # endpoint-derived name is disambiguated instead, so two anonymous handlers
     # that slug to the same text can still coexist.
-    explicit = !isnothing(config.toolname) || !Base.isgensym(info.name)
+    explicit = !isnothing(config.toolname) || !Base.isgensym(signature.info.name)
 
     # One handler mounted on several methods yields one tool; re-registering the
     # same function is a no-op, anything else is a collision.
@@ -214,8 +207,7 @@ function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Funct
 
     # Route-backed tools are invoked through the HTTP route's own request, not a
     # dedicated MCP stream, so they never take the Surface A injected handle.
-    store_tool!(ctx, wirename, description, func, mcp_params, argnames,
-                has_context, has_request, false, inject_request)
+    return store_tool!(ctx, wirename, description, func, signature, inject_request)
 end
 
 # Build a stable, endpoint-specific tool name for an anonymous handler.
@@ -230,25 +222,17 @@ end
 
 # Shared registry write. A wire name may only be claimed once.
 function store_tool!(ctx::ServerContext, wirename::String, description::String, func::Function,
-                     mcp_params::Vector{MCPParam}, argnames::Vector{Symbol},
-                     has_context::Bool, has_request::Bool, has_stream::Bool, inject_request::Bool)
+                     signature::HandlerSignature, inject_request::Bool)
     if haskey(ctx.mcp.tools, wirename)
         throw(ArgumentError("An MCP tool named `$wirename` is already registered"))
     end
 
-    tool = MCPTool(wirename, description, func, mcp_params, argnames,
-                   has_context, has_request, has_stream, inject_request)
+    tool = MCPTool(wirename, description, func, signature.params, signature.argnames,
+                   signature.has_context, signature.has_request, signature.has_stream,
+                   inject_request)
     ctx.mcp.tools[wirename] = tool
     notify_tools_changed(ctx)
     return tool
-end
-
-function invoke_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, tool::MCPTool, arguments;
-                     stream=nothing)
-    return invoke_registered(ctx, req, tool.handler, tool.params, tool.argnames,
-                             tool.has_context, tool.has_request, arguments;
-                             inject_request=tool.inject_request,
-                             has_stream=tool.has_stream, stream=stream)
 end
 
 # The client's per-request progress token (a string or integer per the spec).
@@ -272,32 +256,13 @@ function tools_list(ctx::ServerContext; modern::Bool=true)::Dict{String,Any}
             "inputSchema" => inputschema(tool),
         ))
     end
-    result = Dict{String,Any}("tools" => tools)
-    if modern
-        result["ttlMs"] = LIST_TTL_MS
-        result["cacheScope"] = "public"
-    end
-    return result
+    return list_result("tools", tools; modern=modern)
 end
 
 function call_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
                    modern::Bool=false, version::String=LATEST_LEGACY)::Tuple{Union{Dict{String,Any},StreamedCall},Int}
-    body_name = get(params, "name", nothing)
-    if isnothing(body_name)
-        return error_body(id, MCP_INVALID_PARAMS, "Missing tool name"), 200
-    end
-
-    wirename = String(body_name)
-    tool = get(ctx.mcp.tools, wirename, nothing)
-    if isnothing(tool)
-        return error_body(id, MCP_INVALID_PARAMS, "Unknown tool: $wirename"), 200
-    end
-
-    arguments = get(params, "arguments", Dict{String,Any}())
-    isnothing(arguments) && (arguments = Dict{String,Any}())
-    if !(arguments isa AbstractDict)
-        return error_body(id, MCP_INVALID_PARAMS, "Invalid arguments: expected an object"), 200
-    end
+    tool, arguments = resolve_registered_node(ctx.mcp.tools, id, params, "tool")
+    isnothing(tool) && return arguments
 
     token = progress_token(params)
 
@@ -308,37 +273,27 @@ function call_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, par
     if tool.has_stream
         stream = MCPStream(STREAM_BUFFER_SIZE; token=token, managed=true)
         pos_values, kwpairs = try
-            resolve_registered(ctx, req, tool.params, tool.argnames,
-                               tool.has_context, tool.has_request, arguments;
+            resolve_registered(ctx, req, tool, arguments;
                                inject_request=tool.inject_request,
                                has_stream=true, stream=stream)
         catch error
             error isa MCPRequestError || rethrow()
-            return error_body(id, error.code, error.message, error.data), 200
+            return request_error_body(id, error), 200
         end
         start_stream!(stream, _ -> tool.handler(pos_values...; kwpairs...))
         return StreamedCall(stream, id, modern, version), 200
     end
 
     try
-        value = invoke_tool(ctx, req, tool, arguments)
+        value = invoke_registered(ctx, req, tool, arguments; inject_request=tool.inject_request)
         # Surface B: a handler that called `mcp_stream` (or returned a raw
         # channel) hands the framework the event stream instead of a value.
         if value isa AbstractChannel
             return StreamedCall(adopt_stream(value, token), id, modern, version), 200
         end
-        result = toolresult(value)
-        if !modern && !supports_structured_content(version)
-            strip_unstructured!(result)
-        end
-        modern && (result = modern_envelope(ctx, result))
-        return result_body(id, result), 200
+        return result_response(ctx, id, tool_success_result(value; version=version); modern=modern)
     catch error
-        if error isa MCPRequestError
-            return error_body(id, error.code, error.message, error.data), 200
-        end
-        result = toolerror_result(error)
-        modern && (result = modern_envelope(ctx, result))
-        return result_body(id, result), 200
+        error isa MCPRequestError && return request_error_body(id, error), 200
+        return result_response(ctx, id, toolerror_result(error); modern=modern)
     end
 end

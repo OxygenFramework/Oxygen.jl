@@ -224,10 +224,10 @@ Create OpenAPI schema for array/vector fields, handling both custom structs and 
 # Returns
 - `Dict`: OpenAPI schema for the array field
 """
-function create_array_field_schema(array_type::Type, schemas::Dict, p)::Dict
+function create_array_field_schema(array_type::Type, schemas::Dict, p; enum_wire::Symbol=:integer)::Dict
     field_schema = Dict{String,Any}("type" => "array")
 
-    item_schema = create_value_schema(get_element_type(array_type), schemas)
+    item_schema = create_value_schema(get_element_type(array_type), schemas; enum_wire=enum_wire)
     if !isnothing(item_schema)
         field_schema["items"] = item_schema
     end
@@ -246,10 +246,10 @@ end
 Create the OpenAPI schema for a dictionary field. JSON object keys are always
 strings, so the value type is described through `additionalProperties`.
 """
-function create_dict_field_schema(dict_type::Type, schemas::Dict, p)::Dict
+function create_dict_field_schema(dict_type::Type, schemas::Dict, p; enum_wire::Symbol=:integer)::Dict
     field_schema = Dict{String,Any}("type" => "object")
 
-    value_schema = create_value_schema(dict_valtype(dict_type), schemas)
+    value_schema = create_value_schema(dict_valtype(dict_type), schemas; enum_wire=enum_wire)
     if !isnothing(value_schema)
         field_schema["additionalProperties"] = value_schema
     end
@@ -262,13 +262,40 @@ function create_dict_field_schema(dict_type::Type, schemas::Dict, p)::Dict
     return field_schema
 end
 
+"""
+    enum_schema(field_type::Type; enum_wire::Symbol=:integer) -> Dict
+
+The schema for an enum field. `:integer` is the OpenAPI default (integer values
+plus the underlying format); `:string` advertises the instance names, which is
+the wire form JSON bodies already use.
+"""
+function enum_schema(field_type::Type; enum_wire::Symbol=:integer)::Dict{String,Any}
+    if enum_wire === :string
+        return Dict{String,Any}(
+            "type" => "string",
+            "enum" => [string(v) for v in Base.Enums.instances(field_type)],
+        )
+    end
+
+    schema = Dict{String,Any}(
+        "type" => "integer",
+        "enum" => collect(Int.(Base.Enums.instances(field_type))),
+    )
+    format = getformat(field_type)
+    if !isnothing(format)
+        schema["format"] = format
+    end
+    return schema
+end
+
 # Build the schema for a value nested inside a collection (array items or
 # dictionary values). Returns `nothing` when the type places no constraint.
-function create_value_schema(value_type::Type, schemas::Dict)
+# `enum_wire` selects the enum representation for this subtree.
+function create_value_schema(value_type::Type, schemas::Dict; enum_wire::Symbol=:integer)
     value_type = unwrap_type(value_type)
 
     if value_type isa Union
-        return create_union_schema(value_type, schemas)
+        return create_union_schema(value_type, schemas; enum_wire=enum_wire)
     end
 
     value_type = extract_non_null_type(value_type)
@@ -276,27 +303,26 @@ function create_value_schema(value_type::Type, schemas::Dict)
     if value_type === Union{} || value_type === Any
         return nothing
     elseif is_custom_struct(value_type)
-        convertobject!(value_type, schemas)
+        convertobject!(value_type, schemas; enum_wire=enum_wire)
         return Dict{String,Any}("\$ref" => getcomponent(string(nameof(value_type))))
     elseif value_type <: AbstractArray
         schema = Dict{String,Any}("type" => "array")
-        item_schema = create_value_schema(get_element_type(value_type), schemas)
+        item_schema = create_value_schema(get_element_type(value_type), schemas; enum_wire=enum_wire)
         if !isnothing(item_schema)
             schema["items"] = item_schema
         end
         return schema
     elseif value_type <: AbstractDict
         schema = Dict{String,Any}("type" => "object")
-        nested_schema = create_value_schema(dict_valtype(value_type), schemas)
+        nested_schema = create_value_schema(dict_valtype(value_type), schemas; enum_wire=enum_wire)
         if !isnothing(nested_schema)
             schema["additionalProperties"] = nested_schema
         end
         return schema
+    elseif value_type <: Enum
+        return enum_schema(value_type; enum_wire=enum_wire)
     else
         schema = Dict{String,Any}("type" => gettype(value_type))
-        if value_type <: Enum
-            schema["enum"] = collect(Int.(Base.Enums.instances(value_type)))
-        end
         format = getformat(value_type)
         if !isnothing(format)
             schema["format"] = format
@@ -312,7 +338,7 @@ end
 # Build a schema for a Union type: a single member keeps its schema (with
 # `nullable` when the union admits Nothing/Missing), several members become
 # `anyOf`. Returns `nothing` for `Union{}`.
-function create_union_schema(value_type::Union, schemas::Dict)
+function create_union_schema(value_type::Union, schemas::Dict; enum_wire::Symbol=:integer)
     members = Dict{String,Any}[]
     nullable = false
 
@@ -320,7 +346,7 @@ function create_union_schema(value_type::Union, schemas::Dict)
         if member === Nothing || member === Missing
             nullable = true
         else
-            member_schema = create_value_schema(member, schemas)
+            member_schema = create_value_schema(member, schemas; enum_wire=enum_wire)
             isnothing(member_schema) || push!(members, member_schema)
         end
     end
@@ -343,19 +369,18 @@ Create OpenAPI schema for primitive (non-struct, non-array) fields.
 # Returns
 - `Dict`: OpenAPI schema for the primitive field
 """
-function create_primitive_field_schema(field_type::Type, p)::Dict
-    field_schema = Dict{String,Any}("type" => gettype(field_type))
-
-    # Add enum values if this is an enum type
+function create_primitive_field_schema(field_type::Type, p; enum_wire::Symbol=:integer)::Dict
+    # Enums are self-contained: no generic type/format pass applies to them.
     if field_type <: Enum
-        enum_values = collect(Int.(Base.Enums.instances(field_type)))
-        field_schema["enum"] = enum_values
-        # Add format for enums
-        format = getformat(field_type)
-        if !isnothing(format)
-            field_schema["format"] = format
+        field_schema = enum_schema(field_type; enum_wire=enum_wire)
+        if p.hasdefault
+            default = p.default
+            field_schema["default"] = enum_wire === :string && default isa Enum ? string(default) : default
         end
+        return field_schema
     end
+
+    field_schema = Dict{String,Any}("type" => gettype(field_type))
 
     # Add compatible example format for datetime objects
     if field_type <: DateTime
@@ -762,7 +787,7 @@ function example_datetime() :: String
 end
 
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
-function convertobject!(type::Type, schemas::Dict) :: Dict
+function convertobject!(type::Type, schemas::Dict; enum_wire::Symbol=:integer) :: Dict
 
     # unwrap parametric/wrapper types (UnionAll) to a concrete/body type
     type = unwrap_type(type)
@@ -817,19 +842,19 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         # Case 1: Recursively convert nested structs & register schemas
         if is_custom_struct(current_type)
             current_field["\$ref"] = getcomponent(current_name)
-            convertobject!(current_type, schemas)
+            convertobject!(current_type, schemas; enum_wire=enum_wire)
 
         # Case 2: The custom type is wrapped inside an array or vector
         elseif current_type <: AbstractArray
-            current_field = create_array_field_schema(current_type, schemas, p)
+            current_field = create_array_field_schema(current_type, schemas, p; enum_wire=enum_wire)
 
         # Case 3: Dictionary fields describe their value type
         elseif current_type <: AbstractDict
-            current_field = create_dict_field_schema(current_type, schemas, p)
+            current_field = create_dict_field_schema(current_type, schemas, p; enum_wire=enum_wire)
 
         # Case 4: Convert the individual fields of the current type to it's openapi equivalent
         else
-            current_field = create_primitive_field_schema(current_type, p)
+            current_field = create_primitive_field_schema(current_type, p; enum_wire=enum_wire)
         end
         
         # Set nullable flag if needed

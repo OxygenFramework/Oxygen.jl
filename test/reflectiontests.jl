@@ -4,7 +4,7 @@ using Test
 using Base: @kwdef
 using Oxygen: splitdef, Json
 using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder, parse_array_value,
-    parse_dict_value, parse_union_value, struct_builder
+    parse_dict_value, parse_union_value, parse_enum, struct_builder
 
 
 global message = Dict("message" => "Hello, World!")
@@ -129,11 +129,32 @@ end
 
 end
 
+@testset "parse_enum" begin
+
+    # names are the wire form; integers and integer strings still work
+    @test parse_enum(Fruit, "apple") === apple
+    @test parse_enum(Fruit, "banana") === banana
+    @test parse_enum(Fruit, 1) === apple
+    @test parse_enum(Fruit, "2") === banana
+    @test parse_enum(Fruit, apple) === apple
+    @test_throws ArgumentError parse_enum(Fruit, "nope")
+    @test_throws ArgumentError parse_enum(Fruit, 9)
+
+    # every leaf parser funnels into it
+    @test parsetype(Fruit, "apple") === apple
+    @test parse_array_value(Vector{Fruit}, ["apple", 2]) == [apple, banana]
+    @test parse_array_value(Vector{Vector{Fruit}}, [["apple"], [2]]) == [[apple], [banana]]
+    @test parse_dict_value(Dict{String,Fruit}, Dict("a" => "banana")) == Dict("a" => banana)
+    @test parse_dict_value(Dict{Fruit,Int}, Dict("apple" => 1)) == Dict(apple => 1)
+    @test parse_union_value(Union{Fruit,Nothing}, "banana") === banana
+end
+
 @testset "parse_array_value element parsing" begin
 
     # concrete numerics and enums parsed from strings
     @test parse_array_value(Vector{Int}, ["1", "2"]) == [1, 2]
     @test parse_array_value(Vector{Fruit}, ["1", "2"]) == [apple, banana]
+    @test parse_array_value(Vector{Fruit}, ["apple", "banana"]) == [apple, banana]
 
     # abstract element types resolve to concrete values
     @test parse_array_value(Vector{Real}, ["1.5"]) == Real[1.5]

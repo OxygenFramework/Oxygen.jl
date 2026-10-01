@@ -326,7 +326,7 @@ If a handler throws, the error is reported as a tool execution error (`isError: 
 
 ## Supported Parameter Types
 
-Parameter schemas are generated from the Julia types in the function signature. Primitive types are mapped directly, enums are exposed as integer enums, and custom structs are inlined into the schema using `$defs`.
+Parameter schemas are generated from the Julia types in the function signature. Primitive types are mapped directly, enums are exposed as string enums (the instance names, matching the JSON-body convention; integer values are still accepted on input), and custom structs are inlined into the schema using `$defs`.
 
 ```julia
 struct Address

@@ -29,6 +29,27 @@ end
 
 @enum Color red = 1 blue = 2 green = 3
 
+# Enum containers exercising every nesting shape: struct fields, arrays, maps
+# and nullable unions; the plain variant has no keyword constructor.
+@kwdef struct Palette
+    primary::Color = red
+    colors::Vector{Color} = Color[]
+    labels::Dict{String,Color} = Dict{String,Color}()
+    accent::Union{Color,Nothing} = nothing
+end
+
+struct PlainPalette
+    primary::Color
+    colors::Vector{Color}
+    labels::Dict{String,Color}
+    accent::Union{Color,Nothing}
+end
+
+@kwdef struct PaletteBox
+    palette::Palette = Palette()
+    alternatives::Vector{Palette} = Palette[]
+end
+
 ### Registered tools ###
 
 @tool "Add two integers" Dict(:a => "first number", :b => "second number") function add_numbers(a::Int, b::Int)
@@ -69,6 +90,25 @@ end
 
 @tool "Takes a vector" Dict(:nums => "numbers") function vector_tool(nums::Vector{Int})
     return sum(nums)
+end
+
+@tool "Takes enum collections" Dict(
+    :colors => "colors",
+    :labels => "colors by label"
+    ) function enum_collections_tool(colors::Vector{Color}, labels::Dict{String,Color})
+    return length(colors) + length(labels)
+end
+
+@tool "Takes a nested enum palette" Dict(:palette => "a palette") function palette_tool(palette::Palette)
+    return string(palette.primary)
+end
+
+@tool "Takes a plain nested enum palette" Dict(:palette => "a palette") function plain_palette_tool(palette::PlainPalette)
+    return string(palette.primary)
+end
+
+@tool "Takes a box of palettes" Dict(:box => "a palette box") function palette_box_tool(box::PaletteBox)
+    return length(box.alternatives)
 end
 
 @tool "Always throws" Dict() function throws_tool()
@@ -241,6 +281,7 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
     tools = CONTEXT[].mcp.tools
     for name in ["add_numbers", "concatenate", "with_default", "no_args", "enum_tool",
                  "struct_tool", "dict_tool", "region_tool", "mixed_tool", "vector_tool",
+                 "enum_collections_tool", "palette_tool", "plain_palette_tool", "palette_box_tool",
                  "throws_tool", "context_tool", "request_tool", "block_tool", "response_tool",
                  "echo_place", "subtract", "multiply"]
         @test haskey(tools, name)
@@ -302,13 +343,24 @@ end
     empty_schema = MCP.inputschema(CONTEXT[].mcp.tools["no_args"])
     @test empty_schema["additionalProperties"] == false
 
+    # enums advertise their instance names (the JSON-body wire form); the
+    # integer values never appear on the wire
     enum_schema = MCP.inputschema(CONTEXT[].mcp.tools["enum_tool"])
-    @test enum_schema["properties"]["color"]["enum"] == [1, 2, 3]
-    @test enum_schema["properties"]["color"]["type"] == "integer"
+    @test enum_schema["properties"]["color"]["enum"] == ["red", "blue", "green"]
+    @test enum_schema["properties"]["color"]["type"] == "string"
 
     vec_schema = MCP.inputschema(CONTEXT[].mcp.tools["vector_tool"])
     @test vec_schema["properties"]["nums"]["type"] == "array"
     @test vec_schema["properties"]["nums"]["items"]["type"] == "integer"
+
+    # enums nested in arrays and dictionaries
+    collections_schema = MCP.inputschema(CONTEXT[].mcp.tools["enum_collections_tool"])
+    color_items = collections_schema["properties"]["colors"]["items"]
+    @test color_items["type"] == "string"
+    @test color_items["enum"] == ["red", "blue", "green"]
+    label_values = collections_schema["properties"]["labels"]["additionalProperties"]
+    @test label_values["type"] == "string"
+    @test label_values["enum"] == ["red", "blue", "green"]
 
     struct_schema = MCP.inputschema(CONTEXT[].mcp.tools["struct_tool"])
     @test struct_schema["properties"]["place"]["\$ref"] == "#/\$defs/Place"
@@ -333,6 +385,29 @@ end
     @test mixed_items["nullable"] == true
     @test Set(ref["\$ref"] for ref in mixed_items["anyOf"]) ==
           Set(["#/\$defs/Coordinates", "#/\$defs/Place"])
+
+    # enum fields inside registered structs are string enums too, at any depth
+    palette_schema = MCP.inputschema(CONTEXT[].mcp.tools["palette_tool"])
+    palette_props = palette_schema["\$defs"]["Palette"]["properties"]
+    @test palette_props["primary"]["type"] == "string"
+    @test palette_props["primary"]["enum"] == ["red", "blue", "green"]
+    @test palette_props["primary"]["default"] == "red"
+    @test palette_props["colors"]["items"]["enum"] == ["red", "blue", "green"]
+    @test palette_props["labels"]["additionalProperties"]["enum"] == ["red", "blue", "green"]
+    @test palette_props["accent"]["type"] == "string"
+    @test palette_props["accent"]["nullable"] == true
+
+    plain_schema = MCP.inputschema(CONTEXT[].mcp.tools["plain_palette_tool"])
+    plain_props = plain_schema["\$defs"]["PlainPalette"]["properties"]
+    @test plain_props["primary"]["enum"] == ["red", "blue", "green"]
+    @test plain_props["colors"]["items"]["type"] == "string"
+
+    # a struct of structs keeps the string convention inside nested $defs
+    box_schema = MCP.inputschema(CONTEXT[].mcp.tools["palette_box_tool"])
+    box_props = box_schema["\$defs"]["PaletteBox"]["properties"]
+    @test box_props["palette"]["\$ref"] == "#/\$defs/Palette"
+    @test box_props["alternatives"]["items"]["\$ref"] == "#/\$defs/Palette"
+    @test box_schema["\$defs"]["Palette"]["properties"]["primary"]["type"] == "string"
 end
 
 @testset "parameter declaration forms" begin
@@ -382,6 +457,15 @@ end
     @test MCP.parse_tool_argument(String, 3) == "3"
     @test MCP.parse_tool_argument(Color, 2) == blue
     @test MCP.parse_tool_argument(Color, "3") == green
+    @test MCP.parse_tool_argument(Color, "blue") == blue
+    @test MCP.parse_tool_argument(Union{Color, Nothing}, "blue") == blue
+    @test_throws ArgumentError MCP.parse_tool_argument(Color, "nope")
+    @test_throws ArgumentError MCP.parse_tool_argument(Color, 9)
+    @test MCP.parse_tool_argument(Vector{Color}, ["red", 2]) == [red, blue]
+    @test MCP.parse_tool_argument(Vector{Dict{String,Color}},
+                                  [Dict("a" => "green")]) == [Dict("a" => green)]
+    @test MCP.parse_tool_argument(Dict{String,Color}, Dict("a" => "blue")) == Dict("a" => blue)
+    @test MCP.parse_tool_argument(Dict{Color,Int}, Dict("red" => 1)) == Dict(red => 1)
     @test MCP.parse_tool_argument(Coordinates, Dict("lat" => 1.0, "lon" => 2.0)) == Coordinates(1.0, 2.0)
     @test MCP.parse_tool_argument(Vector{Int}, [1, 2, 3]) == [1, 2, 3]
     @test MCP.parse_tool_argument(Vector{Int}, ["1", "2"]) == [1, 2]
@@ -403,6 +487,36 @@ end
     @test mixed[2].name == "x"
     @test mixed[2].coordinates == Coordinates(1.0, 2.0)
     @test mixed[3] === nothing
+
+    # deep nesting: enums inside struct fields, arrays, maps and unions
+    palette = MCP.parse_tool_argument(Palette, Dict(
+        "primary" => "blue",
+        "colors" => ["red", 2],
+        "labels" => Dict("a" => "green"),
+        "accent" => "blue",
+    ))
+    @test palette.primary == blue
+    @test palette.colors == [red, blue]
+    @test palette.labels == Dict("a" => green)
+    @test palette.accent == blue
+
+    plain = MCP.parse_tool_argument(PlainPalette, Dict(
+        "primary" => "green",
+        "colors" => ["blue"],
+        "labels" => Dict("a" => "red"),
+        "accent" => nothing,
+    ))
+    @test plain.primary == green
+    @test plain.colors == [blue]
+    @test plain.labels == Dict("a" => red)
+    @test plain.accent === nothing
+
+    box = MCP.parse_tool_argument(PaletteBox, Dict(
+        "palette" => Dict("primary" => "red"),
+        "alternatives" => [Dict("primary" => "green")],
+    ))
+    @test box.palette.primary == red
+    @test box.alternatives[1].primary == green
 end
 
 @testset "server/discover" begin
@@ -592,9 +706,42 @@ end
     r = call_tool("subtract", Dict("a" => 10, "b" => 4))
     @test parsebody(r)["result"]["content"][1]["text"] == "6"
 
-    # enum argument
+    # enum argument: the instance name is the wire form, integers still work
+    r = call_tool("enum_tool", Dict("color" => "blue"))
+    @test parsebody(r)["result"]["content"][1]["text"] == "2"
+
     r = call_tool("enum_tool", Dict("color" => 2))
     @test parsebody(r)["result"]["content"][1]["text"] == "2"
+
+    r = call_tool("enum_tool", Dict("color" => "nope"))
+    @test parsebody(r)["error"]["code"] == MCP.MCP_INVALID_PARAMS
+
+    # enums nested in arrays, dictionaries and structs at call time
+    r = call_tool("enum_collections_tool",
+                  Dict("colors" => ["red", "blue"], "labels" => Dict("a" => "green")))
+    @test parsebody(r)["result"]["content"][1]["text"] == "3"
+
+    r = call_tool("palette_tool", Dict("palette" => Dict(
+        "primary" => "blue",
+        "colors" => ["red"],
+        "labels" => Dict("x" => "green"),
+        "accent" => "red",
+    )))
+    @test parsebody(r)["result"]["content"][1]["text"] == "blue"
+
+    r = call_tool("plain_palette_tool", Dict("palette" => Dict(
+        "primary" => "green",
+        "colors" => ["blue"],
+        "labels" => Dict("x" => "red"),
+        "accent" => nothing,
+    )))
+    @test parsebody(r)["result"]["content"][1]["text"] == "green"
+
+    r = call_tool("palette_box_tool", Dict("box" => Dict(
+        "palette" => Dict("primary" => "red"),
+        "alternatives" => [Dict("primary" => "blue")],
+    )))
+    @test parsebody(r)["result"]["content"][1]["text"] == "1"
 
     # vector argument
     r = call_tool("vector_tool", Dict("nums" => [1, 2, 3, 4]))

@@ -62,9 +62,16 @@ function _typeschema(T::Type, defs::Dict{String,Any})
 
     if T isa Union
         return _unionschema(T, defs)
+    elseif T <: Enum
+        # Enum names are the wire form (the JSON-body convention); integer
+        # values stay an accepted input for backwards compatibility.
+        return Dict{String,Any}(
+            "type" => "string",
+            "enum" => [string(instance) for instance in Base.Enums.instances(T)],
+        )
     elseif AutoDoc.is_custom_struct(T)
         local_defs = Dict{String,Any}()
-        AutoDoc.convertobject!(T, local_defs)
+        AutoDoc.convertobject!(T, local_defs; enum_wire=:string)
         for (_, value) in local_defs
             rewrite_refs!(value)
         end
@@ -89,9 +96,6 @@ function _typeschema(T::Type, defs::Dict{String,Any})
         format = AutoDoc.getformat(T)
         if !isnothing(format)
             schema["format"] = format
-        end
-        if T <: Enum
-            schema["enum"] = collect(Int.(Base.Enums.instances(T)))
         end
         return schema
     end
@@ -127,7 +131,8 @@ function paramschema(p::MCPParam)
         schema["description"] = p.description
     end
     if p.param.hasdefault
-        schema["default"] = p.param.default
+        default = p.param.default
+        schema["default"] = default isa Enum ? string(default) : default
     end
     return schema, defs
 end
@@ -199,7 +204,7 @@ function parse_tool_argument(::Type{T}, value) where {T}
     elseif target <: AbstractFloat
         return value isa AbstractString ? parse(target, value) : convert(target, value)
     elseif target <: Enum
-        return target(value isa AbstractString ? parse(Int, value) : Int(value))
+        return Reflection.parse_enum(target, value)
     elseif AutoDoc.is_custom_struct(target) && value isa AbstractDict
         return Reflection.struct_builder(target, value)
     elseif target <: AbstractArray && value isa AbstractVector

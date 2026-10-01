@@ -455,6 +455,33 @@ function parsetype(target_type::Type{T}, value::Any) :: T where {T}
 end
 
 """
+    parse_enum(::Type{T}, value) where {T <: Enum}
+
+Coerce a wire value into the enum `T`. Enum names are the wire form (the same
+convention JSON bodies use through StructTypes), so a client sends `"date"`;
+integer values and integer strings are still accepted for backwards
+compatibility. Every nested parse path funnels into `parsetype` or
+`parse_array_element`, so enums are name-addressable at any depth.
+"""
+function parse_enum(::Type{T}, value) where {T <: Enum}
+    value isa T && return value
+    if value isa AbstractString
+        for instance in Base.Enums.instances(T)
+            string(instance) == value && return instance
+        end
+        parsed = tryparse(Int, value)
+        isnothing(parsed) || return T(parsed)
+        names = join(string.(Base.Enums.instances(T)), ", ")
+        throw(ArgumentError("invalid `$(nameof(T))` value: $(repr(String(value))); expected one of $names"))
+    elseif value isa Integer
+        return T(Int(value))
+    end
+    throw(ArgumentError("invalid `$(nameof(T))` value: $(repr(value))"))
+end
+
+parsetype(::Type{T}, value) where {T <: Enum} = parse_enum(T, value)
+
+"""
     match_field_names(::Type{T}, params::AbstractDict{Symbol}) where {T}
 
 Return a copy of `params` whose keys are rewritten to the field names of `T`
@@ -496,19 +523,41 @@ function struct_builder(::Type{T}, params::AbstractDict; casesensitive::Bool=tru
     end
 end
 
-# Pre-parse fields declared as dictionaries so that dictionary values (which may
-# be custom structs) are coerced before `StructTypes` builds the struct.
+# Pre-parse fields so that structured values are coerced before `StructTypes`
+# builds the struct. StructTypes speaks enum names already, but its generic
+# object builder cannot walk nested user structs out of string-keyed JSON
+# objects, so every structured field shape is handled here instead.
 function parse_dict_fields(::Type{T}, params::AbstractDict) where {T}
     parsed = Dict{Symbol,Any}()
     for (name, value) in params
         field = name isa Symbol && name in fieldnames(T) ? fieldtype(T, name) : nothing
-        if !isnothing(field) && nonnull_type(field) <: AbstractDict && value isa AbstractDict
-            parsed[name] = parse_dict_value(nonnull_type(field), value)
-        else
-            parsed[name] = value
-        end
+        parsed[name] = isnothing(field) ? value : parse_struct_field(field, value)
     end
     return parsed
+end
+
+# Coerce one wire value to a struct field's declared type for the
+# `StructTypes.constructfrom` fast path. Shapes StructTypes cannot build from
+# string-keyed JSON objects (nested structs, collections, unions, enums) are
+# delegated to the same parsers `kwarg_struct_builder` uses; primitives are
+# left to StructTypes.
+function parse_struct_field(field_type::Type, value)
+    value === nothing && return nothing
+    value === missing && return missing
+
+    resolved = nonnull_type(field_type)
+    if resolved isa Union
+        return parse_union_value(resolved, value)
+    elseif resolved <: AbstractDict && value isa AbstractDict
+        return parse_dict_value(resolved, value)
+    elseif resolved <: AbstractArray && value isa AbstractArray
+        return parse_array_value(resolved, value)
+    elseif resolved <: Enum
+        return value isa Enum ? value : parse_enum(resolved, value)
+    elseif is_struct_type(resolved) && value isa AbstractDict
+        return struct_builder(resolved, value)
+    end
+    return value
 end
 
 """
@@ -546,7 +595,7 @@ parse_array_elements(::Type{E}, value::AbstractArray) where {E <: AbstractArray}
 parse_array_elements(::Type{E}, value::AbstractArray) where {E} = map(item -> parse_array_elements(E, item), value)
 parse_array_elements(::Type{E}, value) where {E} = parse_array_element(E, value)
 
-parse_array_element(::Type{T}, value) where {T <: Enum} = T(value isa AbstractString ? parse(Int, value) : Int(value))
+parse_array_element(::Type{T}, value) where {T <: Enum} = parse_enum(T, value)
 parse_array_element(::Type{T}, value) where {T <: AbstractArray} = parse_array_value(T, value)
 parse_array_element(::Type{T}, value) where {T <: AbstractDict} = parse_dict_value(T, value)
 function parse_array_element(::Type{T}, value) where {T}
@@ -730,7 +779,7 @@ function kwarg_struct_builder(TargetType::Type{T}, params::AbstractDict) where {
             elseif resolved_type isa Union
                 parsed_value = parse_union_value(resolved_type, param_value)
             else
-                parsed_value = parsetype(target_type, param_value)
+                parsed_value = parsetype(resolved_type, param_value)
             end
 
             param_dict[param_name] = parsed_value

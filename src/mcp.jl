@@ -24,15 +24,26 @@ import ..Streaming: emit, normalize_event
 export register_tool!, register_prompt!, register_resource!, register_resource_folder!,
     mcp_stream, emit, progress, check_cancelled
 
+# ----------------------------------------------------------------------------
+# Protocol strategies
+# ----------------------------------------------------------------------------
+# Revision identity, the capability interface, and the per-revision deltas.
+# Everything below, including the version constants, derives from this registry.
+include("mcp/specs/specs.jl")        # protocol revision identity (Val dispatch)
+include("mcp/specs/strategy.jl")     # capability interface defaults
+include("mcp/specs/v2025_03_26.jl")  # revision deltas
+include("mcp/specs/v2026_07_28.jl")  # revision deltas
+
 # This server is dual-era: it serves the modern, stateless 2026-07-28 revision
-# and the legacy initialize-handshake revision that mainstream clients speak.
+# and the legacy initialize-handshake revisions that mainstream clients speak.
 # Era is a property of the request (its `_meta` or method), not the transport.
-const MODERN_VERSIONS = ["2026-07-28"]
-const LATEST_MODERN_VERSION = "2026-07-28"
+# Every list is derived from the spec registry, the single source of truth.
+const MODERN_VERSIONS = [version_string(spec) for spec in MODERN_SPECS]
+const LATEST_MODERN_VERSION = version_string(LATEST_MODERN_SPEC)
 
 # Legacy (initialize-handshake) revisions, newest first.
-const LEGACY_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
-const LATEST_LEGACY = "2025-11-25"
+const LEGACY_VERSIONS = [version_string(spec) for spec in LEGACY_SPECS]
+const LATEST_LEGACY = version_string(LATEST_LEGACY_SPEC)
 
 # Kept for backwards compatibility: the latest modern revision is the protocol
 # version advertised by the stateless path.
@@ -40,10 +51,7 @@ const PROTOCOL_VERSION = LATEST_MODERN_VERSION
 
 # Every revision this server understands, across both eras (advertised by
 # `server/discover` and returned in unsupported-version errors).
-const SUPPORTED_VERSIONS = vcat(MODERN_VERSIONS, LEGACY_VERSIONS)
-
-# `structuredContent` results were introduced in the 2025-06-18 revision.
-const STRUCTURED_CONTENT_VERSION = "2025-06-18"
+const SUPPORTED_VERSIONS = [version_string(spec) for spec in SUPPORTED_SPECS]
 
 # Reserved `_meta` keys.
 const META_KEY = "_meta"
@@ -68,18 +76,12 @@ client's version when it is a supported legacy revision, otherwise fall back to
 the latest legacy revision and let the client decide whether it can proceed.
 """
 function negotiate_version(client_version::Union{Nothing,AbstractString})::String
-    if !isnothing(client_version) && client_version in LEGACY_VERSIONS
-        return String(client_version)
+    if !isnothing(client_version)
+        spec = spec_from_version(client_version)
+        spec !== nothing && is_legacy(spec) && return version_string(spec)
     end
     return LATEST_LEGACY
 end
-
-# Whether a negotiated (legacy) version predates `structuredContent`.
-supports_structured_content(version::AbstractString)::Bool = version >= STRUCTURED_CONTENT_VERSION
-
-# `icons` on resource entries were introduced in the same 2025-06-18 revision;
-# older clients may reject unknown fields, so entries gate the field by version.
-supports_resource_icons(version::AbstractString)::Bool = version >= STRUCTURED_CONTENT_VERSION
 
 # ----------------------------------------------------------------------------
 # Submodules
@@ -93,6 +95,57 @@ include("mcp/tools.jl")          # tools/list, tools/call
 include("mcp/prompts.jl")        # prompts/list, prompts/get
 include("mcp/resources.jl")      # resources/list, resources/templates/list, resources/read
 include("mcp/subscriptions.jl")  # subscriptions/listen, resources/subscribe, notify_*
+
+# ----------------------------------------------------------------------------
+# Spec resolution
+# ----------------------------------------------------------------------------
+
+# The revision a legacy request runs under: parse the negotiated wire version
+# on demand. Sessions (and the anonymous state on `MCPContext`, which predates
+# this module) keep wire strings, so the `Val` never enters the context.
+legacy_spec(ctx::ServerContext, session::Union{Nothing,MCPSession})::Val =
+    spec_or_latest_legacy(legacy_version(ctx, session))
+
+"""
+    request_spec(ctx, req, method, params; session) :: Union{Nothing,Val}
+
+The protocol revision a request runs under. A modern claim (see
+`request_claim`) names its own revision; a legacy request falls back to the
+session's negotiated version. Returns `nothing` when the request claims a
+modern revision this server cannot serve; the caller answers `-32022`.
+"""
+function request_spec(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+                      method::String, params;
+                      session::Union{Nothing,MCPSession}=nothing)
+    claim = request_claim(req, method, params)
+    claim === nothing && return legacy_spec(ctx, session)
+    return claim isa Val ? claim : nothing
+end
+
+"""
+    transport_spec(ctx, req, payload=nothing) :: Val
+
+The revision governing transport policy for a request, resolved before
+`process` determines the revision it dispatches under (see `request_spec`). A
+modern claim — supported or not, because an unsupported one is answered
+`-32022` before any session matters — classifies as the latest modern revision;
+a legacy request falls back to the legacy revision negotiated on the context.
+Only the policy interface (`uses_sessions`, `get_policy`, `delete_policy`) may
+be asked of the result; it is a classification, not the request's revision.
+"""
+function transport_spec(ctx::ServerContext, req::HTTP.Request, payload=nothing)::Val
+    method = ""
+    params = Dict{String,Any}()
+    if payload isa AbstractDict
+        name = get(payload, "method", nothing)
+        name isa AbstractString && (method = String(name))
+        params = request_params(payload)
+    end
+
+    claim = request_claim(req, method, params)
+    claim === nothing && return legacy_spec(ctx, nothing)
+    return claim isa Val ? claim : LATEST_MODERN_SPEC
+end
 
 # ----------------------------------------------------------------------------
 # Discovery / initialization
@@ -165,54 +218,67 @@ end
 # Transport agnostic dispatch. Returns the JSON-RPC response body together with
 # the HTTP status code that should be used for it (stdio ignores the status).
 # A streamed `tools/call` returns its `StreamedCall` and a `subscriptions/listen`
-# returns its `ListenCall`; the transport consumes those directly.
+# returns its `ListenCall`; the transport consumes those directly. `spec` is the
+# request's protocol revision (see `request_spec`); every method result is shaped
+# through that revision's strategy.
+#
+# Routing is two dispatches on the method tag: `method_available` decides whether
+# the active revision serves the method at all (an era-exclusive method answers
+# `-32601` on the other era), then `handle_method` selects its one implementation,
+# which lives with its domain (tools, prompts, resources, subscriptions).
 function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, method::String, payload;
-                  era::Symbol=:legacy,
+                  spec::Val=LATEST_LEGACY_SPEC,
                   session::Union{Nothing,MCPSession}=nothing)::Tuple{Union{Dict{String,Any},StreamedCall,ListenCall},Int}
-    modern = era === :modern
-    version = modern ? PROTOCOL_VERSION : legacy_version(ctx, session)
-
-    if method == "initialize"
-        # initialize exists only in the legacy era.
-        modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        return result_response(ctx, id,
-                               initialize_result(ctx, request_params(payload); session=session))
-    elseif method == "server/discover"
-        return result_response(ctx, id, discover_result(ctx); modern=modern)
-    elseif method == "tools/list"
-        return result_response(ctx, id, tools_list(ctx; modern=modern); modern=modern)
-    elseif method == "tools/call"
-        return call_tool(ctx, req, id, request_params(payload); modern=modern, version=version)
-    elseif method == "prompts/list"
-        return result_response(ctx, id, prompts_list(ctx; modern=modern); modern=modern)
-    elseif method == "prompts/get"
-        return get_prompt(ctx, req, id, request_params(payload); modern=modern)
-    elseif method == "resources/list"
-        return result_response(ctx, id, resources_list(ctx; modern=modern, version=version);
-                               modern=modern)
-    elseif method == "resources/templates/list"
-        return result_response(ctx, id, resource_templates_list(ctx; modern=modern, version=version);
-                               modern=modern)
-    elseif method == "resources/read"
-        return read_resource(ctx, req, id, request_params(payload); modern=modern)
-    elseif method == "subscriptions/listen"
-        # subscriptions/listen exists only in the modern era.
-        modern || return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        return listen_call(ctx, req, id, request_params(payload))
-    elseif method == "resources/subscribe"
-        modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        return subscribe_resource_legacy(ctx, id, request_params(payload); session=session)
-    elseif method == "resources/unsubscribe"
-        modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        return unsubscribe_resource_legacy(ctx, id, request_params(payload); session=session)
-    elseif method == "ping"
-        # ping was removed from the modern era; it exists only in legacy.
-        modern && return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-        return result_response(ctx, id, Dict{String,Any}())
-    else
+    tag = method_val(method)
+    method_available(spec, tag) ||
         return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
-    end
+    return handle_method(spec, tag, ctx, req, id, request_params(payload), method; session=session)
 end
+
+"""
+    method_val(method) :: Val
+
+Map a wire method name to its implementation tag. The tag only selects the
+handler; whether the active revision serves the method at all is
+`method_available`'s decision. Unknown method names map to `Val(:unknown)`,
+which the fallback `handle_method` answers with `-32601`.
+"""
+function method_val(method::String)
+    method == "initialize" && return Val(:initialize)
+    method == "server/discover" && return Val(:server_discover)
+    method == "ping" && return Val(:ping)
+    method == "tools/list" && return Val(:tools_list)
+    method == "tools/call" && return Val(:tools_call)
+    method == "prompts/list" && return Val(:prompts_list)
+    method == "prompts/get" && return Val(:prompts_get)
+    method == "resources/list" && return Val(:resources_list)
+    method == "resources/templates/list" && return Val(:resources_templates_list)
+    method == "resources/read" && return Val(:resources_read)
+    method == "resources/subscribe" && return Val(:resources_subscribe)
+    method == "resources/unsubscribe" && return Val(:resources_unsubscribe)
+    method == "subscriptions/listen" && return Val(:subscriptions_listen)
+    return Val(:unknown)
+end
+
+# The fallback for an unknown wire method (and for a tag with no handler, were
+# one ever added to `method_val` without an implementation). `raw` is the wire
+# method name, reported verbatim.
+handle_method(spec::Val, tag::Val, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $raw"), 404
+
+# Discovery methods, declared with the capability and version code above.
+handle_method(spec::Val, ::Val{:initialize}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    result_response(ctx, id, initialize_result(ctx, params; session=session); spec=spec)
+
+handle_method(spec::Val, ::Val{:server_discover}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    result_response(ctx, id, discover_result(ctx); spec=spec)
+
+handle_method(spec::Val, ::Val{:ping}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    result_response(ctx, id, Dict{String,Any}(); spec=spec)
 
 # The `params` object of a request, empty when absent or not an object.
 function request_params(payload)::AbstractDict
@@ -314,17 +380,30 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request};
     id = payload["id"]
     params = request_params(payload)
 
-    era = request_era(req, method, params)
-    if era === :modern
-        try
-            validate_modern_request(ctx, req, method, params)
-        catch error
-            error isa MCPRequestError || rethrow()
-            return request_error_body(id, error), 400
-        end
+    spec = request_spec(ctx, req, method, params; session=session)
+    spec === nothing && return unsupported_version_response(id, params)
+
+    try
+        validate_request(spec, ctx, req, method, params)
+    catch error
+        error isa MCPRequestError || rethrow()
+        return request_error_body(id, error), 400
     end
 
-    return dispatch(ctx, req, id, method, payload; era=era, session=session)
+    return dispatch(ctx, req, id, method, payload; spec=spec, session=session)
+end
+
+# The `-32022` response for a request claiming a modern revision this server
+# does not serve. `request_spec` returns `nothing` only for such a claim, so the
+# requested version is always the string in `_meta.protocolVersion`.
+function unsupported_version_response(id, params)::Tuple{Dict{String,Any},Int}
+    meta = get(params, META_KEY, nothing)
+    requested = meta isa AbstractDict ? get(meta, META_PROTOCOL, nothing) : nothing
+    return error_body(id, MCP_UNSUPPORTED_PROTOCOL_VERSION, "Unsupported protocol version",
+                      Dict{String,Any}(
+                          "supported" => copy(SUPPORTED_VERSIONS),
+                          "requested" => requested,
+                      )), 400
 end
 
 # The transport adapter decodes the request body before middleware runs, so the
@@ -393,23 +472,6 @@ function write_sse_frame(stream::HTTP.Stream, payload)
 end
 
 """
-    request_is_modern(req, payload) :: Bool
-
-Whether a parsed HTTP request belongs to the modern (stateless) era: its
-message carries `_meta.protocolVersion`, its method is `server/discover`, or
-the `MCP-Protocol-Version` header names a modern revision. Sessions exist only
-in the legacy era, so modern requests never resolve one.
-"""
-function request_is_modern(req::HTTP.Request, payload)::Bool
-    if payload isa AbstractDict
-        method = get(payload, "method", nothing)
-        method isa AbstractString || (method = "")
-        return request_era(req, String(method), request_params(payload)) === :modern
-    end
-    return request_era(req, "", Dict{String,Any}()) === :modern
-end
-
-"""
     process_batch(ctx, payload, req; session) :: (body, status)
 
 Handle a JSON-RPC batch. Batching existed only in the `2025-03-26` revision
@@ -425,15 +487,15 @@ function process_batch(ctx::ServerContext, payload::AbstractVector,
                        session::Union{Nothing,MCPSession}=nothing)
     isempty(payload) && return error_body(nothing, MCP_INVALID_REQUEST, "Invalid Request: empty batch"), 400
 
-    if request_era(req, "", Dict{String,Any}()) === :modern
+    if request_claim(req, "", Dict{String,Any}()) !== nothing
         return error_body(nothing, MCP_INVALID_REQUEST,
                           "Batch requests are not supported in the modern era"), 400
     end
 
-    version = legacy_version(ctx, session)
-    version == "2025-03-26" || return error_body(
+    # Batching existed only in 2025-03-26, so the effective legacy spec decides.
+    allows_batch(legacy_spec(ctx, session)) || return error_body(
         nothing, MCP_INVALID_REQUEST,
-        "Batch requests require the 2025-03-26 protocol revision"), 400
+        "Batch requests require the $(version_string(V2025_03_26)) protocol revision"), 400
 
     responses = Any[]
     for entry in payload
@@ -502,13 +564,16 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
         return write_json_response(stream, error_body(nothing, MCP_PARSE_ERROR, "Parse error"); status=400)
     end
 
-    modern = request_is_modern(req, payload)
+    # The revision's transport policy decides whether this request is stateful:
+    # a modern claim never resolves a session, a legacy request uses its
+    # session (or the anonymous context-wide state).
+    stateful = uses_sessions(transport_spec(ctx, req, payload))
 
     # Sessions only exist in the legacy era. A supplied id must name a live
     # session (404 otherwise, per the Streamable HTTP transport).
     session = nothing
     had_session_header = false
-    if !modern
+    if stateful
         resolved = resolve_session_or_error(ctx, req)
         if resolved isa Tuple
             status, body = resolved
@@ -529,14 +594,14 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
 
     # A header-less initialize mints a session and returns its id; the response
     # is the only place the client learns it.
-    if !modern && !had_session_header && method == "initialize"
+    if stateful && !had_session_header && method == "initialize"
         session = new_session!(ctx)
     end
 
     body, status = process(ctx, payload, req; session=session)
 
     response_headers = Pair{String,String}[]
-    if !modern && method == "initialize" && session isa MCPSession
+    if stateful && method == "initialize" && session isa MCPSession
         had_session_header || mirror_anonymous!(ctx, session)
         push!(response_headers, SESSION_HEADER => session.id)
     end
@@ -656,8 +721,8 @@ end
 HTTP `GET` on the MCP endpoint, registered through the streaming route so it can
 either answer with a fixed body or hold the connection open for SSE.
 
-- A GET declaring a modern `MCP-Protocol-Version` gets `405` (the modern era
-  removed the GET endpoint).
+- A GET whose policy revision rejects the endpoint (`get_policy`; the modern era
+  removed it) gets `405`.
 - A GET with `Accept: text/event-stream` opens the legacy server→client
   notification stream and keeps it open until the client disconnects.
 - Any other GET returns a JSON health body, which lets clients health-check the
@@ -674,8 +739,9 @@ function handle_get(ctx::ServerContext, stream::HTTP.Stream)
         return write_stream_response(stream, origin_response.status, "text/plain; charset=utf-8", "Forbidden")
     end
 
-    version = HTTP.header(req, "MCP-Protocol-Version", "")
-    if strip(String(version)) in MODERN_VERSIONS
+    # A body-less GET carries no `_meta`, so its policy revision comes from the
+    # version header alone.
+    if get_policy(transport_spec(ctx, req)) === :reject
         return write_stream_response(stream, 405, "text/plain", "Method Not Allowed";
                                      headers=["Allow" => "POST"])
     end
@@ -710,8 +776,10 @@ An accepted termination closes the session's notification streams and removes
 its state; later requests naming it get `404`.
 """
 function handle_delete(ctx::ServerContext, req::HTTP.Request)::HTTP.Response
-    header_version = mcp_standard_header(req, "MCP-Protocol-Version")
-    if header_version isa String && strip(String(header_version)) in MODERN_VERSIONS
+    # A DELETE carries no body: its policy revision comes from the version
+    # header alone. Revisions that reject DELETE answer before session
+    # resolution, so a bad session id cannot mask the 405.
+    if delete_policy(transport_spec(ctx, req)) === :reject
         return HTTP.Response(405, ["Allow" => "POST, GET"], "Method Not Allowed")
     end
 

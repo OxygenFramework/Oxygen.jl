@@ -187,7 +187,8 @@ end
 
 function adapter_listen(ctx, id, notifications)
     payload = Dict{String,Any}("params" => listen_params(notifications))
-    return MCP.dispatch(ctx, nothing, id, "subscriptions/listen", payload; era=:modern)
+    return MCP.dispatch(ctx, nothing, id, "subscriptions/listen", payload;
+                        spec=MCP.V2026_07_28)
 end
 
 # Legacy session state is context-wide (single-session semantics), so tests that
@@ -670,7 +671,7 @@ end
 
     ctx = Core.ServerContext()
     body, status = MCP.dispatch(ctx, nothing, 1, "resources/subscribe",
-                                Dict("params" => Dict()); era=:legacy)
+                                Dict("params" => Dict()); spec=MCP.LATEST_LEGACY_SPEC)
     @test status == 200
     @test body["error"]["code"] == -32602
 end

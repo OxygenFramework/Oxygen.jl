@@ -246,7 +246,7 @@ end
 # Methods
 # ----------------------------------------------------------------------------
 
-function tools_list(ctx::ServerContext; modern::Bool=true)::Dict{String,Any}
+function tools_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
     tools = Dict{String,Any}[]
     for name in sort(collect(keys(ctx.mcp.tools)))
         tool = ctx.mcp.tools[name]
@@ -256,11 +256,11 @@ function tools_list(ctx::ServerContext; modern::Bool=true)::Dict{String,Any}
             "inputSchema" => inputschema(tool),
         ))
     end
-    return list_result("tools", tools; modern=modern)
+    return list_result("tools", tools; spec=spec)
 end
 
 function call_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
-                   modern::Bool=false, version::String=LATEST_LEGACY)::Tuple{Union{Dict{String,Any},StreamedCall},Int}
+                   spec::Val=LATEST_LEGACY_SPEC)::Tuple{Union{Dict{String,Any},StreamedCall},Int}
     tool, arguments = resolve_registered_node(ctx.mcp.tools, id, params, "tool")
     isnothing(tool) && return arguments
 
@@ -281,7 +281,7 @@ function call_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, par
             return request_error_body(id, error), 200
         end
         start_stream!(stream, _ -> tool.handler(pos_values...; kwpairs...))
-        return StreamedCall(stream, id, modern, version), 200
+        return StreamedCall(stream, id, spec), 200
     end
 
     try
@@ -289,11 +289,25 @@ function call_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, par
         # Surface B: a handler that called `mcp_stream` (or returned a raw
         # channel) hands the framework the event stream instead of a value.
         if value isa AbstractChannel
-            return StreamedCall(adopt_stream(value, token), id, modern, version), 200
+            return StreamedCall(adopt_stream(value, token), id, spec), 200
         end
-        return result_response(ctx, id, tool_success_result(value; version=version); modern=modern)
+        return result_response(ctx, id, tool_success_result(value; spec=spec); spec=spec)
     catch error
         error isa MCPRequestError && return request_error_body(id, error), 200
-        return result_response(ctx, id, toolerror_result(error); modern=modern)
+        return result_response(ctx, id, toolerror_result(error); spec=spec)
     end
 end
+
+# ----------------------------------------------------------------------------
+# Method routing
+# ----------------------------------------------------------------------------
+
+# Served in every revision; the result-shaping differences live behind the
+# strategy interface (`list_result`, `tool_success_result`).
+handle_method(spec::Val, ::Val{:tools_list}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    result_response(ctx, id, tools_list(ctx; spec=spec); spec=spec)
+
+handle_method(spec::Val, ::Val{:tools_call}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    call_tool(ctx, req, id, params; spec=spec)

@@ -220,24 +220,22 @@ end
 # ----------------------------------------------------------------------------
 
 # Everything the connection task needs to turn terminal events into the exact
-# JSON-RPC body the buffered `tools/call` path would have produced.
+# JSON-RPC body the buffered `tools/call` path would have produced, shaped by
+# the request's protocol revision (`spec`).
 struct StreamedCall
-    stream  :: MCPStream
-    id      :: Any
-    modern  :: Bool
-    version :: String
+    stream :: MCPStream
+    id     :: Any
+    spec   :: Val
 end
 
 function streamed_body(ctx::ServerContext, call::StreamedCall, event::FinalEvent)::Dict{String,Any}
-    result = tool_success_result(event.value; version=call.version)
-    call.modern && (result = modern_envelope(ctx, result))
-    return result_body(call.id, result)
+    result = tool_success_result(event.value; spec=call.spec)
+    return result_body(call.id, result_envelope(call.spec, ctx, result))
 end
 
 function streamed_body(ctx::ServerContext, call::StreamedCall, event::ErrorEvent)::Dict{String,Any}
     result = toolerror_result(event.error)
-    call.modern && (result = modern_envelope(ctx, result))
-    return result_body(call.id, result)
+    return result_body(call.id, result_envelope(call.spec, ctx, result))
 end
 
 # A drain can end without a terminal event (only possible after cancellation or

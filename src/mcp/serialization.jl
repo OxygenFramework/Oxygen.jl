@@ -436,16 +436,16 @@ function toolresult(value)::Dict{String,Any}
 end
 
 """
-    tool_success_result(value; version) :: Dict
+    tool_success_result(value; spec) :: Dict
 
 The result of a completed tool call: the handler's return value serialized into
-content blocks, with `structuredContent` dropped for legacy versions that
-predate it. Shared by the buffered and streamed `tools/call` paths so both
-produce identical bytes.
+content blocks, with `structuredContent` dropped for revisions that predate it.
+Shared by the buffered and streamed `tools/call` paths so both produce
+identical bytes.
 """
-function tool_success_result(value; version::String=LATEST_LEGACY)::Dict{String,Any}
+function tool_success_result(value; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
     result = toolresult(value)
-    supports_structured_content(version) || strip_unstructured!(result)
+    emits_structured_content(spec) || strip_unstructured!(result)
     return result
 end
 
@@ -483,19 +483,14 @@ end
 # ----------------------------------------------------------------------------
 
 """
-    list_result(key, items; modern) :: Dict
+    list_result(key, items; spec) :: Dict
 
-Build a `*/list` result under `key`, adding the cache hints the modern revision
-requires. Legacy results carry neither (legacy clients reject unknown fields).
+Build a `*/list` result under `key` through the revision's result strategy: the
+modern revision adds cache hints, legacy revisions leave the result untouched.
 """
 function list_result(key::String, items::Vector{Dict{String,Any}};
-                     modern::Bool=true)::Dict{String,Any}
-    result = Dict{String,Any}(key => items)
-    if modern
-        result["ttlMs"] = LIST_TTL_MS
-        result["cacheScope"] = "public"
-    end
-    return result
+                     spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+    return with_cache_hints(spec, Dict{String,Any}(key => items))
 end
 
 """
@@ -543,15 +538,15 @@ function result_body(id, result)::Dict{String,Any}
 end
 
 """
-    result_response(ctx, id, result; modern) :: (body, status)
+    result_response(ctx, id, result; spec) :: (body, status)
 
-Apply the modern result envelope when `modern` and wrap `result` in its JSON-RPC
-body. The single place the era envelope is applied to successful results.
+Shape `result` through the revision's envelope (a no-op for legacy revisions)
+and wrap it in its JSON-RPC body. The single place the envelope is applied to
+successful results.
 """
 function result_response(ctx::ServerContext, id, result::Dict{String,Any};
-                         modern::Bool=false)::Tuple{Dict{String,Any},Int}
-    modern && (result = modern_envelope(ctx, result))
-    return result_body(id, result), 200
+                         spec::Val=LATEST_LEGACY_SPEC)::Tuple{Dict{String,Any},Int}
+    return result_body(id, result_envelope(spec, ctx, result)), 200
 end
 
 """

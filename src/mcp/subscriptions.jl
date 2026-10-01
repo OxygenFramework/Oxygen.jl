@@ -429,7 +429,7 @@ end
 
 # The JSON-RPC response that closes a listen stream gracefully.
 function closing_body(ctx::ServerContext, id)::Dict{String,Any}
-    result = modern_envelope(ctx, Dict{String,Any}())
+    result = result_envelope(LATEST_MODERN_SPEC, ctx, Dict{String,Any}())
     meta = result[META_KEY]
     meta[META_SUBSCRIPTION_ID] = id
     return result_body(id, result)
@@ -591,3 +591,21 @@ function listen_frame(call::ListenCall, event)::Tuple{Dict{String,Any},Bool}
     end
     return serialize_listen_event(call.id, event), false
 end
+
+# ----------------------------------------------------------------------------
+# Method routing
+# ----------------------------------------------------------------------------
+
+# `subscriptions/listen` is modern-only, the resource subscriptions
+# legacy-only; `method_available` gates each to its era before dispatch.
+handle_method(spec::Val, ::Val{:subscriptions_listen}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    listen_call(ctx, req, id, params)
+
+handle_method(spec::Val, ::Val{:resources_subscribe}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    subscribe_resource_legacy(ctx, id, params; session=session)
+
+handle_method(spec::Val, ::Val{:resources_unsubscribe}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    unsubscribe_resource_legacy(ctx, id, params; session=session)

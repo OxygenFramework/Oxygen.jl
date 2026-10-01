@@ -494,11 +494,11 @@ end
     @test template["annotations"] == Dict("priority" => 0.25)
     @test template["icons"] == [Dict("src" => "https://example.com/template-icon.png")]
 
-    # icons postdate the oldest legacy revisions, so entries gate them by version
+    # icons postdate the oldest legacy revisions, so entries gate them by revision
     decorated_resource = CONTEXT[].mcp.resources["oxygen://decorated"]
-    @test haskey(MCP.resource_entry(decorated_resource; version="2025-11-25"), "icons")
-    @test !haskey(MCP.resource_entry(decorated_resource; version="2025-03-26"), "icons")
-    @test !haskey(MCP.resource_entry(decorated_resource; version="2024-11-05"), "icons")
+    @test haskey(MCP.resource_entry(decorated_resource; spec=MCP.V2025_11_25), "icons")
+    @test !haskey(MCP.resource_entry(decorated_resource; spec=MCP.V2025_03_26), "icons")
+    @test !haskey(MCP.resource_entry(decorated_resource; spec=MCP.V2024_11_05), "icons")
 
     # invalid metadata never registers anything
     @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=(audience=["robot"],))

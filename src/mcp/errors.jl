@@ -92,28 +92,38 @@ function check_origin(ctx::ServerContext, req::HTTP.Request)
 end
 
 """
-    request_era(req, method, params) :: Symbol
+    request_claim(req, method, params) :: Union{Nothing,Val,Symbol}
 
-Classify a request by era. A request is modern iff its `params._meta` carries the
-`io.modelcontextprotocol/protocolVersion` key, its method is `server/discover`
-(modern-only), or — over HTTP — the `MCP-Protocol-Version` header names a modern
-revision (era may be claimed by the headers alone). Everything else is legacy.
+The modern-era claim of a request, before the session's negotiated version is
+consulted. Returns the claimed `Val` revision when `params._meta` names a
+supported modern revision, the method is `server/discover` (modern-only), or —
+over HTTP — the `MCP-Protocol-Version` header names a modern revision.
+`:unsupported` is returned when `_meta.protocolVersion` is a string naming a
+revision this server cannot serve as a modern request; `nothing` means the
+request claims nothing modern (a legacy request). See `request_spec` for the
+claim combined with the negotiated legacy fallback.
 """
-function request_era(req::Union{Nothing,HTTP.Request}, method::String, params)::Symbol
+function request_claim(req::Union{Nothing,HTTP.Request}, method::String, params)
     meta = get(params, META_KEY, nothing)
     if meta isa AbstractDict
         version = get(meta, META_PROTOCOL, nothing)
-        version isa AbstractString && return :modern
+        if version isa AbstractString
+            spec = spec_from_version(String(version))
+            return (spec !== nothing && is_modern(spec)) ? spec : :unsupported
+        end
     end
 
-    method == "server/discover" && return :modern
+    method == "server/discover" && return LATEST_MODERN_SPEC
 
     if req isa HTTP.Request
         header_version = mcp_standard_header(req, "MCP-Protocol-Version")
-        header_version isa String && strip(header_version) in MODERN_VERSIONS && return :modern
+        if header_version isa String
+            header_spec = spec_from_version(strip(header_version))
+            header_spec !== nothing && is_modern(header_spec) && return header_spec
+        end
     end
 
-    return :legacy
+    return nothing
 end
 
 # A required, well-formed standard header: throws the transport's
@@ -127,67 +137,6 @@ function required_header(req::HTTP.Request, name::String)::String
     return String(value)
 end
 
-"""
-    validate_modern_request(ctx, req, method, params)
-
-Enforce the modern-era (2026-07-28) per-request contract: a supported
-`_meta.protocolVersion`, the required `_meta.clientCapabilities`, and — over
-HTTP — mirrored standard headers (`MCP-Protocol-Version`, `Mcp-Method`, and
-`Mcp-Name` for `tools/call`/`prompts/get`/`resources/read`). Legacy requests
-skip all of this.
-"""
-function validate_modern_request(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, method::String, params)
-    meta = get(params, META_KEY, Dict{String,Any}())
-    meta isa AbstractDict || (meta = Dict{String,Any}())
-
-    body_version = get(meta, META_PROTOCOL, nothing)
-    if !(body_version isa AbstractString) || isempty(body_version)
-        throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required _meta field: $META_PROTOCOL"))
-    end
-
-    if !(String(body_version) in MODERN_VERSIONS)
-        throw(MCPRequestError(MCP_UNSUPPORTED_PROTOCOL_VERSION, "Unsupported protocol version", Dict{String,Any}(
-            "supported" => copy(SUPPORTED_VERSIONS),
-            "requested" => String(body_version),
-        )))
-    end
-
-    if !haskey(meta, META_CLIENT_CAPABILITIES)
-        throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required _meta field: $META_CLIENT_CAPABILITIES"))
-    end
-
-    # The remaining checks are specific to the Streamable HTTP transport.
-    req === nothing && return nothing
-
-    header_version = required_header(req, "MCP-Protocol-Version")
-    String(header_version) != String(body_version) && throw(MCPRequestError(MCP_HEADER_MISMATCH,
-        "Header mismatch: MCP-Protocol-Version header value '$header_version' does not match body value '$body_version'"))
-
-    header_method = required_header(req, "Mcp-Method")
-    String(header_method) != method && throw(MCPRequestError(MCP_HEADER_MISMATCH,
-        "Header mismatch: Mcp-Method header value '$header_method' does not match body value '$method'"))
-
-    # `Mcp-Name` mirrors the body field that addresses the request: the name for
-    # tools/prompts, the URI for resources.
-    source = if method == "tools/call" || method == "prompts/get"
-        "name"
-    elseif method == "resources/read"
-        "uri"
-    else
-        nothing
-    end
-
-    if !isnothing(source)
-        decoded = decode_header_value(required_header(req, "Mcp-Name"))
-        decoded === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH,
-            "Mcp-Name header carries a malformed Base64 sentinel value"))
-        body_name = get(params, source, nothing)
-
-        if !(body_name isa AbstractString) || decoded != String(body_name)
-            throw(MCPRequestError(MCP_HEADER_MISMATCH,
-                "Header mismatch: Mcp-Name header value '$decoded' does not match body value '$(body_name)'"))
-        end
-    end
-
-    return nothing
-end
+# The modern-era per-request contract (`validate_modern_request`) is a revision
+# delta and lives in `specs/v2026_07_28.jl`; this file keeps only the shared
+# header and error helpers it builds on.

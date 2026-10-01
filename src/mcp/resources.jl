@@ -457,11 +457,11 @@ end
 # ----------------------------------------------------------------------------
 
 # Static entries and template entries share the same wire fields except for the
-# identifier key (`uri` vs `uriTemplate`). `icons` postdates the oldest legacy
-# revisions, so `version` (when known) gates it off for clients that may reject
-# unknown fields; passing `nothing` keeps it for direct callers.
+# identifier key (`uri` vs `uriTemplate`). `icons` postdate the oldest legacy
+# revisions, so the revision gates it off for clients that may reject unknown
+# fields; passing `nothing` keeps it for direct callers.
 function resource_entry(resource::MCPResource;
-                        version::Union{Nothing,AbstractString}=nothing)::Dict{String,Any}
+                        spec::Union{Nothing,Val}=nothing)::Dict{String,Any}
     entry = Dict{String,Any}(
         "name" => resource.name,
         "description" => resource.description,
@@ -471,26 +471,24 @@ function resource_entry(resource::MCPResource;
     isnothing(resource.mime_type) || (entry["mimeType"] = resource.mime_type)
     isnothing(resource.size) || (entry["size"] = resource.size)
     isnothing(resource.annotations) || (entry["annotations"] = resource.annotations)
-    if isnothing(version) || supports_resource_icons(version)
+    if isnothing(spec) || shows_resource_icons(spec)
         isnothing(resource.icons) || (entry["icons"] = resource.icons)
     end
     return entry
 end
 
 function resource_list(entries::Dict{String,MCPResource}, key::String;
-                       modern::Bool=true, version::Union{Nothing,AbstractString}=nothing)::Dict{String,Any}
-    items = [resource_entry(entries[uri]; version=version) for uri in sort(collect(keys(entries)))]
-    return list_result(key, items; modern=modern)
+                       spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+    items = [resource_entry(entries[uri]; spec=spec) for uri in sort(collect(keys(entries)))]
+    return list_result(key, items; spec=spec)
 end
 
-function resources_list(ctx::ServerContext; modern::Bool=true,
-                        version::Union{Nothing,AbstractString}=nothing)::Dict{String,Any}
-    return resource_list(ctx.mcp.resources, "resources"; modern=modern, version=version)
+function resources_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+    return resource_list(ctx.mcp.resources, "resources"; spec=spec)
 end
 
-function resource_templates_list(ctx::ServerContext; modern::Bool=true,
-                                 version::Union{Nothing,AbstractString}=nothing)::Dict{String,Any}
-    return resource_list(ctx.mcp.resource_templates, "resourceTemplates"; modern=modern, version=version)
+function resource_templates_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+    return resource_list(ctx.mcp.resource_templates, "resourceTemplates"; spec=spec)
 end
 
 # Resolve a requested URI to its resource. Exact registrations win over
@@ -509,7 +507,7 @@ function resolve_resource(ctx::ServerContext, uri::String)
 end
 
 function read_resource(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
-                       modern::Bool=false)::Tuple{Dict{String,Any},Int}
+                       spec::Val=LATEST_LEGACY_SPEC)::Tuple{Dict{String,Any},Int}
     body_uri = get(params, "uri", nothing)
     if !(body_uri isa AbstractString) || isempty(body_uri)
         return error_body(id, MCP_INVALID_PARAMS, "Missing resource URI"), 200
@@ -520,31 +518,45 @@ function read_resource(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id,
     if isnothing(resolved)
         # The modern revision folded not-found into -32602; the legacy
         # revisions defined the dedicated -32002.
-        code = modern ? MCP_INVALID_PARAMS : MCP_RESOURCE_NOT_FOUND
-        return error_body(id, code, "Resource not found", Dict{String,Any}("uri" => uri)), 200
+        return error_body(id, not_found_code(spec), "Resource not found",
+                          Dict{String,Any}("uri" => uri)), 200
     end
 
     resource, arguments = resolved
     try
         value = invoke_registered(ctx, req, resource, arguments)
-        result = resource_result(resource, uri, value)
-        if modern
-            result["ttlMs"] = LIST_TTL_MS
-            result["cacheScope"] = "private"
-        end
-        return result_response(ctx, id, result; modern=modern)
+        result = with_cache_hints(spec, resource_result(resource, uri, value); scope="private")
+        return result_response(ctx, id, result; spec=spec)
     catch error
         if error isa MCPRequestError
             # A handler that cannot resolve its URI (e.g. the folder helper)
-            # throws the legacy not-found code; translate it by era like the
+            # throws the legacy not-found code; translate it like the
             # unresolved-URI path above.
-            code = (modern && error.code == MCP_RESOURCE_NOT_FOUND) ?
-                MCP_INVALID_PARAMS : error.code
+            code = error.code == not_found_code(LATEST_LEGACY_SPEC) ?
+                not_found_code(spec) : error.code
             return request_error_body(id, error, code), 200
         end
         return error_body(id, MCP_INTERNAL_ERROR, sprint(showerror, error)), 200
     end
 end
+
+# ----------------------------------------------------------------------------
+# Method routing
+# ----------------------------------------------------------------------------
+
+# Served in every revision; the list/read shaping differences (icons, cache
+# hints, not-found code) live behind the strategy interface.
+handle_method(spec::Val, ::Val{:resources_list}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    result_response(ctx, id, resources_list(ctx; spec=spec); spec=spec)
+
+handle_method(spec::Val, ::Val{:resources_templates_list}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    result_response(ctx, id, resource_templates_list(ctx; spec=spec); spec=spec)
+
+handle_method(spec::Val, ::Val{:resources_read}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    read_resource(ctx, req, id, params; spec=spec)
 
 # ----------------------------------------------------------------------------
 # Folder-backed resources

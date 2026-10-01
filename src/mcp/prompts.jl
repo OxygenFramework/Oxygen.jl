@@ -92,7 +92,7 @@ function prompt_arguments(prompt::MCPPrompt)::Vector{Any}
     return args
 end
 
-function prompts_list(ctx::ServerContext; modern::Bool=true)::Dict{String,Any}
+function prompts_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
     prompts = Dict{String,Any}[]
     for name in sort(collect(keys(ctx.mcp.prompts)))
         prompt = ctx.mcp.prompts[name]
@@ -102,11 +102,11 @@ function prompts_list(ctx::ServerContext; modern::Bool=true)::Dict{String,Any}
             "arguments" => prompt_arguments(prompt),
         ))
     end
-    return list_result("prompts", prompts; modern=modern)
+    return list_result("prompts", prompts; spec=spec)
 end
 
 function get_prompt(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
-                    modern::Bool=false)::Tuple{Dict{String,Any},Int}
+                    spec::Val=LATEST_LEGACY_SPEC)::Tuple{Dict{String,Any},Int}
     prompt, arguments = resolve_registered_node(ctx.mcp.prompts, id, params, "prompt")
     isnothing(prompt) && return arguments
 
@@ -114,9 +114,22 @@ function get_prompt(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, pa
         value = invoke_registered(ctx, req, prompt, arguments)
         result = Dict{String,Any}("messages" => prompt_result(value))
         isempty(prompt.description) || (result["description"] = prompt.description)
-        return result_response(ctx, id, result; modern=modern)
+        return result_response(ctx, id, result; spec=spec)
     catch error
         error isa MCPRequestError && return request_error_body(id, error), 200
         return error_body(id, MCP_INTERNAL_ERROR, sprint(showerror, error)), 200
     end
 end
+
+# ----------------------------------------------------------------------------
+# Method routing
+# ----------------------------------------------------------------------------
+
+# Served in every revision; the list result is shaped by the strategy interface.
+handle_method(spec::Val, ::Val{:prompts_list}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    result_response(ctx, id, prompts_list(ctx; spec=spec); spec=spec)
+
+handle_method(spec::Val, ::Val{:prompts_get}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
+              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+    get_prompt(ctx, req, id, params; spec=spec)

@@ -36,21 +36,25 @@ function template_variables(uri::String)::Vector{TemplateVariable}
     for matched in eachmatch(TEMPLATE_EXPRESSION, uri)
         expression = String(matched.captures[1])
         parsed = match(TEMPLATE_VARIABLE, expression)
-        isnothing(parsed) && throw(ArgumentError(
-            "Invalid MCP resource template expression `{$expression}`: only simple " *
-            "`{name}` and reserved `{+name}` expansions with identifier-safe names are supported"))
+        if isnothing(parsed)
+            throw(ArgumentError(
+                "Invalid MCP resource template expression `{$expression}`: only simple " *
+                "`{name}` and reserved `{+name}` expansions with identifier-safe names are supported"))
+        end
         name = String(parsed.captures[2])
         reserved = !isempty(parsed.captures[1])
-        any(variable -> variable.name == name, variables) && throw(ArgumentError(
-            "Duplicate MCP resource template variable `{$name}`"))
+        if any(variable -> variable.name == name, variables)
+            throw(ArgumentError("Duplicate MCP resource template variable `{$name}`"))
+        end
         push!(variables, TemplateVariable(name, reserved))
     end
 
     # Whatever text the expressions leave behind decides whether the braces were
     # balanced: `{a{b}}` still carries a `{` once `{b}` is removed.
     remainder = replace(uri, TEMPLATE_EXPRESSION => "")
-    (occursin('{', remainder) || occursin('}', remainder)) && throw(ArgumentError(
-        "Malformed MCP resource template URI `$uri`: unbalanced braces"))
+    if occursin('{', remainder) || occursin('}', remainder)
+        throw(ArgumentError("Malformed MCP resource template URI `$uri`: unbalanced braces"))
+    end
 
     return variables
 end
@@ -96,10 +100,14 @@ does not fit the template.
 """
 function match_template(resource::MCPResource, uri::String)::Union{Nothing,Dict{String,Any}}
     pattern = resource.pattern
-    isnothing(pattern) && return nothing
+    if isnothing(pattern)
+        return nothing
+    end
 
     matched = match(pattern, uri)
-    isnothing(matched) && return nothing
+    if isnothing(matched)
+        return nothing
+    end
 
     arguments = Dict{String,Any}()
     for (index, variable) in enumerate(resource.vars)
@@ -129,31 +137,39 @@ end
 function validate_resource_params(uri::String, template::Bool, vars::Vector{String},
                                   mcp_params::Vector{MCPParam}, positional::Vector{Symbol})
     for name in positional
-        name in (:context, :request, :stream) && throw(ArgumentError(
-            "MCP resource `$uri` declares a positional argument named `$name`; " *
-            "injected `context`/`request` must be keyword arguments and resources " *
-            "cannot take a `stream` handle"))
+        if name in (:context, :request, :stream)
+            throw(ArgumentError(
+                "MCP resource `$uri` declares a positional argument named `$name`; " *
+                "injected `context`/`request` must be keyword arguments and resources " *
+                "cannot take a `stream` handle"))
+        end
     end
 
     supplied = Set(string(p.param.name) for p in mcp_params)
 
     if !template
-        isempty(supplied) || throw(ArgumentError(
-            "MCP resource `$uri` is not a template, so its handler cannot declare " *
-            "argument(s): $(join(string.(sort!(collect(supplied))), ", ")). Add `{...}` " *
-            "placeholders to the URI or remove the parameters"))
+        if !isempty(supplied)
+            throw(ArgumentError(
+                "MCP resource `$uri` is not a template, so its handler cannot declare " *
+                "argument(s): $(join(string.(sort!(collect(supplied))), ", ")). Add `{...}` " *
+                "placeholders to the URI or remove the parameters"))
+        end
         return nothing
     end
 
     expected = Set(vars)
     unknown = sort!(collect(setdiff(supplied, expected)))
-    missing = sort!(collect(setdiff(expected, supplied)))
+    missing_lookup = sort!(collect(setdiff(expected, supplied)))
 
-    isempty(unknown) || throw(ArgumentError(
-        "Unknown MCP resource template variable(s) in handler: $(join(string.(unknown), ", ")). " *
-        "The template declares: $(join(string.(sort!(collect(expected))), ", "))"))
-    isempty(missing) || throw(ArgumentError(
-        "Missing handler parameter(s) for MCP resource template `$uri`: $(join(string.(missing), ", "))"))
+    if !isempty(unknown)
+        throw(ArgumentError(
+            "Unknown MCP resource template variable(s) in handler: $(join(string.(unknown), ", ")). " *
+            "The template declares: $(join(string.(sort!(collect(expected))), ", "))"))
+    end
+    if !isempty(missing_lookup)
+        throw(ArgumentError(
+            "Missing handler parameter(s) for MCP resource template `$uri`: $(join(string.(missing_lookup), ", "))"))
+    end
     return nothing
 end
 
@@ -178,24 +194,34 @@ Validate the optional spec `annotations` object: `audience` (an array of
 than silently dropped fields.
 """
 function normalize_annotations(annotations)::Nullable{Dict{String,Any}}
-    isnothing(annotations) && return nothing
-    annotations isa Union{NamedTuple,AbstractDict} || throw(ArgumentError(
-        "MCP resource annotations must be a NamedTuple or a Dict, got $(typeof(annotations))"))
+    if isnothing(annotations)
+        return nothing
+    end
+    if !(annotations isa Union{NamedTuple,AbstractDict})
+        throw(ArgumentError(
+            "MCP resource annotations must be a NamedTuple or a Dict, got $(typeof(annotations))"))
+    end
 
     normalized = string_keyed(annotations)
     for key in keys(normalized)
-        key in ("audience", "priority", "lastModified") || throw(ArgumentError(
-            "Unknown MCP resource annotation `$key`; expected audience, priority, or lastModified"))
+        if !(key in ("audience", "priority", "lastModified"))
+            throw(ArgumentError(
+                "Unknown MCP resource annotation `$key`; expected audience, priority, or lastModified"))
+        end
     end
 
     if haskey(normalized, "audience")
         audience = normalized["audience"]
-        audience isa AbstractVector || throw(ArgumentError(
-            "MCP resource annotation `audience` must be an array of roles"))
+        if !(audience isa AbstractVector)
+            throw(ArgumentError(
+                "MCP resource annotation `audience` must be an array of roles"))
+        end
         roles = String[]
         for role in audience
-            (role isa AbstractString && String(role) in ANNOTATION_AUDIENCES) || throw(ArgumentError(
-                "Invalid MCP resource annotation audience `$role`; expected \"user\" or \"assistant\""))
+            if !(role isa AbstractString && String(role) in ANNOTATION_AUDIENCES)
+                throw(ArgumentError(
+                    "Invalid MCP resource annotation audience `$role`; expected \"user\" or \"assistant\""))
+            end
             push!(roles, String(role))
         end
         normalized["audience"] = roles
@@ -203,15 +229,19 @@ function normalize_annotations(annotations)::Nullable{Dict{String,Any}}
 
     if haskey(normalized, "priority")
         priority = normalized["priority"]
-        (priority isa Real && !(priority isa Bool) && 0.0 <= priority <= 1.0) || throw(ArgumentError(
-            "MCP resource annotation `priority` must be a number between 0.0 and 1.0"))
+        if !(priority isa Real && !(priority isa Bool) && 0.0 <= priority <= 1.0)
+            throw(ArgumentError(
+                "MCP resource annotation `priority` must be a number between 0.0 and 1.0"))
+        end
         normalized["priority"] = Float64(priority)
     end
 
     if haskey(normalized, "lastModified")
         last_modified = normalized["lastModified"]
-        (last_modified isa AbstractString && occursin(ISO8601_TIMESTAMP, last_modified)) || throw(ArgumentError(
-            "MCP resource annotation `lastModified` must be an ISO 8601 string"))
+        if !(last_modified isa AbstractString && occursin(ISO8601_TIMESTAMP, last_modified))
+            throw(ArgumentError(
+                "MCP resource annotation `lastModified` must be an ISO 8601 string"))
+        end
         normalized["lastModified"] = String(last_modified)
     end
 
@@ -226,45 +256,63 @@ or a `NamedTuple`/`Dict` with a non-empty `src` plus optional `mimeType`,
 `sizes` (an array of strings), and `theme` (`"light"`/`"dark"`).
 """
 function normalize_icons(icons)::Nullable{Vector{Dict{String,Any}}}
-    isnothing(icons) && return nothing
+    if isnothing(icons)
+        return nothing
+    end
     entries = icons isa AbstractVector ? icons : [icons]
-    isempty(entries) && throw(ArgumentError("MCP resource `icons` cannot be empty"))
+    if isempty(entries)
+        throw(ArgumentError("MCP resource `icons` cannot be empty"))
+    end
     return Dict{String,Any}[normalize_icon(icon) for icon in entries]
 end
 
 function normalize_icon(icon)::Dict{String,Any}
-    icon isa AbstractString && return Dict{String,Any}("src" => String(icon))
-    icon isa Union{NamedTuple,AbstractDict} || throw(ArgumentError(
-        "MCP resource icons must be a `src` string or a NamedTuple/Dict, got $(typeof(icon))"))
+    if icon isa AbstractString
+        return Dict{String,Any}("src" => String(icon))
+    end
+    if !(icon isa Union{NamedTuple,AbstractDict})
+        throw(ArgumentError(
+            "MCP resource icons must be a `src` string or a NamedTuple/Dict, got $(typeof(icon))"))
+    end
 
     normalized = string_keyed(icon)
     src = get(normalized, "src", nothing)
-    (src isa AbstractString && !isempty(src)) || throw(ArgumentError(
-        "MCP resource icon requires a non-empty `src` string"))
+    if !(src isa AbstractString && !isempty(src))
+        throw(ArgumentError(
+            "MCP resource icon requires a non-empty `src` string"))
+    end
     normalized["src"] = String(src)
 
     for key in keys(normalized)
-        key in ("src", "mimeType", "sizes", "theme") || throw(ArgumentError(
-            "Unknown MCP resource icon field `$key`; expected src, mimeType, sizes, or theme"))
+        if !(key in ("src", "mimeType", "sizes", "theme"))
+            throw(ArgumentError(
+                "Unknown MCP resource icon field `$key`; expected src, mimeType, sizes, or theme"))
+        end
     end
 
     if haskey(normalized, "mimeType")
-        normalized["mimeType"] isa AbstractString || throw(ArgumentError(
-            "MCP resource icon `mimeType` must be a string"))
+        if !(normalized["mimeType"] isa AbstractString)
+            throw(ArgumentError(
+                "MCP resource icon `mimeType` must be a string"))
+        end
         normalized["mimeType"] = String(normalized["mimeType"])
     end
 
     if haskey(normalized, "sizes")
         sizes = normalized["sizes"]
-        (sizes isa AbstractVector && all(size -> size isa AbstractString, sizes)) || throw(ArgumentError(
-            "MCP resource icon `sizes` must be an array of strings"))
+        if !(sizes isa AbstractVector && all(size -> size isa AbstractString, sizes))
+            throw(ArgumentError(
+                "MCP resource icon `sizes` must be an array of strings"))
+        end
         normalized["sizes"] = String[String(size) for size in sizes]
     end
 
     if haskey(normalized, "theme")
         theme = normalized["theme"]
-        (theme isa AbstractString && String(theme) in ICON_THEMES) || throw(ArgumentError(
-            "MCP resource icon `theme` must be \"light\" or \"dark\""))
+        if !(theme isa AbstractString && String(theme) in ICON_THEMES)
+            throw(ArgumentError(
+                "MCP resource icon `theme` must be \"light\" or \"dark\""))
+        end
         normalized["theme"] = String(theme)
     end
 
@@ -291,14 +339,20 @@ and `icons` are validated and emitted on the resource entry.
 function register_resource!(ctx::ServerContext, uri::String, desc, func::Function;
                             name=nothing, title=nothing, mime_type=nothing, size=nothing,
                             annotations=nothing, icons=nothing)
-    isempty(uri) && throw(ArgumentError("An MCP resource URI cannot be empty"))
-    occursin(r"\s", uri) && throw(ArgumentError("Invalid MCP resource URI `$uri`: whitespace is not allowed"))
+    if isempty(uri)
+        throw(ArgumentError("An MCP resource URI cannot be empty"))
+    end
+    if occursin(r"\s", uri)
+        throw(ArgumentError("Invalid MCP resource URI `$uri`: whitespace is not allowed"))
+    end
 
     # A stray `}` without `{` is malformed too; `template_variables` rejects it.
     template = occursin('{', uri) || occursin('}', uri)
-    template && !isnothing(size) && throw(ArgumentError(
-        "MCP resource template `$uri` cannot declare `size`: the field exists only " *
-        "on static resources (templates describe no single byte length)"))
+    if template && !isnothing(size)
+        throw(ArgumentError(
+            "MCP resource template `$uri` cannot declare `size`: the field exists only " *
+            "on static resources (templates describe no single byte length)"))
+    end
     variables = template ? template_variables(uri) : TemplateVariable[]
     vars = [variable.name for variable in variables]
     pattern = template ? compile_template(uri, variables) : nothing
@@ -306,7 +360,9 @@ function register_resource!(ctx::ServerContext, uri::String, desc, func::Functio
     normalized_icons = normalize_icons(icons)
 
     signature = reflect_handler(func)
-    signature.has_stream && throw(ArgumentError("MCP resources cannot declare an injected `stream` handle"))
+    if signature.has_stream
+        throw(ArgumentError("MCP resources cannot declare an injected `stream` handle"))
+    end
 
     validate_resource_params(uri, template, vars, signature.params,
                              [p.name for p in signature.info.args])
@@ -330,12 +386,16 @@ function register_resource!(ctx::ServerContext, uri::String, desc, func::Functio
                            signature.has_context, signature.has_request)
 
     if template
-        haskey(ctx.mcp.resource_templates, uri) && throw(ArgumentError(
-            "An MCP resource template with URI `$uri` is already registered"))
+        if haskey(ctx.mcp.resource_templates, uri)
+            throw(ArgumentError(
+                "An MCP resource template with URI `$uri` is already registered"))
+        end
         ctx.mcp.resource_templates[uri] = resource
     else
-        haskey(ctx.mcp.resources, uri) && throw(ArgumentError(
-            "An MCP resource with URI `$uri` is already registered"))
+        if haskey(ctx.mcp.resources, uri)
+            throw(ArgumentError(
+                "An MCP resource with URI `$uri` is already registered"))
+        end
         ctx.mcp.resources[uri] = resource
     end
     notify_resources_changed(ctx)
@@ -377,16 +437,20 @@ function normalize_content_entry(uri::String, declared_mime::Nullable{String},
 
     if !haskey(content, "uri")
         content["uri"] = uri
-    else
-        content["uri"] isa AbstractString || throw(MCPRequestError(
+    elseif !(content["uri"] isa AbstractString)
+        throw(MCPRequestError(
             MCP_INTERNAL_ERROR, "Invalid resource content: `uri` must be a string"))
     end
     if has_text
-        content["text"] isa AbstractString || throw(MCPRequestError(
-            MCP_INTERNAL_ERROR, "Invalid resource content: `text` must be a string"))
+        if !(content["text"] isa AbstractString)
+            throw(MCPRequestError(
+                MCP_INTERNAL_ERROR, "Invalid resource content: `text` must be a string"))
+        end
     else
-        content["blob"] isa AbstractString || throw(MCPRequestError(
-            MCP_INTERNAL_ERROR, "Invalid resource content: `blob` must be a base64 string"))
+        if !(content["blob"] isa AbstractString)
+            throw(MCPRequestError(
+                MCP_INTERNAL_ERROR, "Invalid resource content: `blob` must be a base64 string"))
+        end
     end
     if !haskey(content, "mimeType") && !isnothing(declared_mime)
         content["mimeType"] = declared_mime
@@ -440,8 +504,10 @@ end
 function resource_result(resource::MCPResource, uri::String, value)::Dict{String,Any}
     if value isa AbstractDict && haskey(value, "contents")
         raw = value["contents"]
-        (raw isa AbstractVector && !(raw isa AbstractVector{UInt8})) || throw(MCPRequestError(
-            MCP_INTERNAL_ERROR, "Invalid resource result: `contents` must be an array"))
+        if !(raw isa AbstractVector && !(raw isa AbstractVector{UInt8}))
+            throw(MCPRequestError(
+                MCP_INTERNAL_ERROR, "Invalid resource result: `contents` must be an array"))
+        end
         result = string_keyed(value)
         result["contents"] = Any[contents_entry(resource, uri, item) for item in raw]
         return result
@@ -467,12 +533,22 @@ function resource_entry(resource::MCPResource;
         "description" => resource.description,
     )
     entry[resource.template ? "uriTemplate" : "uri"] = resource.uri
-    isnothing(resource.title) || (entry["title"] = resource.title)
-    isnothing(resource.mime_type) || (entry["mimeType"] = resource.mime_type)
-    isnothing(resource.size) || (entry["size"] = resource.size)
-    isnothing(resource.annotations) || (entry["annotations"] = resource.annotations)
+    if !isnothing(resource.title)
+        entry["title"] = resource.title
+    end
+    if !isnothing(resource.mime_type)
+        entry["mimeType"] = resource.mime_type
+    end
+    if !isnothing(resource.size)
+        entry["size"] = resource.size
+    end
+    if !isnothing(resource.annotations)
+        entry["annotations"] = resource.annotations
+    end
     if isnothing(spec) || shows_resource_icons(spec)
-        isnothing(resource.icons) || (entry["icons"] = resource.icons)
+        if !isnothing(resource.icons)
+            entry["icons"] = resource.icons
+        end
     end
     return entry
 end
@@ -496,12 +572,16 @@ end
 # resolve deterministically.
 function resolve_resource(ctx::ServerContext, uri::String)
     resource = get(ctx.mcp.resources, uri, nothing)
-    !isnothing(resource) && return resource, Dict{String,Any}()
+    if !isnothing(resource)
+        return resource, Dict{String,Any}()
+    end
 
     for template in sort(collect(keys(ctx.mcp.resource_templates)))
         candidate = ctx.mcp.resource_templates[template]
         arguments = match_template(candidate, uri)
-        isnothing(arguments) || return candidate, arguments
+        if !isnothing(arguments)
+            return candidate, arguments
+        end
     end
     return nothing
 end
@@ -593,17 +673,27 @@ function folder_mime(path::AbstractString, bytes::Vector{UInt8}, mime_types)::St
     extension = lowercase(splitext(path)[2])
     key = startswith(extension, ".") ? extension[2:end] : extension
     if !isnothing(mime_types)
-        haskey(mime_types, extension) && return String(mime_types[extension])
-        haskey(mime_types, key) && return String(mime_types[key])
+        if haskey(mime_types, extension)
+            return String(mime_types[extension])
+        end
+        if haskey(mime_types, key)
+            return String(mime_types[key])
+        end
         # Caller-supplied keys are matched case-insensitively too, with or
         # without the leading dot.
         for (candidate, mime) in mime_types
-            candidate isa AbstractString || continue
+            if !(candidate isa AbstractString)
+                continue
+            end
             normalized = lowercase(String(candidate))
-            (normalized == extension || normalized == key) && return String(mime)
+            if normalized == extension || normalized == key
+                return String(mime)
+            end
         end
     end
-    haskey(FOLDER_MIME_TYPES, key) && return FOLDER_MIME_TYPES[key]
+    if haskey(FOLDER_MIME_TYPES, key)
+        return FOLDER_MIME_TYPES[key]
+    end
     return HTTP.sniff(bytes)
 end
 
@@ -642,13 +732,21 @@ function folder_resource_content(root::String, prefix::String, path::String;
     uri = prefix * path
     invalid = isempty(path) || occursin('\0', path) || occursin('\\', path) ||
               (Sys.iswindows() && occursin(':', path))
-    invalid && folder_not_found(uri)
+    if invalid
+        folder_not_found(uri)
+    end
 
     segments = split(path, '/'; keepempty=false)
-    isempty(segments) && folder_not_found(uri)
+    if isempty(segments)
+        folder_not_found(uri)
+    end
     for segment in segments
-        (segment == "." || segment == "..") && folder_not_found(uri)
-        (!hidden && startswith(segment, ".")) && folder_not_found(uri)
+        if segment == "." || segment == ".."
+            folder_not_found(uri)
+        end
+        if !hidden && startswith(segment, ".")
+            folder_not_found(uri)
+        end
     end
 
     real_root = try
@@ -662,7 +760,9 @@ function folder_resource_content(root::String, prefix::String, path::String;
         folder_not_found(uri)
     end
 
-    (is_within(real_root, real_file) && isfile(real_file)) || folder_not_found(uri)
+    if !(is_within(real_root, real_file) && isfile(real_file))
+        folder_not_found(uri)
+    end
 
     bytes = try
         read_folder_file(real_file)
@@ -690,10 +790,16 @@ function register_resource_folder!(ctx::ServerContext, prefix::String, directory
                                    hidden::Bool=false,
                                    mime_types::Union{Nothing,AbstractDict}=nothing,
                                    annotations=nothing, icons=nothing)
-    isempty(prefix) && throw(ArgumentError("An MCP resource folder prefix cannot be empty"))
-    occursin('{', prefix) && throw(ArgumentError(
-        "MCP resource folder prefix `$prefix` cannot contain `{`; the helper appends `{+path}`"))
-    isdir(directory) || throw(ArgumentError("MCP resource folder `$directory` is not a directory"))
+    if isempty(prefix)
+        throw(ArgumentError("An MCP resource folder prefix cannot be empty"))
+    end
+    if occursin('{', prefix)
+        throw(ArgumentError(
+            "MCP resource folder prefix `$prefix` cannot contain `{`; the helper appends `{+path}`"))
+    end
+    if !isdir(directory)
+        throw(ArgumentError("MCP resource folder `$directory` is not a directory"))
+    end
 
     root = realpath(abspath(directory))
     uri = prefix * "{+path}"

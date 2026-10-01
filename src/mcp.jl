@@ -27,12 +27,15 @@ export register_tool!, register_prompt!, register_resource!, register_resource_f
 # ----------------------------------------------------------------------------
 # Protocol strategies
 # ----------------------------------------------------------------------------
-# Revision identity, the capability interface, and the per-revision deltas.
+# Revision identity, the @spec macro, and one complete profile per revision.
 # Everything below, including the version constants, derives from this registry.
-include("mcp/specs/specs.jl")        # protocol revision identity (Val dispatch)
-include("mcp/specs/strategy.jl")     # capability interface defaults
-include("mcp/specs/v2025_03_26.jl")  # revision deltas
-include("mcp/specs/v2026_07_28.jl")  # revision deltas
+include("mcp/specs/specs.jl")        # revision constants, wire parsing
+include("mcp/specs/strategy.jl")     # @spec macro, neutral behaviors, method surface
+include("mcp/specs/v2024_11_05.jl")  # complete revision profile
+include("mcp/specs/v2025_03_26.jl")
+include("mcp/specs/v2025_06_18.jl")
+include("mcp/specs/v2025_11_25.jl")
+include("mcp/specs/v2026_07_28.jl")  # profile + modern behavior
 
 # This server is dual-era: it serves the modern, stateless 2026-07-28 revision
 # and the legacy initialize-handshake revisions that mainstream clients speak.
@@ -78,7 +81,9 @@ the latest legacy revision and let the client decide whether it can proceed.
 function negotiate_version(client_version::Union{Nothing,AbstractString})::String
     if !isnothing(client_version)
         spec = spec_from_version(client_version)
-        spec !== nothing && is_legacy(spec) && return version_string(spec)
+        if !isnothing(spec) && is_legacy(spec)
+            return version_string(spec)
+        end
     end
     return LATEST_LEGACY
 end
@@ -118,7 +123,9 @@ function request_spec(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
                       method::String, params;
                       session::Union{Nothing,MCPSession}=nothing)
     claim = request_claim(req, method, params)
-    claim === nothing && return legacy_spec(ctx, session)
+    if isnothing(claim)
+        return legacy_spec(ctx, session)
+    end
     return claim isa Val ? claim : nothing
 end
 
@@ -138,12 +145,16 @@ function transport_spec(ctx::ServerContext, req::HTTP.Request, payload=nothing):
     params = Dict{String,Any}()
     if payload isa AbstractDict
         name = get(payload, "method", nothing)
-        name isa AbstractString && (method = String(name))
+        if name isa AbstractString
+            method = String(name)
+        end
         params = request_params(payload)
     end
 
     claim = request_claim(req, method, params)
-    claim === nothing && return legacy_spec(ctx, nothing)
+    if isnothing(claim)
+        return legacy_spec(ctx, nothing)
+    end
     return claim isa Val ? claim : LATEST_MODERN_SPEC
 end
 
@@ -191,7 +202,9 @@ stdio and header-less HTTP clients) for later feature gating.
 """
 function initialize_result(ctx::ServerContext, params; session::Union{Nothing,MCPSession}=nothing)::Dict{String,Any}
     client_version = get(params, "protocolVersion", nothing)
-    client_version isa AbstractString || (client_version = nothing)
+    if !(client_version isa AbstractString)
+        client_version = nothing
+    end
     negotiated = negotiate_version(client_version)
     # A header-less initialize arms the context-wide anonymous state; a session
     # is armed on itself. Delivery additionally requires a completed handshake.
@@ -230,35 +243,35 @@ function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, meth
                   spec::Val=LATEST_LEGACY_SPEC,
                   session::Union{Nothing,MCPSession}=nothing)::Tuple{Union{Dict{String,Any},StreamedCall,ListenCall},Int}
     tag = method_val(method)
-    method_available(spec, tag) ||
+    if !method_available(spec, tag)
         return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404
+    end
     return handle_method(spec, tag, ctx, req, id, request_params(payload), method; session=session)
 end
+
+const METHOD_TAGS = Dict{String,Val}(
+    "initialize" => Val(:initialize),
+    "server/discover" => Val(:server_discover),
+    "ping" => Val(:ping),
+    "tools/list" => Val(:tools_list),
+    "tools/call" => Val(:tools_call),
+    "prompts/list" => Val(:prompts_list),
+    "prompts/get" => Val(:prompts_get),
+    "resources/list" => Val(:resources_list),
+    "resources/templates/list" => Val(:resources_templates_list),
+    "resources/read" => Val(:resources_read),
+    "resources/subscribe" => Val(:resources_subscribe),
+    "resources/unsubscribe" => Val(:resources_unsubscribe),
+    "subscriptions/listen" => Val(:subscriptions_listen),
+)
 
 """
     method_val(method) :: Val
 
-Map a wire method name to its implementation tag. The tag only selects the
-handler; whether the active revision serves the method at all is
-`method_available`'s decision. Unknown method names map to `Val(:unknown)`,
-which the fallback `handle_method` answers with `-32601`.
+Map a wire method name to its implementation tag. Unknown method names map to
+`Val(:unknown)`, which the fallback `handle_method` answers with `-32601`.
 """
-function method_val(method::String)
-    method == "initialize" && return Val(:initialize)
-    method == "server/discover" && return Val(:server_discover)
-    method == "ping" && return Val(:ping)
-    method == "tools/list" && return Val(:tools_list)
-    method == "tools/call" && return Val(:tools_call)
-    method == "prompts/list" && return Val(:prompts_list)
-    method == "prompts/get" && return Val(:prompts_get)
-    method == "resources/list" && return Val(:resources_list)
-    method == "resources/templates/list" && return Val(:resources_templates_list)
-    method == "resources/read" && return Val(:resources_read)
-    method == "resources/subscribe" && return Val(:resources_subscribe)
-    method == "resources/unsubscribe" && return Val(:resources_unsubscribe)
-    method == "subscriptions/listen" && return Val(:subscriptions_listen)
-    return Val(:unknown)
-end
+method_val(method::String) = get(METHOD_TAGS, method, Val(:unknown))
 
 # The fallback for an unknown wire method (and for a tag with no handler, were
 # one ever added to `method_val` without an implementation). `raw` is the wire
@@ -294,7 +307,9 @@ end
 # notification (method, no id), client response (result/error + id, no method),
 # or invalid. Returns a Symbol.
 function message_shape(payload)::Symbol
-    payload isa AbstractDict || return :invalid
+    if !(payload isa AbstractDict)
+        return :invalid
+    end
     has_method = haskey(payload, "method")
     has_id = haskey(payload, "id") && !isnothing(payload["id"])
     if has_method
@@ -356,7 +371,9 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request};
     end
 
     envelope = validate_envelope(payload)
-    isnothing(envelope) || return envelope, 400
+    if !isnothing(envelope)
+        return envelope, 400
+    end
 
     method = payload["method"]
     method = String(method)
@@ -364,15 +381,19 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request};
     if shape === :notification
         if method == "notifications/initialized"
             mark_initialized!(ctx, session)
-        elseif method == "notifications/cancelled" && req === nothing
+        elseif method == "notifications/cancelled" && isnothing(req)
             # Only routeless (stdio) listen streams can be cancelled in-band;
             # on HTTP a notification can arrive on any connection (see
             # `cancel_listen!`). Per JSON-RPC, a cancelled request gets no
             # response.
             params = get(payload, "params", nothing)
-            params isa AbstractDict || return nothing, 202
+            if !(params isa AbstractDict)
+                return nothing, 202
+            end
             request_id = get(params, "requestId", nothing)
-            request_id === nothing || cancel_listen!(ctx, request_id)
+            if !isnothing(request_id)
+                cancel_listen!(ctx, request_id)
+            end
         end
         return nothing, 202
     end
@@ -381,12 +402,16 @@ function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request};
     params = request_params(payload)
 
     spec = request_spec(ctx, req, method, params; session=session)
-    spec === nothing && return unsupported_version_response(id, params)
+    if isnothing(spec)
+        return unsupported_version_response(id, params)
+    end
 
     try
         validate_request(spec, ctx, req, method, params)
     catch error
-        error isa MCPRequestError || rethrow()
+        if !(error isa MCPRequestError)
+            rethrow()
+        end
         return request_error_body(id, error), 400
     end
 
@@ -427,16 +452,22 @@ function accepts_event_stream(req::HTTP.Request)::Bool
     # `Accept` may be spread across repeated header entries; gather them all.
     accept = String[]
     for (key, value) in req.headers
-        lowercase(String(key)) == "accept" && push!(accept, String(value))
+        if header_name_equals(key, "accept")
+            push!(accept, String(value))
+        end
     end
-    isempty(accept) && return false
+    if isempty(accept)
+        return false
+    end
 
     wildcard = false
     for header in accept
         for entry in split(header, ',')
             fields = split(entry, ';')
             media = lowercase(strip(fields[1]))
-            isempty(media) && continue
+            if isempty(media)
+                continue
+            end
             # Media-range parameters: `q` weights the range (default 1.0); a
             # malformed weight is read as a refusal rather than as acceptance.
             q = 1.0
@@ -485,17 +516,21 @@ stream.
 function process_batch(ctx::ServerContext, payload::AbstractVector,
                        req::Union{Nothing,HTTP.Request};
                        session::Union{Nothing,MCPSession}=nothing)
-    isempty(payload) && return error_body(nothing, MCP_INVALID_REQUEST, "Invalid Request: empty batch"), 400
+    if isempty(payload)
+        return error_body(nothing, MCP_INVALID_REQUEST, "Invalid Request: empty batch"), 400
+    end
 
-    if request_claim(req, "", Dict{String,Any}()) !== nothing
+    if !isnothing(request_claim(req, "", Dict{String,Any}()))
         return error_body(nothing, MCP_INVALID_REQUEST,
                           "Batch requests are not supported in the modern era"), 400
     end
 
     # Batching existed only in 2025-03-26, so the effective legacy spec decides.
-    allows_batch(legacy_spec(ctx, session)) || return error_body(
-        nothing, MCP_INVALID_REQUEST,
-        "Batch requests require the $(version_string(V2025_03_26)) protocol revision"), 400
+    if !allows_batch(legacy_spec(ctx, session))
+        return error_body(
+            nothing, MCP_INVALID_REQUEST,
+            "Batch requests require the $(version_string(V2025_03_26)) protocol revision"), 400
+    end
 
     responses = Any[]
     for entry in payload
@@ -507,10 +542,14 @@ function process_batch(ctx::ServerContext, payload::AbstractVector,
             body = error_body(body.id, MCP_INVALID_REQUEST,
                               "subscriptions/listen is not available in a batch")
         end
-        isnothing(body) || push!(responses, body)
+        if !isnothing(body)
+            push!(responses, body)
+        end
     end
 
-    isempty(responses) && return nothing, 202
+    if isempty(responses)
+        return nothing, 202
+    end
     return responses, 200
 end
 
@@ -586,7 +625,9 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
 
     if payload isa AbstractVector
         body, status = process_batch(ctx, payload, req; session=session)
-        isnothing(body) && return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
+        if isnothing(body)
+            return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
+        end
         return write_json_response(stream, body; status=status)
     end
 
@@ -602,7 +643,9 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
 
     response_headers = Pair{String,String}[]
     if stateful && method == "initialize" && session isa MCPSession
-        had_session_header || mirror_anonymous!(ctx, session)
+        if !had_session_header
+            mirror_anonymous!(ctx, session)
+        end
         push!(response_headers, SESSION_HEADER => session.id)
     end
 
@@ -611,7 +654,9 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
     elseif body isa ListenCall
         return stream_listen_call(ctx, stream, req, body)
     end
-    isnothing(body) && return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
+    if isnothing(body)
+        return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
+    end
     return write_json_response(stream, body; status=status, headers=response_headers)
 end
 
@@ -626,7 +671,7 @@ channel is closed, which releases a producer blocked in `put!`.
 function stream_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request, call::StreamedCall)
     token = call.stream.protocol.token
 
-    if token === nothing || !accepts_event_stream(req)
+    if isnothing(token) || !accepts_event_stream(req)
         terminal = drain_stream!(call.stream)
         return write_json_response(stream, streamed_body(ctx, call, terminal))
     end
@@ -634,7 +679,9 @@ function stream_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request,
     first = try
         take!(call.stream.channel)
     catch error
-        error isa InvalidStateException || rethrow()
+        if !(error isa InvalidStateException)
+            rethrow()
+        end
         # The producer was cancelled before emitting; the client is gone.
         cancel_stream!(call.stream)
         return nothing
@@ -650,7 +697,9 @@ function stream_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request,
     return stream_sse(stream, call.stream,
         event -> begin
             body, terminal = streamed_frame(ctx, call, event)
-            isnothing(body) || write_sse_frame(stream, body)
+            if !isnothing(body)
+                write_sse_frame(stream, body)
+            end
             return !terminal
         end;
         initial = first,
@@ -754,7 +803,7 @@ function handle_get(ctx::ServerContext, stream::HTTP.Stream)
     session = resolved isa MCPSession ? resolved : nothing
 
     accept = join((String(v) for (k, v) in req.headers
-                   if lowercase(String(k)) == "accept"), ",")
+                   if header_name_equals(k, "accept")), ",")
     if occursin("text/event-stream", accept)
         return stream_notifications(ctx, stream; session=session)
     end
@@ -788,7 +837,7 @@ function handle_delete(ctx::ServerContext, req::HTTP.Request)::HTTP.Response
         status, body = resolved
         return HTTP.Response(status, ["Content-Type" => "application/json; charset=utf-8"],
                              JSON.json(body))
-    elseif resolved === nothing
+    elseif isnothing(resolved)
         return HTTP.Response(405, ["Allow" => "POST, GET"], "Method Not Allowed")
     end
 
@@ -819,7 +868,9 @@ function stream_notifications(ctx::ServerContext, stream::HTTP.Stream;
     sub = try
         subscribe_legacy!(ctx; label="legacy-http", session=session)
     catch error
-        error isa PubSub.CapacityError || rethrow()
+        if !(error isa PubSub.CapacityError)
+            rethrow()
+        end
         return write_stream_response(stream, 503, "text/plain; charset=utf-8",
                                      "Notification capacity exhausted")
     end
@@ -831,7 +882,9 @@ function stream_notifications(ctx::ServerContext, stream::HTTP.Stream;
 
     return stream_sse(stream, EventStream(sub.queue, nothing),
         event -> begin
-            event isa SubscriptionNotification || return true
+            if !(event isa SubscriptionNotification)
+                return true
+            end
             write_sse_frame(stream, notification(event.method, event.params))
             return true
         end;
@@ -843,7 +896,9 @@ function stream_notifications(ctx::ServerContext, stream::HTTP.Stream;
         connection_header = "keep-alive",
         cleanup = () -> begin
             PubSub.unsubscribe!(mcp_broker, sub)
-            session isa MCPSession && remove_sink!(session, sub)
+            if session isa MCPSession
+                remove_sink!(session, sub)
+            end
         end)
 end
 
@@ -880,7 +935,9 @@ function stdio_loop(ctx::ServerContext; input::IO=stdin, output::IO=stdout)
     try
         for line in eachline(input)
             message = strip(line)
-            isempty(message) && continue
+            if isempty(message)
+                continue
+            end
 
             payload = try
                 JSON.parse(message)
@@ -899,7 +956,9 @@ function stdio_loop(ctx::ServerContext; input::IO=stdin, output::IO=stdout)
                 error_body(nothing, MCP_INTERNAL_ERROR, "Internal error")
             end
 
-            isnothing(body) && continue
+            if isnothing(body)
+                continue
+            end
             if body isa StreamedCall
                 stream_stdio_call(ctx, notifier, body)
             elseif body isa ListenCall
@@ -922,7 +981,9 @@ function subscribe_legacy_stdio!(ctx::ServerContext, notifier::StdioNotifier)
     sub = try
         subscribe_legacy!(ctx; label="legacy-stdio")
     catch error
-        error isa PubSub.CapacityError || rethrow()
+        if !(error isa PubSub.CapacityError)
+            rethrow()
+        end
         @warn "stdio legacy notification sink disabled: subscription capacity exhausted"
         return nothing
     end
@@ -931,7 +992,9 @@ function subscribe_legacy_stdio!(ctx::ServerContext, notifier::StdioNotifier)
     source = EventStream(sub.queue, nothing)
     task = @async pump_stream(source,
         event -> begin
-            event isa SubscriptionNotification || return true
+            if !(event isa SubscriptionNotification)
+                return true
+            end
             respond(notifier, notification(event.method, event.params))
             return true
         end)
@@ -972,7 +1035,9 @@ function close_notifier!(notifier::StdioNotifier)
     empty!(notifier.subs)
 
     for task in notifier.tasks
-        task === current_task() && continue
+        if task === current_task()
+            continue
+        end
         try
             wait(task)
         catch
@@ -995,7 +1060,9 @@ function stream_stdio_call(ctx::ServerContext, notifier::StdioNotifier, call::St
     pump_stream(call.stream,
         event -> begin
             body, terminal = streamed_frame(ctx, call, event)
-            isnothing(body) || respond(notifier, body)
+            if !isnothing(body)
+                respond(notifier, body)
+            end
             return !terminal
         end)
 

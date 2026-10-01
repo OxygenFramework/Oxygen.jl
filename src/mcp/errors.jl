@@ -10,8 +10,29 @@ end
 
 function error_body(id, code::Int, message::String, data=nothing)::Dict{String,Any}
     error = Dict{String,Any}("code" => code, "message" => message)
-    !isnothing(data) && (error["data"] = data)
+    if !isnothing(data)
+        error["data"] = data
+    end
     return Dict{String,Any}("jsonrpc" => "2.0", "id" => id, "error" => error)
+end
+
+# ASCII case-insensitive comparison of wire names. Header names are ASCII and
+# lookups run several times per request, so folding byte-by-byte replaces the
+# `lowercase(String(key))` allocation this used to do for every header.
+function header_name_equals(name::AbstractString, target::AbstractString)::Bool
+    ncodeunits(name) == ncodeunits(target) || return false
+    @inbounds for index in 1:ncodeunits(target)
+        lhs = codeunit(name, index)
+        if UInt8('A') <= lhs <= UInt8('Z')
+            lhs += 0x20
+        end
+        rhs = codeunit(target, index)
+        if UInt8('A') <= rhs <= UInt8('Z')
+            rhs += 0x20
+        end
+        lhs == rhs || return false
+    end
+    return true
 end
 
 """
@@ -22,16 +43,17 @@ absent, `:invalid` when the header is duplicated or carries unsafe bytes, and th
 whitespace-stripped value otherwise.
 """
 function mcp_standard_header(req::HTTP.Request, name::String)::Union{Nothing,String,Symbol}
-    values = String[]
-    target = lowercase(name)
+    found = nothing
     for (key, value) in req.headers
-        lowercase(String(key)) == target || continue
-        push!(values, String(value))
+        header_name_equals(key, name) || continue
+        found === nothing || return :invalid
+        found = value
     end
-    isempty(values) && return nothing
-    length(values) > 1 && return :invalid
-    value = String(strip(values[1]))
-    all(b -> 0x20 <= b <= 0x7e || b == UInt8('\t'), codeunits(value)) || return :invalid
+    found === nothing && return nothing
+    value = String(strip(found))
+    if !all(b -> 0x20 <= b <= 0x7e || b == UInt8('\t'), codeunits(value))
+        return :invalid
+    end
     return value
 end
 
@@ -49,14 +71,20 @@ function decode_header_value(value::String)::Union{Nothing,String}
     suffix = "?="
     if startswith(value, prefix) && endswith(value, suffix) && length(value) >= length(prefix) + length(suffix)
         encoded = value[(length(prefix) + 1):(end - length(suffix))]
-        occursin(r"^[A-Za-z0-9+/]+={0,2}$", encoded) || return nothing
-        length(encoded) % 4 == 0 || return nothing
+        if !occursin(r"^[A-Za-z0-9+/]+={0,2}$", encoded)
+            return nothing
+        end
+        if length(encoded) % 4 != 0
+            return nothing
+        end
         decoded = try
             String(base64decode(encoded))
         catch
             return nothing
         end
-        all(isvalid, decoded) || return nothing
+        if !all(isvalid, decoded)
+            return nothing
+        end
         return decoded
     end
     return value
@@ -64,7 +92,9 @@ end
 
 function check_origin(ctx::ServerContext, req::HTTP.Request)
     origin = HTTP.header(req, "Origin", nothing)
-    (isnothing(origin) || isempty(origin)) && return nothing
+    if isnothing(origin) || isempty(origin)
+        return nothing
+    end
 
     origin = String(origin)
 
@@ -109,17 +139,21 @@ function request_claim(req::Union{Nothing,HTTP.Request}, method::String, params)
         version = get(meta, META_PROTOCOL, nothing)
         if version isa AbstractString
             spec = spec_from_version(String(version))
-            return (spec !== nothing && is_modern(spec)) ? spec : :unsupported
+            return (!isnothing(spec) && is_modern(spec)) ? spec : :unsupported
         end
     end
 
-    method == "server/discover" && return LATEST_MODERN_SPEC
+    if method == "server/discover"
+        return LATEST_MODERN_SPEC
+    end
 
     if req isa HTTP.Request
         header_version = mcp_standard_header(req, "MCP-Protocol-Version")
         if header_version isa String
             header_spec = spec_from_version(strip(header_version))
-            header_spec !== nothing && is_modern(header_spec) && return header_spec
+            if !isnothing(header_spec) && is_modern(header_spec)
+                return header_spec
+            end
         end
     end
 
@@ -130,10 +164,14 @@ end
 # `-32020` error when the header is missing, duplicated, or unsafe.
 function required_header(req::HTTP.Request, name::String)::String
     value = mcp_standard_header(req, name)
-    value === :invalid && throw(MCPRequestError(MCP_HEADER_MISMATCH,
-        "$name header is duplicated or contains unsafe characters"))
-    value === nothing && throw(MCPRequestError(MCP_HEADER_MISMATCH,
-        "Missing required $name header"))
+    if value === :invalid
+        throw(MCPRequestError(MCP_HEADER_MISMATCH,
+            "$name header is duplicated or contains unsafe characters"))
+    end
+    if isnothing(value)
+        throw(MCPRequestError(MCP_HEADER_MISMATCH,
+            "Missing required $name header"))
+    end
     return String(value)
 end
 

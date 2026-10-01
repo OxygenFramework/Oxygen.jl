@@ -419,15 +419,22 @@ Otherwise, it returns `false`.
 
 Practically, this check is used to check if `@kwdef` was used to define the struct.
 """
+const _KWDEF_CONSTRUCTOR_CACHE = Dict{Type,Bool}()
+const _KWDEF_CONSTRUCTOR_CACHE_LOCK = ReentrantLock()
+
 function has_kwdef_constructor(T::Type) :: Bool
-    fieldnames = Base.fieldnames(T)
-    for constructor in methods(T)
-        if length(Base.method_argnames(constructor)) == 1 && 
-            Tuple(Base.kwarg_decl(constructor)) == fieldnames
-            return true
+    return lock(_KWDEF_CONSTRUCTOR_CACHE_LOCK) do
+        get!(_KWDEF_CONSTRUCTOR_CACHE, T) do
+            expected = Base.fieldnames(T)
+            for constructor in methods(T)
+                if length(Base.method_argnames(constructor)) == 1 &&
+                   Tuple(Base.kwarg_decl(constructor)) == expected
+                    return true
+                end
+            end
+            return false
         end
     end
-    return false
 end
 
 # Function to extract field names, types, and default values
@@ -512,12 +519,20 @@ element-wise parsing handles enums, nested arrays and custom structs.
 """
 function parse_array_value(::Type{T}, value) where {T <: AbstractArray}
     value isa T && return value
-    try
-        return convert(T, value)
-    catch
+
+    # Only attempt a direct conversion when it can plausibly succeed. The
+    # common JSON shape (a `Vector{Any}` of `Dict`) can never convert to an
+    # array of custom structs, and the thrown exception costs far more than
+    # the element-wise fallback below.
+    E = eltype(T)
+    if !(value isa AbstractArray) || eltype(value) <: E
+        try
+            return convert(T, value)
+        catch
+        end
     end
 
-    parsed = parse_array_elements(eltype(T), value)
+    parsed = parse_array_elements(E, value)
     try
         return convert(T, parsed)
     catch

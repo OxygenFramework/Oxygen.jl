@@ -9,11 +9,64 @@ const MCP = Oxygen.Core.MCP
 const ALL_SPECS = (MCP.V2024_11_05, MCP.V2025_03_26, MCP.V2025_06_18,
                    MCP.V2025_11_25, MCP.V2026_07_28)
 
-# A hypothetical future revision, used to prove the interface defaults are
-# inherited without any per-revision code beyond identity.
+# A hypothetical future revision, declared exactly like a supported one. This
+# is the extensibility proof: adding a revision is one `@spec` block, and the
+# method surface is still structural.
 const FAKE_SPEC = Val(:v2099_01_01)
-MCP.version_string(::Val{:v2099_01_01}) = "2099-01-01"
-MCP.spec_rank(::Val{:v2099_01_01}) = 6
+MCP.@spec Val(:v2099_01_01) begin
+    version_string           = "2099-01-01"
+    spec_rank                = 6
+    is_modern                = false
+    uses_sessions            = true
+    allows_batch             = false
+    emits_structured_content = true
+    shows_resource_icons     = true
+    get_policy               = :legacy_sse
+    delete_policy            = :session
+    not_found_code           = MCP.MCP_RESOURCE_NOT_FOUND
+end
+
+# The capability keys every revision must state; a `@spec` block declares each
+# as an interface method, so `hasmethod` proves nothing was left implicit.
+const SPEC_TRAITS = (MCP.version_string, MCP.spec_rank, MCP.is_modern,
+                     MCP.uses_sessions, MCP.allows_batch,
+                     MCP.emits_structured_content, MCP.shows_resource_icons,
+                     MCP.get_policy, MCP.delete_policy, MCP.not_found_code)
+
+@testset "mcp every revision declares its full profile" begin
+    for spec in ALL_SPECS, trait in SPEC_TRAITS
+        @test hasmethod(trait, Tuple{typeof(spec)})
+    end
+end
+
+# A profile that passes `@spec` validation. Malformed variants are expanded
+# (never evaluated), proving the macro rejects them without defining methods.
+const PROFILE_STATEMENTS = (
+    :(version_string = "2099-01-02"),
+    :(spec_rank = 6),
+    :(is_modern = false),
+    :(uses_sessions = true),
+    :(allows_batch = false),
+    :(emits_structured_content = true),
+    :(shows_resource_icons = true),
+    :(get_policy = :legacy_sse),
+    :(delete_policy = :session),
+    :(not_found_code = MCP.MCP_RESOURCE_NOT_FOUND),
+)
+
+profile_expr(statements) = Expr(:macrocall, GlobalRef(MCP, Symbol("@spec")),
+                                LineNumberNode(0), :(Val(:v2099_01_02)),
+                                Expr(:block, statements...))
+
+@testset "mcp @spec validates the profile contract" begin
+    @test macroexpand(@__MODULE__, profile_expr(PROFILE_STATEMENTS)) isa Expr
+    @test_throws ErrorException macroexpand(@__MODULE__,
+        profile_expr((PROFILE_STATEMENTS..., :(spec_rnk = 6))))
+    @test_throws ErrorException macroexpand(@__MODULE__,
+        profile_expr((PROFILE_STATEMENTS..., :(spec_rank = 7))))
+    @test_throws ErrorException macroexpand(@__MODULE__,
+        profile_expr(PROFILE_STATEMENTS[1:(end - 1)]))
+end
 
 @testset "mcp spec identity" begin
     @test [MCP.version_string(spec) for spec in ALL_SPECS] ==
@@ -52,7 +105,7 @@ end
     @test MCP.spec_at_least(MCP.V2026_07_28, MCP.V2025_11_25)
 end
 
-@testset "mcp capability defaults" begin
+@testset "mcp capability profiles" begin
     ctx = Oxygen.Core.ServerContext()
 
     # Batching existed only in 2025-03-26.
@@ -368,12 +421,12 @@ end
     @test !haskey(legacy_body["result"], "resultType")
 end
 
-@testset "mcp new revision inherits shared behavior" begin
+@testset "mcp new revision profile" begin
     @test MCP.version_string(FAKE_SPEC) == "2099-01-01"
     @test MCP.spec_rank(FAKE_SPEC) == 6
 
-    # Defaults classify a bare revision as legacy and inherit every shared
-    # capability; nothing needs to be declared beyond version and rank.
+    # The fake revision states its own complete profile; the method surface is
+    # still inherited structurally from the era predicates.
     @test MCP.is_legacy(FAKE_SPEC)
     @test !MCP.is_modern(FAKE_SPEC)
     @test MCP.uses_sessions(FAKE_SPEC)
@@ -393,7 +446,7 @@ end
         @test !MCP.method_available(FAKE_SPEC, Val(tag))
     end
 
-    # Unknown methods still yield -32601 under an inheriting revision.
+    # Unknown methods still yield -32601 under a new revision.
     body, status = MCP.dispatch(Oxygen.Core.ServerContext(), nothing, 1, "no/such",
                                 Dict{String,Any}(); spec=FAKE_SPEC)
     @test status == 404

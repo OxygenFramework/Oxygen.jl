@@ -10,6 +10,7 @@
 
 const SESSION_HEADER = "Mcp-Session-Id"
 const SESSION_TTL_SECONDS = 3600.0
+const SESSION_TOUCH_SECONDS = 60.0
 const MAX_SESSIONS = 1024
 
 """
@@ -41,11 +42,21 @@ MCPSession(id::AbstractString) = MCPSession(
 function sweep_sessions!(ctx::ServerContext)::Vector{MCPSession}
     cutoff = time() - SESSION_TTL_SECONDS
     expired = MCPSession[]
-    for (id, value) in collect(ctx.mcp.sessions)
-        value isa MCPSession || continue
-        value.last_seen < cutoff || continue
-        delete!(ctx.mcp.sessions, id)
+    ids = String[]
+    for (id, value) in ctx.mcp.sessions
+        if !(value isa MCPSession)
+            continue
+        end
+        if value.last_seen >= cutoff
+            continue
+        end
+        push!(ids, id)
         push!(expired, value)
+    end
+    # Delete after the walk: only the expired ids are collected (the previous
+    # implementation copied the whole session table on every sweep).
+    for id in ids
+        delete!(ctx.mcp.sessions, id)
     end
     return expired
 end
@@ -55,10 +66,16 @@ end
 function evict_oldest!(ctx::ServerContext)::Union{Nothing,MCPSession}
     oldest = nothing
     for value in values(ctx.mcp.sessions)
-        value isa MCPSession || continue
-        (oldest === nothing || value.last_seen < oldest.last_seen) && (oldest = value)
+        if !(value isa MCPSession)
+            continue
+        end
+        if isnothing(oldest) || value.last_seen < oldest.last_seen
+            oldest = value
+        end
     end
-    oldest === nothing || delete!(ctx.mcp.sessions, oldest.id)
+    if !isnothing(oldest)
+        delete!(ctx.mcp.sessions, oldest.id)
+    end
     return oldest
 end
 
@@ -99,7 +116,9 @@ function close_sessions!(ctx::ServerContext)
         found
     end
     for session in sessions
-        session isa MCPSession && terminate_session!(ctx, session)
+        if session isa MCPSession
+            terminate_session!(ctx, session)
+        end
     end
     return nothing
 end
@@ -116,7 +135,9 @@ function new_session!(ctx::ServerContext)::MCPSession
         append!(evicted, sweep_sessions!(ctx))
         while length(ctx.mcp.sessions) >= MAX_SESSIONS
             victim = evict_oldest!(ctx)
-            victim === nothing && break
+            if isnothing(victim)
+                break
+            end
             push!(evicted, victim)
         end
         ctx.mcp.sessions[session.id] = session
@@ -135,9 +156,18 @@ Look up a live session and touch its `last_seen` timestamp.
 function find_session(ctx::ServerContext, id::AbstractString)::Union{Nothing,MCPSession}
     return lock(ctx.mcp.sessions_lock) do
         session = get(ctx.mcp.sessions, String(id), nothing)
-        session isa MCPSession || return nothing
-        session.closed && return nothing
-        session.last_seen = time()
+        if !(session isa MCPSession)
+            return nothing
+        end
+        if session.closed
+            return nothing
+        end
+        # Refresh the idle clock at most once a minute: the TTL is an hour, and
+        # writing every request keeps the lock's cache line hot under load.
+        now = time()
+        if now - session.last_seen >= SESSION_TOUCH_SECONDS
+            session.last_seen = now
+        end
         return session
     end
 end
@@ -152,10 +182,14 @@ server does not know.
 """
 function resolve_session(ctx::ServerContext, req::HTTP.Request)
     value = mcp_standard_header(req, SESSION_HEADER)
-    value === nothing && return nothing
-    value === :invalid && return :invalid
+    if isnothing(value)
+        return nothing
+    end
+    if value === :invalid
+        return :invalid
+    end
     session = find_session(ctx, String(value))
-    return session === nothing ? :unknown : session
+    return isnothing(session) ? :unknown : session
 end
 
 """
@@ -167,10 +201,14 @@ the `(status, body)` HTTP error every transport responds with. Returns the live
 """
 function resolve_session_or_error(ctx::ServerContext, req::HTTP.Request)
     resolved = resolve_session(ctx, req)
-    resolved === :invalid && return (400, error_body(nothing, MCP_INVALID_REQUEST,
-                                                     "Invalid Mcp-Session-Id header"))
-    resolved === :unknown && return (404, error_body(nothing, MCP_INVALID_REQUEST,
-                                                     "Unknown or expired session"))
+    if resolved === :invalid
+        return (400, error_body(nothing, MCP_INVALID_REQUEST,
+                                "Invalid Mcp-Session-Id header"))
+    end
+    if resolved === :unknown
+        return (404, error_body(nothing, MCP_INVALID_REQUEST,
+                                "Unknown or expired session"))
+    end
     return resolved
 end
 
@@ -181,10 +219,10 @@ end
 # whichever is in effect, so callers do not repeat the ternary.
 
 legacy_version(ctx::ServerContext, session::Union{Nothing,MCPSession})::String =
-    session === nothing ? ctx.mcp.session_version[] : session.version
+    isnothing(session) ? ctx.mcp.session_version[] : session.version
 
 function mark_initialized!(ctx::ServerContext, session::Union{Nothing,MCPSession})
-    if session === nothing
+    if isnothing(session)
         ctx.mcp.initialized[] = true
     else
         lock(session.lock) do
@@ -197,7 +235,7 @@ end
 # Record a negotiated `initialize` handshake: the version plus the flag that
 # arms legacy server→client delivery.
 function set_handshake!(ctx::ServerContext, session::Union{Nothing,MCPSession}, version::String)
-    if session === nothing
+    if isnothing(session)
         ctx.mcp.session_version[] = version
         ctx.mcp.handshake_complete[] = true
     else
@@ -212,7 +250,7 @@ end
 # Whether the client completed an `initialize` handshake (see
 # `legacy_event_wanted` for why `notifications/initialized` alone is not proof).
 function handshake_ready(ctx::ServerContext, session::Union{Nothing,MCPSession})::Bool
-    if session === nothing
+    if isnothing(session)
         return ctx.mcp.initialized[] && ctx.mcp.handshake_complete[]
     end
     return lock(session.lock) do
@@ -223,7 +261,7 @@ end
 # Legacy `resources/subscribe` membership for the anonymous state or a session.
 function legacy_subscribed(ctx::ServerContext, session::Union{Nothing,MCPSession},
                            uri::String)::Bool
-    if session === nothing
+    if isnothing(session)
         return lock(ctx.mcp.subscriptions_lock) do
             uri in ctx.mcp.legacy_subscriptions
         end
@@ -235,7 +273,7 @@ end
 
 function set_legacy_subscribed(ctx::ServerContext, session::Union{Nothing,MCPSession},
                                uri::String; subscribed::Bool)
-    if session === nothing
+    if isnothing(session)
         lock(ctx.mcp.subscriptions_lock) do
             subscribed ? push!(ctx.mcp.legacy_subscriptions, uri) :
                          delete!(ctx.mcp.legacy_subscriptions, uri)
@@ -265,11 +303,15 @@ end
 # session was terminated between resolution and registration.
 function add_sink!(ctx::ServerContext, session::MCPSession, sub::PubSub.Subscription)::Bool
     accepted = lock(session.lock) do
-        session.closed && return false
+        if session.closed
+            return false
+        end
         push!(session.sinks, sub)
         return true
     end
-    accepted || PubSub.unsubscribe!(broker(ctx), sub)
+    if !accepted
+        PubSub.unsubscribe!(broker(ctx), sub)
+    end
     return accepted
 end
 

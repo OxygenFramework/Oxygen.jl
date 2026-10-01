@@ -134,7 +134,9 @@ unwinds.
 function emit(stream::MCPStream, value)
     check_cancelled(stream)
     state = stream.protocol
-    state.managed && state.token === nothing && return nothing
+    if state.managed && isnothing(state.token)
+        return nothing
+    end
     enqueue!(stream, value)
     return nothing
 end
@@ -179,8 +181,9 @@ end
 # progress); a smaller or repeated value is an authoring bug.
 function record_progress!(stream::MCPStream, value::Real)::Float64
     current = Float64(value)
-    current > stream.protocol.sequence ||
+    if current <= stream.protocol.sequence
         throw(ArgumentError("progress must increase monotonically (got $current after $(stream.protocol.sequence))"))
+    end
     stream.protocol.sequence = current
     return current
 end
@@ -202,10 +205,16 @@ the single seam for wire mappings: extensions add a method (a table row), they
 do not refactor the router.
 """
 function serialize_event(token, event::ProgressEvent)
-    token === nothing && return nothing
+    if isnothing(token)
+        return nothing
+    end
     params = Dict{String,Any}("progressToken" => token, "progress" => event.progress)
-    event.total === nothing || (params["total"] = event.total)
-    event.message === nothing || (params["message"] = event.message)
+    if !isnothing(event.total)
+        params["total"] = event.total
+    end
+    if !isnothing(event.message)
+        params["message"] = event.message
+    end
     return notification("notifications/progress", params)
 end
 

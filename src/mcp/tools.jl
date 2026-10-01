@@ -49,12 +49,16 @@ function reflect_handler(func::Function;
     argnames = Symbol[]
     mcp_params = MCPParam[]
     for p in positional
-        p.name in INJECTED_PARAMS && continue
+        if p.name in INJECTED_PARAMS
+            continue
+        end
         push!(argnames, p.name)
         push!(mcp_params, mcp_param(p, descriptions, names))
     end
     for p in info.kwargs
-        p.name in INJECTED_PARAMS && continue
+        if p.name in INJECTED_PARAMS
+            continue
+        end
         push!(mcp_params, mcp_param(p, descriptions, names))
     end
 
@@ -80,14 +84,18 @@ function validate_mcp_param_keys(signature::HandlerSignature, descriptions::Dict
     # Metadata keys that don't name a real handler parameter (mistyped or extra)
     unknown = sort!(collect(setdiff(union(keys(descriptions), keys(names)), allowed)))
 
-    isempty(unknown) || throw(ArgumentError(
-        "Unknown MCP parameter name(s): $(join(string.(unknown), ", ")). " *
-        "Expected one of: $(join(string.(sort!(collect(allowed))), ", "))"))
+    if !isempty(unknown)
+        throw(ArgumentError(
+            "Unknown MCP parameter name(s): $(join(string.(unknown), ", ")). " *
+            "Expected one of: $(join(string.(sort!(collect(allowed))), ", "))"))
+    end
 
     if require_complete
         missing = sort!(collect(setdiff(allowed, keys(descriptions))))
-        isempty(missing) || throw(ArgumentError(
-            "Missing description for MCP parameter(s): $(join(string.(missing), ", "))"))
+        if !isempty(missing)
+            throw(ArgumentError(
+                "Missing description for MCP parameter(s): $(join(string.(missing), ", "))"))
+        end
     end
     return nothing
 end
@@ -99,16 +107,20 @@ function function_docstring(func::Function)::String
         mod = parentmodule(func)
         binding = Base.Docs.Binding(mod, nameof(func))
         entry = get(Base.Docs.meta(mod), binding, nothing)
-        if entry === nothing
+        if isnothing(entry)
             return ""
         end
         if entry isa Base.Docs.MultiDoc
             texts = String[]
             for docstr in values(entry.docs)
                 text = strip(join(docstr.text, "\n"))
-                isempty(text) || push!(texts, text)
+                if !isempty(text)
+                    push!(texts, text)
+                end
             end
-            isempty(texts) && return ""
+            if isempty(texts)
+                return ""
+            end
             # Multiple methods may each carry a docstring; pick deterministically.
             sort!(texts)
             return first(texts)
@@ -229,7 +241,7 @@ function store_tool!(ctx::ServerContext, wirename::String, description::String, 
 
     tool = MCPTool(wirename, description, func, signature.params, signature.argnames,
                    signature.has_context, signature.has_request, signature.has_stream,
-                   inject_request)
+                   inject_request, inputschema(signature.params))
     ctx.mcp.tools[wirename] = tool
     notify_tools_changed(ctx)
     return tool
@@ -238,7 +250,9 @@ end
 # The client's per-request progress token (a string or integer per the spec).
 function progress_token(params)::Any
     meta = get(params, META_KEY, nothing)
-    meta isa AbstractDict || return nothing
+    if !(meta isa AbstractDict)
+        return nothing
+    end
     return get(meta, "progressToken", nothing)
 end
 
@@ -262,7 +276,9 @@ end
 function call_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
                    spec::Val=LATEST_LEGACY_SPEC)::Tuple{Union{Dict{String,Any},StreamedCall},Int}
     tool, arguments = resolve_registered_node(ctx.mcp.tools, id, params, "tool")
-    isnothing(tool) && return arguments
+    if isnothing(tool)
+        return arguments
+    end
 
     token = progress_token(params)
 
@@ -277,7 +293,9 @@ function call_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, par
                                inject_request=tool.inject_request,
                                has_stream=true, stream=stream)
         catch error
-            error isa MCPRequestError || rethrow()
+            if !(error isa MCPRequestError)
+                rethrow()
+            end
             return request_error_body(id, error), 200
         end
         start_stream!(stream, _ -> tool.handler(pos_values...; kwpairs...))
@@ -293,7 +311,9 @@ function call_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, par
         end
         return result_response(ctx, id, tool_success_result(value; spec=spec); spec=spec)
     catch error
-        error isa MCPRequestError && return request_error_body(id, error), 200
+        if error isa MCPRequestError
+            return request_error_body(id, error), 200
+        end
         return result_response(ctx, id, toolerror_result(error); spec=spec)
     end
 end

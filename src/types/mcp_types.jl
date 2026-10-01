@@ -74,6 +74,7 @@ struct MCPTool <: MCPCallable
     has_request :: Bool          # handler wants `request` injected
     has_stream  :: Bool          # handler wants a streaming `stream` handle injected
     inject_request :: Bool       # route tool: `request` is the leading positional arg
+    input_schema :: Dict{String,Any}  # JSON Schema, generated once at registration
 end
 
 # A registered MCP prompt. The prompt arguments are the handler's own parameters

@@ -19,7 +19,7 @@ mcp_string(::Nothing)::String = ""
 # `(key, value)` pairs. Both `Dict` and `NamedTuple` are accepted, as is a vector
 # of `Pair`s; keys must be Symbols. `nothing` yields an empty iterable.
 function mcp_entries(params)
-    if params === nothing
+    if isnothing(params)
         return ()
     end
     if params isa AbstractDict || params isa NamedTuple
@@ -105,7 +105,7 @@ function normalize_mcp_overrides(mcp::Union{NamedTuple,AbstractDict})
         description = description,
         parameters = parameters,
         names = names,
-        toolname = toolname === nothing ? nothing : string(toolname),
+        toolname = isnothing(toolname) ? nothing : string(toolname),
     )
 end
 
@@ -132,12 +132,12 @@ the router's, with parameter descriptions/wire names merged.
 """
 function resolve_mcp_config(outer::Nullable{MCPConfig}, route::Nullable{MCPConfig})::Nullable{MCPConfig}
     # A disabled router excludes its whole group; a route cannot opt back in.
-    if outer !== nothing && !outer.enabled
+    if !isnothing(outer) && !outer.enabled
         return nothing
     end
 
-    if route === nothing
-        if outer === nothing
+    if isnothing(route)
+        if isnothing(outer)
             return nothing
         end
         # A router-level `name` would collide across every route, so only a
@@ -149,7 +149,7 @@ function resolve_mcp_config(outer::Nullable{MCPConfig}, route::Nullable{MCPConfi
     if !route.enabled
         return nothing
     end
-    if outer === nothing
+    if isnothing(outer)
         return route
     end
     return merge_mcp_configs(outer, route)

@@ -111,9 +111,13 @@ function _unionschema(T::Union, defs::Dict{String,Any})
         end
     end
 
-    isempty(members) && return Dict{String,Any}()
+    if isempty(members)
+        return Dict{String,Any}()
+    end
     schema = length(members) == 1 ? members[1] : Dict{String,Any}("anyOf" => members)
-    nullable && (schema["nullable"] = true)
+    if nullable
+        schema["nullable"] = true
+    end
     return schema
 end
 
@@ -131,10 +135,15 @@ end
 """
     inputschema(tool::MCPTool) :: Dict
 
-Generate the JSON Schema describing a tool's expected arguments.
+The JSON Schema describing a tool's expected arguments. Built once at
+registration (see `inputschema(::Vector{MCPParam})`) and cached on the tool: the
+schema cannot change after registration, and regenerating it means re-reflecting
+every custom struct parameter on every `tools/list`.
 """
-function inputschema(tool::MCPTool)::Dict{String,Any}
-    if isempty(tool.params)
+inputschema(tool::MCPTool)::Dict{String,Any} = tool.input_schema
+
+function inputschema(params::Vector{MCPParam})::Dict{String,Any}
+    if isempty(params)
         return Dict{String,Any}("type" => "object", "additionalProperties" => false)
     end
 
@@ -142,7 +151,7 @@ function inputschema(tool::MCPTool)::Dict{String,Any}
     required = String[]
     defs = Dict{String,Any}()
 
-    for p in tool.params
+    for p in params
         name = p.wirename
         schema, pdefs = paramschema(p)
         properties[name] = schema
@@ -175,7 +184,7 @@ function parse_tool_argument(::Type{T}, value) where {T}
     resolved = AutoDoc.resolve_union_type(T)
     target = (resolved === Union{} || resolved === Core.TypeofBottom) ? T : resolved
 
-    if value === nothing
+    if isnothing(value)
         return nothing
     end
 
@@ -242,7 +251,9 @@ function coerce_argument(p::MCPParam, value)
     try
         return parse_tool_argument(p.param.type, value)
     catch error
-        error isa MCPRequestError && rethrow()
+        if error isa MCPRequestError
+            rethrow()
+        end
         throw(MCPRequestError(MCP_INVALID_PARAMS,
             "Invalid value for argument `$(p.wirename)`: $(sprint(showerror, error))"))
     end
@@ -252,8 +263,12 @@ end
 # the declared default, else a `-32602` params error.
 function resolved_value(p::MCPParam, arguments)
     found, value = argument_value(arguments, p)
-    found && return coerce_argument(p, value)
-    p.param.hasdefault && return p.param.default
+    if found
+        return coerce_argument(p, value)
+    end
+    if p.param.hasdefault
+        return p.param.default
+    end
     throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required argument: $(p.wirename)"))
 end
 
@@ -363,7 +378,7 @@ function binary_block(bytes::Vector{UInt8}, mime::String)::Dict{String,Any}
     mime = String(strip(split(mime, ';')[1]))
     m = lowercase(mime)
     kind = startswith(m, "image/") ? "image" : startswith(m, "audio/") ? "audio" : nothing
-    if kind !== nothing
+    if !isnothing(kind)
         return Dict{String,Any}("type" => kind, "data" => base64encode(bytes), "mimeType" => mime)
     elseif is_text_mime(m)
         return text_block(String(bytes))
@@ -413,13 +428,13 @@ function content_result(block::Dict{String,Any}, structured_content=nothing)::Di
         "content" => Any[block],
         "isError" => false,
     )
-    if structured_content !== nothing
+    if !isnothing(structured_content)
         result["structuredContent"] = structured_content
     end
     return result
 end
 
-function toolresult(value)::Dict{String,Any}
+function toolresult(value; structured::Bool=true)::Dict{String,Any}
     if value isa HTTP.Response || 
         value isa AbstractString ||
         value isa AbstractVector{UInt8} ||
@@ -429,9 +444,10 @@ function toolresult(value)::Dict{String,Any}
         encoded = JSON.json(value)
         # CallToolResult.structuredContent MUST be a JSON object per the MCP
         # spec; a scalar or array result has no valid structured form, so it is
-        # omitted (the JSON still travels as text content).
-        structured = startswith(lstrip(encoded), "{") ? JSON.parse(encoded) : nothing
-        return content_result(text_block(encoded), structured)
+        # omitted (the JSON still travels as text content). Revisions that do
+        # not emit structuredContent skip the decode entirely.
+        parsed = structured && startswith(lstrip(encoded), "{") ? JSON.parse(encoded) : nothing
+        return content_result(text_block(encoded), parsed)
     end
 end
 
@@ -439,14 +455,12 @@ end
     tool_success_result(value; spec) :: Dict
 
 The result of a completed tool call: the handler's return value serialized into
-content blocks, with `structuredContent` dropped for revisions that predate it.
-Shared by the buffered and streamed `tools/call` paths so both produce
-identical bytes.
+content blocks, with `structuredContent` emitted only for revisions that
+introduced it (2025-06-18+). Shared by the buffered and streamed `tools/call`
+paths so both produce identical bytes.
 """
 function tool_success_result(value; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
-    result = toolresult(value)
-    emits_structured_content(spec) || strip_unstructured!(result)
-    return result
+    return toolresult(value; structured=emits_structured_content(spec))
 end
 
 """
@@ -470,7 +484,9 @@ function resolve_registered_node(registry, id, params, label::String)
     end
 
     arguments = get(params, "arguments", Dict{String,Any}())
-    isnothing(arguments) && (arguments = Dict{String,Any}())
+    if isnothing(arguments)
+        arguments = Dict{String,Any}()
+    end
     if !(arguments isa AbstractDict)
         return nothing, (error_body(id, MCP_INVALID_PARAMS, "Invalid arguments: expected an object"), 200)
     end
@@ -513,17 +529,6 @@ function modern_envelope(ctx::ServerContext, result::Dict{String,Any})::Dict{Str
         "version" => ctx.mcp.server_version[],
     )
     result[META_KEY] = meta
-    return result
-end
-
-"""
-    strip_unstructured!(result)
-
-Drop `structuredContent` from a legacy tool result when the negotiated version
-predates its introduction (2025-06-18); older clients reject unknown fields.
-"""
-function strip_unstructured!(result::Dict{String,Any})
-    delete!(result, "structuredContent")
     return result
 end
 

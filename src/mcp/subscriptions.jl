@@ -83,21 +83,29 @@ strings, and at least one notification type must be requested. Unknown keys are
 ignored for forward compatibility.
 """
 function parse_subscription_filter(notifications)::Union{SubscriptionFilter,String}
-    notifications isa AbstractDict || return "notifications must be an object"
+    if !(notifications isa AbstractDict)
+        return "notifications must be an object"
+    end
 
     for key in ("toolsListChanged", "promptsListChanged", "resourcesListChanged")
-        haskey(notifications, key) && !(notifications[key] isa Bool) &&
+        if haskey(notifications, key) && !(notifications[key] isa Bool)
             return "$key must be a boolean"
+        end
     end
 
     uris = Set{String}()
     if haskey(notifications, "resourceSubscriptions")
         subscriptions = notifications["resourceSubscriptions"]
-        subscriptions isa AbstractVector || return "resourceSubscriptions must be an array of strings"
-        length(subscriptions) > MAX_RESOURCE_SUBSCRIPTIONS &&
+        if !(subscriptions isa AbstractVector)
+            return "resourceSubscriptions must be an array of strings"
+        end
+        if length(subscriptions) > MAX_RESOURCE_SUBSCRIPTIONS
             return "resourceSubscriptions exceeds the limit of $(MAX_RESOURCE_SUBSCRIPTIONS) URIs"
+        end
         for uri in subscriptions
-            uri isa AbstractString || return "resourceSubscriptions must be an array of strings"
+            if !(uri isa AbstractString)
+                return "resourceSubscriptions must be an array of strings"
+            end
             push!(uris, String(uri))
         end
     end
@@ -125,10 +133,18 @@ set has no stable order).
 """
 function filter_to_wire(filter::SubscriptionFilter)::Dict{String,Any}
     wire = Dict{String,Any}()
-    filter.tools_list_changed     && (wire["toolsListChanged"] = true)
-    filter.prompts_list_changed   && (wire["promptsListChanged"] = true)
-    filter.resources_list_changed && (wire["resourcesListChanged"] = true)
-    isempty(filter.resource_uris) || (wire["resourceSubscriptions"] = sort!(collect(filter.resource_uris)))
+    if filter.tools_list_changed
+        wire["toolsListChanged"] = true
+    end
+    if filter.prompts_list_changed
+        wire["promptsListChanged"] = true
+    end
+    if filter.resources_list_changed
+        wire["resourcesListChanged"] = true
+    end
+    if !isempty(filter.resource_uris)
+        wire["resourceSubscriptions"] = sort!(collect(filter.resource_uris))
+    end
     return wire
 end
 
@@ -146,7 +162,7 @@ function filter_wants(filter::SubscriptionFilter, event::SubscriptionNotificatio
     elseif method == "notifications/resources/list_changed"
         return filter.resources_list_changed
     elseif method == "notifications/resources/updated"
-        return event.uri !== nothing && event.uri in filter.resource_uris
+        return !isnothing(event.uri) && event.uri in filter.resource_uris
     end
     return false
 end
@@ -154,9 +170,13 @@ end
 # Whether the server currently advertises the `listChanged` capability for a
 # kind. Kept as a function (not a constant) because the registries are mutable.
 function list_changed_capable(ctx::ServerContext, kind::Symbol)::Bool
-    kind === :tools     && return true
-    kind === :prompts   && return !isempty(ctx.mcp.prompts)
-    kind === :resources && return has_resources(ctx)
+    if kind === :tools
+        return true
+    elseif kind === :prompts
+        return !isempty(ctx.mcp.prompts)
+    elseif kind === :resources
+        return has_resources(ctx)
+    end
     return false
 end
 
@@ -192,11 +212,15 @@ before this module is defined, so the field is an untyped `Ref`).
 """
 function broker(ctx::ServerContext)::MCPBroker
     existing = ctx.mcp.broker[]
-    existing isa MCPBroker && return existing
+    if existing isa MCPBroker
+        return existing
+    end
 
     return lock(ctx.mcp.subscriptions_lock) do
         existing = ctx.mcp.broker[]
-        existing isa MCPBroker && return existing
+        if existing isa MCPBroker
+            return existing
+        end
         created = MCPBroker(; cap=MAX_LISTEN_SUBSCRIPTIONS)
         ctx.mcp.broker[] = created
         return created
@@ -257,7 +281,9 @@ listen_key(id) = string(id)
 function stdio_listen(ctx::ServerContext, id)
     key = listen_key(id)
     for record in ctx.mcp.listens
-        record.cancellable && listen_key(record.id) == key && return record
+        if record.cancellable && listen_key(record.id) == key
+            return record
+        end
     end
     return nothing
 end
@@ -265,9 +291,13 @@ end
 # Remove records whose stream closed without a transport teardown (defensive:
 # the transports unregister in their `finally`). Callers hold subscriptions_lock.
 function sweep_listens!(ctx::ServerContext)
-    isempty(ctx.mcp.listens) && return nothing
+    if isempty(ctx.mcp.listens)
+        return nothing
+    end
     for record in collect(ctx.mcp.listens)
-        isopen(record.sub) || delete!(ctx.mcp.listens, record)
+        if !isopen(record.sub)
+            delete!(ctx.mcp.listens, record)
+        end
     end
     return nothing
 end
@@ -285,15 +315,23 @@ function listen_admission(ctx::ServerContext, id; cancellable::Bool,
                           record::Union{Nothing,ListenRecord}=nothing)::Symbol
     return lock(ctx.mcp.subscriptions_lock) do
         sweep_listens!(ctx)
-        length(ctx.mcp.listens) >= MAX_LISTEN_SUBSCRIPTIONS && return :capacity
-        cancellable && stdio_listen(ctx, id) !== nothing && return :duplicate
-        record === nothing || push!(ctx.mcp.listens, record)
+        if length(ctx.mcp.listens) >= MAX_LISTEN_SUBSCRIPTIONS
+            return :capacity
+        end
+        if cancellable && !isnothing(stdio_listen(ctx, id))
+            return :duplicate
+        end
+        if !isnothing(record)
+            push!(ctx.mcp.listens, record)
+        end
         return :ok
     end
 end
 
 function listen_error(id, reason::Symbol)
-    reason === :capacity && return error_body(id, MCP_INTERNAL_ERROR, LISTEN_LIMIT_MESSAGE), 400
+    if reason === :capacity
+        return error_body(id, MCP_INTERNAL_ERROR, LISTEN_LIMIT_MESSAGE), 400
+    end
     return error_body(id, MCP_INVALID_REQUEST, LISTEN_DUPLICATE_MESSAGE), 400
 end
 
@@ -308,21 +346,29 @@ instead of a stream.
 """
 function listen_call(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params)
     requested = parse_subscription_filter(get(params, "notifications", nothing))
-    requested isa SubscriptionFilter || return error_body(
-        id, MCP_INVALID_PARAMS, "Invalid subscriptions/listen filter: $requested"), 400
+    if !(requested isa SubscriptionFilter)
+        return error_body(id, MCP_INVALID_PARAMS,
+                          "Invalid subscriptions/listen filter: $requested"), 400
+    end
 
-    id isa Union{String,Int} || return error_body(
-        id, MCP_INVALID_REQUEST, "subscriptions/listen requires a string or integer request id"), 400
-    id isa String && ncodeunits(id) > MAX_SUBSCRIPTION_ID_LENGTH && return error_body(
-        id, MCP_INVALID_REQUEST, "subscriptions/listen id exceeds $(MAX_SUBSCRIPTION_ID_LENGTH) bytes"), 400
+    if !(id isa Union{String,Int})
+        return error_body(id, MCP_INVALID_REQUEST,
+                          "subscriptions/listen requires a string or integer request id"), 400
+    end
+    if id isa String && ncodeunits(id) > MAX_SUBSCRIPTION_ID_LENGTH
+        return error_body(id, MCP_INVALID_REQUEST,
+                          "subscriptions/listen id exceeds $(MAX_SUBSCRIPTION_ID_LENGTH) bytes"), 400
+    end
 
     key = listen_key(id)
 
     # Capacity/duplicate precheck. The authoritative check runs at registration;
     # this one avoids building a stream that is certain to be rejected. The
     # sweep keeps 64 dead streams from denying the surface on a quiet server.
-    precheck = listen_admission(ctx, id; cancellable=req === nothing)
-    precheck === :ok || return listen_error(id, precheck)
+    precheck = listen_admission(ctx, id; cancellable=isnothing(req))
+    if precheck !== :ok
+        return listen_error(id, precheck)
+    end
 
     honored = honored_filter(ctx, requested)
     mcp_broker = broker(ctx)
@@ -342,13 +388,15 @@ function listen_call(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, p
     catch error
         # The broker cap is a safety net behind the registry cap; a racing
         # registration can exhaust it between the precheck and here.
-        error isa PubSub.CapacityError || rethrow()
+        if !(error isa PubSub.CapacityError)
+            rethrow()
+        end
         close(channel)
         return error_body(id, MCP_INTERNAL_ERROR, LISTEN_LIMIT_MESSAGE), 400
     end
 
     stream = EventStream(channel, nothing)
-    record = ListenRecord(id, honored, sub, stream, req === nothing)
+    record = ListenRecord(id, honored, sub, stream, isnothing(req))
 
     registered = listen_admission(ctx, id; cancellable=record.cancellable, record=record)
     if registered !== :ok
@@ -387,12 +435,16 @@ active cancellable stream was cancelled.
 function cancel_listen!(ctx::ServerContext, id)::Bool
     record = lock(ctx.mcp.subscriptions_lock) do
         found = stdio_listen(ctx, id)
-        found === nothing && return nothing
+        if isnothing(found)
+            return nothing
+        end
         delete!(ctx.mcp.listens, found)
         return found
     end
 
-    record === nothing && return false
+    if isnothing(record)
+        return false
+    end
     record.sub.active[] = false
     cancel_stream!(record.stream)
     return true
@@ -470,8 +522,10 @@ Returns the number of subscriber queues the notification was enqueued into;
 `:drop_newest` drops and disconnected queues do not count.
 """
 function notify_list_changed(ctx::ServerContext, kind::Symbol)::Int
-    kind in (:tools, :prompts, :resources) || throw(ArgumentError(
-        "notify_list_changed: kind must be :tools, :prompts, or :resources"))
+    if !(kind in (:tools, :prompts, :resources))
+        throw(ArgumentError(
+            "notify_list_changed: kind must be :tools, :prompts, or :resources"))
+    end
     return broadcast_notification(ctx, SubscriptionNotification(
         "notifications/$(kind)/list_changed", Dict{String,Any}(), nothing))
 end
@@ -496,12 +550,16 @@ notify_resources_changed(ctx::ServerContext)::Int = notify_list_changed(ctx, :re
 # state, preserving the original single-session behavior.
 function legacy_event_wanted(ctx::ServerContext, event::SubscriptionNotification;
                              session::Union{Nothing,MCPSession}=nothing)::Bool
-    handshake_ready(ctx, session) || return false
+    if !handshake_ready(ctx, session)
+        return false
+    end
 
     method = event.method
     if method == "notifications/resources/updated"
         uri = event.uri
-        uri === nothing && return false
+        if isnothing(uri)
+            return false
+        end
         return legacy_subscribed(ctx, session, uri)
     elseif method == "notifications/tools/list_changed"
         return list_changed_capable(ctx, :tools)
@@ -528,8 +586,12 @@ function subscribe_legacy!(ctx::ServerContext; csize::Integer=LEGACY_NOTIFICATIO
     sub = PubSub.subscribe!(broker(ctx),
         event -> event isa SubscriptionNotification && legacy_event_wanted(ctx, event; session=session);
         csize=csize, policy=:drop_newest, label=label)
-    session isa MCPSession || return sub
-    add_sink!(ctx, session, sub) || return nothing
+    if !(session isa MCPSession)
+        return sub
+    end
+    if !add_sink!(ctx, session, sub)
+        return nothing
+    end
     return sub
 end
 

@@ -37,8 +37,9 @@ const PROMPT_ROLES = ("user", "assistant")
 
 function normalize_role(role)::String
     r = lowercase(string(role))
-    r in PROMPT_ROLES ||
+    if !(r in PROMPT_ROLES)
         throw(ArgumentError("Invalid prompt role `$role`; expected \"user\" or \"assistant\""))
+    end
     return r
 end
 
@@ -108,15 +109,21 @@ end
 function get_prompt(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
                     spec::Val=LATEST_LEGACY_SPEC)::Tuple{Dict{String,Any},Int}
     prompt, arguments = resolve_registered_node(ctx.mcp.prompts, id, params, "prompt")
-    isnothing(prompt) && return arguments
+    if isnothing(prompt)
+        return arguments
+    end
 
     try
         value = invoke_registered(ctx, req, prompt, arguments)
         result = Dict{String,Any}("messages" => prompt_result(value))
-        isempty(prompt.description) || (result["description"] = prompt.description)
+        if !isempty(prompt.description)
+            result["description"] = prompt.description
+        end
         return result_response(ctx, id, result; spec=spec)
     catch error
-        error isa MCPRequestError && return request_error_body(id, error), 200
+        if error isa MCPRequestError
+            return request_error_body(id, error), 200
+        end
         return error_body(id, MCP_INTERNAL_ERROR, sprint(showerror, error)), 200
     end
 end

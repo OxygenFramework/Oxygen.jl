@@ -14,7 +14,7 @@ export Server, History, HTTPTransaction, TaggedRoute, Nullable, Context,
     ActiveTask, RegisteredTask, TaskDefinition,
     ActiveCron, RegisteredCron, CronDefinition,
     LifecycleMiddleware,
-    Param, LazyRequest
+    LazyRequest
 
 const Nullable{T} = Union{T, Nothing}
 
@@ -92,13 +92,6 @@ end
 
 const Server = HTTP.Server
 const History = CircularDeque{HTTPTransaction}
-
-@kwdef struct Param{T}
-    name::Symbol
-    type::Type{T}
-    default::Union{T, Missing} = missing
-    hasdefault::Bool = false
-end
 
 # Lazily init frequently used components of a request to be used between parameters when parsing
 @kwdef struct LazyRequest

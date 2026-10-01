@@ -5,6 +5,7 @@ using Base: @kwdef
 using Oxygen: splitdef, Json
 using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder, parse_array_value,
     parse_dict_value, parse_union_value, parse_enum, struct_builder
+using Oxygen.Core.Util: parseparam
 
 
 global message = Dict("message" => "Hello, World!")
@@ -147,6 +148,18 @@ end
     @test parse_dict_value(Dict{String,Fruit}, Dict("a" => "banana")) == Dict("a" => banana)
     @test parse_dict_value(Dict{Fruit,Int}, Dict("apple" => 1)) == Dict(apple => 1)
     @test parse_union_value(Union{Fruit,Nothing}, "banana") === banana
+end
+
+@testset "parseparam enums" begin
+
+    # path/query params share the JSON-body convention
+    @test parseparam(Fruit, "apple") === apple
+    @test parseparam(Fruit, "banana") === banana
+    @test parseparam(Fruit, "1") === apple
+    @test parseparam(Fruit, "2") === banana
+    @test parseparam(Fruit, "banana"; escape=false) === banana
+    @test_throws ArgumentError parseparam(Fruit, "nope")
+    @test_throws ArgumentError parseparam(Fruit, "9")
 end
 
 @testset "parse_array_value element parsing" begin

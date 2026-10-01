@@ -10,7 +10,7 @@ using Dates
     ))
 end
 
-@enum SortOrder relevance = 1 date = 2 name = 3
+@enum SortOrder relevance date name
 
 @tool "Search with filters" Dict(
     :query => "Search query",

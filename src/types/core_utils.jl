@@ -2,8 +2,9 @@ module CoreUtils
 
 using HTTP
 using JSON
-using ..CoreTypes: Nullable, Param, LazyRequest, LifecycleMiddleware
-using ...Util
+using ..CoreTypes: Nullable, LazyRequest, LifecycleMiddleware
+using ...Reflection: Param
+using ...RequestBody
 
 export startup, shutdown, isrequired, headers, pathparams, queryvars,
     jsonbody, formbody, textbody

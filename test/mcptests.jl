@@ -111,6 +111,10 @@ end
     return length(box.alternatives)
 end
 
+@tool "Returns a nested enum palette" Dict(:palette => "a palette") function echo_palette(palette::Palette)
+    return palette
+end
+
 @tool "Always throws" Dict() function throws_tool()
     error("boom")
 end
@@ -282,6 +286,7 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
     for name in ["add_numbers", "concatenate", "with_default", "no_args", "enum_tool",
                  "struct_tool", "dict_tool", "region_tool", "mixed_tool", "vector_tool",
                  "enum_collections_tool", "palette_tool", "plain_palette_tool", "palette_box_tool",
+                 "echo_palette",
                  "throws_tool", "context_tool", "request_tool", "block_tool", "response_tool",
                  "echo_place", "subtract", "multiply"]
         @test haskey(tools, name)
@@ -742,6 +747,25 @@ end
         "alternatives" => [Dict("primary" => "blue")],
     )))
     @test parsebody(r)["result"]["content"][1]["text"] == "1"
+
+    # deep enum results serialize by name in both the text block and
+    # structuredContent (the same convention as every other JSON response)
+    r = call_tool("echo_palette", Dict("palette" => Dict(
+        "primary" => "blue",
+        "colors" => ["red", "green"],
+        "labels" => Dict("x" => "blue"),
+        "accent" => "red",
+    )))
+    result = parsebody(r)["result"]
+    text_result = JSON.parse(result["content"][1]["text"])
+    @test text_result["primary"] == "blue"
+    @test text_result["colors"] == ["red", "green"]
+    @test text_result["labels"] == Dict("x" => "blue")
+    @test text_result["accent"] == "red"
+    @test result["structuredContent"]["primary"] == "blue"
+    @test result["structuredContent"]["colors"] == ["red", "green"]
+    @test result["structuredContent"]["labels"] == Dict("x" => "blue")
+    @test result["structuredContent"]["accent"] == "red"
 
     # vector argument
     r = call_tool("vector_tool", Dict("nums" => [1, 2, 3, 4]))

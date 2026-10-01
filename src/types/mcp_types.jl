@@ -1,7 +1,8 @@
 module MCPTypes
 
 using Base: @kwdef
-using ..CoreTypes: Param, Nullable
+using ..CoreTypes: Nullable
+using ...Reflection: Param
 
 export MCPConfig, MCPMetadata, MCPParam, MCPTool, MCPPrompt, MCPResource, MCPCallable
 

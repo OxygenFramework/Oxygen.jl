@@ -1,9 +1,18 @@
 module Reflection
 using StructTypes
 using Base: @kwdef
-using ..Types
 
-export splitdef, struct_builder, extract_struct_info, defname
+export splitdef, struct_builder, extract_struct_info, defname, Param
+
+# A reflected handler parameter: `splitdef` produces these and `CoreUtils`, the
+# extractors, and the MCP layer consume them. Kept here (rather than in `Types`)
+# so this module has no internal dependencies and can load before every layer.
+@kwdef struct Param{T}
+    name::Symbol
+    type::Type{T}
+    default::Union{T, Missing} = missing
+    hasdefault::Bool = false
+end
 
 """
 Helper function to access the underlying value of any global references
@@ -458,10 +467,11 @@ end
     parse_enum(::Type{T}, value) where {T <: Enum}
 
 Coerce a wire value into the enum `T`. Enum names are the wire form (the same
-convention JSON bodies use through StructTypes), so a client sends `"date"`;
+convention JSON bodies use through StructTypes), so a client sends `"apple"`;
 integer values and integer strings are still accepted for backwards
 compatibility. Every nested parse path funnels into `parsetype` or
-`parse_array_element`, so enums are name-addressable at any depth.
+`parse_array_element`, so enums are name-addressable at any depth; `Util`'s
+`parseparam` (path/query/body params) imports this too.
 """
 function parse_enum(::Type{T}, value) where {T <: Enum}
     value isa T && return value

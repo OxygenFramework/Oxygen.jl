@@ -445,7 +445,7 @@ end
 end
 ```
 
-## MCP Server
+## Model Context Protocol (MCP) support
 
 Oxygen has built-in support for the [Model Context Protocol](https://modelcontextprotocol.io) and has utils for exposing functions as tools, prompts, and resources.
 

@@ -156,6 +156,19 @@ excluded from the argument list.
 end
 ```
 
+The description may be omitted and taken from the handler's docstring instead
+(the one-argument `@prompt` form); an undocumented handler gets an empty
+description:
+
+```julia
+"""
+Report on a city.
+"""
+@prompt function city_report(city::String)
+    return "Write a report about $city"
+end
+```
+
 `prompts/list` advertises `city` (required) and `tone` (optional). Return values are
 normalized into MCP content blocks:
 
@@ -176,10 +189,12 @@ else is rejected. Tools share the same content-block serialization, so the
 end
 ```
 
-For previously defined functions, or an explicit wire name, use `prompt`:
+For previously defined functions, or an explicit wire name, use `prompt`; an
+omitted description falls back to the function's docstring:
 
 ```julia
 prompt("Explain a term", explain; name = "explain_term")
+prompt(explain; name = "explain_term")
 
 prompt("Greets a person"; name = "greet") do name::String
     "Hello $name"

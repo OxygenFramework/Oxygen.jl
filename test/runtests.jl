@@ -17,6 +17,7 @@ include("extensions/bonitotests.jl")
 include("ssetests.jl")
 include("websockettests.jl")
 include("streamingtests.jl")
+include("streamingenginetests.jl")
 include("handlertests.jl")
 
 #### Core Tests ####

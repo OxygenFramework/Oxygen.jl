@@ -515,6 +515,25 @@ function list_result(key::String, items::Vector{Dict{String,Any}};
 end
 
 """
+    server_info(ctx) :: Dict
+
+The server identity object carried by the legacy `initialize` result
+(`serverInfo`) and every modern result (`io.modelcontextprotocol/serverInfo` in
+`_meta`). The optional `description` is present only when configured through
+`mcp_server_description`.
+"""
+function server_info(ctx::ServerContext)::Dict{String,Any}
+    info = Dict{String,Any}(
+        "name" => ctx.mcp.server_name[],
+        "version" => ctx.mcp.server_version[],
+    )
+    if !isnothing(ctx.mcp.server_description[])
+        info["description"] = ctx.mcp.server_description[]
+    end
+    return info
+end
+
+"""
     modern_envelope(ctx, result) :: Dict
 
 Apply the modern-era result envelope to `result`: every modern result MUST carry
@@ -529,10 +548,7 @@ function modern_envelope(ctx::ServerContext, result::Dict{String,Any})::Dict{Str
     if !(meta isa AbstractDict)
         meta = Dict{String,Any}()
     end
-    meta[META_SERVER_INFO] = Dict{String,Any}(
-        "name" => ctx.mcp.server_name[],
-        "version" => ctx.mcp.server_version[],
-    )
+    meta[META_SERVER_INFO] = server_info(ctx)
     result[META_KEY] = meta
     return result
 end

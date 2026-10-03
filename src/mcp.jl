@@ -213,10 +213,7 @@ function initialize_result(ctx::ServerContext, params; session::Union{Nothing,MC
     result = Dict{String,Any}(
         "protocolVersion" => negotiated,
         "capabilities" => server_capabilities(ctx),
-        "serverInfo" => Dict{String,Any}(
-            "name" => ctx.mcp.server_name[],
-            "version" => ctx.mcp.server_version[],
-        ),
+        "serverInfo" => server_info(ctx),
     )
     if !isnothing(ctx.mcp.instructions)
         result["instructions"] = ctx.mcp.instructions

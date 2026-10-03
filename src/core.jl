@@ -115,7 +115,7 @@ function ReviseHandler()
 end
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, mcp=true, mcp_path="/mcp", mcp_server_name="Oxygen", mcp_server_version=v"1.0.0", stdio=false, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, mcp=true, mcp_path="/mcp", mcp_server_name="Oxygen", mcp_server_version=v"1.0.0", mcp_server_description=nothing, stdio=false, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -134,11 +134,12 @@ function serve(ctx::ServerContext;
     mcp         = true,
     show_errors = true,
     show_banner = true,
+    docs_path   = "/docs",
+    schema_path = "/schema",
     mcp_path    = "/mcp",
     mcp_server_name    = "Oxygen",
     mcp_server_version = v"1.0.0",
-    docs_path   = "/docs",
-    schema_path = "/schema",
+    mcp_server_description = nothing,
     external_url = nothing,
     prefix      = nothing,
     context     = missing,
@@ -168,6 +169,8 @@ function serve(ctx::ServerContext;
     # enforce semantic versioning and normalized back to a string on the wire)
     ctx.mcp.server_name[] = string(mcp_server_name)
     ctx.mcp.server_version[] = string(VersionNumber(mcp_server_version))
+    ctx.mcp.server_description[] = isnothing(mcp_server_description) ? nothing :
+        string(mcp_server_description)
 
     # intitialize documenation router (used by docs and metrics)
     ctx.docs.router[] = Router()

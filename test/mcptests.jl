@@ -534,6 +534,7 @@ end
     @test haskey(result["capabilities"], "tools")
     @test haskey(result["capabilities"], "prompts")
     @test result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "Oxygen"
+    @test !haskey(result["_meta"]["io.modelcontextprotocol/serverInfo"], "description")
     @test result["cacheScope"] == "public"
 end
 
@@ -1040,6 +1041,7 @@ end
     @test haskey(result["capabilities"], "tools")
     @test result["serverInfo"]["name"] == "Oxygen"
     @test result["serverInfo"]["version"] == "1.0.0"
+    @test !haskey(result["serverInfo"], "description")
     @test !haskey(result, "resultType")
 
     # notifications/initialized is accepted silently
@@ -1376,7 +1378,8 @@ terminate()
 
 serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
       access_log=nothing, mcp_path="tools/mcp", mcp_server_name="McpCustom",
-      mcp_server_version=v"9.9.9", prefix="/api", context=AppState("injected"))
+      mcp_server_version=v"9.9.9", mcp_server_description="Custom tools server",
+      prefix="/api", context=AppState("injected"))
 
 @testset "custom mcp path behind a prefix" begin
     payload = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "tools/list",
@@ -1398,6 +1401,7 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
     meta_info = body["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]
     @test meta_info["name"] == "McpCustom"
     @test meta_info["version"] == "9.9.9"
+    @test meta_info["description"] == "Custom tools server"
 
     # so does the legacy initialize handshake
     init = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
@@ -1408,6 +1412,7 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
     server_info = JSON.parse(String(r.body))["result"]["serverInfo"]
     @test server_info["name"] == "McpCustom"
     @test server_info["version"] == "9.9.9"
+    @test server_info["description"] == "Custom tools server"
 
     # without the prefix the request is rejected by the prefix middleware
     r = HTTP.request("POST", "http://$HOST:$PORT/tools/mcp", headers, JSON.json(payload);

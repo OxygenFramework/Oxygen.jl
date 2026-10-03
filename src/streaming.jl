@@ -107,10 +107,28 @@ end
 # because every value goes through event normalization on the way in.
 Base.eltype(::Type{<:EventStream{T}}) where {T} = T
 Base.IteratorSize(::Type{<:EventStream}) = Base.SizeUnknown()
-Base.isopen(stream::EventStream) = isopen(stream.channel)
+
+# The state read is taken under the channel lock so it cannot race with `close`.
+function Base.isopen(stream::EventStream)::Bool
+    lock(stream.channel)
+    try
+        return isopen(stream.channel)
+    finally
+        unlock(stream.channel)
+    end
+end
+
 Base.isready(stream::EventStream) = isready(stream.channel)
 Base.take!(stream::EventStream) = take!(stream.channel)
-Base.close(stream::EventStream) = close(stream.channel)
+
+# Closing the handle is cancellation: producers blocked in `put!` unwind with
+# `StreamCancelled` and later emits do not touch a closed channel. A producer
+# finishing normally closes the raw channel in its `finally`, which does not
+# mark cancellation.
+function Base.close(stream::EventStream)
+    cancel_stream!(stream)
+    return nothing
+end
 Base.wait(stream::EventStream) = wait(stream.channel)
 Base.fetch(stream::EventStream) = fetch(stream.channel)
 Base.bind(stream::EventStream, task::Task) = (bind(stream.channel, task); stream)
@@ -157,8 +175,9 @@ function produce_stream(stream::EventStream, f::Function)
         # cancellation), it closed the channel and a blocked `put!` raised
         # InvalidStateException; that is the intended way for user code to
         # unwind, so it is suppressed rather than reported. Any other failure
-        # becomes an error result.
-        if !stream.cancel[] && isopen(stream.channel)
+        # becomes an error result; a put into an already-closed channel is
+        # likewise dropped.
+        if !stream.cancel[]
             try
                 put!(stream.channel, ErrorEvent(error))
             catch
@@ -195,8 +214,25 @@ end
 function enqueue!(stream::EventStream, value)
     lock(stream.lock)
     try
+        # Re-check under the lock so a cancellation racing the caller's
+        # `check_cancelled` cannot enqueue into a closing stream.
+        if stream.cancel[]
+            throw(StreamCancelled())
+        end
         event = normalize_event(stream, value)
-        event === nothing || put!(stream.channel, event)
+        if !isnothing(event)
+            try
+                put!(stream.channel, event)
+            catch error
+                # `cancel_stream!` closes the channel, releasing a blocked
+                # `put!` with an `InvalidStateException`; surface the
+                # documented `StreamCancelled` instead.
+                if stream.cancel[] && error isa InvalidStateException
+                    throw(StreamCancelled())
+                end
+                rethrow()
+            end
+        end
     finally
         unlock(stream.lock)
     end
@@ -216,15 +252,21 @@ normalize_event(::EventStream, value) = DataEvent(value)
 Throw `StreamCancelled` if the request has been cancelled. Long cooperative
 loops that do not emit often can call this between steps to stop promptly.
 """
-check_cancelled(stream::EventStream) = stream.cancel[] ? throw(StreamCancelled()) : nothing
+function check_cancelled(stream::EventStream)
+    if stream.cancel[]
+        throw(StreamCancelled())
+    end
+    return nothing
+end
 
 # What the connection task calls when it detects a dead peer (or when a
 # streamed call finishes and any child producers must stop). Setting the flag
 # makes future `emit`s throw; closing the channel releases a producer blocked
-# on `put!` with an InvalidStateException, which `produce_stream` suppresses.
+# on `put!` with an `InvalidStateException`, which `enqueue!` maps back to
+# `StreamCancelled`.
 function cancel_stream!(stream::EventStream)
     stream.cancel[] = true
-    isopen(stream.channel) && close(stream.channel)
+    close(stream.channel)
     return nothing
 end
 
@@ -253,19 +295,37 @@ function pump_stream(stream::EventStream, on_event::Function;
             event = try
                 take!(stream.channel)
             catch error
-                error isa InvalidStateException || rethrow()
+                if error isa InvalidStateException
+                    break
+                end
+                rethrow()
+            end
+            if on_event(event) === false
                 break
             end
-            on_event(event) === false && break
         end
     else
-        while isopen(stream.channel) || isready(stream.channel)
-            if isready(stream.channel)
-                event = take!(stream.channel)
-                on_event(event) === false && break
-            else
+        while true
+            if !isready(stream)
+                if !isopen(stream)
+                    break
+                end
                 on_idle()
                 sleep(poll)
+                continue
+            end
+            event = try
+                take!(stream.channel)
+            catch error
+                # The channel can close between `isready` and `take!`; the
+                # stream has simply ended.
+                if error isa InvalidStateException
+                    break
+                end
+                rethrow()
+            end
+            if on_event(event) === false
+                break
             end
         end
     end
@@ -274,16 +334,20 @@ end
 
 # Drain a stream without writing it and return its terminal event. Every event
 # is taken so a producer can never block on a full buffer.
-function drain_stream!(stream::EventStream)
-    terminal = nothing
+function drain_stream!(stream::EventStream)::Union{Nothing,FinalEvent,ErrorEvent}
+    terminal::Union{Nothing,FinalEvent,ErrorEvent} = nothing
     while true
         event = try
             take!(stream.channel)
         catch error
-            error isa InvalidStateException || rethrow()
-            break
+            if error isa InvalidStateException
+                break
+            end
+            rethrow()
         end
-        (event isa FinalEvent || event isa ErrorEvent) && (terminal = event)
+        if event isa FinalEvent || event isa ErrorEvent
+            terminal = event
+        end
     end
     return terminal
 end
@@ -380,10 +444,11 @@ end
 # Write one keep-alive comment when the connection has been quiet for the full
 # interval. Shared by every SSE writer.
 function keepalive!(connection::HTTP.Stream, last_write::Ref{Float64})
-    if time() - last_write[] >= SSE_KEEPALIVE_SECONDS
+    now = time()
+    if now - last_write[] >= SSE_KEEPALIVE_SECONDS
         write(connection, ": keepalive\n\n")
         flush(connection)
-        last_write[] = time()
+        last_write[] = now
     end
     return nothing
 end
@@ -397,7 +462,8 @@ SSE headers, optionally calls `on_open` (for a priming comment), writes `initial
 through `write_event`, then pumps `source`, calling `write_event(event) -> Bool`
 for every event (returning `false` stops the pump) and writing keep-alive
 comments while the producer is idle. `cleanup` runs in the `finally`, before the
-write side of the connection is closed.
+write side of the connection is closed; a throwing `cleanup` still closes the
+write side, and the error then propagates to the caller.
 """
 function stream_sse(connection::HTTP.Stream, source::EventStream, write_event::Function;
                     initial=nothing, cleanup::Function=() -> nothing,
@@ -413,28 +479,39 @@ function stream_sse(connection::HTTP.Stream, source::EventStream, write_event::F
     keep = true
     try
         HTTP.startwrite(connection)
-        if on_open !== nothing
+        if !isnothing(on_open)
             on_open()
             last_write[] = time()
         end
-        if initial !== nothing
+        if !isnothing(initial)
             keep = write_event(initial) !== false
-            keep && (last_write[] = time())
+            if keep
+                last_write[] = time()
+            end
         end
-        keep && pump_stream(source,
-            event -> begin
-                keep = write_event(event) !== false
-                keep && (last_write[] = time())
-                return keep
-            end;
-            on_idle = () -> keepalive!(connection, last_write))
+        if keep
+            pump_stream(source,
+                event -> begin
+                    keep = write_event(event) !== false
+                    if keep
+                        last_write[] = time()
+                    end
+                    return keep
+                end;
+                on_idle = () -> keepalive!(connection, last_write))
+        end
     catch
         # A failed write means the client disconnected — end quietly.
     finally
-        cleanup()
+        # The write side must close even when `cleanup` fails, so nest it: a
+        # throwing cleanup would otherwise leak the connection.
         try
-            HTTP.closewrite(connection)
-        catch
+            cleanup()
+        finally
+            try
+                HTTP.closewrite(connection)
+            catch
+            end
         end
     end
     return nothing
@@ -445,10 +522,14 @@ end
 # drain the stream and return its final value as a normal response.
 function format_response(req::HTTP.Request, source::EventStream)
     connection = get(req.context, :stream, nothing)
-    connection isa HTTP.Stream && return write_sse_response(connection, source)
+    if connection isa HTTP.Stream
+        return write_sse_response(connection, source)
+    end
 
     terminal = drain_stream!(source)
-    terminal isa ErrorEvent && throw(terminal.error)
+    if terminal isa ErrorEvent
+        throw(terminal.error)
+    end
     value = terminal isa FinalEvent ? terminal.value : nothing
     return format_response(req, value)
 end

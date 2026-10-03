@@ -78,13 +78,14 @@ end
     @test queued(sub) == [1]
     @test isopen(sub)
 
-    # :drop_oldest makes room by discarding the oldest queued value
+    # :drop_oldest makes room by discarding the oldest queued value; the
+    # displaced value counts as a drop
     broker = Broker{Int}()
     sub = PubSub.subscribe!(broker, "a"; csize=1, policy=:drop_oldest)
     @test PubSub.publish!(broker, "a", 1) == 1
     @test PubSub.publish!(broker, "a", 2) == 1
     @test queued(sub) == [2]
-    @test PubSub.drops(sub) == 0
+    @test PubSub.drops(sub) == 1
 
     # on an unbuffered queue there is nothing to make room with, so the value
     # is lost and counted instead of silently vanishing
@@ -215,6 +216,61 @@ end
     @test queued(sub) == [0, 1]
 
     @test_throws ArgumentError PubSub.subscribe!(Broker{Int}(), "a"; channel=Channel{String}(1))
+end
+
+@testset "invalid pre-created channels are rejected" begin
+    broker = Broker{Int}()
+    queue = Channel{Int}(1)
+    close(queue)
+
+    @test_throws ArgumentError PubSub.subscribe!(broker, "a"; channel=queue)
+    # unbuffered queues never accept a delivery, so accepting one would
+    # silently drop every published value
+    @test_throws ArgumentError PubSub.subscribe!(broker, "a"; channel=Channel{Int}(0))
+    @test PubSub.subscribers(broker) == 0
+end
+
+@testset "unsubscribing through the wrong broker does not end the subscription" begin
+    owner = Broker{Int}()
+    other = Broker{Int}()
+    sub = PubSub.subscribe!(owner, "a")
+
+    @test PubSub.unsubscribe!(other, sub) == false
+    @test isopen(sub)
+    @test PubSub.publish!(owner, "a", 1) == 1
+    @test queued(sub) == [1]
+
+    @test PubSub.unsubscribe!(owner, sub) == true
+    @test !isopen(sub)
+end
+
+@testset "capacity is reclaimed after a queue is closed directly" begin
+    broker = Broker{Int}(cap=1)
+    sub = PubSub.subscribe!(broker, "a")
+
+    close(sub.queue)  # dead behind the broker's back
+    fresh = PubSub.subscribe!(broker, "b")  # prune reclaims the slot
+    @test PubSub.subscribers(broker) == 1
+    @test PubSub.publish!(broker, "b", 1) == 1
+    @test queued(fresh) == [1]
+end
+
+@testset "quiet-topic dead records are swept periodically" begin
+    broker = Broker{Int}()
+    quiet = PubSub.subscribe!(broker, "quiet")
+    live = PubSub.subscribe!(broker, "loud"; csize=PubSub.SWEEP_INTERVAL + 1)
+
+    close(quiet)
+    @test broker.count == 2  # still counted until a sweep reaches it
+
+    for i in 1:PubSub.SWEEP_INTERVAL
+        PubSub.publish!(broker, "loud", i)
+    end
+
+    # the amortized sweep reclaimed the record on the topic nobody published to
+    @test broker.count == 1
+    @test PubSub.publish!(broker, "loud", 0) == 1
+    @test length(queued(live)) == PubSub.SWEEP_INTERVAL + 1
 end
 
 @testset "concurrent publishers deliver without loss" begin

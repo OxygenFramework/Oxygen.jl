@@ -44,6 +44,7 @@ end
     path            :: Ref{String}               = Ref{String}("/mcp")
     server_name     :: Ref{String}               = Ref{String}("Oxygen")
     server_version  :: Ref{String}               = Ref{String}("1.0.0")
+    server_description :: Ref{Nullable{String}}  = Ref{Nullable{String}}(nothing)
     instructions    :: Nullable{String}          = nothing
     tools           :: Dict{String, MCPTool}     = Dict{String, MCPTool}()  # keyed by wire name
     prompts         :: Dict{String, MCPPrompt}   = Dict{String, MCPPrompt}() # keyed by wire name

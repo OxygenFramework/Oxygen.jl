@@ -286,11 +286,14 @@ serve(prefix = "/api", mcp_path = "/tools/mcp")
 # the endpoint is reached at POST /api/tools/mcp
 ```
 
-The `serverInfo` block returned by `initialize` (and the modern result `_meta`) identifies this server as `Oxygen` version `1.0.0` by default. Override it with `mcp_server_name` and `mcp_server_version`; the version accepts a `VersionNumber` (or a string that parses as one) so semantic versioning is enforced:
+The `serverInfo` block returned by `initialize` (and the modern result `_meta`) identifies this server as `Oxygen` version `1.0.0` by default. Override it with `mcp_server_name` and `mcp_server_version`; the version accepts a `VersionNumber` (or a string that parses as one) so semantic versioning is enforced. Pass `mcp_server_description` to advertise a short, human-readable description of the server to calling agents:
 
 ```julia
-serve(mcp_server_name = "MyServer", mcp_server_version = v"2.3.0")
+serve(mcp_server_name = "MyServer", mcp_server_version = v"2.3.0",
+      mcp_server_description = "Inventory and order management tools")
 ```
+
+The description is omitted from `serverInfo` when it is not configured.
 
 Requests must include the `MCP-Protocol-Version`, `Mcp-Method` headers, plus `Mcp-Name` for `tools/call`, `prompts/get`, and `resources/read` (carrying the request's name or URI). Oxygen validates that the headers match the request body and rejects mismatches with `400 Bad Request`. `DELETE` returns `405`. A `GET` declaring a modern protocol version also returns `405`; a legacy `GET` replies with a JSON health body, or holds the connection open as the legacy server→client notification stream when it declares `Accept: text/event-stream`.
 

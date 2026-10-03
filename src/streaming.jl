@@ -99,8 +99,7 @@ mutable struct EventStream{T,P} <: AbstractChannel{T}
 end
 
 function EventStream(channel::Channel{T}, protocol::P) where {T,P}
-    return EventStream{T,P}(channel, protocol,
-                            Threads.Atomic{Bool}(false), ReentrantLock())
+    return EventStream{T,P}(channel, protocol, Threads.Atomic{Bool}(false), ReentrantLock())
 end
 
 # `AbstractChannel` passthroughs. `put!` is deliberately redefined below,

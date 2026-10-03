@@ -214,6 +214,16 @@ function explain(term::String)
 end
 prompt("Explain a term", explain; name="explain_term")
 
+"""
+Explains a term using the docstring as the prompt description.
+"""
+function documented_explain(term::String)
+    return "Explain $term"
+end
+
+# function + prompt form without a description falls back to the docstring
+prompt(documented_explain; name="documented_explain")
+
 # do..block form with an explicit wire name
 prompt("Greets a person"; name="greet") do name::String
     return "Hello $name"
@@ -230,6 +240,19 @@ end
 
 @prompt "Returns an invalid role" function bad_role_prompt()
     return "system" => "nope"
+end
+
+# The two-argument @prompt form uses the handler's docstring as the description
+"""
+Summarizes a document using the docstring as the prompt description.
+"""
+@prompt function documented_prompt(document::String)
+    return "Summarize $document"
+end
+
+# ...and an undocumented handler simply gets an empty description
+@prompt function undocumented_prompt(topic::String)
+    return "Talk about $topic"
 end
 
 ### Request helpers ###########################################################
@@ -451,6 +474,16 @@ end
 
     r = call_tool("documented_tool", Dict("a" => 1, "b" => 2))
     @test parsebody(r)["result"]["content"][1]["text"] == "3"
+end
+
+@testset "docstring prompt description" begin
+    prompts = CONTEXT[].mcp.prompts
+    @test prompts["documented_prompt"].description == "Summarizes a document using the docstring as the prompt description."
+    @test prompts["undocumented_prompt"].description == ""
+    @test prompts["documented_explain"].description == "Explains a term using the docstring as the prompt description."
+
+    r = prompt_get("documented_prompt", Dict("document" => "notes"))
+    @test parsebody(r)["result"]["messages"][1]["content"]["text"] == "Summarize notes"
 end
 
 @testset "parse_tool_argument" begin

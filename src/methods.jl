@@ -325,6 +325,15 @@ Convenience function to register an MCP prompt. Equivalent to `@prompt`.
 """
 prompt(func::Function, description::String; name=nothing) = prompt(description, func; name=name)
 
+"""
+    prompt(func::Function; name=nothing)
+
+Convenience function to register an MCP prompt without an explicit description:
+the function's own docstring is used as the prompt description. Equivalent to the
+two-argument `@prompt`.
+"""
+prompt(func::Function; name=nothing) = Oxygen.Core.register_prompt!(CONTEXT[], "", func; name=name)
+
 
 """
     @prompt(description::String, func::Function)
@@ -347,6 +356,33 @@ A block form is also supported:
 """
 macro prompt(description, func)
     return :(prompt($(esc(description)), $(esc(func))))
+end
+
+"""
+    @prompt(func::Function)
+
+Used to register a function as an MCP prompt using the function's docstring as
+the prompt description. The handler must be a named definition written inline,
+so the macro can attach the preceding docstring to it:
+
+    \"\"\"
+    Report on a city.
+    \"\"\"
+    @prompt function city_report(city::String)
+        "Write a report about \$city"
+    end
+
+An undocumented handler gets an empty description.
+"""
+macro prompt(func)
+    name = Oxygen.Core.Reflection.defname(func)
+    if isnothing(name)
+        return :(prompt($(esc(func))))
+    end
+    return esc(quote
+        Base.@__doc__ $func
+        prompt($name)
+    end)
 end
 
 

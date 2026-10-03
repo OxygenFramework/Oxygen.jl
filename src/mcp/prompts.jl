@@ -11,6 +11,9 @@
 Reflect on `func` and store the resulting `MCPPrompt` in `ctx.mcp.prompts` keyed
 by its wire name. Unlike `register_tool!`, no parameter description map is taken:
 the handler's own parameters *are* the prompt's template variables.
+
+When `desc` is empty the handler's own docstring is used as the prompt
+description, so the two-argument `@prompt`/`prompt` forms need not repeat it.
 """
 function register_prompt!(ctx::ServerContext, desc, func::Function; name=nothing)
     signature = reflect_handler(func)
@@ -21,7 +24,10 @@ function register_prompt!(ctx::ServerContext, desc, func::Function; name=nothing
         throw(ArgumentError("An MCP prompt named `$wirename` is already registered"))
     end
 
-    prompt = MCPPrompt(wirename, string(desc), func, signature.params, signature.argnames,
+    own = string(desc)
+    description = isempty(own) ? function_docstring(func) : own
+
+    prompt = MCPPrompt(wirename, description, func, signature.params, signature.argnames,
                        signature.has_context, signature.has_request)
     ctx.mcp.prompts[wirename] = prompt
     notify_prompts_changed(ctx)

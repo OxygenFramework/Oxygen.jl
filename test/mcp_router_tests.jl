@@ -260,6 +260,11 @@ end
     @test haskey(tools, "get_coll_id")
     @test haskey(tools, "get_coll_id_2")
 
+    # an unnamed non-request handler parameter is rejected before registration
+    @test_throws ArgumentError MCP.register_route_tool!(
+        CONTEXT[], MCP.normalize_mcp_config(true),
+        (req::HTTP.Request, ::Int) -> 1; httpmethod="GET", route="/unnamed")
+
     # excluded route is not served
     @test !any(t -> t["name"] == "route_health", parsebody(rpc("tools/list", Dict("_meta" => req_meta())))["result"]["tools"])
 end

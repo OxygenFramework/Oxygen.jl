@@ -465,6 +465,15 @@ end
     @test_throws ArgumentError tool("Nested", Dict(:a => (description = "x", name = "y")), subtract)
     # String keys are rejected
     @test_throws ArgumentError tool("String key", Dict("a" => "left"), subtract)
+    # unnamed handler parameters have no wire name and are rejected, even when
+    # every parameter carries a description
+    @test_throws ArgumentError MCP.reflect_handler((a, ::Int) -> a)
+    @test_throws ArgumentError tool("Unnamed", Dict(:a => "left", Symbol("#unused#") => "unused"),
+                                   (a, ::Int) -> a)
+    # the leading request argument of a route handler is skipped, so it may be
+    # unnamed without tripping the guard
+    route_sig = MCP.reflect_handler((::HTTP.Request, id::Int) -> id; skip_first=true)
+    @test [p.param.name for p in route_sig.params] == [:id]
 end
 
 @testset "docstring tool description" begin
@@ -710,6 +719,10 @@ end
 
 @testset "prompt wire name collision" begin
     @test_throws ArgumentError prompt("Duplicate", explain; name="city_report")
+end
+
+@testset "prompt unnamed parameter rejection" begin
+    @test_throws ArgumentError prompt("Unnamed", (::Int) -> "x")
 end
 
 @testset "tools/call happy path" begin

@@ -11,6 +11,11 @@
 # call through the streaming path).
 const INJECTED_PARAMS = (:context, :request, :stream)
 
+# The compiler-generated name Julia reflects for an unnamed argument. It has no
+# usable wire name, so registration rejects it. Checked after `skip_first` drops
+# the route's leading request argument, which is allowed to be unnamed.
+const UNNAMED_PARAM = Symbol("#unused#")
+
 """
     HandlerSignature
 
@@ -51,6 +56,11 @@ function reflect_handler(func::Function;
     for p in positional
         if p.name in INJECTED_PARAMS
             continue
+        end
+        if p.name === UNNAMED_PARAM
+            throw(ArgumentError(
+                "MCP handlers cannot declare unnamed parameters; " *
+                "give the `::$(p.type)` parameter a name"))
         end
         push!(argnames, p.name)
         push!(mcp_params, mcp_param(p, descriptions, names))
@@ -169,30 +179,30 @@ router description is used as a group prefix for the tool description. The
 tool's wire name defaults to the handler's name (endpoint-specific) unless the
 route metadata supplies `name`.
 """
-function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Function;
-                              httpmethod::String="", route::String="")
-    signature = reflect_handler(func; descriptions=config.parameters, names=config.names,
-                                skip_first=true)
+function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Function; httpmethod::String="", route::String="")
+    signature = reflect_handler(func; descriptions=config.parameters, names=config.names, skip_first=true)
     inject_request = !isempty(signature.info.args)
 
     own = !isempty(config.description) ? config.description : function_docstring(func)
-    description = if !isempty(config.group) && !isempty(own)
-        "$(config.group): $own"
-    elseif !isempty(own)
-        own
-    else
-        config.group
-    end
+    description = 
+        if !isempty(config.group) && !isempty(own)
+            "$(config.group): $own"
+        elseif !isempty(own)
+            own
+        else
+            config.group
+        end
 
-    wirename = if !isnothing(config.toolname)
-        string(config.toolname)
-    elseif !Base.isgensym(signature.info.name)
-        string(signature.info.name)
-    else
-        # Anonymous/do-block handlers have no usable name; derive one from the
-        # endpoint so it stays specific and collision-free.
-        derived_tool_name(httpmethod, route)
-    end
+    wirename = 
+        if !isnothing(config.toolname)
+            string(config.toolname)
+        elseif !Base.isgensym(signature.info.name)
+            string(signature.info.name)
+        else
+            # Anonymous/do-block handlers have no usable name; derive one from the
+            # endpoint so it stays specific and collision-free.
+            derived_tool_name(httpmethod, route)
+        end
 
     # An explicit name (route `name = ...` or a named handler) must be unique. An
     # endpoint-derived name is disambiguated instead, so two anonymous handlers
@@ -233,8 +243,7 @@ function derived_tool_name(httpmethod::String, route::String)::String
 end
 
 # Shared registry write. A wire name may only be claimed once.
-function store_tool!(ctx::ServerContext, wirename::String, description::String, func::Function,
-                     signature::HandlerSignature, inject_request::Bool)
+function store_tool!(ctx::ServerContext, wirename::String, description::String, func::Function, signature::HandlerSignature, inject_request::Bool)
     if haskey(ctx.mcp.tools, wirename)
         throw(ArgumentError("An MCP tool named `$wirename` is already registered"))
     end

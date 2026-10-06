@@ -55,7 +55,7 @@ function gettype(type::Type)::String
         return "array"
     elseif type <: Enum
         return "integer"  # Enums are represented as integers in OpenAPI
-    elseif type <: String || type == Date || type == DateTime
+    elseif type <: String || type == Symbol || type == Date || type == DateTime
         return "string"
     elseif isstructtype(type)
         return "object"
@@ -303,9 +303,11 @@ function create_value_schema(value_type::Type, schemas::Dict; enum_wire::Symbol=
 
     if value_type === Union{} || value_type === Any
         return nothing
+
     elseif is_custom_struct(value_type)
         convertobject!(value_type, schemas; enum_wire=enum_wire)
         return Dict{String,Any}("\$ref" => getcomponent(string(nameof(value_type))))
+
     elseif value_type <: AbstractArray
         schema = Dict{String,Any}("type" => "array")
         item_schema = create_value_schema(get_element_type(value_type), schemas; enum_wire=enum_wire)
@@ -313,6 +315,7 @@ function create_value_schema(value_type::Type, schemas::Dict; enum_wire::Symbol=
             schema["items"] = item_schema
         end
         return schema
+
     elseif value_type <: AbstractDict
         schema = Dict{String,Any}("type" => "object")
         nested_schema = create_value_schema(dict_valtype(value_type), schemas; enum_wire=enum_wire)
@@ -320,8 +323,10 @@ function create_value_schema(value_type::Type, schemas::Dict; enum_wire::Symbol=
             schema["additionalProperties"] = nested_schema
         end
         return schema
+
     elseif value_type <: Enum
         return enum_schema(value_type; enum_wire=enum_wire)
+        
     else
         schema = Dict{String,Any}("type" => gettype(value_type))
         format = getformat(value_type)
@@ -599,6 +604,19 @@ end
 
 
 """
+    create_response_schema(rt::Type, schemas::Dict)
+
+Build the OpenAPI schema for a single inferred return type. Special cases are
+selected by dispatch; everything else defers to the recursive value builder.
+Returns `nothing` when the return type places no constraint on the payload.
+"""
+create_response_schema(rt::Type, schemas::Dict) = create_value_schema(rt, schemas)
+create_response_schema(::Type{HTTP.Response}, ::Dict) = nothing # HTTP response objects don't carry an inferable payload
+create_response_schema(::Type{Nothing}, ::Dict) = Dict{String,Any}("type" => "null")
+create_response_schema(::Type{Union{}}, ::Dict) = Dict{String,Any}("type" => "null")
+
+
+"""
 Used to generate & register schema related for a specific endpoint 
 """
 function registerschema(
@@ -643,48 +661,17 @@ function registerschema(
     ##### Auto register response schema #####
     response_schema = nothing
     if !isempty(returntype)
-        rt = resolve_union_type(returntype[1])
+        parts = Dict{String,Any}[]
+        for rt in returntype
+            schema = create_response_schema(rt, schemas)
+            isnothing(schema) || push!(parts, schema)
+        end
 
-        if rt == Nothing || rt === Union{} || rt === Core.TypeofBottom
-            response_schema = Dict("type" => "null")  # Handle empty types explicitly
-
-        elseif is_custom_struct(rt)
-            convertobject!(rt, schemas)
-            response_schema = Dict("\$ref" => getcomponent(rt))
-
-        elseif rt <: AbstractVector
-            elem_type = rt.parameters[1]
-            if is_custom_struct(elem_type)
-                convertobject!(elem_type, schemas)
-                response_schema = Dict(
-                    "type" => "array",
-                    "items" => Dict("\$ref" => getcomponent(elem_type))
-                )
-            else
-                response_schema = Dict{String,Any}("type" => "array", "items" => Dict("type" => gettype(elem_type)))
-                # Add enum values if element type is an enum
-                if elem_type <: Enum
-                    enum_values = collect(Int.(Base.Enums.instances(elem_type)))
-                    response_schema["items"]["enum"] = enum_values
-                end
-                # Add format if it exists
-                format = getformat(elem_type)
-                if !isnothing(format)
-                    response_schema["items"]["format"] = format
-                end
-            end
-        else
-            response_schema = Dict{String,Any}("type" => gettype(rt))
-            # Add enum values if return type is an enum
-            if rt <: Enum
-                enum_values = collect(Int.(Base.Enums.instances(rt)))
-                response_schema["enum"] = enum_values
-            end
-            # Add format if it exists
-            format = getformat(rt)
-            if !isnothing(format)
-                response_schema["format"] = format
-            end
+        # Multiple inferred return types become an `anyOf` collection
+        if length(parts) == 1
+            response_schema = parts[1]
+        elseif !isempty(parts)
+            response_schema = Dict{String,Any}("anyOf" => parts)
         end
     end
 

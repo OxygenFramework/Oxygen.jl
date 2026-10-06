@@ -130,8 +130,12 @@ cache and reused by `resync_metrics_cache!` when no explicit lock is passed.
 """
 function register_metrics_cache!(history::History; max_depth::Int=4, result_cache_size::Int=8,
                                  history_lock::Nullable{ReentrantLock}=nothing)
-    max_depth >= 1 || throw(ArgumentError("max_depth must be >= 1, got $max_depth"))
-    result_cache_size >= 1 || throw(ArgumentError("result_cache_size must be >= 1, got $result_cache_size"))
+    if max_depth < 1
+        throw(ArgumentError("max_depth must be >= 1, got $max_depth"))
+    end
+    if result_cache_size < 1
+        throw(ArgumentError("result_cache_size must be >= 1, got $result_cache_size"))
+    end
 
     cache = MetricsCache(
         ReentrantLock(),
@@ -202,7 +206,9 @@ end
 
 function resync_metrics_cache!(history::History; history_lock::Nullable{ReentrantLock}=nothing)
     cache = metrics_cache(history)
-    isnothing(cache) && return nothing
+    if isnothing(cache)
+        return nothing
+    end
     return resync_metrics_cache!(cache; history_lock=history_lock)
 end
 
@@ -279,7 +285,9 @@ end
 
 function add_transaction!(stats::LatencyStats, transaction::HTTPTransaction)
     stats.total_requests += 1
-    transaction.success || (stats.total_errors += 1)
+    if !transaction.success
+        stats.total_errors += 1
+    end
 
     duration = transaction.duration
     if duration != 0.0
@@ -296,7 +304,9 @@ function remove_transaction!(cache::MetricsCache, transaction::HTTPTransaction)
     stats = get(cache.groups, prefix, nothing)
     if !isnothing(stats)
         remove_transaction!(stats, transaction)
-        stats.total_requests == 0 && delete!(cache.groups, prefix)
+        if stats.total_requests == 0
+            delete!(cache.groups, prefix)
+        end
     end
 
     bin_key = floor(transaction.timestamp, Second)
@@ -312,7 +322,9 @@ end
 
 function remove_transaction!(stats::LatencyStats, transaction::HTTPTransaction)
     stats.total_requests -= 1
-    transaction.success || (stats.total_errors -= 1)
+    if !transaction.success
+        stats.total_errors -= 1
+    end
 
     duration = transaction.duration
     if duration != 0.0
@@ -329,7 +341,9 @@ end
 
 function update_metrics_cache!(cache::MetricsCache, transaction::HTTPTransaction, evicted::Nullable{HTTPTransaction})
     lock(cache.lock) do
-        isnothing(evicted) || remove_transaction!(cache, evicted)
+        if !isnothing(evicted)
+            remove_transaction!(cache, evicted)
+        end
         add_transaction!(cache, transaction)
         cache.version += 1
     end
@@ -400,7 +414,9 @@ function cached_metrics_result(cache::MetricsCache, key::Any, snapshot_fn::Funct
         end
         return nothing
     end
-    isnothing(cached) || return cached
+    if !isnothing(cached)
+        return cached
+    end
 
     version, data = lock(cache.lock) do
         return (cache.version, snapshot_fn())
@@ -410,7 +426,9 @@ function cached_metrics_result(cache::MetricsCache, key::Any, snapshot_fn::Funct
 
     lock(cache.lock) do
         # Only publish the result if the aggregates didn't move while computing.
-        cache.version == version && (cache.results[key] = (version, result))
+        if cache.version == version
+            cache.results[key] = (version, result)
+        end
     end
 
     return result
@@ -455,7 +473,9 @@ function compute_metrics_results(data) :: MetricsResults
     errors = Dict{String, Int}()
     for (prefix, metrics) in endpoints
         failures = metrics["total_errors"]
-        failures > 0 && (errors[prefix] = failures)
+        if failures > 0
+            errors[prefix] = failures
+        end
     end
 
     return MetricsResults(Dict{String, Any}(metrics_from_snapshot(server)), endpoints, errors, bins)
@@ -526,7 +546,9 @@ function push_history(history::History, transaction::HTTPTransaction)
     # transaction, so it is reported and the cache is rebuilt from the history
     # to heal any partially applied update.
     try
-        isnothing(cache) || update_metrics_cache!(cache, transaction, evicted)
+        if !isnothing(cache)
+            update_metrics_cache!(cache, transaction, evicted)
+        end
     catch error
         @warn "Failed to update the metrics cache: $error"
         if !isnothing(cache)
@@ -672,63 +694,11 @@ function error_distribution(history::Vector{HTTPTransaction}, lower_bound=Minute
     return failed_counts
 end
 
-# """
-# Helper function used to convert internal data so that it can be viewd by a graph more easily
-# """
-# function prepare_timeseries_data(unit::Dates.TimePeriod=Second(1))
-#     function(binned_records::Dict)
-#         binned_records |> timeseries |> fill_missing_data(unit, fill_to_current=true, sort=false) |> series_format
-#     end
-# end
-
 function prepare_timeseries_data()
     function(binned_records::Dict)
         binned_records |> timeseries |> series_format
     end
 end
-
-# function fill_missing_data(unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
-#     return function(records::Vector{TimeseriesRecord})
-#         return fill_missing_data(records, unit, fill_to_current=fill_to_current, sort=sort)
-#     end
-# end
-
-# function fill_missing_data(records::Vector{TimeseriesRecord}, unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
-#     # Ensure the input is sorted by timestamp
-#     if sort 
-#         sort!(records, by = x -> x.timestamp)
-#     end
-
-#     filled_records = Vector{TimeseriesRecord}()
-#     last_record_time = nothing  # Initialize variable to store the time of the last record
-
-#     for i in 1:length(records)
-#         # Add the current record to the filled_records
-#         push!(filled_records, records[i])
-#         last_record_time = records[i].timestamp  # Update the time of the last record
-
-#         # If this is not the last record, check the gap to the next record
-#         if i < length(records)
-#             next_time = records[i+1].timestamp
-#             while last_record_time + unit < next_time
-#                 last_record_time += unit
-#                 push!(filled_records, TimeseriesRecord(last_record_time, 0))
-#             end
-#         end
-#     end
-
-#     # If fill_to_current is true, fill in the gap between the last record and the current time
-#     if fill_to_current && !isnothing(last_record_time)
-#         current_time = now(UTC)
-#         while last_record_time + unit < current_time
-#             last_record_time += unit
-#             push!(filled_records, TimeseriesRecord(last_record_time, 0))
-#         end
-#     end
-
-#     return filled_records
-# end
-
 
 """
 Convert a dictionary of timeseries data into an array of sorted records
@@ -839,8 +809,10 @@ function all_endpoint_metrics(results::MetricsResults)
 end
 
 function all_endpoint_metrics(cache::MetricsCache, ::Nothing; max_depth::Int=cache.max_depth)
-    max_depth == cache.max_depth || throw(ArgumentError(
-        "This cache was registered with max_depth=$(cache.max_depth); register a cache with max_depth=$max_depth to query that depth"))
+    if max_depth != cache.max_depth
+        throw(ArgumentError(
+            "This cache was registered with max_depth=$(cache.max_depth); register a cache with max_depth=$max_depth to query that depth"))
+    end
 
     return all_endpoint_metrics(metrics_results(cache))
 end
@@ -856,8 +828,10 @@ function error_distribution(results::MetricsResults)
 end
 
 function error_distribution(cache::MetricsCache, ::Nothing; max_depth::Int=cache.max_depth)
-    max_depth == cache.max_depth || throw(ArgumentError(
-        "This cache was registered with max_depth=$(cache.max_depth); register a cache with max_depth=$max_depth to query that depth"))
+    if max_depth != cache.max_depth
+        throw(ArgumentError(
+            "This cache was registered with max_depth=$(cache.max_depth); register a cache with max_depth=$max_depth to query that depth"))
+    end
 
     return error_distribution(metrics_results(cache))
 end
@@ -892,8 +866,10 @@ so the first bin of the window can include transactions up to one second older
 than the uncached `recent_transactions` filter would; interior bins are exact.
 """
 function bin_totals(results::MetricsResults, unit::Type{<:Dates.FixedPeriod}, lower_bound)
-    Second(1) <= unit(1) || throw(ArgumentError(
-        "Cached metrics only support fixed periods of one second or longer, got $unit"))
+    if Second(1) > unit(1)
+        throw(ArgumentError(
+            "Cached metrics only support fixed periods of one second or longer, got $unit"))
+    end
 
     cutoff = bin_cutoff(lower_bound)
     floor_cutoff = isnothing(cutoff) ? nothing : floor(cutoff, Second)

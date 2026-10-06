@@ -274,6 +274,9 @@ function terminate(context::ServerContext)
         MCP.close_listens!(context)
         MCP.close_sessions!(context)
 
+        # drop the incremental metrics cache tied to this server's history
+        Metrics.unregister_metrics_cache!(context.service.history)
+
         # Set the external url to nothing when the server is terminated
         context.service.external_url[] = nothing
 
@@ -1014,6 +1017,12 @@ function setupmetrics(ctx::ServerContext, router::Router, history::History, docs
 
     staticfiles(ctx, router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
 
+    # Keep an incremental cache of the metrics aggregates so the dashboard
+    # doesn't have to rescan the entire history on every poll. `push_history`
+    # feeds new/evicted transactions into it. Pass the history lock so
+    # registration is atomic with respect to in-flight pushes.
+    Metrics.register_metrics_cache!(history; history_lock=history_lock)
+
     # Create a thread-safe copy of the history object and it's internal data
     function safe_get_transactions(history::History)::Vector{HTTPTransaction}
         transactions = []
@@ -1025,12 +1034,29 @@ function setupmetrics(ctx::ServerContext, router::Router, history::History, docs
 
     function innermetrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
 
-        # create a threadsafe copy of the current transactions in our history object
-        transactions = safe_get_transactions(history)
-
         # Figure out how far back to read from the history object
         window_value = !isnothing(window) && window > 0 ? Minute(window) : nothing
         lower_bound = !isnothing(latest) ? latest : window_value
+
+        # Fast path: derive every output from one consistent readout of the
+        # incremental cache, so the response can't mix history versions.
+        cache = Metrics.metrics_cache(history)
+        if !isnothing(cache)
+            results = Metrics.metrics_results(cache)
+            return Dict(
+                "server" => server_metrics(results),
+                "endpoints" => all_endpoint_metrics(results),
+                "errors" => error_distribution(results),
+                "avg_latency_per_second" => avg_latency_per_unit(results, Second, lower_bound) |> prepare_timeseries_data(),
+                "requests_per_second" => requests_per_unit(results, Second, lower_bound) |> prepare_timeseries_data(),
+                "avg_latency_per_minute" => avg_latency_per_unit(results, Minute, lower_bound) |> prepare_timeseries_data(),
+                "requests_per_minute" => requests_per_unit(results, Minute, lower_bound) |> prepare_timeseries_data()
+            )
+        end
+
+        # Fallback: no cache registered for this history, compute directly from
+        # a thread-safe snapshot of the history.
+        transactions = safe_get_transactions(history)
 
         return Dict(
             "server" => server_metrics(transactions, nothing),

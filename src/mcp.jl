@@ -7,10 +7,6 @@ import UUIDs
 
 using ..Types
 using ..AppContext: ServerContext, MCPContext
-using ..Errors: MCPRequestError, MCP_PARSE_ERROR, MCP_INVALID_REQUEST,
-    MCP_METHOD_NOT_FOUND, MCP_INVALID_PARAMS, MCP_INTERNAL_ERROR,
-    MCP_HEADER_MISMATCH,
-    MCP_UNSUPPORTED_PROTOCOL_VERSION, MCP_RESOURCE_NOT_FOUND
 using ..Reflection
 using ..AutoDoc
 using ..PubSub
@@ -22,7 +18,11 @@ using ..Streaming: StreamEvent, FinalEvent, ErrorEvent, StreamCancelled,
 import ..Streaming: emit, normalize_event
 
 export register_tool!, register_prompt!, register_resource!, register_resource_folder!,
-    mcp_stream, emit, progress, check_cancelled
+    mcp_stream, emit, progress, check_cancelled,
+    MCPRequestError, MCP_PARSE_ERROR, MCP_INVALID_REQUEST,
+    MCP_METHOD_NOT_FOUND, MCP_INVALID_PARAMS, MCP_INTERNAL_ERROR,
+    MCP_HEADER_MISMATCH, MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
+    MCP_UNSUPPORTED_PROTOCOL_VERSION, MCP_RESOURCE_NOT_FOUND
 
 # ----------------------------------------------------------------------------
 # Protocol strategies
@@ -92,8 +92,8 @@ end
 # Submodules
 # ----------------------------------------------------------------------------
 
-include("mcp/serialization.jl")  # schemas, argument coercion, content blocks, envelopes
 include("mcp/errors.jl")         # error results and request validation
+include("mcp/serialization.jl")  # schemas, argument coercion, content blocks, envelopes
 include("mcp/streams.jl")        # streaming event model, channels, wire mapping
 include("mcp/sessions.jl")       # legacy Streamable HTTP sessions (Mcp-Session-Id)
 include("mcp/tools.jl")          # tools/list, tools/call
@@ -273,22 +273,59 @@ method_val(method::String) = get(METHOD_TAGS, method, Val(:unknown))
 # The fallback for an unknown wire method (and for a tag with no handler, were
 # one ever added to `method_val` without an implementation). `raw` is the wire
 # method name, reported verbatim.
-handle_method(spec::Val, tag::Val, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
-    error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $raw"), 404
+function handle_method(
+    spec::Val, 
+    tag::Val, 
+    ctx::ServerContext, 
+    req::Union{Nothing,HTTP.Request},
+    id, 
+    params, 
+    raw::String; 
+    session::Union{Nothing,MCPSession}=nothing ) 
+    
+    return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $raw"), 404
+end
 
 # Discovery methods, declared with the capability and version code above.
-handle_method(spec::Val, ::Val{:initialize}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
-    result_response(ctx, id, initialize_result(ctx, params; session=session); spec=spec)
 
-handle_method(spec::Val, ::Val{:server_discover}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
-    result_response(ctx, id, discover_result(ctx); spec=spec)
+function handle_method(
+    spec::Val, 
+    ::Val{:initialize}, 
+    ctx::ServerContext, 
+    req::Union{Nothing,HTTP.Request},
+    id, 
+    params, 
+    raw::String; 
+    session::Union{Nothing,MCPSession}=nothing)
+    
+    return result_response(ctx, id, initialize_result(ctx, params; session=session); spec=spec)
+end
 
-handle_method(spec::Val, ::Val{:ping}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
-    result_response(ctx, id, Dict{String,Any}(); spec=spec)
+function handle_method(
+    spec::Val, 
+    ::Val{:server_discover}, 
+    ctx::ServerContext, 
+    req::Union{Nothing,HTTP.Request}, 
+    id, 
+    params, 
+    raw::String; 
+    session::Union{Nothing,MCPSession}=nothing)
+    
+    return result_response(ctx, id, discover_result(ctx); spec=spec)
+end
+
+function handle_method(
+    spec::Val, 
+    ::Val{:ping}, 
+    ctx::ServerContext, 
+    req::Union{Nothing,HTTP.Request},
+    id, 
+    params, 
+    raw::String; 
+    session::Union{Nothing,MCPSession}=nothing)
+    
+    return result_response(ctx, id, Dict{String,Any}(); spec=spec)
+end
 
 # The `params` object of a request, empty when absent or not an object.
 function request_params(payload)::AbstractDict

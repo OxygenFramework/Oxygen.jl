@@ -353,7 +353,9 @@ function create_union_schema(value_type::Union, schemas::Dict; enum_wire::Symbol
             nullable = true
         else
             member_schema = create_value_schema(member, schemas; enum_wire=enum_wire)
-            isnothing(member_schema) || push!(members, member_schema)
+            if !isnothing(member_schema) 
+                push!(members, member_schema)
+            end
         end
     end
 
@@ -664,7 +666,9 @@ function registerschema(
         parts = Dict{String,Any}[]
         for rt in returntype
             schema = create_response_schema(rt, schemas)
-            isnothing(schema) || push!(parts, schema)
+            if !isnothing(schema)
+                push!(parts, schema)
+            end
         end
 
         # Multiple inferred return types become an `anyOf` collection

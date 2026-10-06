@@ -9,8 +9,7 @@
 # Copy any keyed container (`Dict`, `NamedTuple`, ...) into a `Dict{String,Any}`
 # with stringified keys. The MCP wire layer accepts symbol- and string-keyed
 # input uniformly, so validation and serialization normalize through here.
-string_keyed(entries)::Dict{String,Any} =
-    Dict{String,Any}(String(key) => value for (key, value) in pairs(entries))
+string_keyed(entries)::Dict{String,Any} = Dict{String,Any}(String(key) => value for (key, value) in pairs(entries))
 
 # ----------------------------------------------------------------------------
 # Schema generation

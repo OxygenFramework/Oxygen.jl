@@ -139,10 +139,22 @@ end
 # ----------------------------------------------------------------------------
 
 # Served in every revision; the list result is shaped by the strategy interface.
-handle_method(spec::Val, ::Val{:prompts_list}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
-    result_response(ctx, id, prompts_list(ctx; spec=spec); spec=spec)
+handle_method(
+    spec::Val, 
+    ::Val{:prompts_list}, 
+    ctx::ServerContext, 
+    req::Union{Nothing,HTTP.Request},
+    id, 
+    params, 
+    raw::String; 
+    session::Union{Nothing,MCPSession}=nothing) = result_response(ctx, id, prompts_list(ctx; spec=spec); spec=spec)
 
-handle_method(spec::Val, ::Val{:prompts_get}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
-    get_prompt(ctx, req, id, params; spec=spec)
+handle_method(
+    spec::Val, 
+    ::Val{:prompts_get}, 
+    ctx::ServerContext, 
+    req::Union{Nothing,HTTP.Request},
+    id, 
+    params, 
+    raw::String; 
+    session::Union{Nothing,MCPSession}=nothing) = get_prompt(ctx, req, id, params; spec=spec)

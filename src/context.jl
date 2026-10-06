@@ -78,6 +78,7 @@ end
     middleware_cache    :: Dict{String, Function}   = Dict{String, Function}()
     history             :: History                  = History(1_000_000)
     history_lock        :: ReentrantLock            = ReentrantLock()
+    metrics_cache       :: Ref{Any}                 = Ref{Any}(nothing)
     external_url        :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
     prefix              :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
     eager_revise        :: Ref{Nullable{EagerReviseService}} = Ref{Nullable{EagerReviseService}}(nothing)

@@ -275,7 +275,7 @@ function terminate(context::ServerContext)
         MCP.close_sessions!(context)
 
         # drop the incremental metrics cache tied to this server's history
-        Metrics.unregister_metrics_cache!(context.service.history)
+        Metrics.unregister_metrics_cache!(context.service)
 
         # Set the external url to nothing when the server is terminated
         context.service.external_url[] = nothing
@@ -564,30 +564,19 @@ function MetricsMiddleware(service::Service, catch_errors::Bool)
                 response = handler(req)
                 # Log response time
                 response_time = (time() - start_time) * 1000
-                # Make sure we update the History object in a thread-safe way
-                lock(service.history_lock) do
-                    if response.status == 200
-                        push_history(service.history, HTTPTransaction(
-                            string(req.context[:ip]),
-                            string(req.target),
-                            now(UTC),
-                            response_time,
-                            true,
-                            response.status,
-                            nothing
-                        ))
-                    else
-                        push_history(service.history, HTTPTransaction(
-                            string(req.context[:ip]),
-                            string(req.target),
-                            now(UTC),
-                            response_time,
-                            false,
-                            response.status,
-                            text(response)
-                        ))
-                    end
-                end
+                success = response.status == 200
+                # Make sure we update the History object in a thread-safe way;
+                # `push_history` takes the service's history lock and feeds the
+                # service's metrics cache.
+                push_history(service, HTTPTransaction(
+                    string(req.context[:ip]),
+                    string(req.target),
+                    now(UTC),
+                    response_time,
+                    success,
+                    response.status,
+                    success ? nothing : text(response)
+                ))
                 return response
             end
         end
@@ -994,11 +983,11 @@ end
 
 
 function setupmetrics(context::ServerContext)
-    setupmetrics(context, context.docs.router[], context.service.history, context.docs.docspath[], context.service.history_lock)
+    setupmetrics(context, context.docs.router[], context.docs.docspath[])
 end
 
 # add the swagger and swagger/schema routes 
-function setupmetrics(ctx::ServerContext, router::Router, history::History, docspath::String, history_lock::ReentrantLock)
+function setupmetrics(ctx::ServerContext, router::Router, docspath::String)
 
     # If a global prefix is assigned, then we need to make sure we inject the prefixes into the source url as well.
     prefixed_docspath = join_url_path(ctx.service.prefix[], docspath)
@@ -1019,14 +1008,14 @@ function setupmetrics(ctx::ServerContext, router::Router, history::History, docs
 
     # Keep an incremental cache of the metrics aggregates so the dashboard
     # doesn't have to rescan the entire history on every poll. `push_history`
-    # feeds new/evicted transactions into it. Pass the history lock so
-    # registration is atomic with respect to in-flight pushes.
-    Metrics.register_metrics_cache!(history; history_lock=history_lock)
+    # feeds new/evicted transactions into it. The cache lives on the service,
+    # so it is dropped with the context and no global registry is needed.
+    Metrics.register_metrics_cache!(ctx.service)
 
     # Create a thread-safe copy of the history object and it's internal data
     function safe_get_transactions(history::History)::Vector{HTTPTransaction}
         transactions = []
-        lock(history_lock) do
+        lock(ctx.service.history_lock) do
             transactions = collect(history)
         end
         return transactions
@@ -1040,7 +1029,7 @@ function setupmetrics(ctx::ServerContext, router::Router, history::History, docs
 
         # Fast path: derive every output from one consistent readout of the
         # incremental cache, so the response can't mix history versions.
-        cache = Metrics.metrics_cache(history)
+        cache = Metrics.metrics_cache(ctx.service)
         if !isnothing(cache)
             results = Metrics.metrics_results(cache)
             return Dict(
@@ -1056,7 +1045,7 @@ function setupmetrics(ctx::ServerContext, router::Router, history::History, docs
 
         # Fallback: no cache registered for this history, compute directly from
         # a thread-safe snapshot of the history.
-        transactions = safe_get_transactions(history)
+        transactions = safe_get_transactions(ctx.service.history)
 
         return Dict(
             "server" => server_metrics(transactions, nothing),

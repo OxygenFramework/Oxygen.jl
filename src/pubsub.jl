@@ -70,11 +70,6 @@ end
 Base.showerror(io::IO, error::CapacityError) =
     print(io, "subscription limit reached ($(error.cap))")
 
-# Process-unique ids for introspection/logging. Only uniqueness within a process
-# is needed (the id is not a wire identifier).
-const _NEXT_ID = Atomic{UInt64}(0)
-next_id() = "sub-" * string(atomic_add!(_NEXT_ID, UInt64(1)))
-
 """
     Subscription{T}
 
@@ -82,7 +77,7 @@ One subscriber's view of the broker: a bounded queue carrying values of type
 `T`, an optional in-process callback, and lifecycle flags.
 
 # Fields
-- `id::String`: process-unique id, for logs/introspection
+- `id::String`: broker-unique id, for logs/introspection
 - `label::String`: human-readable label (the topic, or the given label)
 - `topic::Union{Nothing,String}`: exact topic for fast-path subscriptions
 - `matcher::SubscriptionMatcher`: the topic/pattern/predicate test
@@ -154,31 +149,45 @@ The publish/subscribe broker. `T` is the value type delivered to subscribers;
 
 Exact-topic subscriptions live in `exact` (a dictionary fast path);
 regex/predicate subscriptions live in `patterns` and are scanned on publish.
-All mutable state is guarded by `lock`. `count` tracks how many subscription
+All registry state is guarded by `lock`. `count` tracks how many subscription
 records are stored (including dead ones not yet pruned), so the capacity check
 does not have to recount them. `publishes` counts publishes since the last full
 dead-record sweep; every `SWEEP_INTERVAL` publishes the broker sweeps dead
 records globally so deaths on quiet topics cannot stay pinned until the next
-capacity-pressure registration.
+capacity-pressure registration. `id_counter` hands out broker-unique
+subscription ids.
 """
 mutable struct Broker{T}
-    lock      :: ReentrantLock
-    exact     :: Dict{String,Vector{Subscription{T}}}
-    patterns  :: Vector{Subscription{T}}
-    cap       :: Int
-    count     :: Int
-    publishes :: Int
+    lock       :: ReentrantLock
+    exact      :: Dict{String,Vector{Subscription{T}}}
+    patterns   :: Vector{Subscription{T}}
+    cap        :: Int
+    count      :: Int
+    publishes  :: Int
+    id_counter :: Atomic{UInt64}
 end
 
 function Broker{T}(; cap::Integer=256) where {T}
     if cap < 0
         throw(ArgumentError("broker capacity must be non-negative"))
     end
-    return Broker{T}(ReentrantLock(), Dict{String,Vector{Subscription{T}}}(),
-                     Subscription{T}[], Int(cap), 0, 0)
+    return Broker{T}(
+        ReentrantLock(), 
+        Dict{String,Vector{Subscription{T}}}(),    
+        Subscription{T}[], 
+        Int(cap), 
+        0, 
+        0, 
+        Atomic{UInt64}(0)
+    )
 end
 
 Broker(; kwargs...) = Broker{Any}(; kwargs...)
+
+# Broker-unique ids for introspection/logging. Only uniqueness within the broker
+# is needed (the id is not a wire identifier), so the counter lives on the broker
+# instead of in module-global state.
+next_id(broker::Broker) = "sub-" * string(atomic_add!(broker.id_counter, UInt64(1)))
 
 # Shared registry sweep: `dead(sub)` selects the records to drop and must not
 # block. Callers must hold `broker.lock`.
@@ -369,14 +378,14 @@ function register!(broker::Broker{T}, sub::Subscription{T}) where {T}
     return sub
 end
 
-function new_subscription(::Type{T}, label, matcher::SubscriptionMatcher,
+function new_subscription(broker::Broker{T}, label, matcher::SubscriptionMatcher,
                           callback, policy, csize, channel) where {T}
     validate_policy(policy)
     if !isnothing(callback) && !(callback isa Function)
         throw(ArgumentError("callback must be a function or nothing"))
     end
     queue = make_queue(T, channel, csize)
-    return Subscription{T}(next_id(), string(label), nothing, matcher, queue,
+    return Subscription{T}(next_id(broker), string(label), nothing, matcher, queue,
                            callback, policy, Atomic{Int}(0), Atomic{Bool}(true))
 end
 
@@ -392,12 +401,18 @@ caller can write an initial frame (e.g. an acknowledgement) *before* registering
 without any gap in which a concurrent publish could overtake it. The channel
 must be open and buffered.
 """
-function subscribe!(broker::Broker{T}, topic::AbstractString;
-                    csize::Integer=64, policy::Symbol=:drop_newest,
-                    callback=nothing, channel=nothing, label=nothing) where {T}
+function subscribe!(
+        broker::Broker{T}, 
+        topic::AbstractString;
+        csize::Integer=64, 
+        policy::Symbol=:drop_newest,
+        callback=nothing, 
+        channel=nothing, 
+        label=nothing) where {T}
+
     key = String(topic)
-    sub = new_subscription(T, isnothing(label) ? key : label,
-                           TopicMatcher(key), callback, policy, csize, channel)
+    sub_label = isnothing(label) ? key : label
+    sub = new_subscription(broker, sub_label, TopicMatcher(key), callback, policy, csize, channel)
     sub.topic = key
     return register!(broker, sub)
 end
@@ -407,11 +422,17 @@ end
 
 Subscribe to every topic matching `pattern` with `occursin`.
 """
-function subscribe!(broker::Broker{T}, pattern::Regex;
-                    csize::Integer=64, policy::Symbol=:drop_newest,
-                    callback=nothing, channel=nothing, label="") where {T}
-    sub = new_subscription(T, isempty(label) ? pattern : label,
-                           RegexMatcher(pattern), callback, policy, csize, channel)
+function subscribe!(
+        broker::Broker{T}, 
+        pattern::Regex;
+        csize::Integer=64, 
+        policy::Symbol=:drop_newest,
+        callback=nothing, 
+        channel=nothing, 
+        label="") where {T}
+
+    sub_label = isempty(label) ? pattern : label,
+    sub = new_subscription(broker, sub_label, RegexMatcher(pattern), callback, policy, csize, channel)
     return register!(broker, sub)
 end
 
@@ -422,11 +443,17 @@ Subscribe with a value-only predicate `predicate(value) -> Bool`, matched
 against every published value regardless of topic. This is the hook protocol
 adapters use to implement per-subscription filters.
 """
-function subscribe!(broker::Broker{T}, predicate::Function;
-                    csize::Integer=64, policy::Symbol=:drop_newest,
-                    callback=nothing, channel=nothing, label="") where {T}
-    sub = new_subscription(T, isempty(label) ? predicate : label,
-                           PredicateMatcher(predicate), callback, policy, csize, channel)
+function subscribe!(
+        broker::Broker{T}, 
+        predicate::Function;
+        csize::Integer=64, 
+        policy::Symbol=:drop_newest,
+        callback=nothing, 
+        channel=nothing, 
+        label="") where {T}
+        
+    sub_label = isempty(label) ? predicate : label
+    sub = new_subscription(broker, sub_label, PredicateMatcher(predicate), callback, policy, csize, channel)
     return register!(broker, sub)
 end
 

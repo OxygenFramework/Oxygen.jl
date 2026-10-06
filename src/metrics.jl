@@ -9,6 +9,7 @@ using RelocatableFolders
 using LRUCache: LRU
 using ..Util
 using ..Types
+using ..AppContext: Service
 
 export MetricsMiddleware, get_history, push_history, 
     server_metrics,
@@ -89,8 +90,9 @@ struct BinStats
 end
 
 """
-Incremental aggregate over a `History`. One cache is created per running server
-(see `register_metrics_cache!`) and kept in sync by `push_history`.
+Incremental aggregate over a `History`. A cache is created by
+`register_metrics_cache!`, stored on the owning `Service`, and kept in sync by
+`push_history`.
 
 All mutations of `cache.history` must go through `push_history` (under the same
 lock the server uses to serialize pushes); if something mutates the history
@@ -101,9 +103,9 @@ mutable struct MetricsCache
     history   :: History
     max_depth :: Int
     version   :: UInt64
-    # The lock that serializes pushes into `history`, when the cache was
-    # registered with one. Used by `resync_metrics_cache!` to rebuild safely.
-    history_lock :: Nullable{ReentrantLock}
+    # The lock that serializes pushes into `history` (the owning service's
+    # `history_lock`). Used by `resync_metrics_cache!` to rebuild safely.
+    history_lock :: ReentrantLock
     # lifetime aggregates
     server    :: LatencyStats
     groups    :: Dict{String, LatencyStats}
@@ -113,23 +115,15 @@ mutable struct MetricsCache
     results   :: LRU{Any, Tuple{UInt64, Any}}
 end
 
-const METRICS_CACHES      = IdDict{History, MetricsCache}()
-const METRICS_CACHES_LOCK = ReentrantLock()
-
 """
-    register_metrics_cache!(history; max_depth=4, result_cache_size=8, history_lock=nothing)
+    register_metrics_cache!(service::Service; max_depth::Int=4, result_cache_size::Int=8)
 
-Attach an incremental metrics cache to `history`. Any transactions already in
-the history are folded in up front (normally the history is empty because the
-cache is registered before the server starts). Returns the cache.
-
-Pass the server's `history_lock` to make registration safe even if it happens
-while requests are being served: without it, a concurrent `push_history` can
-slip between seeding and publication and be missed. The lock is stored on the
-cache and reused by `resync_metrics_cache!` when no explicit lock is passed.
+Create the incremental metrics cache for `service.history`, seed it from any
+transactions already in the history, store it on `service.metrics_cache`, and
+return it. Seeding happens under `service.history_lock`, so registration is
+atomic with respect to concurrent `push_history` calls.
 """
-function register_metrics_cache!(history::History; max_depth::Int=4, result_cache_size::Int=8,
-                                 history_lock::Nullable{ReentrantLock}=nothing)
+function register_metrics_cache!(service::Service; max_depth::Int=4, result_cache_size::Int=8)
     if max_depth < 1
         throw(ArgumentError("max_depth must be >= 1, got $max_depth"))
     end
@@ -139,27 +133,26 @@ function register_metrics_cache!(history::History; max_depth::Int=4, result_cach
 
     cache = MetricsCache(
         ReentrantLock(),
-        history,
+        service.history,
         max_depth,
         0,
-        history_lock,
+        service.history_lock,
         LatencyStats(),
         Dict{String, LatencyStats}(),
         Dict{DateTime, BinStats}(),
         LRU{Any, Tuple{UInt64, Any}}(maxsize=result_cache_size),
     )
 
-    install = function()
+    lock(service.history_lock) do
         lock(cache.lock) do
             rebuild_cache!(cache)
         end
-        lock(METRICS_CACHES_LOCK) do
-            METRICS_CACHES[history] = cache
-        end
-        return cache
+        # Publish after seeding while still holding the history lock, so a
+        # concurrent push can't slip in between and be missed.
+        service.metrics_cache[] = cache
     end
 
-    return isnothing(history_lock) ? install() : lock(install, history_lock)
+    return cache
 end
 
 # Rebuild the aggregates from the current contents of `cache.history`. The
@@ -181,59 +174,53 @@ function rebuild_cache!(cache::MetricsCache)
 end
 
 """
-    resync_metrics_cache!(cache::MetricsCache; history_lock=nothing)
-    resync_metrics_cache!(history::History; history_lock=nothing)
+    resync_metrics_cache!(cache::MetricsCache)
+    resync_metrics_cache!(service::Service)
 
 Rebuild the cache's aggregates from the current contents of its history. Use
 this after mutating a history without going through `push_history` (for example
-after `empty!`), which would otherwise leave stale aggregates behind. Pass the
-`history_lock` that serializes pushes, or call while the server is quiescent;
-otherwise the rebuild can race with a concurrent push. When no explicit lock is
-passed, the lock stored at registration time (if any) is used, so a cache
-registered through `serve` rebuilds safely by default. The `History` method
-returns the cache, or `nothing` when no cache is registered.
+after `empty!`), which would otherwise leave stale aggregates behind. The
+rebuild runs under the history lock stored on the cache, so it is safe to call
+while requests are being served. The `Service` method returns the cache, or
+`nothing` when no cache is registered for the service.
 """
-function resync_metrics_cache!(cache::MetricsCache; history_lock::Nullable{ReentrantLock}=nothing)
-    work = function()
+function resync_metrics_cache!(cache::MetricsCache)
+    lock(cache.history_lock) do
         lock(cache.lock) do
             rebuild_cache!(cache)
         end
-        return cache
     end
-    effective_lock = isnothing(history_lock) ? cache.history_lock : history_lock
-    return isnothing(effective_lock) ? work() : lock(work, effective_lock)
+    return cache
 end
 
-function resync_metrics_cache!(history::History; history_lock::Nullable{ReentrantLock}=nothing)
-    cache = metrics_cache(history)
+function resync_metrics_cache!(service::Service)
+    cache = metrics_cache(service)
     if isnothing(cache)
         return nothing
     end
-    return resync_metrics_cache!(cache; history_lock=history_lock)
+    return resync_metrics_cache!(cache)
 end
 
 """
-    unregister_metrics_cache!(history)
+    unregister_metrics_cache!(service::Service)
 
-Detach and drop the cache associated with `history` (called on server shutdown).
+Detach and drop the cache associated with `service` (called on server shutdown).
 """
-function unregister_metrics_cache!(history::History)
-    lock(METRICS_CACHES_LOCK) do
-        delete!(METRICS_CACHES, history)
+function unregister_metrics_cache!(service::Service)
+    lock(service.history_lock) do
+        service.metrics_cache[] = nothing
     end
     return nothing
 end
 
 """
-    metrics_cache(history) :: Nullable{MetricsCache}
+    metrics_cache(service::Service)
 
-Return the cache registered for `history`, or `nothing` when metrics caching
-isn't active for this history.
+Return the cache registered on `service`, or `nothing` when metrics caching
+isn't active for it.
 """
-function metrics_cache(history::History) :: Nullable{MetricsCache}
-    lock(METRICS_CACHES_LOCK) do
-        return get(METRICS_CACHES, history, nothing)
-    end
+function metrics_cache(service::Service)
+    return service.metrics_cache[]
 end
 
 """
@@ -505,16 +492,21 @@ copy_metrics_dict(data::Dict) =
     Dict(key => (value isa AbstractDict ? copy(value) : value) for (key, value) in data)
 
 """
-    push_history(history, transaction)
+    push_history(history, transaction[, cache])
+    push_history(service::Service, transaction)
 
 Insert `transaction` at the front of `history`, evicting the oldest record once
-the history is at `capacity(history)`, and keep any registered metrics cache in
-sync. The deque itself is not locked, so concurrent pushes must be serialized by
-the caller (the server holds its history lock around this call). Metrics
-bookkeeping errors are logged and swallowed so they can never fail a request.
+the history is at `capacity(history)`. When `cache` is passed, the incremental
+metrics cache is kept in sync with the insertion and any eviction.
+
+The deque itself is not locked, so concurrent pushes against a bare `History`
+must be serialized by the caller. The `Service` method uses `service.history`
+and `service.metrics_cache` and takes `service.history_lock` around the push.
+Metrics bookkeeping errors are logged and swallowed so they can never fail a
+request.
 """
-function push_history(history::History, transaction::HTTPTransaction)
-    cache = metrics_cache(history)
+function push_history(history::History, transaction::HTTPTransaction,
+                      cache::Union{Nothing, MetricsCache}=nothing)
     evicted = nothing
     try
         # Keep the newest `capacity(history)` transactions: once the deque is
@@ -541,7 +533,7 @@ function push_history(history::History, transaction::HTTPTransaction)
         return nothing
     end
 
-    # Keep the incremental aggregates in sync when metrics caching is active.
+    # Keep the incremental aggregates in sync when a cache tracks this history.
     # A metrics-cache failure must never fail the request that produced the
     # transaction, so it is reported and the cache is rebuilt from the history
     # to heal any partially applied update.
@@ -558,6 +550,13 @@ function push_history(history::History, transaction::HTTPTransaction)
                 @warn "Failed to rebuild the metrics cache: $rebuild_error"
             end
         end
+    end
+    return nothing
+end
+
+function push_history(service::Service, transaction::HTTPTransaction)
+    lock(service.history_lock) do
+        push_history(service.history, transaction, service.metrics_cache[])
     end
     return nothing
 end

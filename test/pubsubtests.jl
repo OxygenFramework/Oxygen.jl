@@ -163,6 +163,29 @@ end
     @test queued(sub) == Any["text", Dict("a" => 1)]
 end
 
+@testset "subscription ids are broker-local and unique" begin
+    broker = Broker{Int}()
+    first = PubSub.subscribe!(broker, "a")
+    second = PubSub.subscribe!(broker, r"b")
+
+    @test startswith(first.id, "sub-")
+    @test startswith(second.id, "sub-")
+    @test first.id != second.id
+
+    # Ids identify records within one broker only; a fresh broker starts its
+    # own sequence (the id is for logs/introspection, not addressing).
+    other = Broker{Int}()
+    fresh = PubSub.subscribe!(other, "a")
+    @test fresh.id == first.id
+
+    # The counter never rewinds, so a closed record's id is not reused by a
+    # later subscription to the same broker.
+    PubSub.close_all!(broker)
+    third = PubSub.subscribe!(broker, "c")
+    @test third.id != first.id
+    @test third.id != second.id
+end
+
 @testset "unbuffered queues never block publishers" begin
     broker = Broker{Int}()
     sub = PubSub.subscribe!(broker, "a"; csize=0, policy=:drop_newest)

@@ -431,7 +431,7 @@ function subscribe!(
         channel=nothing, 
         label="") where {T}
 
-    sub_label = isempty(label) ? pattern : label,
+    sub_label = isempty(label) ? pattern : label
     sub = new_subscription(broker, sub_label, RegexMatcher(pattern), callback, policy, csize, channel)
     return register!(broker, sub)
 end

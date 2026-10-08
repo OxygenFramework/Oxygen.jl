@@ -130,4 +130,42 @@ end
     @test caught[] isa StreamCancelled
 end
 
+@testset "channel interface: buffer state and readable show" begin
+    stream = EventStream(Channel{StreamEvent}(4), nothing)
+
+    @test Base.isbuffered(stream)
+    @test Base.n_avail(stream) == 0
+    open_repr = sprint(show, stream)
+    @test occursin("EventStream{", open_repr)
+    @test occursin("StreamEvent", open_repr)
+    @test occursin("(open, 0 buffered)", open_repr)
+    if isdefined(Base, :isfull)
+        @test !Base.isfull(stream)
+    end
+
+    # fill the buffer to its capacity
+    for value in 1:4
+        Streaming.emit(stream, value)
+    end
+    @test Base.n_avail(stream) == 4
+    @test occursin("(open, 4 buffered)", sprint(show, stream))
+    if isdefined(Base, :isfull)
+        @test Base.isfull(stream)
+    end
+
+    # closing is cancellation, but buffered events stay drainable
+    close(stream)
+    @test !isopen(stream)
+    @test isready(stream)
+    @test Base.n_avail(stream) == 4
+    @test occursin("(cancelled, 4 buffered)", sprint(show, stream))
+
+    # a producer that finishes normally shows as closed, not cancelled
+    finished = make_stream(_ -> "done")
+    @test Streaming.drain_stream!(finished) isa FinalEvent
+    @test !isopen(finished)
+    @test !finished.cancel[]
+    @test occursin("(closed, 0 buffered)", sprint(show, finished))
+end
+
 end

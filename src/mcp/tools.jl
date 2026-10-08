@@ -149,10 +149,11 @@ Reflect on `func`, merge the explicit `params` descriptions, and store the
 resulting `MCPTool` in `ctx.mcp.tools` keyed by its wire name.
 
 `params` accepts the same forms as route-level MCP metadata: a `Dict` or
-`NamedTuple` (Symbol keys only), or a vector of `Pair`s. Each value is the
-parameter's description. Every handler parameter must be described and every key
-must name a real parameter, otherwise an `ArgumentError` is thrown. Wire names
-default to the Julia parameter name.
+`NamedTuple` (Symbol keys only), a single `Pair` for the common one-parameter
+case, or a vector of `Pair`s. Each value is the parameter's description. Every
+handler parameter must be described and every key must name a real parameter,
+otherwise an `ArgumentError` is thrown. Wire names default to the Julia
+parameter name.
 
 When `desc` is empty the handler's own docstring is used as the tool
 description, so the two-argument `@tool`/`tool` forms need not repeat it.

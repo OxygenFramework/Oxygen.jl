@@ -19,11 +19,15 @@ using Oxygen
 end
 ```
 
-The parameter declaration accepts a `Dict` or `NamedTuple` (with `Symbol` keys), or a vector of `Pair`s — the same forms are accepted by route-level `mcp` metadata:
+The parameter declaration accepts a `Dict` or `NamedTuple` (with `Symbol` keys), a single `Pair` when the tool takes one parameter, or a vector of `Pair`s — the same forms are accepted by route-level `mcp` metadata:
 
 ```julia
 @tool "Add two integers" (a = "the first addend", b = "the second addend") function add(a::Int, b::Int)
     return a + b
+end
+
+@tool "Look up a place" :place => "the place to look up" function lookup_place(place::Place)
+    # ...
 end
 ```
 

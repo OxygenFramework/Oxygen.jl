@@ -174,6 +174,18 @@ end
     return x
 end
 
+# A single Pair is accepted for one-parameter tools (three- and two-argument forms)
+@tool "Single pair parameters" :x => "the x" function single_pair_params(x::Int)
+    return x
+end
+
+"""
+Single pair parameters with a docstring description.
+"""
+@tool :y => "the y" function single_pair_documented(y::Int)
+    return y
+end
+
 # The two-argument @tool form uses the handler's docstring as the description
 """
 Adds two integers using the docstring as the tool description.
@@ -311,7 +323,8 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
                  "enum_collections_tool", "palette_tool", "plain_palette_tool", "palette_box_tool",
                  "echo_palette",
                  "throws_tool", "context_tool", "request_tool", "block_tool", "response_tool",
-                 "echo_place", "subtract", "multiply"]
+                 "echo_place", "subtract", "multiply",
+                 "single_pair_params", "single_pair_documented"]
         @test haskey(tools, name)
     end
 
@@ -450,6 +463,16 @@ end
     pair = tools["pair_params"]
     @test pair.params[1].description == "the x"
     @test pair.params[1].wirename == "x"
+
+    single = tools["single_pair_params"]
+    @test single.params[1].description == "the x"
+    @test single.params[1].wirename == "x"
+
+    # the two-argument form also accepts a single Pair, with the handler's
+    # docstring supplying the tool description
+    documented = tools["single_pair_documented"]
+    @test documented.params[1].description == "the y"
+    @test documented.description == "Single pair parameters with a docstring description."
 
     # invocation uses the Julia parameter names
     r = call_tool("named_params", Dict("left" => 1, "right" => 2))

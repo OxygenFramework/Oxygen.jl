@@ -12,46 +12,34 @@ export parse_mcp_parameters, normalize_mcp_config, merge_mcp_configs, resolve_mc
 symbol_key(key::Symbol)::Symbol = key
 symbol_key(key) = throw(ArgumentError("MCP metadata and parameter names must be Symbols, got a $(typeof(key)): $(repr(key))"))
 
-mcp_string(value)::String = string(value)
-mcp_string(::Nothing)::String = ""
+# MCP description text: `nothing` means "not supplied" rather than the string "nothing"
+mcp_description(::Nothing)::String = ""
+mcp_description(value::Any)::String = string(value)
 
-# Normalize a collection of parameter declarations into an iterable of
-# `(key, value)` pairs. Both `Dict` and `NamedTuple` are accepted, as is a vector
-# of `Pair`s; keys must be Symbols. `nothing` yields an empty iterable.
-function mcp_entries(params)
-    if isnothing(params)
-        return ()
-    end
-    if params isa AbstractDict || params isa NamedTuple
-        return pairs(params)
-    elseif params isa AbstractVector
-        return params
-    end
-    throw(ArgumentError("Invalid parameter metadata: expected a Dict, NamedTuple, or vector of Pairs"))
-end
+# Normalize a collection of parameter declarations into an iterable of `(key, value)` pairs
+mcp_entries(::Nothing) = ()
+mcp_entries(params::Union{AbstractDict,NamedTuple}) = pairs(params)
+mcp_entries(params::AbstractVector) = params
+mcp_entries(param::Pair) = (param,)
+mcp_entries(::Any) = throw(ArgumentError("Invalid parameter metadata: expected a Dict, NamedTuple, Pair, or vector of Pairs"))
 
 """
     parse_mcp_parameters(params) :: Dict{Symbol,String}
 
 Parse a collection of parameter descriptions into a `Symbol => String` map.
 
-`params` may be a `NamedTuple` or a `Dict` (with `Symbol` keys), or a vector of
-`Pair`s. Each value is the parameter's human readable description. There is no
-per-parameter wire-name override: use the `names` map in `mcp` metadata to
-expose a parameter under a different JSON key. This is the single parser shared
-by `@tool`/`tool` and by router/route `mcp` metadata so both accept the same
-forms.
+`params` may be a `NamedTuple` or a `Dict` (with `Symbol` keys), a single
+`Pair` (the common one-parameter shorthand), or a vector of `Pair`s. Each value
+is the parameter's human readable description. There is no per-parameter
+wire-name override: use the `names` map in `mcp` metadata to expose a parameter
+under a different JSON key. This is the single parser shared by `@tool`/`tool`
+and by router/route `mcp` metadata so both accept the same forms.
 """
 function parse_mcp_parameters(params)
     descriptions = Dict{Symbol,String}()
     for (key, value) in mcp_entries(params)
         name = symbol_key(key)
-        if value isa NamedTuple || value isa AbstractDict
-            throw(ArgumentError(
-                "Per-parameter `description`/`name` metadata is not supported; " *
-                "pass a plain description and use `names` to override wire names"))
-        end
-        desc = mcp_string(value)
+        desc = mcp_description(value)
         if !isempty(desc)
             descriptions[name] = desc
         end
@@ -91,7 +79,7 @@ function normalize_mcp_overrides(mcp::Union{NamedTuple,AbstractDict})
         symbol_key(key)
     end
 
-    description = mcp_string(get(mcp, :description, ""))
+    description = mcp_description(get(mcp, :description, ""))
     parameters = parse_mcp_parameters(get(mcp, :parameters, nothing))
 
     names = Dict{Symbol,String}()

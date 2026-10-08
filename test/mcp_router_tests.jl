@@ -152,7 +152,7 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false, ac
     # metadata keys must be Symbols
     @test_throws ArgumentError MCP.normalize_mcp_config(Dict("description" => "x"))
 
-    # `parameters` accepts a Dict, a NamedTuple, or a vector of Pairs
+    # `parameters` accepts a Dict, a NamedTuple, a single Pair, or a vector of Pairs
     as_named = MCP.normalize_mcp_config((description = "Group",
         parameters = (id = "ID", value = "value"), names = Dict(:value => "val")))
     @test as_named.parameters == Dict(:id => "ID", :value => "value")
@@ -161,9 +161,16 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false, ac
     as_pairs = MCP.normalize_mcp_config((description = "Group", parameters = [:id => "ID"]))
     @test as_pairs.parameters == Dict(:id => "ID")
 
+    # a single Pair is the one-parameter shorthand (for `names` too)
+    as_pair = MCP.normalize_mcp_config((description = "Group",
+        parameters = :id => "ID", names = :id => "new_id"))
+    @test as_pair.parameters == Dict(:id => "ID")
+    @test as_pair.names == Dict(:id => "new_id")
+
     # `parse_mcp_parameters` is the shared parser used by `@tool` too
     descriptions = MCP.parse_mcp_parameters((a = "first", b = "second"))
     @test descriptions == Dict(:a => "first", :b => "second")
+    @test MCP.parse_mcp_parameters(:a => "first") == Dict(:a => "first")
 
     # parameter keys must be Symbols and cannot carry a per-parameter override
     @test_throws ArgumentError MCP.parse_mcp_parameters(Dict("a" => "first"))

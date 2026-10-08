@@ -102,6 +102,14 @@ function EventStream(channel::Channel{T}, protocol::P) where {T,P}
     return EventStream{T,P}(channel, protocol, Threads.Atomic{Bool}(false), ReentrantLock())
 end
 
+# Readable REPL display: lifecycle state and queued depth instead of the raw
+# `channel`/`cancel`/`lock` fields. `cancelled` distinguishes an explicit close
+# (or client disconnect) from a producer that finished normally.
+function Base.show(io::IO, stream::EventStream{T}) where {T}
+    state = stream.cancel[] ? "cancelled" : isopen(stream) ? "open" : "closed"
+    print(io, "EventStream{", T, "}(", state, ", ", Base.n_avail(stream), " buffered)")
+end
+
 # `AbstractChannel` passthroughs. `put!` is deliberately redefined below,
 # because every value goes through event normalization on the way in.
 Base.eltype(::Type{<:EventStream{T}}) where {T} = T
@@ -119,6 +127,18 @@ end
 
 Base.isready(stream::EventStream) = isready(stream.channel)
 Base.take!(stream::EventStream) = take!(stream.channel)
+
+# Buffer-state queries, forwarded so generic channel code sees the same answers
+# as for the wrapped `Channel`. `n_avail` also reports buffered items after the
+# channel closes, which stay drainable.
+Base.isbuffered(stream::EventStream) = Base.isbuffered(stream.channel)
+Base.n_avail(stream::EventStream) = Base.n_avail(stream.channel)
+
+# `Base.isfull` exists on Julia >= 1.12; on older runtimes the block is skipped
+# rather than creating the Base binding ourselves.
+if isdefined(Base, :isfull)
+    Base.isfull(stream::EventStream) = Base.isfull(stream.channel)
+end
 
 # Closing the handle is cancellation: producers blocked in `put!` unwind with
 # `StreamCancelled` and later emits do not touch a closed channel. A producer

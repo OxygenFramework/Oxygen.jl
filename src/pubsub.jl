@@ -19,7 +19,7 @@ module PubSub
 
 using Base.Threads: ReentrantLock, Atomic, atomic_add!
 
-export Broker, Subscription, subscribe!, unsubscribe!, publish!, subscribers, drops, close_all!
+export Broker, Subscription, subscribe!, unsubscribe!, publish!, subscribers, drops
 
 # Delivery policies applied when a subscriber's bounded queue is full:
 # - `:drop_newest`: discard the incoming value and count a drop;
@@ -105,8 +105,9 @@ mutable struct Subscription{T}
 end
 
 # Hot-path liveness. Every sanctioned end-of-life path (`Base.close(sub)`,
-# `unsubscribe!`, the `:disconnect` policy, `close_all!`, and MCP teardown)
-# clears this atomic before closing the queue, so the flag alone is race-free.
+# `unsubscribe!`, the `:disconnect` policy, `Base.empty!(broker)`,
+# `Base.reset(broker)`, `Base.close(broker)`, and MCP teardown) clears this
+# atomic before closing the queue, so the flag alone is race-free.
 isdead(sub::Subscription)::Bool = !sub.active[]
 
 # Cold-path liveness: also observes a queue closed behind the broker's back
@@ -155,7 +156,14 @@ does not have to recount them. `publishes` counts publishes since the last full
 dead-record sweep; every `SWEEP_INTERVAL` publishes the broker sweeps dead
 records globally so deaths on quiet topics cannot stay pinned until the next
 capacity-pressure registration. `id_counter` hands out broker-unique
-subscription ids.
+subscription ids. `closed` is an atomic lifecycle flag recording whether the
+broker has been closed; `isopen(broker)` reads it without taking the lock.
+
+# Lifecycle
+`empty!(broker)` and `reset(broker)` end every subscription and empty the
+registry but leave the broker usable; `close(broker)` additionally marks it
+closed (`isopen(broker)` becomes `false`, `subscribe!` throws, `publish!`
+returns `0`). All three are idempotent.
 """
 mutable struct Broker{T}
     lock       :: ReentrantLock
@@ -165,6 +173,7 @@ mutable struct Broker{T}
     count      :: Int
     publishes  :: Int
     id_counter :: Atomic{UInt64}
+    closed     :: Atomic{Bool}
 end
 
 function Broker{T}(; cap::Integer=256) where {T}
@@ -178,7 +187,8 @@ function Broker{T}(; cap::Integer=256) where {T}
         Int(cap), 
         0, 
         0, 
-        Atomic{UInt64}(0)
+        Atomic{UInt64}(0),
+        Atomic{Bool}(false)
     )
 end
 
@@ -360,6 +370,9 @@ end
 
 function register!(broker::Broker{T}, sub::Subscription{T}) where {T}
     lock(broker.lock) do
+        if broker.closed[]
+            throw(InvalidStateException("broker is closed", :closed))
+        end
         # Only pay for pruning when the capacity check might actually need the
         # reclaimed slots; below capacity, registration is O(1).
         if broker.count >= broker.cap
@@ -505,6 +518,10 @@ the number of queues the value was enqueued into (a `:drop_newest` drop or a
 `:disconnect` closure does not count). Callbacks are observers, not consumers:
 they fire for every matching value after the lock is released, including values
 their own queue dropped. Callback errors are logged and swallowed.
+
+A closed broker has no subscribers, so `publish!` on one is a no-op returning
+`0`: a publish that races shutdown is dropped rather than raising on the
+publisher.
 """
 function publish!(broker::Broker{T}, topic::AbstractString, value::T)::Int where {T}
     key = String(topic)
@@ -512,6 +529,9 @@ function publish!(broker::Broker{T}, topic::AbstractString, value::T)::Int where
     delivered = 0
 
     lock(broker.lock) do
+        if broker.closed[]
+            return 0
+        end
         exact_subs = get(broker.exact, key, nothing)
         if !isnothing(exact_subs)
             if any(isdead, exact_subs)
@@ -597,27 +617,83 @@ function subscribers(broker::Broker)::Int
     end
 end
 
-"""
-    close_all!(broker)
-
-End every subscription: queues are closed (buffered values stay drainable) and
-the registry is emptied. Called during shutdown.
-"""
-function close_all!(broker::Broker)
-    lock(broker.lock) do
-        for (_, subs) in broker.exact
-            for sub in subs
-                sub.active[] = false
-                close(sub.queue)
-            end
-        end
-        for sub in broker.patterns
+# End every registered subscription and empty the registry: clear the active
+# flag first (the hot-path liveness check), then close the queue so a consumer
+# blocked in `take!` wakes with buffered values still drainable. Callers must
+# hold `broker.lock`.
+function close_subscriptions!(broker::Broker)
+    for (_, subs) in broker.exact
+        for sub in subs
             sub.active[] = false
             close(sub.queue)
         end
-        empty!(broker.exact)
-        empty!(broker.patterns)
-        broker.count = 0
+    end
+    for sub in broker.patterns
+        sub.active[] = false
+        close(sub.queue)
+    end
+    empty!(broker.exact)
+    empty!(broker.patterns)
+    broker.count = 0
+    return broker
+end
+
+"""
+    empty!(broker::Broker) -> Broker
+
+End every registered subscription and empty the registry, returning the broker.
+Each subscription is deactivated and its queue closed (buffered values stay
+drainable), so a consumer blocked in `take!` is released rather than orphaned:
+a record that is no longer registered could never be delivered to again, and
+leaving its queue open would hang its consumer. The broker itself stays usable;
+`reset(broker)` is the resource-flavored spelling and `close(broker)` is the
+terminal variant. Idempotent, and a no-op on an already closed broker.
+"""
+function Base.empty!(broker::Broker)
+    return lock(broker.lock) do
+        close_subscriptions!(broker)
+    end
+end
+
+"""
+    reset(broker::Broker)
+
+Return `broker` to its initial (empty, usable) state: every subscription is
+ended exactly as in `empty!(broker)` and the registry is emptied, but the broker
+itself stays open for new subscriptions. This is the non-terminal counterpart
+of `close(broker)`. Returns `nothing`, following `Base.reset`; idempotent, and a
+no-op on a closed broker (closing is terminal, so a closed broker cannot be
+resurrected).
+"""
+function Base.reset(broker::Broker)
+    empty!(broker)
+    return nothing
+end
+
+"""
+    isopen(broker::Broker) -> Bool
+
+Whether `broker` has not been closed. An empty but usable broker is open.
+"""
+Base.isopen(broker::Broker)::Bool = !broker.closed[]
+
+"""
+    close(broker::Broker)
+
+Terminal shutdown: end every subscription and empty the registry exactly as in
+`empty!(broker)`, then mark the broker closed. Afterwards `isopen(broker)` is
+`false`, `subscribe!` throws an `InvalidStateException`, and `publish!` is a
+no-op returning `0`; `reset(broker)`/`empty!(broker)` cannot reopen it.
+Idempotent. Closing the broker does not invalidate the `Subscription` handles
+it returned — they are already closed, and `close(sub::Subscription)` remains
+safe to call.
+"""
+function Base.close(broker::Broker)
+    lock(broker.lock) do
+        if !broker.closed[]
+            close_subscriptions!(broker)
+            broker.closed[] = true
+        end
     end
     return nothing
 end

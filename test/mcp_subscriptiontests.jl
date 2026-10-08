@@ -879,6 +879,34 @@ end
     @test isempty(iso_ctx.mcp.listens)
 end
 
+@testset "a closed broker is retired and rebuilt on demand" begin
+    ctx = fresh_ctx()
+
+    first_broker = MCP.broker(ctx)
+    @test isopen(first_broker)
+
+    # a broker closed out-of-band is never handed back by the accessor
+    close(first_broker)
+    @test !isopen(first_broker)
+    second_broker = MCP.broker(ctx)
+    @test isopen(second_broker)
+    @test second_broker !== first_broker
+
+    # close_broker! closes and detaches in one step
+    MCP.close_broker!(ctx)
+    @test !isopen(second_broker)
+    @test ctx.mcp.broker[] === nothing
+
+    third_broker = MCP.broker(ctx)
+    @test isopen(third_broker)
+    @test third_broker !== second_broker
+    @test ctx.mcp.broker[] === third_broker
+
+    # close_broker! on a context that never built a broker is a no-op
+    MCP.close_broker!(ctx)
+    @test ctx.mcp.broker[] === nothing
+end
+
 ### Teardown ###################################################################
 
 terminate()

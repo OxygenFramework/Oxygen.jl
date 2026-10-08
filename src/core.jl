@@ -273,6 +273,7 @@ function terminate(context::ServerContext)
         # before the server goes away
         MCP.close_listens!(context)
         MCP.close_sessions!(context)
+        MCP.close_broker!(context)
 
         # drop the incremental metrics cache tied to this server's history
         Metrics.unregister_metrics_cache!(context.service)

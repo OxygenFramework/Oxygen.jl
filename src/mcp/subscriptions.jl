@@ -208,23 +208,49 @@ end
     broker(ctx) :: MCPBroker
 
 The context's notification broker, created lazily (the `MCPContext` is built
-before this module is defined, so the field is an untyped `Ref`).
+before this module is defined, so the field is an untyped `Ref`). A broker that
+has been closed is retired: the accessor never hands one out, so a fresh broker
+is built on the next call. The `isopen` check is lock-free, which keeps it safe
+under `subscriptions_lock` (acquiring `broker.lock` there would violate this
+file's lock ordering).
 """
 function broker(ctx::ServerContext)::MCPBroker
     existing = ctx.mcp.broker[]
-    if existing isa MCPBroker
+    if existing isa MCPBroker && isopen(existing)
         return existing
     end
 
     return lock(ctx.mcp.subscriptions_lock) do
         existing = ctx.mcp.broker[]
-        if existing isa MCPBroker
+        if existing isa MCPBroker && isopen(existing)
             return existing
         end
         created = MCPBroker(; cap=MAX_LISTEN_SUBSCRIPTIONS)
         ctx.mcp.broker[] = created
         return created
     end
+end
+
+"""
+    close_broker!(ctx)
+
+Close the context's notification broker (ending any remaining subscriptions and
+waking their consumers) and detach it, so the next `broker(ctx)` builds a
+fresh, open broker. Called during `terminate`, after listens and sessions have
+been shut down; a context that never created a broker is left untouched.
+"""
+function close_broker!(ctx::ServerContext)
+    mcp_broker = lock(ctx.mcp.subscriptions_lock) do
+        existing = ctx.mcp.broker[]
+        ctx.mcp.broker[] = nothing
+        return existing
+    end
+    if mcp_broker isa MCPBroker
+        # `close` takes `broker.lock`, which must not be acquired while
+        # holding `subscriptions_lock`.
+        close(mcp_broker)
+    end
+    return nothing
 end
 
 # ----------------------------------------------------------------------------

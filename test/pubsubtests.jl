@@ -180,7 +180,7 @@ end
 
     # The counter never rewinds, so a closed record's id is not reused by a
     # later subscription to the same broker.
-    PubSub.close_all!(broker)
+    reset(broker)
     third = PubSub.subscribe!(broker, "c")
     @test third.id != first.id
     @test third.id != second.id
@@ -216,17 +216,64 @@ end
     @test PubSub.subscribers(broker) == 1          # pruned on subscribers
 end
 
-@testset "close_all! ends every subscription" begin
+@testset "empty! and reset end every subscription but keep the broker usable" begin
+    for end_all in (empty!, reset)
+        broker = Broker{Int}()
+        subs = [PubSub.subscribe!(broker, "a") for _ in 1:2]
+        pattern = PubSub.subscribe!(broker, r".*")
+
+        end_all(broker)
+
+        @test all(sub -> !isopen(sub), subs)
+        @test !isopen(pattern)
+        @test PubSub.publish!(broker, "a", 1) == 0
+        @test PubSub.subscribers(broker) == 0
+        @test isopen(broker)  # usable again, unlike after close
+
+        fresh = PubSub.subscribe!(broker, "a")
+        @test PubSub.publish!(broker, "a", 2) == 1
+        @test queued(fresh) == [2]
+    end
+end
+
+@testset "empty! returns the broker and reset returns nothing" begin
+    broker = Broker{Int}()
+    PubSub.subscribe!(broker, "a")
+
+    @test empty!(broker) === broker
+    PubSub.subscribe!(broker, "a")
+    @test reset(broker) === nothing
+end
+
+@testset "close ends every subscription and the broker" begin
     broker = Broker{Int}()
     subs = [PubSub.subscribe!(broker, "a") for _ in 1:2]
     pattern = PubSub.subscribe!(broker, r".*")
+    hits = Ref(0)
+    watched = PubSub.subscribe!(broker, "a"; callback=(_, _) -> (hits[] += 1))
 
-    PubSub.close_all!(broker)
+    @test isopen(broker)
+    close(broker)
 
+    @test !isopen(broker)
     @test all(sub -> !isopen(sub), subs)
     @test !isopen(pattern)
-    @test PubSub.publish!(broker, "a", 1) == 0
+    @test !isopen(watched)
     @test PubSub.subscribers(broker) == 0
+    @test PubSub.publish!(broker, "a", 1) == 0
+    @test hits[] == 0
+
+    # closing is idempotent
+    close(broker)
+    @test !isopen(broker)
+
+    # registering against a closed broker is an error
+    @test_throws InvalidStateException PubSub.subscribe!(broker, "a")
+
+    # reset/empty! cannot resurrect a closed broker
+    @test reset(broker) === nothing
+    @test empty!(broker) === broker
+    @test !isopen(broker)
 end
 
 @testset "a pre-created channel keeps ack-first ordering" begin

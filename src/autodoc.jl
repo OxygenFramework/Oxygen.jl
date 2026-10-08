@@ -14,7 +14,7 @@ using ..Reflection: Param
 using ..Extractors: isextractor, extracttype, isreqparam
 using ..Reflection: splitdef, is_builtin_type, nonnull_types, dict_valtype
 
-export registerschema, swaggerhtml, redochtml, mcpexplorerhtml, mergeschema
+export registerschema, swaggerhtml, redochtml, mcpexplorerhtml, metricshtml, mergeschema
 
 """
     mergeschema(route::String, customschema::Dict)
@@ -982,6 +982,44 @@ function mcpexplorerhtml(endpoint::String) :: HTTP.Response
                     domId: "mcp-explorer", 
                     execEnabled: true,
                     endpointEditable: false
+                });
+            </script>
+        </body>
+
+        </html>
+    """)
+end
+
+
+"""
+    metricshtml(metricsurl::String) :: HTTP.Response
+
+Return an HTML page that mounts the Oxygen Metrics dashboard. `metricsurl` is
+the public URL the dashboard is served under; the bundle's `index.js` and
+`styles.css` are expected as siblings and the metrics API at
+`<metricsurl>/data`.
+"""
+function metricshtml(metricsurl::String) :: HTTP.Response
+
+    html("""
+        <!DOCTYPE html>
+        <html lang="en">
+
+        <head>
+            <title>Oxygen Metrics</title>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <link rel="icon" type="image/png" href="$metricsurl/oxygen-logo.png" />
+            <link rel="stylesheet" href="$metricsurl/styles.css" />
+        </head>
+
+        <body>
+            <div id="oxygen-metrics" style="height: 100vh"></div>
+            <script src="$metricsurl/index.js"></script>
+            <script>
+                window.OxygenMetrics({
+                    endpoint: "$metricsurl/data",
+                    domId: "oxygen-metrics",
                 });
             </script>
         </body>

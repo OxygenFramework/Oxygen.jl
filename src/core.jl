@@ -423,20 +423,33 @@ end
 
 
 """
+Return `true` when at least one MCP tool, prompt, or resource has been
+registered on the context. An empty registry means the MCP endpoint and the
+MCP Explorer page are not mounted (and not advertised in the banner).
+"""
+function has_mcp_content(ctx::ServerContext)::Bool
+    return !isempty(ctx.mcp.tools) || !isempty(ctx.mcp.prompts) ||
+           !isempty(ctx.mcp.resources) || !isempty(ctx.mcp.resource_templates)
+end
+
+
+"""
 Internal helper function to launch the server in a consistent way
 """
 function start_server(ctx::ServerContext; show_banner=false, docs=false, metrics=false, stdio=false, parallel=false, async=false, mcp=false, kwargs, start)::Server
 
-    docs && setupdocs(ctx; mcp=mcp)
+    mcp_enabled = mcp && has_mcp_content(ctx)
+
+    docs && setupdocs(ctx; mcp=mcp_enabled)
     metrics && setupmetrics(ctx)
-    mcp && setupmcp(ctx)
+    mcp_enabled && setupmcp(ctx)
 
     show_banner && server_welcome(
         external_url = ctx.service.external_url[], 
         prefix = ctx.service.prefix[],
         docs = docs, 
         metrics = metrics, 
-        mcp = mcp,
+        mcp = mcp_enabled,
         parallel = parallel, 
         docs_path = ctx.docs.docspath[], 
         mcp_path = ctx.mcp.path[]
@@ -559,11 +572,11 @@ function MetricsMiddleware(service::Service, catch_errors::Bool)
     return function (handler)
         return function (req::HTTP.Request)
             return handlerequest(catch_errors) do
-                start_time = time()
+                start_time = time_ns()
                 # Handle the request
                 response = handler(req)
-                # Log response time
-                response_time = (time() - start_time) * 1000
+                # Log response time (time_ns returns nanoseconds; convert to milliseconds)
+                response_time = (time_ns() - start_time) / 1e6
                 success = response.status == 200
                 # Make sure we update the History object in a thread-safe way;
                 # `push_history` takes the service's history lock and feeds the
@@ -970,7 +983,7 @@ function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::S
     register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(schema_url))
     register_internal(ctx, router, "GET", full_schema, () -> prefixed_openapi_schema)
 
-    if mcp 
+    if mcp && has_mcp_content(ctx)
         # get the mcp endpoint url
         endpoint = join_url_path(ctx.service.prefix[], ctx.mcp.path[])
         # Make sure the mcp endpoint has a leading slash
@@ -986,25 +999,19 @@ function setupmetrics(context::ServerContext)
     setupmetrics(context, context.docs.router[], context.docs.docspath[])
 end
 
-# add the swagger and swagger/schema routes 
+# add the metrics dashboard routes 
 function setupmetrics(ctx::ServerContext, router::Router, docspath::String)
 
     # If a global prefix is assigned, then we need to make sure we inject the prefixes into the source url as well.
     prefixed_docspath = join_url_path(ctx.service.prefix[], docspath)
 
-    # This allows us to customize the path to the metrics dashboard
-    function loadfile(filepath)::String
-        content = readfile(filepath)
-        # only replace content if it's in a generated file
-        ext = lowercase(last(splitext(filepath)))
-        if ext in [".html", ".css", ".js"]
-            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$prefixed_docspath/metrics/")
-        else
-            return content
-        end
-    end
-
-    staticfiles(ctx, router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    # The dashboard is a small host page that mounts the bundled
+    # `window.OxygenMetrics` global against this server's metrics API. The
+    # bundle (`index.js` + `styles.css`) is served as static files next to it
+    # and carries no baked-in paths, so no server-side rewriting is needed.
+    metricsurl = "$prefixed_docspath/metrics"
+    register_internal(ctx, router, GET, "$docspath/metrics", () -> metricshtml(metricsurl))
+    staticfiles(ctx, router, "$DATA_PATH/dashboard", "$docspath/metrics")
 
     # Keep an incremental cache of the metrics aggregates so the dashboard
     # doesn't have to rescan the entire history on every poll. `push_history`
@@ -1073,8 +1080,7 @@ declaring a modern version is `405`; `DELETE` (legacy session teardown) is also
 `405`.
 """
 function setupmcp(ctx::ServerContext)
-    if isempty(ctx.mcp.tools) && isempty(ctx.mcp.prompts) &&
-       isempty(ctx.mcp.resources) && isempty(ctx.mcp.resource_templates)
+    if !has_mcp_content(ctx)
         return nothing
     end
 

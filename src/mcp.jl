@@ -473,6 +473,33 @@ function buffered_request(stream::HTTP.Stream)::HTTP.Request
     return request isa HTTP.Request ? request : stream.message
 end
 
+# Collect every `Accept` header value (`Accept` may be spread across repeated
+# header entries).
+function accept_headers(req::HTTP.Request)::Vector{String}
+    accept = String[]
+    for (key, value) in req.headers
+        if header_name_equals(key, "accept")
+            push!(accept, String(value))
+        end
+    end
+    return accept
+end
+
+# Split one `Accept` media-range into its lowercased media type and its `q`
+# weight (default 1.0; a malformed weight is read as a refusal).
+function parse_media_range(entry::AbstractString)::Tuple{String,Float64}
+    fields = split(entry, ';')
+    media = lowercase(strip(fields[1]))
+    q = 1.0
+    for field in fields[2:end]
+        part = split(field, '='; limit=2)
+        if length(part) == 2 && lowercase(strip(part[1])) == "q"
+            q = something(tryparse(Float64, strip(part[2])), 0.0)
+        end
+    end
+    return media, q
+end
+
 """
     accepts_event_stream(req) :: Bool
 
@@ -483,41 +510,24 @@ otherwise `text/*` or `*/*` with a positive `q` accepts. A request with no
 today's bytes.
 """
 function accepts_event_stream(req::HTTP.Request)::Bool
-    # `Accept` may be spread across repeated header entries; gather them all.
-    accept = String[]
-    for (key, value) in req.headers
-        if header_name_equals(key, "accept")
-            push!(accept, String(value))
-        end
-    end
-    if isempty(accept)
-        return false
-    end
+    accept = accept_headers(req)
+    isempty(accept) && return false
 
+    # Joining first flattens the per-header split into one loop; entries are
+    # the same comma-separated media ranges, in order.
     wildcard = false
-    for header in accept
-        for entry in split(header, ',')
-            fields = split(entry, ';')
-            media = lowercase(strip(fields[1]))
-            if isempty(media)
-                continue
-            end
-            # Media-range parameters: `q` weights the range (default 1.0); a
-            # malformed weight is read as a refusal rather than as acceptance.
-            q = 1.0
-            for field in fields[2:end]
-                part = split(field, '='; limit=2)
-                if length(part) == 2 && lowercase(strip(part[1])) == "q"
-                    q = something(tryparse(Float64, strip(part[2])), 0.0)
-                end
-            end
-            # An exact `text/event-stream` range decides on its own; a wildcard
-            # only opts in, it never overrides an exact refusal.
-            if media == "text/event-stream"
-                return q > 0
-            elseif (media == "text/*" || media == "*/*") && q > 0
-                wildcard = true
-            end
+    for entry in split(join(accept, ','), ',')
+        media, q = parse_media_range(entry)
+        if isempty(media)
+            continue
+        end
+        
+        # An exact `text/event-stream` range decides on its own; a wildcard
+        # only opts in, it never overrides an exact refusal.
+        if media == "text/event-stream"
+            return q > 0
+        elseif (media == "text/*" || media == "*/*") && q > 0
+            wildcard = true
         end
     end
     return wildcard
@@ -587,6 +597,59 @@ function process_batch(ctx::ServerContext, payload::AbstractVector,
     return responses, 200
 end
 
+# Pre-dispatch transport rejections: origin allowlist, JSON content type, and
+# (informationally) an unknown protocol version header. Writes the fixed
+# rejection itself and returns `true` when the request was answered.
+function reject_transport(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request)::Bool
+    origin_response = check_origin(ctx, req)
+    if !isnothing(origin_response)
+        write_stream_response(stream, origin_response.status, "text/plain; charset=utf-8", "Forbidden")
+        return true
+    end
+
+    # Explicit Content-Type: only JSON bodies are accepted. Accept-header
+    # handling is deliberately lenient — clients that send no or partial Accept
+    # headers still work.
+    content_type = HTTP.header(req, "Content-Type", "")
+    if !startswith(String(content_type), "application/json")
+        write_stream_response(stream, 415, "text/plain", "Unsupported Media Type")
+        return true
+    end
+
+    # Version header handling is lenient for legacy traffic (no mirroring
+    # required), but an unknown version is worth surfacing. Modern requests are
+    # strictly validated later, so this is informational only.
+    header_version = HTTP.header(req, "MCP-Protocol-Version", "")
+    if !isempty(header_version) && !(strip(String(header_version)) in SUPPORTED_VERSIONS)
+        @debug "Client requested unsupported protocol version" client_version=String(header_version) supported=SUPPORTED_VERSIONS
+    end
+    return false
+end
+
+# Decode the JSON request body; `(false, nothing)` marks a malformed body.
+function decode_body(req::HTTP.Request)::Tuple{Bool,Any}
+    try
+        return true, JSON.parse(String(req.body))
+    catch
+        return false, nothing
+    end
+end
+
+# Write a dispatch result. Streamed tool calls and listen streams upgrade to
+# SSE; a `nothing` body (notification or client response) writes a bare status;
+# everything else is a JSON reply.
+function write_result(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request,
+                      body, status::Int, headers::Vector{Pair{String,String}})
+    if body isa StreamedCall
+        return stream_call(ctx, stream, req, body)
+    elseif body isa ListenCall
+        return stream_listen_call(ctx, stream, req, body)
+    elseif isnothing(body)
+        return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
+    end
+    return write_json_response(stream, body; status=status, headers=headers)
+end
+
 """
     handle(ctx::ServerContext, stream::HTTP.Stream)
 
@@ -610,32 +673,10 @@ requests keep using the context-wide anonymous state.
 function handle(ctx::ServerContext, stream::HTTP.Stream)
     req = buffered_request(stream)
 
-    origin_response = check_origin(ctx, req)
-    if !isnothing(origin_response)
-        return write_stream_response(stream, origin_response.status, "text/plain; charset=utf-8", "Forbidden")
-    end
+    reject_transport(ctx, stream, req) && return nothing
 
-    # Explicit Content-Type: only JSON bodies are accepted. Accept-header
-    # handling is deliberately lenient — clients that send no or partial Accept
-    # headers still work.
-    content_type = HTTP.header(req, "Content-Type", "")
-    if !startswith(String(content_type), "application/json")
-        return write_stream_response(stream, 415, "text/plain", "Unsupported Media Type")
-    end
-
-    # Version header handling is lenient for legacy traffic (no mirroring
-    # required), but an unknown version is worth surfacing. Modern requests are
-    # strictly validated later, so this is informational only.
-    header_version = HTTP.header(req, "MCP-Protocol-Version", "")
-    if !isempty(header_version) && !(strip(String(header_version)) in SUPPORTED_VERSIONS)
-        @debug "Client requested unsupported protocol version" client_version=String(header_version) supported=SUPPORTED_VERSIONS
-    end
-
-    payload = try
-        JSON.parse(String(req.body))
-    catch
-        return write_json_response(stream, error_body(nothing, MCP_PARSE_ERROR, "Parse error"); status=400)
-    end
+    decoded, payload = decode_body(req)
+    decoded || return write_json_response(stream, error_body(nothing, MCP_PARSE_ERROR, "Parse error"); status=400)
 
     # The revision's transport policy decides whether this request is stateful:
     # a modern claim never resolves a session, a legacy request uses its
@@ -644,54 +685,37 @@ function handle(ctx::ServerContext, stream::HTTP.Stream)
 
     # Sessions only exist in the legacy era. A supplied id must name a live
     # session (404 otherwise, per the Streamable HTTP transport).
-    session = nothing
-    had_session_header = false
-    if stateful
-        resolved = resolve_session_or_error(ctx, req)
-        if resolved isa Tuple
-            status, body = resolved
-            return write_json_response(stream, body; status=status)
-        elseif resolved isa MCPSession
-            session = resolved
-            had_session_header = true
-        end
+    session = stateful ? resolve_session_or_error(ctx, req) : nothing
+    if session isa Tuple
+        status, body = session
+        return write_json_response(stream, body; status=status)
     end
 
     if payload isa AbstractVector
         body, status = process_batch(ctx, payload, req; session=session)
-        if isnothing(body)
-            return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
-        end
-        return write_json_response(stream, body; status=status)
+        return write_result(ctx, stream, req, body, status, Pair{String,String}[])
     end
 
     method = payload isa AbstractDict ? get(payload, "method", "") : ""
 
-    # A header-less initialize mints a session and returns its id; the response
-    # is the only place the client learns it.
-    if stateful && !had_session_header && method == "initialize"
+    # A header-less initialize mints a session before dispatch and mirrors its
+    # state afterwards; the response is the only place the client learns its id.
+    initialize = stateful && method == "initialize"
+    minted = initialize && !(session isa MCPSession)
+    if minted
         session = new_session!(ctx)
     end
 
     body, status = process(ctx, payload, req; session=session)
 
     response_headers = Pair{String,String}[]
-    if stateful && method == "initialize" && session isa MCPSession
-        if !had_session_header
+    if initialize
+        if minted
             mirror_anonymous!(ctx, session)
         end
         push!(response_headers, SESSION_HEADER => session.id)
     end
-
-    if body isa StreamedCall
-        return stream_call(ctx, stream, req, body)
-    elseif body isa ListenCall
-        return stream_listen_call(ctx, stream, req, body)
-    end
-    if isnothing(body)
-        return write_stream_response(stream, status, "text/plain; charset=utf-8", "")
-    end
-    return write_json_response(stream, body; status=status, headers=response_headers)
+    return write_result(ctx, stream, req, body, status, response_headers)
 end
 
 """

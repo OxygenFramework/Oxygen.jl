@@ -99,7 +99,7 @@ include("mcp/sessions.jl")       # legacy Streamable HTTP sessions (Mcp-Session-
 include("mcp/tools.jl")          # tools/list, tools/call
 include("mcp/prompts.jl")        # prompts/list, prompts/get
 include("mcp/resources.jl")      # resources/list, resources/templates/list, resources/read
-include("mcp/subscriptions.jl")  # subscriptions/listen, resources/subscribe, notify_*
+include("mcp/subscriptions.jl")  # subscriptions/listen, resources/subscribe, notify_change
 
 # ----------------------------------------------------------------------------
 # Spec resolution

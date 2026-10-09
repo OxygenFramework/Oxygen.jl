@@ -522,46 +522,25 @@ end
 ### MCP Change Notifications ###
 
 """
-    notify_resource_updated(uri::AbstractString)::Int
+    notify_change(kind::Symbol, value=nothing)::Int
 
-Announce that a resource's contents changed: modern `subscriptions/listen`
-streams watching `uri` receive `notifications/resources/updated`, and a legacy
-session subscribed via `resources/subscribe` receives it on its server→client
-channel (stdio stdout or the GET SSE stream). Returns the number of streams the
-notification was enqueued on.
-"""
-notify_resource_updated(uri::AbstractString)::Int =
-    Oxygen.Core.MCP.notify_resource_updated(CONTEXT[], uri)
+Publish an MCP change notification to subscribers. `kind` selects the
+notification:
 
-"""
-    notify_resources_changed()::Int
+  * `notify_change(:resource_updated, uri)` — the contents of `uri` changed;
+    modern `subscriptions/listen` streams watching `uri` receive
+    `notifications/resources/updated`, and a legacy session subscribed via
+    `resources/subscribe` receives it on its server→client channel (stdio
+    stdout or the GET SSE stream);
+  * `notify_change(:tools_changed)`, `notify_change(:prompts_changed)`,
+    `notify_change(:resources_changed)` — the corresponding list changed
+    (`notifications/{tools,prompts,resources}/list_changed`).
 
-Announce that the server's resource list changed
-(`notifications/resources/list_changed`). Returns the number of streams the
-notification was enqueued on.
+List changes are published automatically whenever a tool, prompt, or resource
+is registered. Returns the number of streams the notification was enqueued on.
 """
-notify_resources_changed()::Int =
-    Oxygen.Core.MCP.notify_resources_changed(CONTEXT[])
-
-"""
-    notify_tools_changed()::Int
-
-Announce that the server's tool list changed
-(`notifications/tools/list_changed`). Returns the number of streams the
-notification was enqueued on.
-"""
-notify_tools_changed()::Int =
-    Oxygen.Core.MCP.notify_tools_changed(CONTEXT[])
-
-"""
-    notify_prompts_changed()::Int
-
-Announce that the server's prompt list changed
-(`notifications/prompts/list_changed`). Returns the number of streams the
-notification was enqueued on.
-"""
-notify_prompts_changed()::Int =
-    Oxygen.Core.MCP.notify_prompts_changed(CONTEXT[])
+notify_change(kind::Symbol, value=nothing)::Int =
+    Oxygen.Core.MCP.notify_change(CONTEXT[], kind, value)
 
 
 """

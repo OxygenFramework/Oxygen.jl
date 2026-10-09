@@ -569,7 +569,7 @@ Clients opt in with `_meta.progressToken` and `Accept: text/event-stream`; other
 
 ### Subscriptions
 
-Publish changes with `notify_resource_updated(uri)` or `Oxygen.notify_{tools,prompts,resources}_changed()`; modern clients receive them on `subscriptions/listen` and legacy clients on their `resources/subscribe`. Registration publishes list changes automatically.
+Publish changes with `notify_change(:resource_updated, uri)` for one resource or `notify_change(:tools_changed)`, `notify_change(:prompts_changed)`, and `notify_change(:resources_changed)` for list changes; modern clients receive them on `subscriptions/listen` and legacy clients on their `resources/subscribe`. Registration publishes list changes automatically.
 
 ### The MCP endpoint
 

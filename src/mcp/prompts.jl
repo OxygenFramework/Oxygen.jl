@@ -30,7 +30,7 @@ function register_prompt!(ctx::ServerContext, desc, func::Function; name=nothing
     prompt = MCPPrompt(wirename, description, func, signature.params, signature.argnames,
                        signature.has_context, signature.has_request)
     ctx.mcp.prompts[wirename] = prompt
-    notify_prompts_changed(ctx)
+    notify_change(ctx, :prompts_changed)
     return prompt
 end
 

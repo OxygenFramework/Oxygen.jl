@@ -173,17 +173,18 @@ resource("oxygen://config", "Server configuration", config_resource;
          title="Server configuration", mime_type="application/json")
 
 # A mutation tool: after changing server state it calls
-# `notify_resource_updated`, so subscribed clients re-read `oxygen://places`.
-# Modern clients receive it on a `subscriptions/listen` stream, legacy clients
-# via `resources/subscribe`. List changes (`notify_tools_changed`, etc.) are
-# published automatically by the registration functions.
+# `notify_change(:resource_updated, ...)`, so subscribed clients re-read
+# `oxygen://places`. Modern clients receive it on a `subscriptions/listen`
+# stream, legacy clients via `resources/subscribe`. List changes
+# (`notify_change(:tools_changed, ...)`, etc.) are published automatically by
+# the registration functions.
 @tool "Add a place to the demo registry" Dict(
     :name => "the place name",
     :lat => "latitude",
     :lon => "longitude",
     ) function add_place(name::String, lat::Float64, lon::Float64)
     PLACES[lowercase(name)] = Place(name, Coordinates(lat, lon), String[])
-    notify_resource_updated("oxygen://places")
+    notify_change(:resource_updated, "oxygen://places")
     return "Added $name"
 end
 

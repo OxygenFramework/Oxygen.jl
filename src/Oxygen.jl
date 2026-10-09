@@ -56,8 +56,7 @@ export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route,
         # MCP
         @tool, tool, @prompt, prompt, @resource, resource, resource_folder,
         mcp_stream, emit, progress, check_cancelled,
-        notify_resource_updated, notify_resources_changed,
-        notify_tools_changed, notify_prompts_changed,
+        notify_change,
         # Streaming
         sse_stream, SSEEvent,
         # Tasks & Cron

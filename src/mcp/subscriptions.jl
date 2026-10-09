@@ -1,5 +1,5 @@
 # Server-initiated change notifications: modern `subscriptions/listen` streams,
-# legacy `resources/subscribe` delivery, and the `notify_*` broadcast APIs.
+# legacy `resources/subscribe` delivery, and the `notify_change` broadcast API.
 # Included into the `MCP` module by `../mcp.jl`, after `resources.jl`.
 #
 # The generic fan-out engine lives in `../pubsub.jl`. This file owns the MCP
@@ -514,7 +514,7 @@ function closing_body(ctx::ServerContext, id)::Dict{String,Any}
 end
 
 # ----------------------------------------------------------------------------
-# Broadcast / notify
+# Broadcast / notify_change
 # ----------------------------------------------------------------------------
 
 """
@@ -528,37 +528,49 @@ function broadcast_notification(ctx::ServerContext, event::SubscriptionNotificat
 end
 
 """
-    notify_resource_updated(ctx, uri) :: Int
+    notify_change(ctx, kind, value=nothing) :: Int
 
-Announce that a resource's contents changed. Returns the number of subscriber
-queues the notification was enqueued into; a queue that dropped the value
-(`:drop_newest`) or was disconnected does not count.
-"""
-function notify_resource_updated(ctx::ServerContext, uri::AbstractString)::Int
-    target = String(uri)
-    return broadcast_notification(ctx, SubscriptionNotification(
-        "notifications/resources/updated", Dict{String,Any}("uri" => target), target))
-end
+Publish a server-initiated change notification to every matching subscriber.
+`kind` selects the notification:
 
-"""
-    notify_list_changed(ctx, kind) :: Int
+  * `notify_change(ctx, :resource_updated, uri)` — the contents of `uri` changed
+    (`notifications/resources/updated`);
+  * `notify_change(ctx, :tools_changed)`, `notify_change(ctx, :prompts_changed)`,
+    `notify_change(ctx, :resources_changed)` — the corresponding list changed
+    (`notifications/{tools,prompts,resources}/list_changed`).
 
-Announce that a component list changed (`:tools`, `:prompts` or `:resources`).
-Returns the number of subscriber queues the notification was enqueued into;
-`:drop_newest` drops and disconnected queues do not count.
+Returns the number of subscriber queues the notification was enqueued into; a
+queue that dropped the value (`:drop_newest`) or was disconnected does not
+count.
 """
-function notify_list_changed(ctx::ServerContext, kind::Symbol)::Int
-    if !(kind in (:tools, :prompts, :resources))
-        throw(ArgumentError(
-            "notify_list_changed: kind must be :tools, :prompts, or :resources"))
+function notify_change(ctx::ServerContext, kind::Symbol, value=nothing)::Int
+    if kind === :resource_updated
+        if !(value isa AbstractString)
+            throw(ArgumentError("notify_change: :resource_updated requires a resource uri"))
+        end
+        uri = String(value)
+        return broadcast_notification(ctx, SubscriptionNotification(
+            "notifications/resources/updated", Dict{String,Any}("uri" => uri), uri))
     end
-    return broadcast_notification(ctx, SubscriptionNotification(
-        "notifications/$(kind)/list_changed", Dict{String,Any}(), nothing))
-end
 
-notify_tools_changed(ctx::ServerContext)::Int     = notify_list_changed(ctx, :tools)
-notify_prompts_changed(ctx::ServerContext)::Int   = notify_list_changed(ctx, :prompts)
-notify_resources_changed(ctx::ServerContext)::Int = notify_list_changed(ctx, :resources)
+    if kind in (:tools_changed, :prompts_changed, :resources_changed)
+        if !isnothing(value)
+            throw(ArgumentError("notify_change: :$kind does not take a value"))
+        end
+        component = if kind === :tools_changed
+            "tools"
+        elseif kind === :prompts_changed
+            "prompts"
+        else
+            "resources"
+        end
+        return broadcast_notification(ctx, SubscriptionNotification(
+            "notifications/$(component)/list_changed", Dict{String,Any}(), nothing))
+    end
+
+    throw(ArgumentError("notify_change: kind must be :resource_updated, " *
+                        ":tools_changed, :prompts_changed, or :resources_changed"))
+end
 
 # ----------------------------------------------------------------------------
 # Legacy delivery

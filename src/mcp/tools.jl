@@ -253,7 +253,7 @@ function store_tool!(ctx::ServerContext, wirename::String, description::String, 
                    signature.has_context, signature.has_request, signature.has_stream,
                    inject_request, inputschema(signature.params))
     ctx.mcp.tools[wirename] = tool
-    notify_tools_changed(ctx)
+    notify_change(ctx, :tools_changed)
     return tool
 end
 

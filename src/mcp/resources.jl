@@ -398,7 +398,7 @@ function register_resource!(ctx::ServerContext, uri::String, desc, func::Functio
         end
         ctx.mcp.resources[uri] = resource
     end
-    notify_resources_changed(ctx)
+    notify_change(ctx, :resources_changed)
     return resource
 end
 

@@ -33,7 +33,7 @@ end
         for i in 1:steps
             put!(stream, "step $i")
         end
-        notify_resource_updated("sub://alpha")
+        notify_change(:resource_updated, "sub://alpha")
         return "updated"
     end
 end
@@ -166,10 +166,10 @@ end
 # not have to wait out the keepalive interval.
 function disconnect_listen(io_ref, id)
     close(io_ref[])
-    notify_tools_changed()
-    notify_prompts_changed()
-    notify_resources_changed()
-    notify_resource_updated("sub://alpha")
+    notify_change(:tools_changed)
+    notify_change(:prompts_changed)
+    notify_change(:resources_changed)
+    notify_change(:resource_updated, "sub://alpha")
     deadline = time() + 15
     while time() < deadline && has_listen(CONTEXT[], id)
         sleep(0.05)
@@ -279,22 +279,22 @@ end
     @test !haskey(ack_b["params"]["notifications"], "resourcesListChanged")
 
     # Only the requested type reaches each stream; the count reports deliveries.
-    @test notify_tools_changed() == 0
-    @test notify_prompts_changed() == 0
-    @test notify_resources_changed() == 1
+    @test notify_change(:tools_changed) == 0
+    @test notify_change(:prompts_changed) == 0
+    @test notify_change(:resources_changed) == 1
     frame_a = take_frame(events_a)
     @test frame_a["method"] == "notifications/resources/list_changed"
     @test frame_a["params"]["_meta"][META_ID] == 11
     @test no_frame(events_b)
 
-    @test notify_resource_updated("sub://alpha") == 1
+    @test notify_change(:resource_updated, "sub://alpha") == 1
     frame_b = take_frame(events_b)
     @test frame_b["method"] == "notifications/resources/updated"
     @test frame_b["params"]["uri"] == "sub://alpha"
     @test frame_b["params"]["_meta"][META_ID] == 12
     @test no_frame(events_a)
 
-    @test notify_resource_updated("sub://beta") == 0
+    @test notify_change(:resource_updated, "sub://beta") == 0
 
     @test disconnect_listen(io_a, 11)
     @test disconnect_listen(io_b, 12)
@@ -304,7 +304,7 @@ end
 @testset "the acknowledgement always precedes concurrent notifications" begin
     stop = Ref(false)
     hammer = @async while !stop[]
-        notify_resources_changed()
+        notify_change(:resources_changed)
         yield()
     end
 
@@ -395,19 +395,19 @@ end
     @test count_id(14) == 2
 
     # both are live and independently tagged
-    @test notify_tools_changed() == 2
+    @test notify_change(:tools_changed) == 2
     @test take_frame(events_a)["params"]["_meta"][META_ID] == 14
     @test take_frame(events_b)["params"]["_meta"][META_ID] == 14
 
     # one client's disconnect must never prune the other's stream
     close(io_a[])
-    notify_tools_changed()  # nudge the failed write that tears io_a down
+    notify_change(:tools_changed)  # nudge the failed write that tears io_a down
     @test wait_subscribers(1)
     @test count_id(14) == 1
     @test take_frame(events_b)["method"] == "notifications/tools/list_changed"
 
     close(io_b[])
-    notify_tools_changed()
+    notify_change(:tools_changed)
     @test wait_subscribers(0)
     @test !has_listen(CONTEXT[], 14)
 end
@@ -418,7 +418,7 @@ end
     @test has_listen(CONTEXT[], 15)
 
     close(io_ref[])
-    notify_resources_changed()  # force the failed write that tears the stream down
+    notify_change(:resources_changed)  # force the failed write that tears the stream down
 
     deadline = time() + 15
     while time() < deadline && has_listen(CONTEXT[], 15)
@@ -473,11 +473,11 @@ end
     take!(call.stream.channel)  # ack
 
     for _ in 1:MCP.LISTEN_BACKLOG_CAP
-        @test MCP.notify_resources_changed(ctx) == 1
+        @test MCP.notify_change(ctx, :resources_changed) == 1
     end
 
     # The queue is full: the next broadcast disconnects and prunes the stream.
-    @test MCP.notify_resources_changed(ctx) == 0
+    @test MCP.notify_change(ctx, :resources_changed) == 0
     @test !isopen(call.stream.channel)
     @test Base.n_avail(call.stream.channel) == MCP.LISTEN_BACKLOG_CAP
     @test MCP.subscribers(MCP.broker(ctx)) == 0
@@ -506,7 +506,7 @@ end
     @test !isopen(call.stream.channel)
 
     # Nothing is delivered after the closing result.
-    @test MCP.notify_resources_changed(ctx) == 0
+    @test MCP.notify_change(ctx, :resources_changed) == 0
     @test !isready(call.stream.channel)
     @test isempty(ctx.mcp.listens)
 end
@@ -544,29 +544,29 @@ end
     @test io_ref[] !== nothing
 
     # subscribed URI updates arrive as a plain notification
-    @test notify_resource_updated("sub://alpha") == 1
+    @test notify_change(:resource_updated, "sub://alpha") == 1
     update = take_frame(frames)
     @test update["method"] == "notifications/resources/updated"
     @test update["params"] == Dict{String,Any}("uri" => "sub://alpha")
 
     # other URIs and unadvertised kinds do not
-    @test notify_resource_updated("sub://beta") == 0
+    @test notify_change(:resource_updated, "sub://beta") == 0
 
     # list changes are capability-gated and delivered globally
-    @test notify_resources_changed() == 1
+    @test notify_change(:resources_changed) == 1
     @test take_frame(frames)["method"] == "notifications/resources/list_changed"
 
     # unsubscribe stops delivery (idempotent)
     unsubscribe = Dict("jsonrpc" => "2.0", "id" => 3, "method" => "resources/unsubscribe",
                        "params" => Dict("uri" => "sub://alpha"))
     @test parsebody(raw_post(unsubscribe))["result"] == Dict{String,Any}()
-    @test notify_resource_updated("sub://alpha") == 0
+    @test notify_change(:resource_updated, "sub://alpha") == 0
     @test no_frame(frames)
 
     # Close the sink and wait until its broker subscription is gone so later
     # delivery-count assertions are not raced by this connection.
     close(io_ref[])
-    notify_resources_changed()
+    notify_change(:resources_changed)
     broker = MCP.broker(CONTEXT[])
     deadline = time() + 15
     while time() < deadline && MCP.subscribers(broker) > 0
@@ -601,11 +601,11 @@ end
     @test io1[] !== nothing && io2[] !== nothing
 
     # each sink only sees the update its own session subscribed to
-    @test notify_resource_updated("sub://alpha") == 1
+    @test notify_change(:resource_updated, "sub://alpha") == 1
     @test take_frame(frames1)["params"]["uri"] == "sub://alpha"
     @test no_frame(frames2)
 
-    @test notify_resource_updated("sub://beta") == 1
+    @test notify_change(:resource_updated, "sub://beta") == 1
     @test take_frame(frames2)["params"]["uri"] == "sub://beta"
     @test no_frame(frames1)
 
@@ -619,7 +619,7 @@ end
         sleep(0.05)
     end
     @test MCP.subscribers(MCP.broker(ctx)) == 1   # the other session's sink only
-    @test notify_resource_updated("sub://alpha") == 0
+    @test notify_change(:resource_updated, "sub://alpha") == 0
 
     # a request naming the terminated session is rejected
     r = raw_post(Dict("jsonrpc" => "2.0", "id" => 5, "method" => "ping", "params" => Dict());
@@ -628,7 +628,7 @@ end
 
     # clean up the remaining sink
     close(io2[])
-    notify_resource_updated("sub://beta")
+    notify_change(:resource_updated, "sub://beta")
     deadline = time() + 10
     while time() < deadline && MCP.subscribers(MCP.broker(ctx)) > 0
         sleep(0.05)
@@ -643,11 +643,11 @@ end
         push!(ctx.mcp.legacy_subscriptions, "sub://alpha")
     end
 
-    @test MCP.notify_resource_updated(ctx, "sub://alpha") == 0   # nothing initialized
+    @test MCP.notify_change(ctx, :resource_updated, "sub://alpha") == 0   # nothing initialized
     ctx.mcp.initialized[] = true
-    @test MCP.notify_resource_updated(ctx, "sub://alpha") == 0   # initialized without a handshake
+    @test MCP.notify_change(ctx, :resource_updated, "sub://alpha") == 0   # initialized without a handshake
     ctx.mcp.handshake_complete[] = true
-    @test MCP.notify_resource_updated(ctx, "sub://alpha") == 1
+    @test MCP.notify_change(ctx, :resource_updated, "sub://alpha") == 1
     @test take!(sub.queue).method == "notifications/resources/updated"
     @test !isready(sub.queue)
 end
@@ -659,9 +659,9 @@ end
     ctx.mcp.initialized[] = true
     ctx.mcp.handshake_complete[] = true
 
-    @test MCP.notify_prompts_changed(ctx) == 0    # no prompts capability
-    @test MCP.notify_resources_changed(ctx) == 0  # no resources capability
-    @test MCP.notify_tools_changed(ctx) == 1      # tools are always advertised
+    @test MCP.notify_change(ctx, :prompts_changed) == 0    # no prompts capability
+    @test MCP.notify_change(ctx, :resources_changed) == 0  # no resources capability
+    @test MCP.notify_change(ctx, :tools_changed) == 1      # tools are always advertised
     @test take!(sub.queue).method == "notifications/tools/list_changed"
 end
 
@@ -689,14 +689,14 @@ end
     @test ack["params"]["_meta"][META_ID] == 5
     @test ack["params"]["notifications"]["resourceSubscriptions"] == ["sub://alpha"]
 
-    @test notify_resource_updated("sub://alpha") == 1
+    @test notify_change(:resource_updated, "sub://alpha") == 1
     update = next_line(lines)
     @test update["method"] == "notifications/resources/updated"
     @test update["params"]["uri"] == "sub://alpha"
     @test update["params"]["_meta"][META_ID] == 5
 
     # unrequested types are never written
-    @test notify_resources_changed() == 0
+    @test notify_change(:resources_changed) == 0
 
     # notifications/cancelled ends the stream without a response
     send(input, Dict("jsonrpc" => "2.0", "method" => "notifications/cancelled",
@@ -706,7 +706,7 @@ end
         sleep(0.02)
     end
     @test !has_listen(CONTEXT[], 5)
-    @test notify_resource_updated("sub://alpha") == 0
+    @test notify_change(:resource_updated, "sub://alpha") == 0
 
     stop_stdio(task, input, output)
 end
@@ -766,7 +766,7 @@ end
     @test next_line(lines)["id"] == 2
 
     # the update is plain: no subscription tagging on the legacy channel
-    @test notify_resource_updated("sub://alpha") == 1
+    @test notify_change(:resource_updated, "sub://alpha") == 1
     update = next_line(lines)
     @test update["method"] == "notifications/resources/updated"
     @test update["params"] == Dict{String,Any}("uri" => "sub://alpha")
@@ -815,7 +815,7 @@ end
 
 ### Regression / lifecycle #####################################################
 
-@testset "a notify inside a tool handler never lands on its progress stream" begin
+@testset "a notify_change inside a tool handler never lands on its progress stream" begin
     payload = Dict{String,Any}("jsonrpc" => "2.0", "id" => 41, "method" => "tools/call",
                                "params" => Dict{String,Any}(
                                    "name" => "publish_update",
@@ -848,7 +848,7 @@ end
     take_frame(events)  # ack
 
     # Mutate through a tool (the path the demo's add_place uses); its
-    # notify_resource_updated must reach the subscription created above.
+    # notify_change(:resource_updated, ...) must reach the subscription created above.
     payload = Dict{String,Any}("jsonrpc" => "2.0", "id" => 52, "method" => "tools/call",
                                "params" => Dict{String,Any}(
                                    "name" => "publish_update",

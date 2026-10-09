@@ -480,21 +480,20 @@ Clients can subscribe to changes instead of polling. Publish a change from
 anywhere in your app:
 
 ```julia
-notify_resource_updated("oxygen://readme")  # contents of one resource changed
+notify_change(:resource_updated, "oxygen://readme")  # contents of one resource changed
 
-Oxygen.notify_resources_changed()           # resources/list changed
-Oxygen.notify_tools_changed()               # tools/list changed
-Oxygen.notify_prompts_changed()             # prompts/list changed
+notify_change(:resources_changed)                    # resources/list changed
+notify_change(:tools_changed)                        # tools/list changed
+notify_change(:prompts_changed)                      # prompts/list changed
 ```
 
 Each returns the number of subscriber queues the notification was enqueued into
-(a queue that dropped the value does not count). Only
-`notify_resource_updated` is exported; the list-changed helpers are also called
+(a queue that dropped the value does not count). List changes are also called
 automatically whenever a tool, prompt, or resource is registered, so the
 advertised `listChanged` capability is always truthful and manual calls are
-rarely needed — reach for them qualified (`Oxygen.notify_tools_changed()`) when
-the list changes without a registration, such as disk-backed resources. A notification published inside a tool handler goes to the
-subscribers, never onto that call's own progress stream:
+rarely needed — reach for them when the list changes without a registration,
+such as disk-backed resources. A notification published inside a tool handler
+goes to the subscribers, never onto that call's own progress stream:
 
 ```julia
 const PLACES = Dict("NYC" => "40.7,-74.0")
@@ -505,7 +504,7 @@ end
 
 @tool "Add a place" Dict(:name => "place name") function add_place(name::String)
     PLACES[name] = "0.0,0.0"
-    notify_resource_updated("maps://places")
+    notify_change(:resource_updated, "maps://places")
     return "added $name"
 end
 ```

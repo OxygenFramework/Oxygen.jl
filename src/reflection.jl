@@ -1,9 +1,18 @@
 module Reflection
 using StructTypes
 using Base: @kwdef
-using ..Types
 
-export splitdef, struct_builder, extract_struct_info
+export splitdef, struct_builder, extract_struct_info, defname, Param
+
+# A reflected handler parameter: `splitdef` produces these and `CoreUtils`, the
+# extractors, and the MCP layer consume them. Kept here (rather than in `Types`)
+# so this module has no internal dependencies and can load before every layer.
+@kwdef struct Param{T}
+    name::Symbol
+    type::Type{T}
+    default::Union{T, Missing} = missing
+    hasdefault::Bool = false
+end
 
 """
 Helper function to access the underlying value of any global references
@@ -48,6 +57,24 @@ function getsignames(func_methods::Base.MethodList; start=2)
     return arg_names, arg_types, kwarg_names
 end
 
+"""
+    defname(def) :: Union{Symbol,Expr,Nothing}
+
+The name bound by a named function-definition expression (`function f(...) ... end`
+or the short `f(...) = ...` form), or `nothing` when `def` is not a named
+definition (an anonymous function or do-block has no binding to attach a
+docstring to). Used by macros that need to reference a handler after defining it.
+"""
+function defname(def)
+    if def isa Expr && (def.head === :function || def.head === :(=))
+        sig = def.args[1]
+        if sig isa Expr && sig.head == :call
+            return sig.args[1]
+        end
+    end
+    return nothing
+end
+
 function walkargs(predicate::Function, expr)
     if isdefined(expr, :args)
         for arg in expr.args
@@ -60,7 +87,7 @@ function walkargs(predicate::Function, expr)
     return false
 end 
 
-function reconstruct(info::Core.CodeInfo, func_name::Symbol)
+function reconstruct(info::Core.CodeInfo)
     
     # Track which index the function signature can be found on
     sig_index = nothing
@@ -87,7 +114,14 @@ function reconstruct(info::Core.CodeInfo, func_name::Symbol)
 
     function rebuild!(slot::Core.SlotNumber)
         value = get(assignments, slot, NO_VALUES)
-        return value == NO_VALUES ? slot : rebuild!(value)
+        value === NO_VALUES && return slot
+        # Only resolve unevaluated references; evaluated defaults may be
+        # collections and must be returned as-is (broadcasting `rebuild!` over
+        # a vector value would mangle its element type, e.g. to `Any[]`).
+        if value isa Core.SlotNumber || value isa Core.SSAValue || value isa Expr
+            return rebuild!(value)
+        end
+        return value
     end
 
     function rebuild!(value::Any)
@@ -123,17 +157,13 @@ function reconstruct(info::Core.CodeInfo, func_name::Symbol)
 
     default_values = []
 
-    for arg in evaled_sig.args
+    # Drop the callee by position instead of guessing by name. Keep it when it
+    # is `#self#`, which marks the kwarg/positional boundary.
+    sig_args = evaled_sig.args
+    first_arg = first(sig_args)
+    start = (first_arg isa Core.SlotNumber && first_arg.id == 1) ? 1 : 2
 
-        contains_func_name = walkargs(arg) do x
-            # Super generic check to see if the function name is in the expression
-            return contains("$x", "$func_name")
-        end
-
-        if contains_func_name || arg == NO_VALUES  || arg isa GlobalRef && contains("$(arg.name)", "$func_name")
-            continue            
-        end
-
+    for arg in @view sig_args[start:end]
         if arg isa Expr
             try
                 rebuilt = rebuild!(arg)
@@ -221,7 +251,7 @@ end
 """
 Given a list of CodeInfo objects, extract any default values assigned to parameters & keyword arguments
 """
-function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_names::Vector{Symbol}, kwarg_names::Vector{Symbol})
+function extract_defaults(info::Vector{Core.CodeInfo}, param_names::Vector{Symbol}, kwarg_names::Vector{Symbol})
 
     # These store the mapping between parameter names and their default values
     param_defaults = Dict()
@@ -240,7 +270,7 @@ function extract_defaults(info::Vector{Core.CodeInfo}, func_name::Symbol, param_
         end
 
         # rebuild the function signature with the default values included
-        sig_args = reconstruct(c, func_name)
+        sig_args = reconstruct(c)
 
         param_values = []
         kwarg_values = []
@@ -352,7 +382,7 @@ function splitdef(info::Vector{Core.CodeInfo}, method_defs::Base.MethodList, fun
     param_names, param_types, kwarg_names = getsignames(method_defs)
 
     # Extract default values
-    param_defaults, kwarg_defaults = extract_defaults(info, func_name, param_names, kwarg_names)
+    param_defaults, kwarg_defaults = extract_defaults(info, param_names, kwarg_names)
 
     # Create a list of Param objects from parameters
     params = Vector{Param}()
@@ -398,15 +428,22 @@ Otherwise, it returns `false`.
 
 Practically, this check is used to check if `@kwdef` was used to define the struct.
 """
+const _KWDEF_CONSTRUCTOR_CACHE = Dict{Type,Bool}()
+const _KWDEF_CONSTRUCTOR_CACHE_LOCK = ReentrantLock()
+
 function has_kwdef_constructor(T::Type) :: Bool
-    fieldnames = Base.fieldnames(T)
-    for constructor in methods(T)
-        if length(Base.method_argnames(constructor)) == 1 && 
-            Tuple(Base.kwarg_decl(constructor)) == fieldnames
-            return true
+    return lock(_KWDEF_CONSTRUCTOR_CACHE_LOCK) do
+        get!(_KWDEF_CONSTRUCTOR_CACHE, T) do
+            expected = Base.fieldnames(T)
+            for constructor in methods(T)
+                if length(Base.method_argnames(constructor)) == 1 &&
+                   Tuple(Base.kwarg_decl(constructor)) == expected
+                    return true
+                end
+            end
+            return false
         end
     end
-    return false
 end
 
 # Function to extract field names, types, and default values
@@ -425,6 +462,34 @@ function parsetype(target_type::Type{T}, value::Any) :: T where {T}
         return convert(target_type, value)
     end
 end
+
+"""
+    parse_enum(::Type{T}, value) where {T <: Enum}
+
+Coerce a wire value into the enum `T`. Enum names are the wire form (the same
+convention JSON bodies use through StructTypes), so a client sends `"apple"`;
+integer values and integer strings are still accepted for backwards
+compatibility. Every nested parse path funnels into `parsetype` or
+`parse_array_element`, so enums are name-addressable at any depth; `Util`'s
+`parseparam` (path/query/body params) imports this too.
+"""
+function parse_enum(::Type{T}, value) where {T <: Enum}
+    value isa T && return value
+    if value isa AbstractString
+        for instance in Base.Enums.instances(T)
+            string(instance) == value && return instance
+        end
+        parsed = tryparse(Int, value)
+        isnothing(parsed) || return T(parsed)
+        names = join(string.(Base.Enums.instances(T)), ", ")
+        throw(ArgumentError("invalid `$(nameof(T))` value: $(repr(String(value))); expected one of $names"))
+    elseif value isa Integer
+        return T(Int(value))
+    end
+    throw(ArgumentError("invalid `$(nameof(T))` value: $(repr(value))"))
+end
+
+parsetype(::Type{T}, value) where {T <: Enum} = parse_enum(T, value)
 
 """
     match_field_names(::Type{T}, params::AbstractDict{Symbol}) where {T}
@@ -464,8 +529,232 @@ function struct_builder(::Type{T}, params::AbstractDict; casesensitive::Bool=tru
         return kwarg_struct_builder(T, params_with_symbols)
     else
         # case 2: Use faster converter to handle structs with no defaults
-        return StructTypes.constructfrom(T, params_with_symbols)
+        return StructTypes.constructfrom(T, parse_dict_fields(T, params_with_symbols))
     end
+end
+
+# Pre-parse fields so that structured values are coerced before `StructTypes`
+# builds the struct. StructTypes speaks enum names already, but its generic
+# object builder cannot walk nested user structs out of string-keyed JSON
+# objects, so every structured field shape is handled here instead.
+function parse_dict_fields(::Type{T}, params::AbstractDict) where {T}
+    parsed = Dict{Symbol,Any}()
+    for (name, value) in params
+        field = name isa Symbol && name in fieldnames(T) ? fieldtype(T, name) : nothing
+        parsed[name] = isnothing(field) ? value : parse_struct_field(field, value)
+    end
+    return parsed
+end
+
+# Coerce one wire value to a struct field's declared type for the
+# `StructTypes.constructfrom` fast path. Shapes StructTypes cannot build from
+# string-keyed JSON objects (nested structs, collections, unions, enums) are
+# delegated to the same parsers `kwarg_struct_builder` uses; primitives are
+# left to StructTypes.
+function parse_struct_field(field_type::Type, value)
+    value === nothing && return nothing
+    value === missing && return missing
+
+    resolved = nonnull_type(field_type)
+    if resolved isa Union
+        return parse_union_value(resolved, value)
+    elseif resolved <: AbstractDict && value isa AbstractDict
+        return parse_dict_value(resolved, value)
+    elseif resolved <: AbstractArray && value isa AbstractArray
+        return parse_array_value(resolved, value)
+    elseif resolved <: Enum
+        return value isa Enum ? value : parse_enum(resolved, value)
+    elseif is_struct_type(resolved) && value isa AbstractDict
+        return struct_builder(resolved, value)
+    end
+    return value
+end
+
+"""
+    parse_array_value(::Type{T}, value) where {T <: AbstractArray}
+
+Coerce `value` into the array type `T`. Primitive arrays are converted directly;
+element-wise parsing handles enums, nested arrays and custom structs.
+"""
+function parse_array_value(::Type{T}, value) where {T <: AbstractArray}
+    value isa T && return value
+
+    # Only attempt a direct conversion when it can plausibly succeed. The
+    # common JSON shape (a `Vector{Any}` of `Dict`) can never convert to an
+    # array of custom structs, and the thrown exception costs far more than
+    # the element-wise fallback below.
+    E = eltype(T)
+    if !(value isa AbstractArray) || eltype(value) <: E
+        try
+            return convert(T, value)
+        catch
+        end
+    end
+
+    parsed = parse_array_elements(E, value)
+    try
+        return convert(T, parsed)
+    catch
+        return parsed
+    end
+end
+
+# Parse `value` so that each element matches `E`, preserving the input shape.
+# Nested arrays are traversed until a leaf is reached (unless `E` is itself an array).
+parse_array_elements(::Type{E}, value::AbstractArray) where {E <: AbstractArray} = map(item -> parse_array_element(E, item), value)
+parse_array_elements(::Type{E}, value::AbstractArray) where {E} = map(item -> parse_array_elements(E, item), value)
+parse_array_elements(::Type{E}, value) where {E} = parse_array_element(E, value)
+
+parse_array_element(::Type{T}, value) where {T <: Enum} = parse_enum(T, value)
+parse_array_element(::Type{T}, value) where {T <: AbstractArray} = parse_array_value(T, value)
+parse_array_element(::Type{T}, value) where {T <: AbstractDict} = parse_dict_value(T, value)
+function parse_array_element(::Type{T}, value) where {T}
+
+    # If the value and type agree, then we return it
+    value === nothing && Nothing <: T && return nothing
+    value === missing && Missing <: T && return missing
+    
+    # Extract the non-null type (from a union)
+    target = nonnull_type(T)
+    target === T || return parse_array_element(target, value)
+
+    # A multi-type union has no single non-null type: try each member
+    if T isa Union
+        return parse_union_value(T, value)
+    end
+
+    # Try to convert the element based on the shape
+    if is_struct_type(T) && value isa AbstractDict
+        return struct_builder(T, value)
+    elseif value isa AbstractString && T <: Number
+        return parse_number(T, value)
+    else
+        return convert(T, value)
+    end
+end
+
+# Parse a numeric string into a value compatible with `T`. When `T` is abstract
+# (e.g. `Real`, `Integer`), choose a concrete representation that satisfies it.
+function parse_number(::Type{T}, value::AbstractString) where {T <: Number}
+    isconcretetype(T) && return parse(T, value)
+    for S in (Int, Float64, BigInt)
+        parsed = tryparse(S, value)
+        parsed !== nothing && parsed isa T && return parsed
+    end
+    return convert(T, parse(Float64, value))
+end
+
+"""
+    parse_union_value(::Type{T}, value) where {T}
+
+Coerce `value` into the first member of the multi-type union `T` that can
+represent it. Throws the last member's error when none match.
+"""
+function parse_union_value(::Type{T}, value) where {T}
+    last_error = nothing
+    for member in nonnull_types(T)
+        try
+            return parse_array_element(member, value)
+        catch error
+            last_error = error
+        end
+    end
+    last_error === nothing && throw(MethodError(convert, (T, value)))
+    throw(last_error)
+end
+
+# Key/value types of a dictionary target, falling back to `Any` for
+# unparameterized wrappers like `Dict`, where Base's `keytype`/`valtype` throw.
+function dict_keytype(::Type{T}) where {T}
+    try
+        return keytype(T)
+    catch
+        return Any
+    end
+end
+
+function dict_valtype(::Type{T}) where {T}
+    try
+        return valtype(T)
+    catch
+        return Any
+    end
+end
+
+"""
+    parse_dict_value(::Type{T}, value) where {T <: AbstractDict}
+
+Coerce `value` into the dictionary type `T`. Keys are parsed to the dictionary's
+key type (Strings map to `Symbol` keys) and values are parsed element-wise via
+`parse_array_element`, so custom structs, nested arrays and dictionaries work.
+"""
+function parse_dict_value(::Type{T}, value) where {T <: AbstractDict}
+    value isa T && return value
+    value isa AbstractDict || return convert(T, value)
+
+    K = dict_keytype(T)
+    V = dict_valtype(T)
+    parsed = Dict(parse_dict_key(K, k) => parse_array_element(V, v) for (k, v) in value)
+    try
+        return convert(T, parsed)
+    catch
+        return parsed
+    end
+end
+
+# Parse a JSON object key (always a String on the wire) into the declared key type.
+function parse_dict_key(::Type{K}, key) where {K}
+    key isa K && return key
+    if K === Symbol
+        return Symbol(key)
+    elseif K <: AbstractString
+        return string(key)
+    else
+        return parsetype(K, key)
+    end
+end
+
+"""
+    is_builtin_type(::Type{T}, modules::Tuple = (Base, Core)) -> Bool
+
+Return `true` when `T` is a `DataType` or `UnionAll` whose defining module is one
+of `modules`. Used to distinguish user-defined structs from built-in/stdlib types.
+Other `Type` values (e.g. `Union`) return `false`.
+"""
+function is_builtin_type(T::Type, modules::Tuple = (Base, Core))
+    (T isa DataType || T isa UnionAll) || return false
+    return Base.unwrap_unionall(T).name.module ∈ modules
+end
+
+# True for user-defined structs that `struct_builder` can populate from a dict.
+# Excludes Base/Core types (e.g. `Dict`, `NamedTuple`) that are not built that way.
+function is_struct_type(T::Type)
+    T isa DataType || return false
+    is_builtin_type(T) && return false
+    return isstructtype(T) && !isabstracttype(T)
+end
+
+"""
+    nonnull_types(T::Type) -> Vector{Type}
+
+Return the constituents of a `Union` excluding `Nothing` and `Missing`. For a
+non-`Union` type `T`, returns `Type[T]`.
+"""
+function nonnull_types(T::Type)
+    T isa Union || return Type[T]
+    return filter(x -> x !== Nothing && x !== Missing, Base.uniontypes(T))
+end
+
+"""
+    nonnull_type(T::Type)
+
+Return the single non-null type from `Union{T, Nothing}` or `Union{T, Missing}`.
+Returns `T` unchanged when it is not such a union.
+"""
+function nonnull_type(T::Type)
+    rest = nonnull_types(T)
+    length(rest) == 1 && return rest[1]
+    return T
 end
 
 """
@@ -484,12 +773,23 @@ function kwarg_struct_builder(TargetType::Type{T}, params::AbstractDict) where {
             target_type = info.map[param_name]
 
             # Figure out how to parse the current param
-            if target_type == Any || target_type == String
+            resolved_type = nonnull_type(target_type)
+            if param_value === nothing && Nothing <: target_type
+                parsed_value = nothing
+            elseif param_value === missing && Missing <: target_type
+                parsed_value = missing
+            elseif target_type == Any || target_type == String
                 parsed_value = param_value
-            elseif isstructtype(target_type)
-                parsed_value = struct_builder(target_type, param_value)
+            elseif resolved_type <: AbstractArray
+                parsed_value = parse_array_value(resolved_type, param_value)
+            elseif resolved_type <: AbstractDict
+                parsed_value = parse_dict_value(resolved_type, param_value)
+            elseif isstructtype(resolved_type)
+                parsed_value = struct_builder(resolved_type, param_value)
+            elseif resolved_type isa Union
+                parsed_value = parse_union_value(resolved_type, param_value)
             else
-                parsed_value = parsetype(target_type, param_value)
+                parsed_value = parsetype(resolved_type, param_value)
             end
 
             param_dict[param_name] = parsed_value

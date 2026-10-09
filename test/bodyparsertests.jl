@@ -142,7 +142,7 @@ end
 
         # test invalid json
         req = Request("GET","/", [],"""{}""")
-        @test_throws TypeError json(req, rank) 
+        @test_throws Union{TypeError, ArgumentError} json(req, rank) 
 
         # test extra key
         req = Request("GET","/", [],"""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")
@@ -223,7 +223,7 @@ end
 
         # test invalid json
         req = Response("""{}""")
-        @test_throws TypeError json(req, rank) 
+        @test_throws Union{TypeError, ArgumentError} json(req, rank) 
 
         # test extra key
         req = Response("""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")

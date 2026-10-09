@@ -6,8 +6,10 @@ using Dates
 using DataStructures
 using Statistics
 using RelocatableFolders
+using LRUCache: LRU
 using ..Util
 using ..Types
+using ..AppContext: Service
 
 export MetricsMiddleware, get_history, push_history, 
     server_metrics,
@@ -15,21 +17,557 @@ export MetricsMiddleware, get_history, push_history,
     capture_metrics, bin_and_count_transactions,
     bin_transactions, requests_per_unit, avg_latency_per_unit,
     timeseries, series_format, error_distribution,
-    prepare_timeseries_data
+    prepare_timeseries_data,
+    MetricsCache, register_metrics_cache!, unregister_metrics_cache!, metrics_cache,
+    resync_metrics_cache!, metrics_results
 
 struct TimeseriesRecord 
     timestamp::DateTime
     value::Number
 end
 
-function push_history(history::History, transaction::HTTPTransaction)
-    try
-        pushfirst!(history, transaction)
-    catch error
-        @warn "Failed to push transaction into our history: $error"
-    end
+# ---------------------------------------------------------------------------
+# Incremental metrics cache
+#
+# The metrics dashboard polls its data endpoint on a short interval. Recomputing
+# every metric over the entire transaction history on each poll gets slower as
+# the history grows, so instead we maintain a handful of aggregates that are
+# updated once per transaction as it enters (or leaves) the history, and
+# memoize a single consistent readout of them, keyed by the history version.
+# Queries then read the aggregates instead of rescanning the history.
+#
+# `metrics_results` snapshots the whole cache under one lock acquisition and
+# memoizes the computed metrics plus a copy of the per-second bins; every
+# dashboard output for a request is derived from that one version, and repeated
+# queries at the same version are served from the memo table. The returned
+# Dicts are copies, so callers can't mutate the cached results. Bin aggregation
+# is done outside the lock from the copied bins, so queries don't stall pushes.
+#
+# Lifetime server/endpoint metrics match the uncached functions (floating-point
+# averages can differ in the last ulp because values are summed in a different
+# order); time-binned queries are accurate to within one second at the window
+# edge because only whole-second bins are retained (see `bin_cutoff`).
+#
+# Cost: a full recompute follows new traffic (an exact percentile needs the
+# retained transactions), so it is O(history); repeated queries at the same
+# version are served from the memo table, and the time-binned queries only walk
+# the copied per-second bins.
+# ---------------------------------------------------------------------------
+
+"""
+Per-endpoint (or whole-server) latency accumulator.
+
+`durations` holds only the non-zero durations (matching `get_transaction_metrics`)
+in insertion order. It's a deque so the oldest duration can be dropped in O(1)
+when the history evicts a transaction.
+"""
+mutable struct LatencyStats
+    total_requests :: Int
+    total_errors   :: Int
+    durations      :: Deque{Float64}
 end
 
+LatencyStats() = LatencyStats(0, 0, Deque{Float64}())
+
+function reset!(stats::LatencyStats)
+    stats.total_requests = 0
+    stats.total_errors = 0
+    empty!(stats.durations)
+    return stats
+end
+
+"""
+Per-second request/latency bucket. `count` includes every transaction while
+`sum` accumulates every duration (including zero-duration records) so that
+`avg_latency_per_unit` can be derived exactly.
+
+Immutable so a snapshot can copy stored buckets cheaply: updates replace the
+bucket instead of mutating it.
+"""
+struct BinStats
+    count :: Int
+    sum   :: Float64
+end
+
+"""
+Incremental aggregate over a `History`. A cache is created by
+`register_metrics_cache!`, stored on the owning `Service`, and kept in sync by
+`push_history`.
+
+All mutations of `cache.history` must go through `push_history` (under the same
+lock the server uses to serialize pushes); if something mutates the history
+directly, call `resync_metrics_cache!` afterwards to rebuild the aggregates.
+"""
+mutable struct MetricsCache
+    lock      :: ReentrantLock
+    history   :: History
+    max_depth :: Int
+    version   :: UInt64
+    # The lock that serializes pushes into `history` (the owning service's
+    # `history_lock`). Used by `resync_metrics_cache!` to rebuild safely.
+    history_lock :: ReentrantLock
+    # lifetime aggregates
+    server    :: LatencyStats
+    groups    :: Dict{String, LatencyStats}
+    # per-second bins; minute (and other) units are derived from these
+    seconds   :: Dict{DateTime, BinStats}
+    # bounded memo table of computed results: key => (version, result)
+    results   :: LRU{Any, Tuple{UInt64, Any}}
+end
+
+"""
+    register_metrics_cache!(service::Service; max_depth::Int=4, result_cache_size::Int=8)
+
+Create the incremental metrics cache for `service.history`, seed it from any
+transactions already in the history, store it on `service.metrics_cache`, and
+return it. Seeding happens under `service.history_lock`, so registration is
+atomic with respect to concurrent `push_history` calls.
+"""
+function register_metrics_cache!(service::Service; max_depth::Int=4, result_cache_size::Int=8)
+    if max_depth < 1
+        throw(ArgumentError("max_depth must be >= 1, got $max_depth"))
+    end
+    if result_cache_size < 1
+        throw(ArgumentError("result_cache_size must be >= 1, got $result_cache_size"))
+    end
+
+    cache = MetricsCache(
+        ReentrantLock(),
+        service.history,
+        max_depth,
+        0,
+        service.history_lock,
+        LatencyStats(),
+        Dict{String, LatencyStats}(),
+        Dict{DateTime, BinStats}(),
+        LRU{Any, Tuple{UInt64, Any}}(maxsize=result_cache_size),
+    )
+
+    lock(service.history_lock) do
+        lock(cache.lock) do
+            rebuild_cache!(cache)
+        end
+        # Publish after seeding while still holding the history lock, so a
+        # concurrent push can't slip in between and be missed.
+        service.metrics_cache[] = cache
+    end
+
+    return cache
+end
+
+# Rebuild the aggregates from the current contents of `cache.history`. The
+# caller must hold `cache.lock` and guarantee the history is not mutated
+# concurrently (e.g. by holding the server's `history_lock`).
+function rebuild_cache!(cache::MetricsCache)
+    reset!(cache.server)
+    empty!(cache.groups)
+    empty!(cache.seconds)
+    empty!(cache.results)
+
+    # Iterate oldest to newest so the duration deques stay in insertion order
+    # (evictions pop the front, which must be the oldest retained record).
+    for index in length(cache.history):-1:1
+        add_transaction!(cache, cache.history[index])
+    end
+    cache.version += 1
+    return cache
+end
+
+"""
+    resync_metrics_cache!(cache::MetricsCache)
+    resync_metrics_cache!(service::Service)
+
+Rebuild the cache's aggregates from the current contents of its history. Use
+this after mutating a history without going through `push_history` (for example
+after `empty!`), which would otherwise leave stale aggregates behind. The
+rebuild runs under the history lock stored on the cache, so it is safe to call
+while requests are being served. The `Service` method returns the cache, or
+`nothing` when no cache is registered for the service.
+"""
+function resync_metrics_cache!(cache::MetricsCache)
+    lock(cache.history_lock) do
+        lock(cache.lock) do
+            rebuild_cache!(cache)
+        end
+    end
+    return cache
+end
+
+function resync_metrics_cache!(service::Service)
+    cache = metrics_cache(service)
+    if isnothing(cache)
+        return nothing
+    end
+    return resync_metrics_cache!(cache)
+end
+
+"""
+    unregister_metrics_cache!(service::Service)
+
+Detach and drop the cache associated with `service` (called on server shutdown).
+"""
+function unregister_metrics_cache!(service::Service)
+    lock(service.history_lock) do
+        service.metrics_cache[] = nothing
+    end
+    return nothing
+end
+
+"""
+    metrics_cache(service::Service)
+
+Return the cache registered on `service`, or `nothing` when metrics caching
+isn't active for it.
+"""
+function metrics_cache(service::Service)
+    return service.metrics_cache[]
+end
+
+"""
+    uri_prefix(uri::String, max_depth::Int) :: String
+
+Return the same URI prefix that `group_transactions` groups by (for
+`max_depth >= 1`): the first `max_depth` path segments including the leading
+`/`. Allocates only the final substring (no intermediate `split` vector) and
+slices on character boundaries, so multi-byte URIs are handled correctly.
+"""
+function uri_prefix(uri::String, max_depth::Int)
+    if max_depth > 0
+        seen = 0
+        for (index, char) in pairs(uri)
+            if char == '/'
+                seen += 1
+                if seen == max_depth + 1
+                    # `index` is a byte index; step back one *character* so a
+                    # multi-byte character before the slash doesn't produce an
+                    # invalid StringIndex.
+                    return uri[1:prevind(uri, index)]
+                end
+            end
+        end
+    end
+    return uri
+end
+
+function add_transaction!(cache::MetricsCache, transaction::HTTPTransaction)
+    # Derive the grouping/bin keys *before* touching any aggregate: if this
+    # throws (e.g. because of a malformed URI), the cache is left untouched
+    # instead of partially updated with a version that never advances.
+    prefix = uri_prefix(transaction.uri, cache.max_depth)
+    bin_key = floor(transaction.timestamp, Second)
+
+    add_transaction!(cache.server, transaction)
+
+    stats = get!(cache.groups, prefix) do
+        LatencyStats()
+    end
+    add_transaction!(stats, transaction)
+
+    bin = get(cache.seconds, bin_key, nothing)
+    cache.seconds[bin_key] = isnothing(bin) ? BinStats(1, transaction.duration) :
+        BinStats(bin.count + 1, bin.sum + transaction.duration)
+
+    return cache
+end
+
+function add_transaction!(stats::LatencyStats, transaction::HTTPTransaction)
+    stats.total_requests += 1
+    if !transaction.success
+        stats.total_errors += 1
+    end
+
+    duration = transaction.duration
+    if duration != 0.0
+        push!(stats.durations, duration)
+    end
+
+    return stats
+end
+
+function remove_transaction!(cache::MetricsCache, transaction::HTTPTransaction)
+    remove_transaction!(cache.server, transaction)
+
+    prefix = uri_prefix(transaction.uri, cache.max_depth)
+    stats = get(cache.groups, prefix, nothing)
+    if !isnothing(stats)
+        remove_transaction!(stats, transaction)
+        if stats.total_requests == 0
+            delete!(cache.groups, prefix)
+        end
+    end
+
+    bin_key = floor(transaction.timestamp, Second)
+    bin = get(cache.seconds, bin_key, nothing)
+    if !isnothing(bin)
+        remaining = bin.count - 1
+        remaining <= 0 ? delete!(cache.seconds, bin_key) :
+            (cache.seconds[bin_key] = BinStats(remaining, bin.sum - transaction.duration))
+    end
+
+    return cache
+end
+
+function remove_transaction!(stats::LatencyStats, transaction::HTTPTransaction)
+    stats.total_requests -= 1
+    if !transaction.success
+        stats.total_errors -= 1
+    end
+
+    duration = transaction.duration
+    if duration != 0.0
+        # The evicted transaction is the oldest one in the history, therefore it
+        # is also the oldest retained transaction in its group and its duration
+        # sits at the front of the deque. If the invariant was broken (e.g. the
+        # history was mutated out of band), the pop throws and `push_history`
+        # rebuilds the cache from the history.
+        popfirst!(stats.durations)
+    end
+
+    return stats
+end
+
+function update_metrics_cache!(cache::MetricsCache, transaction::HTTPTransaction, evicted::Nullable{HTTPTransaction})
+    lock(cache.lock) do
+        if !isnothing(evicted)
+            remove_transaction!(cache, evicted)
+        end
+        add_transaction!(cache, transaction)
+        cache.version += 1
+    end
+    return nothing
+end
+
+struct LatencySnapshot
+    total_requests :: Int
+    total_errors   :: Int
+    durations      :: Vector{Float64}
+end
+
+function snapshot(stats::LatencyStats) :: LatencySnapshot
+    return LatencySnapshot(stats.total_requests, stats.total_errors, collect(stats.durations))
+end
+
+"""
+Recompute the metrics returned by `get_transaction_metrics` from a snapshot.
+Percentile selection is O(n) (`partialsort!`) instead of O(n log n).
+"""
+function metrics_from_snapshot(snapshot::LatencySnapshot)
+    total_requests = snapshot.total_requests
+    total_errors = snapshot.total_errors
+
+    if total_requests == 0
+        return Dict(
+            "total_requests" => 0,
+            "total_errors" => 0,
+            "avg_latency" => 0,
+            "min_latency" => 0,
+            "max_latency" => 0,
+            "percentile_latency_95th" => 0,
+            "error_rate" => 0
+        )
+    end
+
+    latencies = snapshot.durations
+    has_records = !isempty(latencies)
+
+    avg_latency = has_records ? mean(latencies) : 0
+    min_latency = has_records ? minimum(latencies) : 0
+    max_latency = has_records ? maximum(latencies) : 0
+    percentile_95_latency = has_records ? partialsort!(latencies, ceil(Int, 95 / 100 * length(latencies))) : 0
+    error_rate = total_errors / total_requests
+
+    return Dict(
+        "total_requests" => total_requests,
+        "total_errors" => total_errors,
+        "avg_latency" => avg_latency,
+        "min_latency" => min_latency,
+        "max_latency" => max_latency,
+        "percentile_latency_95th" => percentile_95_latency,
+        "error_rate" => error_rate
+    )
+end
+
+"""
+Look up a computed result in the cache's memo table, recomputing it when the
+history changed since it was stored. `snapshot_fn` runs while holding the cache
+lock (it must capture the state the result is derived from); `compute_fn` runs
+outside the lock so pushes are never stalled by a percentile calculation.
+"""
+function cached_metrics_result(cache::MetricsCache, key::Any, snapshot_fn::Function, compute_fn::Function)
+    cached = lock(cache.lock) do
+        entry = get(cache.results, key, nothing)
+        if !isnothing(entry) && entry[1] == cache.version
+            return entry[2]
+        end
+        return nothing
+    end
+    if !isnothing(cached)
+        return cached
+    end
+
+    version, data = lock(cache.lock) do
+        return (cache.version, snapshot_fn())
+    end
+
+    result = compute_fn(data)
+
+    lock(cache.lock) do
+        # Only publish the result if the aggregates didn't move while computing.
+        if cache.version == version
+            cache.results[key] = (version, result)
+        end
+    end
+
+    return result
+end
+
+"""
+A consistent, read-only view of the cache at one history version.
+
+`server`, `endpoints`, and `errors` are the computed (memoized) metrics values;
+`bins` is a copy of the retained per-second bins. All fields describe the same
+version, so a dashboard response built from one `MetricsResults` can't mix
+traffic from different versions. Treat every field as read-only: the object is
+shared by all queries at this version.
+"""
+struct MetricsResults
+    server    :: Dict{String, Any}
+    endpoints :: Dict{String, Dict{String, Any}}
+    errors    :: Dict{String, Int}
+    bins      :: Dict{DateTime, BinStats}
+end
+
+# Capture everything a readout needs under the cache lock. The returned tuple is
+# passed to `compute_metrics_results` outside the lock.
+function snapshot_aggregates(cache::MetricsCache)
+    server = snapshot(cache.server)
+    groups = Dict{String, LatencySnapshot}(prefix => snapshot(stats) for (prefix, stats) in cache.groups)
+
+    # `BinStats` is immutable, so a shallow Dict copy can't observe later updates
+    # and is much cheaper than rebuilding a vector of tuples.
+    bins = copy(cache.seconds)
+    return (server, groups, bins)
+end
+
+function compute_metrics_results(data) :: MetricsResults
+    server, groups, bins = data
+
+    endpoints = Dict{String, Dict{String, Any}}()
+    for (prefix, group) in groups
+        endpoints[prefix] = Dict{String, Any}(metrics_from_snapshot(group))
+    end
+
+    errors = Dict{String, Int}()
+    for (prefix, metrics) in endpoints
+        failures = metrics["total_errors"]
+        if failures > 0
+            errors[prefix] = failures
+        end
+    end
+
+    return MetricsResults(Dict{String, Any}(metrics_from_snapshot(server)), endpoints, errors, bins)
+end
+
+"""
+    metrics_results(cache::MetricsCache) :: MetricsResults
+
+Return the cache's computed metrics together with the retained per-second bins,
+all captured at one history version. The result is memoized, so repeated calls
+at an unchanged version are cheap, and every dashboard output for a request can
+be derived from the same immutable readout. Pass it to `server_metrics`,
+`all_endpoint_metrics`, `error_distribution`, `requests_per_unit`, or
+`avg_latency_per_unit`.
+"""
+function metrics_results(cache::MetricsCache)
+    return cached_metrics_result(cache, (:results,),
+        () -> snapshot_aggregates(cache),
+        compute_metrics_results)
+end
+
+"""
+Copy a metrics Dict before handing it to a caller: memoized metrics results are
+shared between callers, and mutating a returned Dict would corrupt the cache.
+"""
+copy_metrics_dict(data::Dict) =
+    Dict(key => (value isa AbstractDict ? copy(value) : value) for (key, value) in data)
+
+"""
+    push_history(history, transaction[, cache])
+    push_history(service::Service, transaction)
+
+Insert `transaction` at the front of `history`, evicting the oldest record once
+the history is at `capacity(history)`. When `cache` is passed, the incremental
+metrics cache is kept in sync with the insertion and any eviction.
+
+The deque itself is not locked, so concurrent pushes against a bare `History`
+must be serialized by the caller. The `Service` method uses `service.history`
+and `service.metrics_cache` and takes `service.history_lock` around the push.
+Metrics bookkeeping errors are logged and swallowed so they can never fail a
+request.
+"""
+function push_history(history::History, transaction::HTTPTransaction,
+                      cache::Union{Nothing, MetricsCache}=nothing)
+    evicted = nothing
+    try
+        # Keep the newest `capacity(history)` transactions: once the deque is
+        # full, drop the oldest record before inserting the new one.
+        if length(history) >= capacity(history)
+            evicted = last(history)
+            pop!(history)
+        end
+        try
+            pushfirst!(history, transaction)
+        catch
+            # Put the evicted record back so a failed push doesn't lose it.
+            if !isnothing(evicted)
+                try
+                    push!(history, evicted)
+                catch restore_error
+                    @warn "Failed to restore evicted transaction: $restore_error"
+                end
+            end
+            rethrow()
+        end
+    catch error
+        @warn "Failed to push transaction into our history: $error"
+        return nothing
+    end
+
+    # Keep the incremental aggregates in sync when a cache tracks this history.
+    # A metrics-cache failure must never fail the request that produced the
+    # transaction, so it is reported and the cache is rebuilt from the history
+    # to heal any partially applied update.
+    try
+        if !isnothing(cache)
+            update_metrics_cache!(cache, transaction, evicted)
+        end
+    catch error
+        @warn "Failed to update the metrics cache: $error"
+        if !isnothing(cache)
+            try
+                resync_metrics_cache!(cache)
+            catch rebuild_error
+                @warn "Failed to rebuild the metrics cache: $rebuild_error"
+            end
+        end
+    end
+    return nothing
+end
+
+function push_history(service::Service, transaction::HTTPTransaction)
+    lock(service.history_lock) do
+        push_history(service.history, transaction, service.metrics_cache[])
+    end
+    return nothing
+end
+
+"""
+    get_history(history) :: Vector{HTTPTransaction}
+
+Return a snapshot of `history` with the newest transaction first. The deque is
+not locked; readers that may race with request handling should hold the
+server's `history_lock` (see `safe_get_transactions` in `core.jl`).
+"""
 function get_history(history::History) :: Vector{HTTPTransaction}
     return collect(history)
 end
@@ -37,7 +575,9 @@ end
 # Helper function to calculate percentile
 function percentile(values, p)
     index = ceil(Int, p / 100 * length(values))
-    return sort(values)[index]
+    # `partialsort` selects the same element as sorting and indexing, in O(n)
+    # expected time instead of O(n log n).
+    return partialsort(values, index)
 end
 
 # Function to group HTTPTransaction objects by URI prefix with a maximum depth limit
@@ -71,6 +611,7 @@ function get_transaction_metrics(transactions::Vector{HTTPTransaction})
     if isempty(transactions)
         return Dict(
             "total_requests" => 0,
+            "total_errors" => 0,
             "avg_latency" => 0,
             "min_latency" => 0,
             "max_latency" => 0,
@@ -81,15 +622,13 @@ function get_transaction_metrics(transactions::Vector{HTTPTransaction})
 
     total_requests = length(transactions)
     latencies = [t.duration for t in transactions if t.duration != 0.0]
-    successes = [t.success for t in transactions]
     has_records = !isempty(latencies)
-    has_successes = !isempty(successes)
 
     avg_latency = has_records ? mean(latencies) : 0
     min_latency = has_records ? minimum(latencies) : 0
     max_latency = has_records ? maximum(latencies) : 0
     percentile_95_latency = has_records ? percentile(latencies, 95) : 0
-    total_errors = has_successes ? count(!, successes) : 0
+    total_errors = count(t -> !t.success, transactions)
     error_rate = total_requests > 0 ? total_errors / total_requests : 0
 
     return Dict(
@@ -142,8 +681,8 @@ function endpoint_metrics(history::Vector{HTTPTransaction}, endpoint_uri::String
     return get_transaction_metrics(endpoint_transactions)
 end
 
-function error_distribution(history::Vector{HTTPTransaction}, lower_bound=Minute(15))
-    metrics = all_endpoint_metrics(history, lower_bound)
+function error_distribution(history::Vector{HTTPTransaction}, lower_bound=Minute(15); max_depth::Int=4)
+    metrics = all_endpoint_metrics(history, lower_bound; max_depth=max_depth)
     failed_counts = Dict{String, Int}()
     for (group_prefix, transaction_metrics) in metrics
         failures = transaction_metrics["total_errors"]
@@ -154,63 +693,11 @@ function error_distribution(history::Vector{HTTPTransaction}, lower_bound=Minute
     return failed_counts
 end
 
-# """
-# Helper function used to convert internal data so that it can be viewd by a graph more easily
-# """
-# function prepare_timeseries_data(unit::Dates.TimePeriod=Second(1))
-#     function(binned_records::Dict)
-#         binned_records |> timeseries |> fill_missing_data(unit, fill_to_current=true, sort=false) |> series_format
-#     end
-# end
-
 function prepare_timeseries_data()
     function(binned_records::Dict)
         binned_records |> timeseries |> series_format
     end
 end
-
-# function fill_missing_data(unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
-#     return function(records::Vector{TimeseriesRecord})
-#         return fill_missing_data(records, unit, fill_to_current=fill_to_current, sort=sort)
-#     end
-# end
-
-# function fill_missing_data(records::Vector{TimeseriesRecord}, unit::Dates.TimePeriod=Second(1); fill_to_current::Bool=false, sort::Bool=true)
-#     # Ensure the input is sorted by timestamp
-#     if sort 
-#         sort!(records, by = x -> x.timestamp)
-#     end
-
-#     filled_records = Vector{TimeseriesRecord}()
-#     last_record_time = nothing  # Initialize variable to store the time of the last record
-
-#     for i in 1:length(records)
-#         # Add the current record to the filled_records
-#         push!(filled_records, records[i])
-#         last_record_time = records[i].timestamp  # Update the time of the last record
-
-#         # If this is not the last record, check the gap to the next record
-#         if i < length(records)
-#             next_time = records[i+1].timestamp
-#             while last_record_time + unit < next_time
-#                 last_record_time += unit
-#                 push!(filled_records, TimeseriesRecord(last_record_time, 0))
-#             end
-#         end
-#     end
-
-#     # If fill_to_current is true, fill in the gap between the last record and the current time
-#     if fill_to_current && !isnothing(last_record_time)
-#         current_time = now(UTC)
-#         while last_record_time + unit < current_time
-#             last_record_time += unit
-#             push!(filled_records, TimeseriesRecord(last_record_time, 0))
-#         end
-#     end
-
-#     return filled_records
-# end
-
 
 """
 Convert a dictionary of timeseries data into an array of sorted records
@@ -279,6 +766,161 @@ function avg_latency_per_unit(history::Vector{HTTPTransaction}, unit, lower_boun
         averages[k] = mean(v)
     end
     return averages
+end
+
+
+# ---------------------------------------------------------------------------
+# Cache-aware query methods
+#
+# These mirror the vector-based functions above but read the incremental
+# aggregates instead of rescanning the whole history. They are used by the
+# metrics dashboard endpoint; the uncached methods remain available (and
+# unchanged) for direct callers.
+# ---------------------------------------------------------------------------
+
+"""
+    server_metrics(results::MetricsResults)
+    server_metrics(cache::MetricsCache, ::Nothing)
+
+Server-wide metrics computed from the incremental cache. Equivalent to
+`server_metrics(get_history(cache.history), nothing)`. The returned Dict is a
+copy; mutating it is safe.
+"""
+function server_metrics(results::MetricsResults)
+    return copy_metrics_dict(results.server)
+end
+
+function server_metrics(cache::MetricsCache, ::Nothing)
+    return server_metrics(metrics_results(cache))
+end
+
+"""
+    all_endpoint_metrics(results::MetricsResults)
+    all_endpoint_metrics(cache::MetricsCache, ::Nothing; max_depth=cache.max_depth)
+
+Per-endpoint metrics computed from the incremental cache. Equivalent to
+`all_endpoint_metrics(get_history(cache.history), nothing; max_depth=max_depth)`
+when `max_depth` matches the depth the cache was registered with. The returned
+Dicts are copies; mutating them is safe.
+"""
+function all_endpoint_metrics(results::MetricsResults)
+    return copy_metrics_dict(results.endpoints)
+end
+
+function all_endpoint_metrics(cache::MetricsCache, ::Nothing; max_depth::Int=cache.max_depth)
+    if max_depth != cache.max_depth
+        throw(ArgumentError(
+            "This cache was registered with max_depth=$(cache.max_depth); register a cache with max_depth=$max_depth to query that depth"))
+    end
+
+    return all_endpoint_metrics(metrics_results(cache))
+end
+
+"""
+    error_distribution(results::MetricsResults)
+    error_distribution(cache::MetricsCache, ::Nothing; max_depth=cache.max_depth)
+
+Error counts per endpoint group, derived from the cached endpoint metrics.
+"""
+function error_distribution(results::MetricsResults)
+    return copy(results.errors)
+end
+
+function error_distribution(cache::MetricsCache, ::Nothing; max_depth::Int=cache.max_depth)
+    if max_depth != cache.max_depth
+        throw(ArgumentError(
+            "This cache was registered with max_depth=$(cache.max_depth); register a cache with max_depth=$max_depth to query that depth"))
+    end
+
+    return error_distribution(metrics_results(cache))
+end
+
+function bin_cutoff(lower_bound)
+    if isnothing(lower_bound)
+        return nothing
+    elseif lower_bound isa Dates.Period
+        # Mirrors recent_transactions(history, ::Period): timestamps must be
+        # within `lower_bound + 1s` of the current time. Callers compare this
+        # cutoff against whole-second bins, so the effective window edge can be
+        # up to one second looser than the uncached timestamp filter.
+        return now(UTC) - lower_bound - Second(1)
+    elseif lower_bound isa DateTime
+        # Mirrors recent_transactions(history, ::DateTime)
+        return lower_bound + Second(1)
+    else
+        throw(ArgumentError("Unsupported lower bound: $(typeof(lower_bound))"))
+    end
+end
+
+"""
+Aggregate the retained per-second bins into `unit`-sized bins. Any fixed period
+of one second or longer (`Second`, `Minute`, `Hour`, `Day`, ...) can be derived;
+finer units aren't retained. Returns `Dict{DateTime, BinStats}`.
+
+The bins are copied under the cache lock by `metrics_results`, so aggregation
+runs lock-free from that snapshot and a query never stalls a push.
+
+The lower bound is floored to a whole second and bins are filtered whole-bucket,
+so the first bin of the window can include transactions up to one second older
+than the uncached `recent_transactions` filter would; interior bins are exact.
+"""
+function bin_totals(results::MetricsResults, unit::Type{<:Dates.FixedPeriod}, lower_bound)
+    if Second(1) > unit(1)
+        throw(ArgumentError(
+            "Cached metrics only support fixed periods of one second or longer, got $unit"))
+    end
+
+    cutoff = bin_cutoff(lower_bound)
+    floor_cutoff = isnothing(cutoff) ? nothing : floor(cutoff, Second)
+
+    totals = Dict{DateTime, Tuple{Int, Float64}}()
+    for (second, bin) in results.bins
+        if !isnothing(floor_cutoff) && second < floor_cutoff
+            continue
+        end
+        bin_key = unit === Second ? second : floor(second, unit)
+        previous = get(totals, bin_key, (0, 0.0))
+        totals[bin_key] = (previous[1] + bin.count, previous[2] + bin.sum)
+    end
+    return Dict{DateTime, BinStats}(bin => BinStats(count, sum) for (bin, (count, sum)) in totals)
+end
+
+function bin_totals(cache::MetricsCache, unit::Type{<:Dates.FixedPeriod}, lower_bound)
+    return bin_totals(metrics_results(cache), unit, lower_bound)
+end
+
+"""
+    requests_per_unit(results::MetricsResults, unit, lower_bound)
+    requests_per_unit(cache::MetricsCache, unit, lower_bound)
+
+Cached equivalent of `requests_per_unit(get_history(cache.history), unit, lower_bound)`.
+As with all cached time-series queries, the window edge is accurate to within
+one second (see `bin_totals`).
+"""
+function requests_per_unit(results::MetricsResults, unit::Type{<:Dates.FixedPeriod}, lower_bound)
+    totals = bin_totals(results, unit, lower_bound)
+    return Dict{DateTime, Int}(bin => stats.count for (bin, stats) in totals)
+end
+
+function requests_per_unit(cache::MetricsCache, unit::Type{<:Dates.FixedPeriod}, lower_bound)
+    return requests_per_unit(metrics_results(cache), unit, lower_bound)
+end
+
+"""
+    avg_latency_per_unit(results::MetricsResults, unit, lower_bound)
+    avg_latency_per_unit(cache::MetricsCache, unit, lower_bound)
+
+Cached equivalent of `avg_latency_per_unit(get_history(cache.history), unit, lower_bound)`.
+As with all cached time-series queries, the window edge is accurate to within
+one second (see `bin_totals`).
+"""
+function avg_latency_per_unit(results::MetricsResults, unit::Type{<:Dates.FixedPeriod}, lower_bound)
+    totals = bin_totals(results, unit, lower_bound)
+    return Dict{DateTime, Number}(bin => stats.sum / stats.count for (bin, stats) in totals)
+end
+
+function avg_latency_per_unit(cache::MetricsCache, unit::Type{<:Dates.FixedPeriod}, lower_bound)
+    return avg_latency_per_unit(metrics_results(cache), unit, lower_bound)
 end
 
 

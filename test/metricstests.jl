@@ -12,7 +12,9 @@ using Oxygen.Core.Metrics:
     all_endpoint_metrics, server_metrics, error_distribution,
     prepare_timeseries_data, timeseries, series_format,
     bin_transactions, requests_per_unit, avg_latency_per_unit,
-    endpoint_metrics
+    endpoint_metrics, MetricsCache, register_metrics_cache!,
+    unregister_metrics_cache!, metrics_cache, resync_metrics_cache!, uri_prefix,
+    metrics_results
 
 # Mock Data
 const MOCK_TIMESTAMP = DateTime(2021, 1, 1, 12, 0, 0)
@@ -127,6 +129,269 @@ end
         @test metrics["total_errors"] == 1
     end
 
+    @testset "Incremental Metrics Cache" begin
+
+        # Helper: build a transaction with a whole-second timestamp so cached
+        # and uncached windowing agree exactly.
+        tx(uri, second, duration, success=true; minute=0) = HTTPTransaction(
+            "192.168.1.1", uri, DateTime(2023, 1, 1, 12, minute, second),
+            duration, success, success ? 200 : 500, success ? nothing : "error")
+
+        # Helper: a fresh service with its own history and no registered cache.
+        new_service(capacity) = Oxygen.Service(history=Oxygen.History(capacity))
+
+        @testset "URI Prefix Grouping" begin
+            for uri in ["/", "", "/test", "/a/b/c/d/e", "a/b/c", "/test/", "/a/b/c/d/e/f/g",
+                        "/α/β/γ", "/日本/語/test/x", "/a/α/b/β/c", "/🚀/x/🚀/y/🚀"]
+                for depth in 1:6
+                    parts = split(uri, '/')
+                    expected = join(parts[1:min(length(parts), depth + 1)], '/')
+                    @test uri_prefix(uri, depth) == expected
+                end
+            end
+        end
+
+        @testset "Registration Validation" begin
+            service = new_service(10)
+            @test_throws ArgumentError register_metrics_cache!(service; max_depth=0)
+            @test_throws ArgumentError register_metrics_cache!(service; max_depth=-1)
+            @test_throws ArgumentError register_metrics_cache!(service; result_cache_size=0)
+            @test isnothing(metrics_cache(service))
+        end
+
+        @testset "Unicode URIs Match Uncached Grouping" begin
+            service = new_service(10)
+            cache = register_metrics_cache!(service)
+            # Truncation lands right after multi-byte characters here, which
+            # used to throw a StringIndexError out of push_history.
+            push_history(service, tx("/α/β/γ/δ/x", 0, 0.5))
+            push_history(service, tx("/日本/語/test/x", 1, 0.5))
+            push_history(service, tx("/a/α/b/β/c", 2, 0.5))
+
+            vector_history = get_history(service.history)
+            @test server_metrics(cache, nothing) == server_metrics(vector_history, nothing)
+            @test all_endpoint_metrics(cache, nothing) == all_endpoint_metrics(vector_history, nothing)
+            @test error_distribution(cache, nothing) == error_distribution(vector_history, nothing)
+        end
+
+        @testset "Cache Backfill" begin
+            # Register the cache on a non-empty history, then keep pushing past
+            # capacity so evictions exercise the backfilled ordering.
+            service = new_service(3)
+            push_history(service, tx("/test/a/b/c/1", 0, 0.25))
+            push_history(service, tx("/test/a/b/c/2", 1, 0.5))
+            push_history(service, tx("/test/a/b/c/3", 2, 0.75))
+            cache = register_metrics_cache!(service)
+            push_history(service, tx("/test/a/b/c/4", 3, 1.0))
+            push_history(service, tx("/test/a/b/c/5", 4, 0.5))
+
+            vector_history = get_history(service.history)
+            @test length(vector_history) == 3
+            @test server_metrics(cache, nothing) == server_metrics(vector_history, nothing)
+            @test all_endpoint_metrics(cache, nothing) == all_endpoint_metrics(vector_history, nothing)
+            for unit in (Second, Minute)
+                @test requests_per_unit(cache, unit, nothing) == requests_per_unit(vector_history, unit, nothing)
+                @test avg_latency_per_unit(cache, unit, nothing) == avg_latency_per_unit(vector_history, unit, nothing)
+            end
+        end
+
+        @testset "Cache Matches Uncached Calculations" begin
+            service = new_service(100)
+            cache = register_metrics_cache!(service)
+            push_history(service, tx("/test/a", 0, 0.25))
+            push_history(service, tx("/test/a", 0, 0.5, false))
+            push_history(service, tx("/test/b", 1, 0.75))
+            push_history(service, tx("/test/a/1", 1, 1.0))
+            push_history(service, tx("/test/b", 2, 0.0))
+            push_history(service, tx("/test/b/2", 2, 0.5, false))
+
+            vector_history = get_history(service.history)
+
+            @test server_metrics(cache, nothing) == server_metrics(vector_history, nothing)
+            @test all_endpoint_metrics(cache, nothing) == all_endpoint_metrics(vector_history, nothing)
+            @test error_distribution(cache, nothing) == error_distribution(vector_history, nothing)
+
+            for unit in (Second, Minute)
+                @test requests_per_unit(cache, unit, nothing) == requests_per_unit(vector_history, unit, nothing)
+                @test avg_latency_per_unit(cache, unit, nothing) == avg_latency_per_unit(vector_history, unit, nothing)
+            end
+
+            # Repeated lookups with an unchanged history hit the memo table
+            # and return equal values, but never expose the shared, memoized
+            # Dict itself.
+            @test server_metrics(cache, nothing) == server_metrics(cache, nothing)
+            @test server_metrics(cache, nothing) !== server_metrics(cache, nothing)
+
+            # DateTime bound (aligned to a whole second)
+            bound = DateTime(2023, 1, 1, 12, 0, 1)
+            for unit in (Second, Minute)
+                @test requests_per_unit(cache, unit, bound) == requests_per_unit(vector_history, unit, bound)
+                @test avg_latency_per_unit(cache, unit, bound) == avg_latency_per_unit(vector_history, unit, bound)
+            end
+        end
+
+        @testset "Cache Handles Evictions" begin
+            service = new_service(3)
+            cache = register_metrics_cache!(service)
+            for i in 1:6
+                uri = isodd(i) ? "/test/a/b/c/$i" : "/other/x/y/z/$i"
+                push_history(service, tx(uri, i, 0.25 * i, i != 5))
+            end
+
+            # The oldest transactions have been evicted, not the newest
+            vector_history = get_history(service.history)
+            @test length(vector_history) == 3
+            @test first(vector_history).uri == "/other/x/y/z/6"
+            @test last(vector_history).uri == "/other/x/y/z/4"
+
+            @test server_metrics(cache, nothing) == server_metrics(vector_history, nothing)
+            @test all_endpoint_metrics(cache, nothing) == all_endpoint_metrics(vector_history, nothing)
+            @test error_distribution(cache, nothing) == error_distribution(vector_history, nothing)
+            for unit in (Second, Minute)
+                @test requests_per_unit(cache, unit, nothing) == requests_per_unit(vector_history, unit, nothing)
+                @test avg_latency_per_unit(cache, unit, nothing) == avg_latency_per_unit(vector_history, unit, nothing)
+            end
+
+            # Evict everything from one group and make sure it disappears
+            push_history(service, tx("/other/x/y/z/7", 7, 0.5))
+            push_history(service, tx("/other/x/y/z/8", 8, 0.5))
+            push_history(service, tx("/other/x/y/z/9", 9, 0.5))
+            vector_history = get_history(service.history)
+            @test all(t -> startswith(t.uri, "/other"), vector_history)
+            @test all_endpoint_metrics(cache, nothing) == all_endpoint_metrics(vector_history, nothing)
+            @test !haskey(all_endpoint_metrics(cache, nothing), "/test/a/b/c")
+        end
+
+        @testset "Returned Results Are Copies" begin
+            service = new_service(10)
+            cache = register_metrics_cache!(service)
+            push_history(service, tx("/test/a", 0, 0.5))
+
+            metrics = server_metrics(cache, nothing)
+            metrics["total_requests"] = 999
+            @test server_metrics(cache, nothing)["total_requests"] == 1
+
+            endpoints = all_endpoint_metrics(cache, nothing)
+            endpoints["/test/a"]["total_requests"] = 999
+            @test all_endpoint_metrics(cache, nothing)["/test/a"]["total_requests"] == 1
+        end
+
+        @testset "Failed Update Self-Heals" begin
+            # A failed incremental update must not leave the cache permanently
+            # stale; `push_history` rebuilds it from the history instead.
+            service = new_service(1)
+            cache = register_metrics_cache!(service)
+            # Out-of-band mutation leaves the cache empty while the history
+            # holds a record, so the next eviction update underflows and fails.
+            push!(service.history, tx("/stale", 0, 0.5))
+            push_history(service, tx("/new", 1, 0.75))
+
+            @test server_metrics(cache, nothing) == server_metrics(get_history(service.history), nothing)
+            @test server_metrics(cache, nothing)["total_requests"] == 1
+            @test all_endpoint_metrics(cache, nothing) ==
+                  all_endpoint_metrics(get_history(service.history), nothing)
+            @test error_distribution(cache, nothing) ==
+                  error_distribution(get_history(service.history), nothing)
+        end
+
+        @testset "Consistent Readout" begin
+            service = new_service(10)
+            cache = register_metrics_cache!(service)
+            for i in 1:5
+                push_history(service, tx("/test/$i", i, 0.5, i != 3))
+            end
+
+            results = metrics_results(cache)
+            endpoints = all_endpoint_metrics(results)
+            @test server_metrics(results)["total_requests"] ==
+                  sum(m["total_requests"] for (_, m) in endpoints; init=0)
+            @test server_metrics(results)["total_errors"] ==
+                  sum(m["total_errors"] for (_, m) in endpoints; init=0)
+            @test sum(values(requests_per_unit(results, Second, nothing)); init=0) ==
+                  server_metrics(results)["total_requests"]
+
+            # The cache-backed methods agree with the readout methods.
+            @test server_metrics(cache, nothing) == server_metrics(results)
+        end
+
+        @testset "Depth Symmetry and Empty Metrics" begin
+            service = new_service(10)
+            push_history(service, tx("/a/b/c/d", 0, 0.5, false))
+            push_history(service, tx("/a/x", 1, 0.5, false))
+            cache = register_metrics_cache!(service; max_depth=2)
+            # The uncached function now accepts the same depth as the cache.
+            @test error_distribution(cache, nothing) ==
+                  error_distribution(get_history(service.history), nothing; max_depth=2)
+            @test Set(keys(error_distribution(get_history(service.history), nothing; max_depth=2))) ==
+                  Set(["/a/b", "/a/x"])
+            @test_throws ArgumentError error_distribution(cache, nothing; max_depth=4)
+
+            # Empty metrics carry `total_errors`, cached and uncached alike.
+            empty_service = new_service(1)
+            empty_cache = register_metrics_cache!(empty_service)
+            @test server_metrics(empty_cache, nothing)["total_errors"] == 0
+            @test server_metrics(get_history(empty_service.history), nothing)["total_errors"] == 0
+        end
+
+        @testset "Coarser Bin Units" begin
+            service = new_service(100)
+            cache = register_metrics_cache!(service)
+            push_history(service, tx("/test/a", 0, 0.5))
+            push_history(service, tx("/test/b", 1, 1.0, false))
+            push_history(service, tx("/test/c", 2, 0.25))
+
+            vector_history = get_history(service.history)
+            for unit in (Second, Minute, Hour, Day)
+                @test requests_per_unit(cache, unit, nothing) == requests_per_unit(vector_history, unit, nothing)
+                @test avg_latency_per_unit(cache, unit, nothing) == avg_latency_per_unit(vector_history, unit, nothing)
+            end
+
+            # Sub-second units can't be derived from the retained bins.
+            @test_throws ArgumentError requests_per_unit(cache, Millisecond, nothing)
+            @test_throws ArgumentError avg_latency_per_unit(cache, Millisecond, nothing)
+        end
+
+        @testset "Resync After External Mutation" begin
+            service = new_service(10)
+            cache = register_metrics_cache!(service)
+            push_history(service, tx("/test/a", 0, 0.5))
+            push_history(service, tx("/test/a", 1, 1.0, false))
+
+            # Mutate the history out of band: the aggregates go stale.
+            empty!(service.history)
+            push_history(service, tx("/test/b", 2, 2.0))
+            @test server_metrics(cache, nothing) != server_metrics(get_history(service.history), nothing)
+
+            # Rebuilding from the history makes the answers agree again.
+            @test resync_metrics_cache!(cache) === cache
+            @test server_metrics(cache, nothing) == server_metrics(get_history(service.history), nothing)
+            @test all_endpoint_metrics(cache, nothing) ==
+                  all_endpoint_metrics(get_history(service.history), nothing)
+            @test error_distribution(cache, nothing) ==
+                  error_distribution(get_history(service.history), nothing)
+            for unit in (Second, Minute)
+                @test requests_per_unit(cache, unit, nothing) ==
+                      requests_per_unit(get_history(service.history), unit, nothing)
+                @test avg_latency_per_unit(cache, unit, nothing) ==
+                      avg_latency_per_unit(get_history(service.history), unit, nothing)
+            end
+
+            # The service-first method finds the registered cache, and a
+            # service with no cache has nothing to resync.
+            @test resync_metrics_cache!(service) === cache
+            @test isnothing(resync_metrics_cache!(new_service(1)))
+        end
+
+        @testset "Cache Lifecycle" begin
+            service = new_service(10)
+            @test isnothing(metrics_cache(service))
+            cache = register_metrics_cache!(service)
+            @test metrics_cache(service) === cache
+            unregister_metrics_cache!(service)
+            @test isnothing(metrics_cache(service))
+        end
+    end
+
 
 end
 
@@ -154,6 +419,15 @@ end
         @test data["server"]["total_requests"] == 10
         @test data["server"]["total_requests"] == 10
         @test data["server"]["total_errors"] == 0
+
+        # The cache is fed by push_history, so metrics must pick up new traffic
+        # without rescanning the history.
+        @test HTTP.get("$localhost/").status == 200
+        r = HTTP.get("$localhost/docs/metrics/data/15/null")
+        @test r.status == 200
+        data = json(r)
+        @test data["server"]["total_requests"] == 11
+        @test haskey(data["endpoints"], "/")
 
     finally
         A.terminate()

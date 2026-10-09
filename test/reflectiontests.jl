@@ -3,19 +3,69 @@ module ReflectionTests
 using Test
 using Base: @kwdef
 using Oxygen: splitdef, Json
-using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder
+using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder, parse_array_value,
+    parse_dict_value, parse_union_value, parse_enum, struct_builder
+using Oxygen.Core.Util: parseparam
 
 
 global message = Dict("message" => "Hello, World!")
+
+# Defined at module scope so its method name (`#N`) differs from its closure
+# reference (`var"#N#M"`); this is the bare-anonymous-function case that used
+# to shift keyword-argument alignment in `extract_defaults`.
+const bare_anon = function(a::Int; b = nothing)
+    return a, b
+end
 
 struct Person
     name::String
     age::Int
 end
 
+@enum Fruit apple = 1 banana = 2
+
 @kwdef struct Home
     address::String
     owner::Person
+end
+
+@kwdef struct Company
+    name::String
+    employees::Vector{Person} = Person[]
+    revenues::Vector{Int} = Int[]
+end
+
+@kwdef struct Roster
+    members::Vector{Union{Person, Nothing}} = Union{Person, Nothing}[]
+end
+
+@kwdef struct Club
+    members::Dict{String, Person} = Dict{String, Person}()
+end
+
+struct Venue
+    name::String
+    seats::Dict{String, Person}
+end
+
+@kwdef struct Options
+    seats::Union{Dict{String, Person}, Nothing} = nothing
+    organizer::Union{Person, Nothing} = nothing
+end
+
+struct Cat
+    meow::String
+end
+
+@kwdef struct Shelter
+    residents::Vector{Union{Person, Cat, Nothing}} = Vector{Union{Person, Cat, Nothing}}()
+    lead::Union{Person, Cat, Nothing} = nothing
+end
+
+@kwdef struct Grid
+    label::String
+    grid::Vector{Vector{Int}} = Vector{Vector{Int}}()
+    people::Vector{Union{Person, Nothing}} = Vector{Union{Person, Nothing}}()
 end
 
 
@@ -55,6 +105,160 @@ end
 
     @test converted == Home("123 main street", Person("joe", 25))
 
+end
+
+@testset "kwarg_struct_builder arrays" begin
+
+    company = kwarg_struct_builder(Company, Dict(
+        :name => "acme",
+        :employees => [Dict(:name => "joe", :age => 25)],
+        :revenues => ["100", "200"],
+    ))
+    @test company.name == "acme"
+    @test length(company.employees) == 1
+    @test company.employees[1].name == "joe"
+    @test company.employees[1].age == 25
+    @test company.revenues == [100, 200]
+
+    roster = kwarg_struct_builder(Roster, Dict(
+        :members => [Dict(:name => "joe", :age => 25), nothing],
+    ))
+    @test length(roster.members) == 2
+    @test roster.members[1].name == "joe"
+    @test roster.members[1].age == 25
+    @test roster.members[2] === nothing
+
+end
+
+@testset "parse_enum" begin
+
+    # names are the wire form; integers and integer strings still work
+    @test parse_enum(Fruit, "apple") === apple
+    @test parse_enum(Fruit, "banana") === banana
+    @test parse_enum(Fruit, 1) === apple
+    @test parse_enum(Fruit, "2") === banana
+    @test parse_enum(Fruit, apple) === apple
+    @test_throws ArgumentError parse_enum(Fruit, "nope")
+    @test_throws ArgumentError parse_enum(Fruit, 9)
+
+    # every leaf parser funnels into it
+    @test parsetype(Fruit, "apple") === apple
+    @test parse_array_value(Vector{Fruit}, ["apple", 2]) == [apple, banana]
+    @test parse_array_value(Vector{Vector{Fruit}}, [["apple"], [2]]) == [[apple], [banana]]
+    @test parse_dict_value(Dict{String,Fruit}, Dict("a" => "banana")) == Dict("a" => banana)
+    @test parse_dict_value(Dict{Fruit,Int}, Dict("apple" => 1)) == Dict(apple => 1)
+    @test parse_union_value(Union{Fruit,Nothing}, "banana") === banana
+end
+
+@testset "parseparam enums" begin
+
+    # path/query params share the JSON-body convention
+    @test parseparam(Fruit, "apple") === apple
+    @test parseparam(Fruit, "banana") === banana
+    @test parseparam(Fruit, "1") === apple
+    @test parseparam(Fruit, "2") === banana
+    @test parseparam(Fruit, "banana"; escape=false) === banana
+    @test_throws ArgumentError parseparam(Fruit, "nope")
+    @test_throws ArgumentError parseparam(Fruit, "9")
+end
+
+@testset "parse_array_value element parsing" begin
+
+    # concrete numerics and enums parsed from strings
+    @test parse_array_value(Vector{Int}, ["1", "2"]) == [1, 2]
+    @test parse_array_value(Vector{Fruit}, ["1", "2"]) == [apple, banana]
+    @test parse_array_value(Vector{Fruit}, ["apple", "banana"]) == [apple, banana]
+
+    # abstract element types resolve to concrete values
+    @test parse_array_value(Vector{Real}, ["1.5"]) == Real[1.5]
+
+    # unions with Nothing are handled element-wise
+    @test parse_array_value(Vector{Union{Int, Nothing}}, ["1", nothing]) == Union{Int, Nothing}[1, nothing]
+
+    # custom structs are built from dicts
+    @test parse_array_value(Vector{Person}, [Dict("name" => "joe", "age" => 25)]) == [Person("joe", 25)]
+
+    # dict-typed elements must not be routed through struct_builder
+    @test parse_array_value(Vector{Dict{String, Int}}, [Dict("a" => 1)]) == [Dict("a" => 1)]
+
+    # nested arrays keep their structure
+    @test parse_array_value(Vector{Vector{Int}}, [["1", "2"], ["3"]]) == [[1, 2], [3]]
+end
+
+@testset "parse_dict_value" begin
+
+    # values parsed from strings
+    @test parse_dict_value(Dict{String, Int}, Dict("a" => "1")) == Dict("a" => 1)
+
+    # JSON string keys map to Symbol keys
+    @test parse_dict_value(Dict{Symbol, Int}, Dict("a" => 1)) == Dict(:a => 1)
+
+    # custom struct values
+    @test parse_dict_value(Dict{String, Person}, Dict("joe" => Dict("name" => "joe", "age" => 25))) ==
+          Dict("joe" => Person("joe", 25))
+
+    # nested dictionaries and arrays
+    @test parse_dict_value(Dict{String, Dict{String, Int}}, Dict("a" => Dict("b" => "2"))) ==
+          Dict("a" => Dict("b" => 2))
+    @test parse_dict_value(Dict{String, Vector{Person}}, Dict("team" => [Dict("name" => "joe", "age" => 25)])) ==
+          Dict("team" => [Person("joe", 25)])
+
+    # unparameterized dictionaries fall back to Any
+    @test parse_dict_value(Dict, Dict("a" => 1)) == Dict("a" => 1)
+end
+
+@testset "struct_builder dictionaries" begin
+    club = kwarg_struct_builder(Club, Dict(:members => Dict("joe" => Dict(:name => "joe", :age => 25))))
+    @test club.members == Dict("joe" => Person("joe", 25))
+
+    venue = struct_builder(Venue, Dict("name" => "hall", "seats" => Dict("a" => Dict("name" => "joe", "age" => 25))))
+    @test venue.name == "hall"
+    @test venue.seats == Dict("a" => Person("joe", 25))
+
+    # nullable dictionary and struct fields
+    options = kwarg_struct_builder(Options, Dict(
+        :seats => Dict("a" => Dict(:name => "joe", :age => 25)),
+        :organizer => Dict(:name => "ann", :age => 30),
+    ))
+    @test options.seats == Dict("a" => Person("joe", 25))
+    @test options.organizer == Person("ann", 30)
+
+    empty_options = kwarg_struct_builder(Options, Dict(:seats => nothing, :organizer => nothing))
+    @test empty_options.seats === nothing
+    @test empty_options.organizer === nothing
+end
+
+@testset "union value parsing" begin
+
+    # heterogeneous vectors pick the union member that fits each element
+    @test parse_array_value(Vector{Union{Person, Cat, Nothing}},
+                            [Dict("name" => "joe", "age" => 25), Dict("meow" => "m"), nothing]) ==
+          Union{Person, Cat, Nothing}[Person("joe", 25), Cat("m"), nothing]
+
+    # primitive unions parse from strings
+    @test parse_union_value(Union{Int, String}, "5") === 5
+    @test parse_union_value(Union{Int, String}, "abc") == "abc"
+
+    shelter = kwarg_struct_builder(Shelter, Dict(
+        :residents => [Dict("name" => "joe", "age" => 25), Dict("meow" => "m")],
+        :lead => Dict("meow" => "m"),
+    ))
+    @test shelter.residents == Union{Person, Cat, Nothing}[Person("joe", 25), Cat("m")]
+    @test shelter.lead == Cat("m")
+
+    # omitted multi-type union fields still default to nothing
+    empty_shelter = kwarg_struct_builder(Shelter, Dict(:lead => nothing))
+    @test empty_shelter.lead === nothing
+end
+
+@testset "splitdef collection defaults" begin
+    info = splitdef(Grid)
+
+    # required fields before a defaulted field must not corrupt collection defaults
+    @test info.sig_map[:grid].default == Vector{Vector{Int}}()
+    @test info.sig_map[:grid].hasdefault == true
+    @test info.sig_map[:people].default == Vector{Union{Person, Nothing}}()
+    @test info.sig_map[:people].hasdefault == true
 end
 
 @testset "splitdef tests" begin
@@ -193,6 +397,19 @@ end
         @test info.sig_map[:request].default isa Missing
         @test info.sig_map[:request].hasdefault == false
     end
+end
+
+@testset "splitdef bare anonymous function" begin
+    info = splitdef(bare_anon)
+
+    @test length(info.args) == 1
+    @test info.args[1].name == :a
+    @test info.args[1].hasdefault == false
+
+    @test length(info.kwargs) == 1
+    @test info.kwargs[1].name == :b
+    @test info.kwargs[1].hasdefault == true
+    @test info.kwargs[1].default === nothing
 end
 
 @testset "splitdef do..end syntax" begin

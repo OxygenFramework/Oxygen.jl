@@ -1,7 +1,7 @@
 module AutoDoc
 using HTTP
-using JSON
 using Dates
+using Base64
 using DataStructures
 using Reexport
 using RelocatableFolders
@@ -9,11 +9,12 @@ using RelocatableFolders
 using ..Util: html, recursive_merge
 using ..Constants
 using ..AppContext: ServerContext, Documenation
-using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, Param, isrequired
+using ..Types: TaggedRoute, TaskDefinition, CronDefinition, Nullable, isrequired
+using ..Reflection: Param
 using ..Extractors: isextractor, extracttype, isreqparam
-using ..Reflection: splitdef
+using ..Reflection: splitdef, is_builtin_type, nonnull_types, dict_valtype
 
-export registerschema, swaggerhtml, redochtml, mergeschema
+export registerschema, swaggerhtml, redochtml, mcpexplorerhtml, metricshtml, mergeschema
 
 """
     mergeschema(route::String, customschema::Dict)
@@ -54,7 +55,7 @@ function gettype(type::Type)::String
         return "array"
     elseif type <: Enum
         return "integer"  # Enums are represented as integers in OpenAPI
-    elseif type <: String || type == Date || type == DateTime
+    elseif type <: String || type == Symbol || type == Date || type == DateTime
         return "string"
     elseif isstructtype(type)
         return "object"
@@ -123,19 +124,15 @@ if it's not a Union. Returns Union{} if no valid non-null types are found.
 extract_non_null_type(Union{String, Nothing}) # Returns String
 extract_non_null_type(Union{Int, Missing}) # Returns Int
 extract_non_null_type(String) # Returns String (unchanged)
-extract_non_null_type(Union{String, Int}) # Warns and returns Union{}
+extract_non_null_type(Union{String, Int}) # Returns Union{}
 ```
 """
 function extract_non_null_type(T::Type)::Type
-    if !(T isa Union)
-        return T
-    end
-    
-    sub_types = Base.uniontypes(T)
-    non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
+    rest = nonnull_types(T)
     # return a single non-null type 
-    if length(non_null_types) == 1
-        return non_null_types[1]
+    if length(rest) == 1
+        return rest[1]
+
     # If there are none or multiple non-null types, we don't return them
     else
         return Union{}
@@ -159,12 +156,10 @@ function is_nullable_union(T::Type)::Bool
     if !(T isa Union)
         return false
     end
-    
+
     sub_types = Base.uniontypes(T)
     has_null = Missing ∈ sub_types || Nothing ∈ sub_types
-    non_null_types = filter(x -> x != Nothing && x != Missing, sub_types)
-    
-    return has_null && length(non_null_types) == 1
+    return has_null && length(nonnull_types(T)) == 1
 end
 
 """
@@ -230,49 +225,144 @@ Create OpenAPI schema for array/vector fields, handling both custom structs and 
 # Returns
 - `Dict`: OpenAPI schema for the array field
 """
-function create_array_field_schema(array_type::Type, schemas::Dict, p)::Dict
-    field_schema = Dict{String,Any}("type" => "array", "items" => Dict())
+function create_array_field_schema(array_type::Type, schemas::Dict, p; enum_wire::Symbol=:integer)::Dict
+    field_schema = Dict{String,Any}("type" => "array")
 
-    # Extract and unwrap the nested element type
-    nested_type = get_element_type(array_type)
-    nested_type_name = string(nameof(nested_type))
-
-    # Handle custom structs
-    if is_custom_struct(nested_type)
-        field_schema["items"] = Dict("\$ref" => getcomponent(nested_type_name))
-        # Register type only if not already registered
-        if !haskey(schemas, nested_type_name)
-            convertobject!(nested_type, schemas)
-        end
-    else
-        # Handle non-custom nested types
-        field_schema["items"] = Dict{String,Any}("type" => gettype(nested_type))
-        
-        # Add enum values if nested type is an enum
-        if nested_type <: Enum
-            enum_values = collect(Int.(Base.Enums.instances(nested_type)))
-            field_schema["items"]["enum"] = enum_values
-        end
-        
-        format = getformat(nested_type)
-        
-        if !isnothing(format)
-            field_schema["items"]["format"] = format
-        end
-
-        # Add compatible example format for datetime objects within a vector
-        if nested_type <: DateTime
-            field_schema["items"]["example"] = example_datetime()
-            field_schema["items"]["description"] = datetime_hint()
-        end
+    item_schema = create_value_schema(get_element_type(array_type), schemas; enum_wire=enum_wire)
+    if !isnothing(item_schema)
+        field_schema["items"] = item_schema
     end
 
     # Add default value if it exists
     if p.hasdefault
-        field_schema["default"] = JSON.json(p.default) # for special defaults we need to convert to JSON
+        field_schema["default"] = p.default
     end
 
     return field_schema
+end
+
+"""
+    create_dict_field_schema(dict_type::Type, schemas::Dict, p) -> Dict
+
+Create the OpenAPI schema for a dictionary field. JSON object keys are always
+strings, so the value type is described through `additionalProperties`.
+"""
+function create_dict_field_schema(dict_type::Type, schemas::Dict, p; enum_wire::Symbol=:integer)::Dict
+    field_schema = Dict{String,Any}("type" => "object")
+
+    value_schema = create_value_schema(dict_valtype(dict_type), schemas; enum_wire=enum_wire)
+    if !isnothing(value_schema)
+        field_schema["additionalProperties"] = value_schema
+    end
+
+    # Add default value if it exists
+    if p.hasdefault
+        field_schema["default"] = p.default
+    end
+
+    return field_schema
+end
+
+"""
+    enum_schema(field_type::Type; enum_wire::Symbol=:integer) -> Dict
+
+The schema for an enum field. `:integer` is the OpenAPI default (integer values
+plus the underlying format); `:string` advertises the instance names, which is
+the wire form JSON bodies already use.
+"""
+function enum_schema(field_type::Type; enum_wire::Symbol=:integer)::Dict{String,Any}
+    if enum_wire === :string
+        return Dict{String,Any}(
+            "type" => "string",
+            "enum" => [string(v) for v in Base.Enums.instances(field_type)],
+        )
+    end
+
+    schema = Dict{String,Any}(
+        "type" => "integer",
+        "enum" => collect(Int.(Base.Enums.instances(field_type))),
+    )
+    format = getformat(field_type)
+    if !isnothing(format)
+        schema["format"] = format
+    end
+    return schema
+end
+
+# Build the schema for a value nested inside a collection (array items or
+# dictionary values). Returns `nothing` when the type places no constraint.
+# `enum_wire` selects the enum representation for this subtree.
+function create_value_schema(value_type::Type, schemas::Dict; enum_wire::Symbol=:integer)
+    value_type = unwrap_type(value_type)
+
+    if value_type isa Union
+        return create_union_schema(value_type, schemas; enum_wire=enum_wire)
+    end
+
+    value_type = extract_non_null_type(value_type)
+
+    if value_type === Union{} || value_type === Any
+        return nothing
+
+    elseif is_custom_struct(value_type)
+        convertobject!(value_type, schemas; enum_wire=enum_wire)
+        return Dict{String,Any}("\$ref" => getcomponent(string(nameof(value_type))))
+
+    elseif value_type <: AbstractArray
+        schema = Dict{String,Any}("type" => "array")
+        item_schema = create_value_schema(get_element_type(value_type), schemas; enum_wire=enum_wire)
+        if !isnothing(item_schema)
+            schema["items"] = item_schema
+        end
+        return schema
+
+    elseif value_type <: AbstractDict
+        schema = Dict{String,Any}("type" => "object")
+        nested_schema = create_value_schema(dict_valtype(value_type), schemas; enum_wire=enum_wire)
+        if !isnothing(nested_schema)
+            schema["additionalProperties"] = nested_schema
+        end
+        return schema
+
+    elseif value_type <: Enum
+        return enum_schema(value_type; enum_wire=enum_wire)
+        
+    else
+        schema = Dict{String,Any}("type" => gettype(value_type))
+        format = getformat(value_type)
+        if !isnothing(format)
+            schema["format"] = format
+        end
+        if value_type <: DateTime
+            schema["example"] = example_datetime()
+            schema["description"] = datetime_hint()
+        end
+        return schema
+    end
+end
+
+# Build a schema for a Union type: a single member keeps its schema (with
+# `nullable` when the union admits Nothing/Missing), several members become
+# `anyOf`. Returns `nothing` for `Union{}`.
+function create_union_schema(value_type::Union, schemas::Dict; enum_wire::Symbol=:integer)
+    members = Dict{String,Any}[]
+    nullable = false
+
+    for member in Base.uniontypes(value_type)
+        if member === Nothing || member === Missing
+            nullable = true
+        else
+            member_schema = create_value_schema(member, schemas; enum_wire=enum_wire)
+            if !isnothing(member_schema) 
+                push!(members, member_schema)
+            end
+        end
+    end
+
+    isempty(members) && return nothing
+    schema = length(members) == 1 ? members[1] : Dict{String,Any}("anyOf" => members)
+    nullable && (schema["nullable"] = true)
+    return schema
 end
 
 """
@@ -287,19 +377,18 @@ Create OpenAPI schema for primitive (non-struct, non-array) fields.
 # Returns
 - `Dict`: OpenAPI schema for the primitive field
 """
-function create_primitive_field_schema(field_type::Type, p)::Dict
-    field_schema = Dict{String,Any}("type" => gettype(field_type))
-
-    # Add enum values if this is an enum type
+function create_primitive_field_schema(field_type::Type, p; enum_wire::Symbol=:integer)::Dict
+    # Enums are self-contained: no generic type/format pass applies to them.
     if field_type <: Enum
-        enum_values = collect(Int.(Base.Enums.instances(field_type)))
-        field_schema["enum"] = enum_values
-        # Add format for enums
-        format = getformat(field_type)
-        if !isnothing(format)
-            field_schema["format"] = format
+        field_schema = enum_schema(field_type; enum_wire=enum_wire)
+        if p.hasdefault
+            default = p.default
+            field_schema["default"] = enum_wire === :string && default isa Enum ? string(default) : default
         end
+        return field_schema
     end
+
+    field_schema = Dict{String,Any}("type" => gettype(field_type))
 
     # Add compatible example format for datetime objects
     if field_type <: DateTime
@@ -314,8 +403,8 @@ function create_primitive_field_schema(field_type::Type, p)::Dict
     end
 
     # Add default value if it exists
-    if p.hasdefault 
-        field_schema["default"] = string(p.default)
+    if p.hasdefault
+        field_schema["default"] = p.default
     end
 
     return field_schema
@@ -324,7 +413,13 @@ end
 # Unwrap UnionAll (parametric) wrappers to the concrete/body type
 function unwrap_type(T::Type)::Type
     while T isa UnionAll
-        T = T.body
+        body = T.body
+        # The body of a `UnionAll` can contain free type variables (e.g.
+        # `Vector.body` is `Array{T,1}`). Dispatching on such malformed types
+        # trips Julia's static-parameter matching (JuliaLang/julia#61242), so
+        # leave the wrapper in place when the body is not well-formed.
+        Base.has_free_typevars(body) && break
+        T = body
     end
     return T
 end
@@ -511,6 +606,19 @@ end
 
 
 """
+    create_response_schema(rt::Type, schemas::Dict)
+
+Build the OpenAPI schema for a single inferred return type. Special cases are
+selected by dispatch; everything else defers to the recursive value builder.
+Returns `nothing` when the return type places no constraint on the payload.
+"""
+create_response_schema(rt::Type, schemas::Dict) = create_value_schema(rt, schemas)
+create_response_schema(::Type{HTTP.Response}, ::Dict) = nothing # HTTP response objects don't carry an inferable payload
+create_response_schema(::Type{Nothing}, ::Dict) = Dict{String,Any}("type" => "null")
+create_response_schema(::Type{Union{}}, ::Dict) = Dict{String,Any}("type" => "null")
+
+
+"""
 Used to generate & register schema related for a specific endpoint 
 """
 function registerschema(
@@ -555,48 +663,19 @@ function registerschema(
     ##### Auto register response schema #####
     response_schema = nothing
     if !isempty(returntype)
-        rt = resolve_union_type(returntype[1])
-
-        if rt == Nothing || rt === Union{} || rt === Core.TypeofBottom
-            response_schema = Dict("type" => "null")  # Handle empty types explicitly
-
-        elseif is_custom_struct(rt)
-            convertobject!(rt, schemas)
-            response_schema = Dict("\$ref" => getcomponent(rt))
-
-        elseif rt <: AbstractVector
-            elem_type = rt.parameters[1]
-            if is_custom_struct(elem_type)
-                convertobject!(elem_type, schemas)
-                response_schema = Dict(
-                    "type" => "array",
-                    "items" => Dict("\$ref" => getcomponent(elem_type))
-                )
-            else
-                response_schema = Dict{String,Any}("type" => "array", "items" => Dict("type" => gettype(elem_type)))
-                # Add enum values if element type is an enum
-                if elem_type <: Enum
-                    enum_values = collect(Int.(Base.Enums.instances(elem_type)))
-                    response_schema["items"]["enum"] = enum_values
-                end
-                # Add format if it exists
-                format = getformat(elem_type)
-                if !isnothing(format)
-                    response_schema["items"]["format"] = format
-                end
+        parts = Dict{String,Any}[]
+        for rt in returntype
+            schema = create_response_schema(rt, schemas)
+            if !isnothing(schema)
+                push!(parts, schema)
             end
-        else
-            response_schema = Dict{String,Any}("type" => gettype(rt))
-            # Add enum values if return type is an enum
-            if rt <: Enum
-                enum_values = collect(Int.(Base.Enums.instances(rt)))
-                response_schema["enum"] = enum_values
-            end
-            # Add format if it exists
-            format = getformat(rt)
-            if !isnothing(format)
-                response_schema["format"] = format
-            end
+        end
+
+        # Multiple inferred return types become an `anyOf` collection
+        if length(parts) == 1
+            response_schema = parts[1]
+        elseif !isempty(parts)
+            response_schema = Dict{String,Any}("anyOf" => parts)
         end
     end
 
@@ -684,11 +763,9 @@ function is_custom_struct(T::Type) :: Bool
     end
 
     # Exclude types from Base, Core, Dates, and HTTP
-    if T.name.module ∉ (Base, Core, Dates, HTTP)
-        return isstructtype(T) || isabstracttype(T)
-    end
+    is_builtin_type(T, (Base, Core, Dates, HTTP)) && return false
 
-    return false
+    return isstructtype(T) || isabstracttype(T)
 end
 
 """
@@ -702,7 +779,7 @@ function example_datetime() :: String
 end
 
 # takes a struct and converts it into an openapi 3.0 compliant dictionary
-function convertobject!(type::Type, schemas::Dict) :: Dict
+function convertobject!(type::Type, schemas::Dict; enum_wire::Symbol=:integer) :: Dict
 
     # unwrap parametric/wrapper types (UnionAll) to a concrete/body type
     type = unwrap_type(type)
@@ -757,15 +834,19 @@ function convertobject!(type::Type, schemas::Dict) :: Dict
         # Case 1: Recursively convert nested structs & register schemas
         if is_custom_struct(current_type)
             current_field["\$ref"] = getcomponent(current_name)
-            convertobject!(current_type, schemas)
+            convertobject!(current_type, schemas; enum_wire=enum_wire)
 
         # Case 2: The custom type is wrapped inside an array or vector
         elseif current_type <: AbstractArray
-            current_field = create_array_field_schema(current_type, schemas, p)
+            current_field = create_array_field_schema(current_type, schemas, p; enum_wire=enum_wire)
 
-        # Case 3: Convert the individual fields of the current type to it's openapi equivalent
+        # Case 3: Dictionary fields describe their value type
+        elseif current_type <: AbstractDict
+            current_field = create_dict_field_schema(current_type, schemas, p; enum_wire=enum_wire)
+
+        # Case 4: Convert the individual fields of the current type to it's openapi equivalent
         else
-            current_field = create_primitive_field_schema(current_type, p)
+            current_field = create_primitive_field_schema(current_type, p; enum_wire=enum_wire)
         end
         
         # Set nullable flag if needed
@@ -864,5 +945,88 @@ function swaggerhtml(schemapath::String) :: HTTP.Response
         </html>
     """)
 end
+
+
+"""
+    mcpexplorerhtml(endpoint::String) :: HTTP.Response
+
+Return an HTML page that mounts the MCP explorer against `endpoint`.
+"""
+function mcpexplorerhtml(endpoint::String) :: HTTP.Response
+
+    # load static content files
+    viewerjs = readstaticfile("$MCP_EXPLORER_VERSION/index.js")
+    viewerstyles = readstaticfile("$MCP_EXPLORER_VERSION/styles.css")
+    # Inline the shipped compass icon so the standalone page carries its own favicon.
+    viewericon = base64encode(readstaticfile("$MCP_EXPLORER_VERSION/icon.svg"))
+
+    html("""
+        <!DOCTYPE html>
+        <html lang="en">
+
+        <head>
+            <title>MCP Explorer</title>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <meta name="description" content="MCP Explorer" />
+            <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,$viewericon">
+            <style>$viewerstyles</style>
+        </head>
+
+        <body>
+            <div id="mcp-explorer"></div>
+            <script>$viewerjs</script>
+            <script>
+                window.McpExplorer({ 
+                    endpoint: "$endpoint", 
+                    domId: "mcp-explorer", 
+                    execEnabled: true,
+                    endpointEditable: false
+                });
+            </script>
+        </body>
+
+        </html>
+    """)
+end
+
+
+"""
+    metricshtml(metricsurl::String) :: HTTP.Response
+
+Return an HTML page that mounts the Oxygen Metrics dashboard. `metricsurl` is
+the public URL the dashboard is served under; the bundle's `index.js` and
+`styles.css` are expected as siblings and the metrics API at
+`<metricsurl>/data`.
+"""
+function metricshtml(metricsurl::String) :: HTTP.Response
+
+    html("""
+        <!DOCTYPE html>
+        <html lang="en">
+
+        <head>
+            <title>Oxygen Metrics</title>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <link rel="icon" type="image/png" href="$metricsurl/oxygen-logo.png" />
+            <link rel="stylesheet" href="$metricsurl/styles.css" />
+        </head>
+
+        <body>
+            <div id="oxygen-metrics" style="height: 100vh"></div>
+            <script src="$metricsurl/index.js"></script>
+            <script>
+                window.OxygenMetrics({
+                    endpoint: "$metricsurl/data",
+                    domId: "oxygen-metrics",
+                });
+            </script>
+        </body>
+
+        </html>
+    """)
+end
+
 
 end

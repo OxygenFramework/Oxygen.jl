@@ -5,7 +5,7 @@ using HTTP
 using HTTP: Server, Router
 using ..Types
 
-export ServerContext, CronContext, TasksContext, Documenation, EagerReviseService, Service, history, wait, close, isopen
+export ServerContext, CronContext, TasksContext, Documenation, EagerReviseService, Service, MCPContext, history, wait, close, isopen
 
 function defaultSchema() :: Dict
     Dict(
@@ -40,6 +40,28 @@ end
     taggedroutes    :: Dict{String, TaggedRoute}    = Dict{String, TaggedRoute}()       # used to group routes by tag
 end
 
+@kwdef struct MCPContext
+    path            :: Ref{String}               = Ref{String}("/mcp")
+    server_name     :: Ref{String}               = Ref{String}("Oxygen")
+    server_version  :: Ref{String}               = Ref{String}("1.0.0")
+    server_description :: Ref{Nullable{String}}  = Ref{Nullable{String}}(nothing)
+    instructions    :: Nullable{String}          = nothing
+    tools           :: Dict{String, MCPTool}     = Dict{String, MCPTool}()  # keyed by wire name
+    prompts         :: Dict{String, MCPPrompt}   = Dict{String, MCPPrompt}() # keyed by wire name
+    resources       :: Dict{String, MCPResource}   = Dict{String, MCPResource}()  # keyed by URI
+    resource_templates :: Dict{String, MCPResource} = Dict{String, MCPResource}() # keyed by uriTemplate
+    allowed_origins :: Vector{String}            = String[]                 # DNS-rebinding guard
+    session_version :: Ref{String}               = Ref{String}("2025-11-25") # default/stdio negotiated legacy version
+    initialized     :: Ref{Bool}                 = Ref{Bool}(false)          # default/stdio handshake completed
+    handshake_complete :: Ref{Bool}              = Ref{Bool}(false)          # default/stdio initialize response sent
+    sessions        :: Dict{String,Any}          = Dict{String,Any}()        # Mcp-Session-Id => MCPSession
+    sessions_lock   :: ReentrantLock             = ReentrantLock()           # guards `sessions`
+    broker          :: Ref{Any}                  = Ref{Any}(nothing)         # lazy PubSub.Broker{StreamEvent}
+    subscriptions_lock :: ReentrantLock          = ReentrantLock()           # guards listens + legacy set
+    legacy_subscriptions :: Set{String}          = Set{String}()             # anonymous wire subscriptions
+    listens         :: Set{Any}                  = Set{Any}()                # active listen records
+end
+
 @kwdef struct EagerReviseService
     task::Task
     done::Ref{Bool}
@@ -56,6 +78,7 @@ end
     middleware_cache    :: Dict{String, Function}   = Dict{String, Function}()
     history             :: History                  = History(1_000_000)
     history_lock        :: ReentrantLock            = ReentrantLock()
+    metrics_cache       :: Ref{Any}                 = Ref{Any}(nothing)
     external_url        :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
     prefix              :: Ref{Nullable{String}}    = Ref{Nullable{String}}(nothing)
     eager_revise        :: Ref{Nullable{EagerReviseService}} = Ref{Nullable{EagerReviseService}}(nothing)
@@ -68,12 +91,23 @@ end
     docs    :: Documenation     = Documenation()
     cron    :: CronContext      = CronContext()
     tasks   :: TasksContext     = TasksContext()
+    mcp     :: MCPContext       = MCPContext()
     mod     :: Nullable{Module} = nothing
     app_context :: Ref{Any}     = Ref{Any}(missing) # This stores a reference to an Context{T} object
 end
 
 Base.isopen(service::Service)   = !isnothing(service.server[]) && isopen(service.server[])
-Base.wait(service::Service)     = !isnothing(service.server[]) && wait(service.server[])
+
+# Poll with an interruptible `sleep` instead of blocking on the server's event.
+# This allows the repl to Ctr + C and quit the running session. Worth mentioning 
+# that when the server is running in async mode, the wait fucntion is never called
+function Base.wait(service::Service)
+    isnothing(service.server[]) && return nothing
+    while isopen(service)
+        sleep(0.5)
+    end
+    return nothing
+end
 function Base.close(service::Service)
     !isnothing(service.server[]) && close(service.server[])
     !isnothing(service.eager_revise[]) && close(service.eager_revise[])

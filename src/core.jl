@@ -14,8 +14,10 @@ import Base.Threads: lock, nthreads
 import ..WAS_LOADED_AFTER_REVISE
 
 include("errors.jl");       @reexport using .Errors
-include("util.jl");         @reexport using .Util
+include("reflection.jl");   @reexport using .Reflection   # leaf: Param + parsing
+include("request_body.jl")  # leaf: request-body readers
 include("types.jl");        @reexport using .Types 
+include("util.jl");         @reexport using .Util
 include("constants.jl");    @reexport using .Constants
 include("context.jl");      @reexport using .AppContext
 include("handlers.jl");     @reexport using .Handlers
@@ -24,9 +26,11 @@ include("routerhof.jl");    @reexport using .RouterHOF
 include("cron.jl");         @reexport using .Cron
 include("repeattasks.jl");  @reexport using .RepeatTasks
 include("metrics.jl");      @reexport using .Metrics
-include("reflection.jl");   @reexport using .Reflection
 include("extractors.jl");   @reexport using .Extractors
 include("autodoc.jl");      @reexport using .AutoDoc
+include("streaming.jl");    @reexport using .Streaming
+include("pubsub.jl");       @reexport using .PubSub
+include("mcp.jl");          @reexport using .MCP
 
 # Both HTTP and our Extractors module export a type named `Form`, which makes the
 # name ambiguous (and thus unbound) after `using HTTP` + `@reexport using .Extractors`.
@@ -47,20 +51,42 @@ oxygen_title = raw"""
 
 """
 
-function serverwelcome(external_url::String, prefix::Nullable{String}, docs::Bool, metrics::Bool, parallel::Bool, docspath::String)
-    printstyled(oxygen_title, color=:blue, bold=true)
+function server_welcome(;
+    external_url::String, 
+    prefix::Nullable{String},
+    docs::Bool, 
+    metrics::Bool, 
+    parallel::Bool, 
+    mcp::Bool,
+    docs_path::String, 
+    mcp_path::String)
+
+    printstyled(stderr, oxygen_title, color=:blue, bold=true)
     server_url = join_url_path(external_url, prefix)
     @info "📦 Version 1.11.0 (2026-08-28)"
+    
     if !isnothing(prefix)
         @info "🏷️  Global path prefix: $prefix"
     end
+
     @info "✅ Started server: $server_url"
+    
     if docs
-        @info "📖 Documentation: $(join_url_path(server_url, docspath))"
+        @info "📖 Documentation: $(join_url_path(server_url, docs_path))"
     end
+
     if docs && metrics
-        @info "📊 Metrics: $(join_url_path(server_url, "$docspath/metrics"))"
+        @info "📊 Metrics: $(join_url_path(server_url, "$docs_path/metrics"))"
     end
+
+    if mcp
+        @info "🔌 MCP: $(join_url_path(server_url, mcp_path))"
+    end
+
+    if mcp && docs
+        @info "🧭 MCP Explorer: $(join_url_path(server_url, "$docs_path/mcp"))"
+    end
+
     if parallel
         @info "🚀 Running in parallel mode with $(Threads.nthreads()) threads"
         # Add a warning if the interactive threadpool is empty when running in parallel mode
@@ -89,7 +115,7 @@ function ReviseHandler()
 end
 
 """
-    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
+    serve(; middleware::Vector=[], handler=stream_handler, host="127.0.0.1", port=8080, async=false, parallel=false, serialize=true, catch_errors=true, docs=true, metrics=true, mcp=true, mcp_path="/mcp", mcp_server_name="Oxygen", mcp_server_version=v"1.0.0", mcp_server_description=nothing, stdio=false, show_errors=true, show_banner=true, docs_path="/docs", schema_path="/schema", external_url=nothing, access_log=oxygen_logfmt, revise, kwargs...)
 
 Start the webserver with your own custom request handler
 """
@@ -100,14 +126,20 @@ function serve(ctx::ServerContext;
     port        = 8080,
     async       = false,
     parallel    = false,
+    stdio       = false,
     serialize   = true,
     catch_errors= true,
     docs        = true,
     metrics     = true,
+    mcp         = true,
     show_errors = true,
     show_banner = true,
     docs_path   = "/docs",
     schema_path = "/schema",
+    mcp_path    = "/mcp",
+    mcp_server_name    = "Oxygen",
+    mcp_server_version = v"1.0.0",
+    mcp_server_description = nothing,
     external_url = nothing,
     prefix      = nothing,
     context     = missing,
@@ -129,6 +161,16 @@ function serve(ctx::ServerContext;
     ctx.docs.enabled[] = docs
     ctx.docs.docspath[] = docs_path
     ctx.docs.schemapath[] = schema_path
+
+    # choose where the MCP endpoint is mounted (relative to the global prefix)
+    ctx.mcp.path[] = mcp_path
+
+    # advertise the configured MCP server identity (the version is parsed to
+    # enforce semantic versioning and normalized back to a string on the wire)
+    ctx.mcp.server_name[] = string(mcp_server_name)
+    ctx.mcp.server_version[] = string(VersionNumber(mcp_server_version))
+    ctx.mcp.server_description[] = isnothing(mcp_server_description) ? nothing :
+        string(mcp_server_description)
 
     # intitialize documenation router (used by docs and metrics)
     ctx.docs.router[] = Router()
@@ -174,7 +216,7 @@ function serve(ctx::ServerContext;
 
     # The cleanup of resources are put at the topmost level in `methods.jl`
     try
-        return startserver(ctx; host, port, show_banner, docs, metrics, parallel, async, kwargs, start=(kwargs) ->
+        return start_server(ctx; show_banner, docs, metrics, mcp, stdio, parallel, async, kwargs, start=(kwargs) ->
             HTTP.listen!(handle_stream, host, port; kwargs...))
     finally
         if ctx.service.eager_revise[] !== nothing && async == false
@@ -227,6 +269,15 @@ function terminate(context::ServerContext)
         # clear any cached middleware strategies so new servers pick up updated middleware
         empty!(context.service.middleware_cache)
 
+        # gracefully close any open MCP subscription streams and legacy sessions
+        # before the server goes away
+        MCP.close_listens!(context)
+        MCP.close_sessions!(context)
+        MCP.close_broker!(context)
+
+        # drop the incremental metrics cache tied to this server's history
+        Metrics.unregister_metrics_cache!(context.service)
+
         # Set the external url to nothing when the server is terminated
         context.service.external_url[] = nothing
 
@@ -267,6 +318,7 @@ function decorate_request(ip::IPAddr, stream::HTTP.Stream)
         return function (req::HTTP.Request)
             req.context[:ip] = ip
             req.context[:stream] = stream
+            req.context[:buffered_request] = req
             handle(req)
         end
     end
@@ -372,17 +424,54 @@ end
 
 
 """
+Return `true` when at least one MCP tool, prompt, or resource has been
+registered on the context. An empty registry means the MCP endpoint and the
+MCP Explorer page are not mounted (and not advertised in the banner).
+"""
+function has_mcp_content(ctx::ServerContext)::Bool
+    return !isempty(ctx.mcp.tools) || !isempty(ctx.mcp.prompts) ||
+           !isempty(ctx.mcp.resources) || !isempty(ctx.mcp.resource_templates)
+end
+
+
+"""
 Internal helper function to launch the server in a consistent way
 """
-function startserver(ctx::ServerContext; host, port, show_banner=false, docs=false, metrics=false, parallel=false, async=false, kwargs, start)::Server
+function start_server(ctx::ServerContext; show_banner=false, docs=false, metrics=false, stdio=false, parallel=false, async=false, mcp=false, kwargs, start)::Server
 
-    docs && setupdocs(ctx)
+    mcp_enabled = mcp && has_mcp_content(ctx)
+
+    docs && setupdocs(ctx; mcp=mcp_enabled)
     metrics && setupmetrics(ctx)
+    mcp_enabled && setupmcp(ctx)
 
-    show_banner && serverwelcome(ctx.service.external_url[], ctx.service.prefix[], docs, metrics, parallel, ctx.docs.docspath[])
+    show_banner && server_welcome(
+        external_url = ctx.service.external_url[], 
+        prefix = ctx.service.prefix[],
+        docs = docs, 
+        metrics = metrics, 
+        mcp = mcp_enabled,
+        parallel = parallel, 
+        docs_path = ctx.docs.docspath[], 
+        mcp_path = ctx.mcp.path[]
+    )
 
     # start the HTTP server
     ctx.service.server[] = start(preprocesskwargs(kwargs))
+
+    # optionally speak the MCP stdio transport over stdin/stdout. Per the spec,
+    # closing stdin is the graceful shutdown signal, so we terminate on EOF.
+    if stdio && mcp
+        errormonitor(@async begin
+            try
+                MCP.stdio_loop(ctx)
+            finally
+                terminate(ctx)
+            end
+        end)
+    elseif stdio
+        @warn "Ignoring `stdio = true` because MCP is disabled (`mcp = false`)"
+    end
 
     # Register & Start all repeat tasks
     registertasks(ctx)
@@ -401,7 +490,7 @@ function startserver(ctx::ServerContext; host, port, show_banner=false, docs=fal
         catch error
             !isa(error, InterruptException) && @error "ERROR: " exception = (error, catch_backtrace())
         finally
-            println() # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
+            println(stderr) # this pushes the "[ Info: Server on 127.0.0.1:8080 closing" to the next line
         end
     end
 
@@ -484,35 +573,24 @@ function MetricsMiddleware(service::Service, catch_errors::Bool)
     return function (handler)
         return function (req::HTTP.Request)
             return handlerequest(catch_errors) do
-                start_time = time()
+                start_time = time_ns()
                 # Handle the request
                 response = handler(req)
-                # Log response time
-                response_time = (time() - start_time) * 1000
-                # Make sure we update the History object in a thread-safe way
-                lock(service.history_lock) do
-                    if response.status == 200
-                        push_history(service.history, HTTPTransaction(
-                            string(req.context[:ip]),
-                            string(req.target),
-                            now(UTC),
-                            response_time,
-                            true,
-                            response.status,
-                            nothing
-                        ))
-                    else
-                        push_history(service.history, HTTPTransaction(
-                            string(req.context[:ip]),
-                            string(req.target),
-                            now(UTC),
-                            response_time,
-                            false,
-                            response.status,
-                            text(response)
-                        ))
-                    end
-                end
+                # Log response time (time_ns returns nanoseconds; convert to milliseconds)
+                response_time = (time_ns() - start_time) / 1e6
+                success = response.status == 200
+                # Make sure we update the History object in a thread-safe way;
+                # `push_history` takes the service's history lock and feeds the
+                # service's metrics cache.
+                push_history(service, HTTPTransaction(
+                    string(req.context[:ip]),
+                    string(req.target),
+                    now(UTC),
+                    response_time,
+                    success,
+                    response.status,
+                    success ? nothing : text(response)
+                ))
                 return response
             end
         end
@@ -535,6 +613,31 @@ end
 function parse_route(http_method::String, router::InnerRouter) :: String
     return router(http_method)
 end
+
+
+"""
+    route_mcp_config(httpmethod, route) :: Nullable{MCPConfig}
+
+Resolve the effective MCP metadata for a route from the router/route HOF that
+defined it. Plain string routes carry no metadata; HOF routes resolve the
+enclosing router's config against the route-level config. This derives the
+metadata directly from the router object, so it needs no shared lookup table.
+"""
+route_mcp_config(::String, ::String) = nothing
+route_mcp_config(::String, router::OuterRouter) = resolve_mcp_config(router.mcp, nothing)
+route_mcp_config(::String, router::InnerRouter) = resolve_mcp_config(router.outer.mcp, router.mcp)
+
+"""
+    route_mcp_overrides(route) :: Nullable{MCPConfig}
+
+The route-level MCP overrides only (never the inherited router config), used to
+validate that explicitly declared parameter names match the handler signature.
+Router-level descriptions are shared across routes with different signatures, so
+only what the route itself declared can be checked for typos.
+"""
+route_mcp_overrides(::String) = nothing
+route_mcp_overrides(::OuterRouter) = nothing
+route_mcp_overrides(router::InnerRouter) = router.mcp
 
 
 function parse_func_params(route::String, func::Function)
@@ -630,14 +733,63 @@ end
 
 
 """
+    mcp_compatible_route(httpmethod, func) :: Bool
+
+Whether a route's handler can be invoked as an MCP tool. Only plain request
+handlers qualify: streaming and websocket routes, and handlers whose leading
+argument is not an `HTTP.Request`, are excluded.
+"""
+function mcp_compatible_route(httpmethod::String, func::Function)::Bool
+    if httpmethod in (WEBSOCKET, STREAM) 
+        return false
+    end
+    arg_type = first_arg_type(first(methods(func)), httpmethod)
+    # The routing layer binds the leading positional argument to the request for
+    # every non-streaming handler (`select_handler`'s base case), including when
+    # the parameter is untyped. Treat `Any` the same as `HTTP.Request`.
+    return arg_type === Any || arg_type <: HTTP.Request
+end
+
+
+"""
     register(ctx::ServerContext, httpmethod::String, route::String, func::Function)
 
 Register a request handler function with a path to the ROUTER
 """
 function register(ctx::ServerContext, httpmethod::String, route::Union{String,HOFRouter}, func::Function)
+    # Resolve any MCP metadata the router/route HOF attached before parsing, so
+    # the HTTP route is always registered regardless of the tool outcome. The
+    # route-level overrides are kept separately so a mistyped parameter name is
+    # reported against only what the route itself declared (router-level
+    # descriptions are shared across routes with different signatures).
+    mcp_config = route_mcp_config(httpmethod, route)
+    mcp_overrides = route_mcp_overrides(route)
+
     # Parse & validate path parameters
     route = parse_route(httpmethod, route)
     func_details = parse_func_params(route, func)
+
+    # Expose the endpoint as an MCP tool when router/route metadata enabled it.
+    if !isnothing(mcp_config)
+        if mcp_compatible_route(httpmethod, func)
+            # A mistyped route-level parameter is a developer error, so it is
+            # raised instead of contained.
+            if !isnothing(mcp_overrides) && mcp_overrides.enabled
+                MCP.validate_mcp_param_keys(func, mcp_overrides.parameters,
+                                            mcp_overrides.names; skip_first=true)
+            end
+            # Other tool-build failures are contained so a bad tool never
+            # prevents the HTTP route from being served (mirroring how schema
+            # generation errors are handled below).
+            try
+                MCP.register_route_tool!(ctx, mcp_config, func; httpmethod=httpmethod, route=route)
+            catch error
+                @warn "Failed to register MCP tool for route: $route" exception=(error, catch_backtrace())
+            end
+        else
+            @warn "Skipping MCP tool for route: $route (handler is not MCP-compatible)"
+        end
+    end
 
     # only generate the schema if the docs are enabled
     if ctx.docs.enabled[]
@@ -795,8 +947,8 @@ function registerhandler(ctx::ServerContext, router::Router, httpmethod::String,
     HTTP.register!(router, resolved_httpmethod, route, handle)
 end
 
-function setupdocs(ctx::ServerContext)
-    setupdocs(ctx, ctx.docs.router[], ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[])
+function setupdocs(ctx::ServerContext; mcp::Bool=true)
+    setupdocs(ctx, ctx.docs.router[], ctx.docs.schema, ctx.docs.docspath[], ctx.docs.schemapath[]; mcp=mcp)
 end
 
 """
@@ -813,7 +965,7 @@ function prefix_schema_paths(schema::Dict, prefix::Nullable{String})
 end
 
 # add the swagger and swagger/schema routes 
-function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::String, schemapath::String)
+function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::String, schemapath::String; mcp::Bool=true)
     full_schema = "$docspath$schemapath"
 
     # Emit the schema URL relative (no leading slash) so it resolves regardless of
@@ -831,37 +983,47 @@ function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::S
     register_internal(ctx, router, "GET", "$docspath/swagger", () -> swaggerhtml(schema_url))
     register_internal(ctx, router, "GET", "$docspath/redoc", () -> redochtml(schema_url))
     register_internal(ctx, router, "GET", full_schema, () -> prefixed_openapi_schema)
+
+    if mcp && has_mcp_content(ctx)
+        # get the mcp endpoint url
+        endpoint = join_url_path(ctx.service.prefix[], ctx.mcp.path[])
+        # Make sure the mcp endpoint has a leading slash
+        if !startswith(endpoint, "/")
+            endpoint = "/$endpoint"
+        end
+        register_internal(ctx, router, "GET", "$docspath/mcp", () -> mcpexplorerhtml(endpoint))
+    end
 end
 
 
 function setupmetrics(context::ServerContext)
-    setupmetrics(context, context.docs.router[], context.service.history, context.docs.docspath[], context.service.history_lock)
+    setupmetrics(context, context.docs.router[], context.docs.docspath[])
 end
 
-# add the swagger and swagger/schema routes 
-function setupmetrics(ctx::ServerContext, router::Router, history::History, docspath::String, history_lock::ReentrantLock)
+# add the metrics dashboard routes 
+function setupmetrics(ctx::ServerContext, router::Router, docspath::String)
 
     # If a global prefix is assigned, then we need to make sure we inject the prefixes into the source url as well.
     prefixed_docspath = join_url_path(ctx.service.prefix[], docspath)
 
-    # This allows us to customize the path to the metrics dashboard
-    function loadfile(filepath)::String
-        content = readfile(filepath)
-        # only replace content if it's in a generated file
-        ext = lowercase(last(splitext(filepath)))
-        if ext in [".html", ".css", ".js"]
-            return replace(content, "/df9a0d86-3283-4920-82dc-4555fc0d1d8b/" => "$prefixed_docspath/metrics/")
-        else
-            return content
-        end
-    end
+    # The dashboard is a small host page that mounts the bundled
+    # `window.OxygenMetrics` global against this server's metrics API. The
+    # bundle (`index.js` + `styles.css`) is served as static files next to it
+    # and carries no baked-in paths, so no server-side rewriting is needed.
+    metricsurl = "$prefixed_docspath/metrics"
+    register_internal(ctx, router, GET, "$docspath/metrics", () -> metricshtml(metricsurl))
+    staticfiles(ctx, router, "$DATA_PATH/dashboard", "$docspath/metrics")
 
-    staticfiles(ctx, router, "$DATA_PATH/dashboard", "$docspath/metrics"; loadfile=loadfile)
+    # Keep an incremental cache of the metrics aggregates so the dashboard
+    # doesn't have to rescan the entire history on every poll. `push_history`
+    # feeds new/evicted transactions into it. The cache lives on the service,
+    # so it is dropped with the context and no global registry is needed.
+    Metrics.register_metrics_cache!(ctx.service)
 
     # Create a thread-safe copy of the history object and it's internal data
     function safe_get_transactions(history::History)::Vector{HTTPTransaction}
         transactions = []
-        lock(history_lock) do
+        lock(ctx.service.history_lock) do
             transactions = collect(history)
         end
         return transactions
@@ -869,12 +1031,29 @@ function setupmetrics(ctx::ServerContext, router::Router, history::History, docs
 
     function innermetrics(req::HTTP.Request, window::Nullable{Int}, latest::Nullable{DateTime})
 
-        # create a threadsafe copy of the current transactions in our history object
-        transactions = safe_get_transactions(history)
-
         # Figure out how far back to read from the history object
         window_value = !isnothing(window) && window > 0 ? Minute(window) : nothing
         lower_bound = !isnothing(latest) ? latest : window_value
+
+        # Fast path: derive every output from one consistent readout of the
+        # incremental cache, so the response can't mix history versions.
+        cache = Metrics.metrics_cache(ctx.service)
+        if !isnothing(cache)
+            results = Metrics.metrics_results(cache)
+            return Dict(
+                "server" => server_metrics(results),
+                "endpoints" => all_endpoint_metrics(results),
+                "errors" => error_distribution(results),
+                "avg_latency_per_second" => avg_latency_per_unit(results, Second, lower_bound) |> prepare_timeseries_data(),
+                "requests_per_second" => requests_per_unit(results, Second, lower_bound) |> prepare_timeseries_data(),
+                "avg_latency_per_minute" => avg_latency_per_unit(results, Minute, lower_bound) |> prepare_timeseries_data(),
+                "requests_per_minute" => requests_per_unit(results, Minute, lower_bound) |> prepare_timeseries_data()
+            )
+        end
+
+        # Fallback: no cache registered for this history, compute directly from
+        # a thread-safe snapshot of the history.
+        transactions = safe_get_transactions(ctx.service.history)
 
         return Dict(
             "server" => server_metrics(transactions, nothing),
@@ -889,6 +1068,36 @@ function setupmetrics(ctx::ServerContext, router::Router, history::History, docs
     end
 
     register_internal(ctx, router, GET, "$docspath/metrics/data/{window}/{latest}", innermetrics)
+end
+
+
+"""
+Register the MCP streamable HTTP endpoint when at least one tool, prompt, or
+resource has been registered. `POST` is a streaming route (it hand-writes either
+the same JSON bytes as before or an SSE notification stream); `GET` is a
+streaming route that serves a JSON health body, or holds the connection open as
+an SSE notification stream when the client asks for `text/event-stream`. A GET
+declaring a modern version is `405`; `DELETE` (legacy session teardown) is also
+`405`.
+"""
+function setupmcp(ctx::ServerContext)
+    if !has_mcp_content(ctx)
+        return nothing
+    end
+
+    router = ctx.service.router
+    path = ctx.mcp.path[]
+
+    # Both handlers take the raw stream via `select_handler(::Type{HTTP.Stream})`
+    # so they can hold the connection open and write frames themselves.
+    mcp_post(stream::HTTP.Stream) = MCP.handle(ctx, stream)
+    mcp_get(stream::HTTP.Stream) = MCP.handle_get(ctx, stream)
+    mcp_delete(req::HTTP.Request) = MCP.handle_delete(ctx, req)
+
+    register_internal(ctx, router, "POST", path, mcp_post)
+    register_internal(ctx, router, STREAM, path, mcp_get)
+    register_internal(ctx, router, "DELETE", path, mcp_delete)
+    return nothing
 end
 
 

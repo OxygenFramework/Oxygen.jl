@@ -46,6 +46,35 @@ end
     tags::Union{Nothing, Vector{String}} = nothing
 end
 
+@kwdef struct Fleet
+    vehicles::Dict{String,Car} = Dict{String,Car}()
+    counts::Dict{String,Vector{Int}} = Dict{String,Vector{Int}}()
+end
+
+@kwdef struct Paddock
+    animals::Vector{Union{Car,Person,Nothing}} = Vector{Union{Car,Person,Nothing}}()
+    maybe::Vector{Union{Car,Nothing}} = Vector{Union{Car,Nothing}}()
+end
+
+@enum ResponseKind::Int64 response_kind_a response_kind_b
+
+struct ResponseMeta
+    source::String
+    tag::Symbol
+end
+
+struct ResponseItem
+    id::Int
+    meta::ResponseMeta
+end
+
+struct ResponseEnvelope
+    item::ResponseItem
+    items::Vector{ResponseItem}
+    index::Dict{String,ResponseItem}
+    maybe::Union{ResponseItem,Nothing}
+end
+
 @post "/test-nullable" function(req, body::Json{MyRequest})
     return body.payload
 end
@@ -56,6 +85,14 @@ end
 
 @post "/album2" function (req, album::Json{Album})
     return album.payload;
+end
+
+@post "/fleet" function(req, fleet::Json{Fleet})
+    return fleet.payload
+end
+
+@post "/paddock" function(req, paddock::Json{Paddock})
+    return paddock.payload
 end
 
 @post "/party-invite" function(req, party::Json{PartyInvite})
@@ -131,6 +168,23 @@ end
     @test person["properties"]["name"]["type"] == "string"
     @test person["properties"]["car"]["\$ref"] == "#/components/schemas/Car"
 
+    # ensure dictionary fields describe their value type
+    fleet = schemas["Fleet"]
+    @test fleet["properties"]["vehicles"]["type"] == "object"
+    @test fleet["properties"]["vehicles"]["additionalProperties"]["\$ref"] == "#/components/schemas/Car"
+    @test fleet["properties"]["vehicles"]["default"] == Dict{String,Car}()
+    @test fleet["properties"]["counts"]["additionalProperties"]["type"] == "array"
+    @test fleet["properties"]["counts"]["additionalProperties"]["items"]["type"] == "integer"
+
+    # nullable and heterogeneous union element schemas
+    paddock = schemas["Paddock"]
+    @test paddock["properties"]["maybe"]["items"]["\$ref"] == "#/components/schemas/Car"
+    @test paddock["properties"]["maybe"]["items"]["nullable"] == true
+    animals = paddock["properties"]["animals"]["items"]
+    @test animals["nullable"] == true
+    @test Set(ref["\$ref"] for ref in animals["anyOf"]) ==
+          Set(["#/components/schemas/Car", "#/components/schemas/Person"])
+
     # ensure the generated Party schema aligns
     party = schemas["Party"]
     # There should be no required key defined if no fields are required
@@ -138,7 +192,7 @@ end
     @test party["type"] == "object"
     @test party["properties"]["guests"]["type"] == "array"
     @test party["properties"]["guests"]["items"]["\$ref"] == "#/components/schemas/Person"
-    @test party["properties"]["guests"]["default"] == "[{\"name\":\"Alice\",\"car\":{\"name\":\"Toyota\"}},{\"name\":\"Bob\",\"car\":{\"name\":\"Honda\"}}]"
+    @test party["properties"]["guests"]["default"] == [Person("Alice", Car("Toyota")), Person("Bob", Car("Honda"))]
     
     # ensure the generated PartyInvite schema aligns
     party_invite = schemas["PartyInvite"]
@@ -224,11 +278,13 @@ end
 
     @test haskey(myreq["properties"]["max_items"], "nullable")
     @test myreq["properties"]["max_items"]["nullable"] == true
+    @test myreq["properties"]["max_items"]["default"] === nothing
 
     @test haskey(myreq["properties"]["tags"], "nullable")
     @test myreq["properties"]["tags"]["nullable"] == true
     @test myreq["properties"]["tags"]["type"] == "array"
     @test myreq["properties"]["tags"]["items"]["type"] == "string"
+    @test myreq["properties"]["tags"]["default"] === nothing
 
 end
 
@@ -358,6 +414,147 @@ end
     @test r.status == 200
 
     terminate()
+end
+
+@testset "unwrap_type hardening" begin
+    AutoDoc = Oxygen.Core.AutoDoc
+
+    # `.body` of a bare UnionAll carries free type variables (e.g.
+    # `Vector.body` is `Array{T,1}`). Unwrapping those produces malformed types
+    # that trip Julia's static-parameter matching (JuliaLang/julia#61242), so
+    # they must be left wrapped.
+    @test AutoDoc.unwrap_type(Vector) === Vector
+    @test AutoDoc.unwrap_type(Dict) === Dict
+    @test AutoDoc.unwrap_type(HTTP.Response) === HTTP.Response
+    @test AutoDoc.unwrap_type(Vector{<:Integer}) isa UnionAll
+
+    # well-formed parametric types are still returned unchanged
+    @test AutoDoc.unwrap_type(Vector{Int}) === Vector{Int}
+    @test AutoDoc.unwrap_type(String) === String
+
+    # schema generation must not throw for a bare UnionAll return type
+    docs = Oxygen.Core.AppContext.Documenation()
+    @test begin
+        AutoDoc.registerschema(docs, "/readyz", "GET", [], [], [], [], Any[HTTP.Response])
+        true
+    end
+end
+
+@testset "response schema generation" begin
+    AutoDoc = Oxygen.Core.AutoDoc
+    Doc = Oxygen.Core.AppContext.Documenation
+
+    function buildresponse(rt)
+        docs = Doc()
+        AutoDoc.registerschema(docs, "/probe", "GET", [], [], [], [], Any[rt])
+        response = docs.schema["paths"]["/probe"]["get"]["responses"]["200"]
+        content = haskey(response, "content") ? response["content"] : nothing
+        return content, docs
+    end
+
+    getresponse(rt) = buildresponse(rt)[1]
+    getschema(rt) = getresponse(rt)["application/json"]["schema"]
+
+    @testset "primitive return types" begin
+        @test getschema(Bool) == Dict("type" => "boolean")
+        @test getschema(Int) == Dict("type" => "integer", "format" => "int64")
+        @test getschema(Int32) == Dict("type" => "integer", "format" => "int32")
+        @test getschema(Float64) == Dict("type" => "number", "format" => "double")
+        @test getschema(Float32) == Dict("type" => "number", "format" => "float")
+        @test getschema(Real) == Dict("type" => "number", "format" => "double")
+        @test getschema(String) == Dict("type" => "string")
+        @test getschema(Char) == Dict("type" => "string")
+        @test getschema(Symbol) == Dict("type" => "string")
+        @test getschema(ComplexF64)["type"] == "string"
+        @test getschema(Date) == Dict("type" => "string", "format" => "date")
+
+        datetime = getschema(DateTime)
+        @test datetime["type"] == "string"
+        @test datetime["format"] == "date-time"
+        @test haskey(datetime, "example")
+        @test haskey(datetime, "description")
+    end
+
+    @testset "enum return types" begin
+        schema = getschema(ResponseKind)
+        @test schema["type"] == "integer"
+        @test schema["format"] == "int64"
+        @test schema["enum"] == [0, 1]
+
+        schema = getschema(Vector{ResponseKind})
+        @test schema["type"] == "array"
+        @test schema["items"]["enum"] == [0, 1]
+    end
+
+    @testset "collection return types" begin
+        schema = getschema(Vector{Int})
+        @test schema["type"] == "array"
+        @test schema["items"] == Dict("type" => "integer", "format" => "int64")
+
+        # nested collections recurse
+        schema = getschema(Vector{Vector{Int}})
+        @test schema["type"] == "array"
+        @test schema["items"]["type"] == "array"
+        @test schema["items"]["items"] == Dict("type" => "integer", "format" => "int64")
+
+        # dictionaries describe their value type
+        schema = getschema(Dict{String,Int})
+        @test schema["type"] == "object"
+        @test schema["additionalProperties"] == Dict("type" => "integer", "format" => "int64")
+
+        # bare UnionAll is an unconstrained array, not an error
+        @test getschema(Vector) == Dict("type" => "array")
+    end
+
+    @testset "nested custom structs recurse" begin
+        content, docs = buildresponse(ResponseEnvelope)
+        @test content["application/json"]["schema"]["\$ref"] == "#/components/schemas/ResponseEnvelope"
+
+        schemas = docs.schema["components"]["schemas"]
+        @test haskey(schemas, "ResponseEnvelope")
+        @test haskey(schemas, "ResponseItem")
+        @test haskey(schemas, "ResponseMeta")
+
+        envelope = schemas["ResponseEnvelope"]["properties"]
+        @test envelope["item"]["\$ref"] == "#/components/schemas/ResponseItem"
+        @test envelope["items"]["type"] == "array"
+        @test envelope["items"]["items"]["\$ref"] == "#/components/schemas/ResponseItem"
+        @test envelope["index"]["additionalProperties"]["\$ref"] == "#/components/schemas/ResponseItem"
+        @test envelope["maybe"]["\$ref"] == "#/components/schemas/ResponseItem"
+        @test envelope["maybe"]["nullable"] == true
+
+        # recursion goes all the way down
+        @test schemas["ResponseItem"]["properties"]["meta"]["\$ref"] == "#/components/schemas/ResponseMeta"
+        # Symbol fields serialize as JSON strings
+        @test schemas["ResponseMeta"]["properties"]["tag"]["type"] == "string"
+
+        # collections of custom structs also register their components
+        @test getschema(Vector{ResponseItem})["items"]["\$ref"] == "#/components/schemas/ResponseItem"
+        @test getschema(Dict{String,ResponseItem})["additionalProperties"]["\$ref"] == "#/components/schemas/ResponseItem"
+    end
+
+    @testset "union and edge-case return types" begin
+        # A function returning `nothing` still advertises a JSON null payload
+        @test getresponse(Nothing)["application/json"]["schema"] == Dict("type" => "null")
+
+        # Bottom type is also a JSON null payload
+        @test getresponse(Union{})["application/json"]["schema"] == Dict("type" => "null")
+
+        # Unconstrained inference emits no content
+        @test getresponse(Any) === nothing
+
+        # Multiple inferred return types become an anyOf collection
+        anyof = getresponse(Union{Int, String})["application/json"]["schema"]["anyOf"]
+        @test Set(s["type"] for s in anyof) == Set(["integer", "string"])
+
+        # Nullable unions keep the concrete type and mark it nullable
+        schema = getresponse(Union{Int, Nothing})["application/json"]["schema"]
+        @test schema["type"] == "integer"
+        @test schema["nullable"] == true
+
+        # Generic HTTP responses (from text()/html()) have no inferable payload
+        @test getresponse(HTTP.Response) === nothing
+    end
 end
 
 end

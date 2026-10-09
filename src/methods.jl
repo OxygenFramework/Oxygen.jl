@@ -141,6 +141,16 @@ function adjustparams(path, func)
     end
 end
 
+function adjustparams(description, parameters, func)
+    # case 1: do ... end block syntax was used
+    if isa(description, Expr) && description.head == :->
+        parameters, func, description
+    # case 2: regular syntax was used
+    else
+        description, parameters, func
+    end
+end
+
 ### Core Routing Functions ###
 
 function route(methods::Vector{String}, path::Union{String,HOFRouter}, func::Function)
@@ -220,6 +230,318 @@ delete(func::Function, path::String)    = route([DELETE], path, func)
 delete(func::Function, path::HOFRouter) = route([DELETE], path, func)
 
 
+### MCP Tool Registration ###
+
+"""
+    tool(description::String, parameters, func::Function; name=nothing)
+
+Convenience function to register an MCP tool. Equivalent to `@tool`
+"""
+tool(description::String, parameters, func::Function; name=nothing) = Oxygen.Core.register_tool!(CONTEXT[], string(description), parameters, func; name=name)
+
+"""
+    tool(func::Function, description::String, parameters; name=nothing)
+Convenience function to register an MCP tool. Equivalent to `@tool`
+"""
+tool(func::Function, description::String, parameters; name=nothing) = tool(description, parameters, func; name=name)
+
+"""
+    tool(parameters, func::Function; name=nothing)
+
+Convenience function to register an MCP tool without an explicit description:
+the function's own docstring is used as the tool description. Equivalent to the
+two-argument `@tool`.
+"""
+tool(parameters, func::Function; name=nothing) = Oxygen.Core.register_tool!(CONTEXT[], "", parameters, func; name=name)
+
+
+"""
+    @tool(description::String, parameters, func::Function)
+
+Used to register a function as an MCP tool. Metadata may span multiple lines,
+but the `function` keyword must sit on the same line as the closing metadata
+token. A block form is also supported (and reads closest to `@doc`):
+
+    @tool "description" Dict(:param => "description") begin
+        function name(...)
+            ...
+        end
+    end
+"""
+macro tool(description, parameters, func)
+    description, parameters, func = adjustparams(description, parameters, func)
+    return :(tool($(esc(description)), $(esc(parameters)), $(esc(func))))
+end
+
+"""
+    @tool(parameters, func::Function)
+
+Used to register a function as an MCP tool using the function's docstring as the
+tool description. The handler must be a named definition written inline, so the
+macro can attach the preceding docstring to it:
+
+    \"\"\"
+    Add two integers together.
+    \"\"\"
+    @tool Dict(:a => "the first addend", :b => "the second addend") function add(a::Int, b::Int)
+        a + b
+    end
+
+An undocumented handler gets an empty description.
+"""
+macro tool(parameters, func)
+    parameters, func = adjustparams(parameters, func)
+    name = Oxygen.Core.Reflection.defname(func)
+    if isnothing(name)
+        return :(tool($(esc(parameters)), $(esc(func))))
+    end
+    # Split the definition into its own `@__doc__`-marked statement so Julia
+    # attaches the preceding docstring to the handler, then register it.
+    return esc(quote
+        Base.@__doc__ $func
+        tool($parameters, $name)
+    end)
+end
+
+
+### MCP Prompt Registration ###
+
+"""
+    prompt(description::String, func::Function; name=nothing)
+
+Convenience function to register an MCP prompt. Equivalent to `@prompt`.
+
+The prompt's arguments are inferred from `func`'s signature — each parameter
+(excluding the injected `context`/`request`) becomes a template variable, and
+parameters without a default are marked required. No parameter description map
+is needed; adding a parameter adds a template variable.
+"""
+prompt(description::String, func::Function; name=nothing) = Oxygen.Core.register_prompt!(CONTEXT[], string(description), func; name=name)
+
+"""
+    prompt(func::Function, description::String; name=nothing)
+
+Convenience function to register an MCP prompt. Equivalent to `@prompt`.
+"""
+prompt(func::Function, description::String; name=nothing) = prompt(description, func; name=name)
+
+"""
+    prompt(func::Function; name=nothing)
+
+Convenience function to register an MCP prompt without an explicit description:
+the function's own docstring is used as the prompt description. Equivalent to the
+two-argument `@prompt`.
+"""
+prompt(func::Function; name=nothing) = Oxygen.Core.register_prompt!(CONTEXT[], "", func; name=name)
+
+
+"""
+    @prompt(description::String, func::Function)
+
+Used to register a function as an MCP prompt. The prompt's arguments are taken
+from the function signature, so the handler parameters *are* the template
+variables:
+
+    @prompt "Report on a city" function city_report(city::String, tone::String = "formal")
+        "Write a \$tone report about \$city"
+    end
+
+A block form is also supported:
+
+    @prompt "Report on a city" begin
+        function city_report(city::String)
+            "Write a report about \$city"
+        end
+    end
+"""
+macro prompt(description, func)
+    return :(prompt($(esc(description)), $(esc(func))))
+end
+
+"""
+    @prompt(func::Function)
+
+Used to register a function as an MCP prompt using the function's docstring as
+the prompt description. The handler must be a named definition written inline,
+so the macro can attach the preceding docstring to it:
+
+    \"\"\"
+    Report on a city.
+    \"\"\"
+    @prompt function city_report(city::String)
+        "Write a report about \$city"
+    end
+
+An undocumented handler gets an empty description.
+"""
+macro prompt(func)
+    name = Oxygen.Core.Reflection.defname(func)
+    if isnothing(name)
+        return :(prompt($(esc(func))))
+    end
+    return esc(quote
+        Base.@__doc__ $func
+        prompt($name)
+    end)
+end
+
+
+### MCP Resource Registration ###
+
+"""
+    resource(uri::String, description::String, func::Function; name=nothing, title=nothing, mime_type=nothing, size=nothing, annotations=nothing, icons=nothing)
+
+Convenience function to register an MCP resource. Equivalent to `@resource`.
+
+A `uri` carrying `{var}` (or reserved `{+var}`) placeholders is registered as a
+resource template; the handler's parameters (excluding the injected
+`context`/`request`) are the template variables. A plain `uri` is registered as
+a static resource whose handler takes no arguments. `name` defaults to the
+handler's name, and `mime_type` becomes the default content type of
+`resources/read` replies. `annotations` accepts the spec's
+`audience`/`priority`/`lastModified` fields and `icons` a `src` string or an
+icon dict/vector.
+"""
+resource(uri::String, description::String, func::Function; kwargs...) =
+    Oxygen.Core.register_resource!(CONTEXT[], uri, string(description), func; kwargs...)
+
+"""
+    resource(uri::String, func::Function; name=nothing, ...)
+
+Convenience function to register an MCP resource without an explicit
+description: the function's own docstring is used as the resource description.
+Equivalent to the two-argument `@resource`.
+"""
+resource(uri::String, func::Function; kwargs...) =
+    Oxygen.Core.register_resource!(CONTEXT[], uri, "", func; kwargs...)
+
+
+"""
+    resource(func::Function, uri::String, description::String; name=nothing, ...)
+
+Convenience function to register an MCP resource. Equivalent to `@resource`, and
+supports the `do ... end` form.
+"""
+resource(func::Function, uri::String, description::String; kwargs...) =
+    resource(uri, description, func; kwargs...)
+
+"""
+    resource(func::Function, uri::String; name=nothing, ...)
+
+Convenience function to register an MCP resource using the handler's docstring
+as the description. Equivalent to the two-argument `@resource`, and supports the
+`do ... end` form.
+"""
+resource(func::Function, uri::String; kwargs...) =
+    resource(uri, func; kwargs...)
+
+
+"""
+    resource_folder(prefix::String, directory::String; name=nothing, description=nothing,
+                    title=nothing, hidden=false, mime_types=nothing,
+                    annotations=nothing, icons=nothing)
+
+Register a resource template at `prefix * "{+path}"` that serves regular files
+below `directory`, so nested paths work:
+
+    resource_folder("file:///srv/data", "/srv/data")
+    # file:///srv/data/readme.md reads /srv/data/readme.md
+
+Requests are sanitized before touching the filesystem: `.`/`..`/backslash
+segments, NUL bytes (`:` on Windows), and (unless `hidden=true`) dotfiles are
+rejected, and the resolved target is verified with `realpath` to still be
+inside `directory`, so symlinks cannot escape. `mime_types` maps an extension
+(with or without the leading dot, matched case-insensitively) to a MIME type;
+otherwise a small built-in table and `HTTP.sniff` decide. A missing or
+non-regular file is reported as the spec's resource-not-found error for the
+request's protocol era.
+"""
+resource_folder(prefix::AbstractString, directory::AbstractString; kwargs...) =
+    Oxygen.Core.MCP.register_resource_folder!(CONTEXT[], string(prefix), string(directory); kwargs...)
+
+
+"""
+    @resource(uri::String, description::String, func::Function)
+
+Used to register a function as an MCP resource or resource template. A URI with
+`{var}` placeholders makes the handler's parameters the template variables:
+
+    @resource "oxygen://docs/{page}" "Look up a docs page" function docs(page::String)
+        "docs for \$page"
+    end
+
+A URI without placeholders registers a static resource:
+
+    @resource "oxygen://readme" "Project readme" function readme()
+        read("README.md", String)
+    end
+
+The two-argument form uses the handler's docstring as the description:
+
+    \"\"\"
+    Project readme.
+    \"\"\"
+    @resource "oxygen://readme" function readme()
+        read("README.md", String)
+    end
+
+A block form is also supported (and reads closest to `@doc`):
+
+    @resource "oxygen://docs/{page}" "Look up a docs page" begin
+        function docs(page::String)
+            ...
+        end
+    end
+"""
+macro resource(uri, description, func)
+    uri, description, func = adjustparams(uri, description, func)
+    return :(resource($(esc(uri)), $(esc(description)), $(esc(func))))
+end
+
+"""
+    @resource(uri::String, func::Function)
+
+Used to register a function as an MCP resource using the function's own
+docstring as the description. The handler must be a named definition written
+inline, so the macro can attach the preceding docstring to it.
+"""
+macro resource(uri, func)
+    uri, func = adjustparams(uri, func)
+    name = Oxygen.Core.Reflection.defname(func)
+    if isnothing(name)
+        return :(resource($(esc(uri)), $(esc(func))))
+    end
+    return esc(quote
+        Base.@__doc__ $func
+        resource($uri, $name)
+    end)
+end
+
+
+
+### MCP Change Notifications ###
+
+"""
+    notify_change(kind::Symbol, value=nothing)::Int
+
+Publish an MCP change notification to subscribers. `kind` selects the
+notification:
+
+  * `notify_change(:resource_updated, uri)` — the contents of `uri` changed;
+    modern `subscriptions/listen` streams watching `uri` receive
+    `notifications/resources/updated`, and a legacy session subscribed via
+    `resources/subscribe` receives it on its server→client channel (stdio
+    stdout or the GET SSE stream);
+  * `notify_change(:tools_changed)`, `notify_change(:prompts_changed)`,
+    `notify_change(:resources_changed)` — the corresponding list changed
+    (`notifications/{tools,prompts,resources}/list_changed`).
+
+List changes are published automatically whenever a tool, prompt, or resource
+is registered. Returns the number of streams the notification was enqueued on.
+"""
+notify_change(kind::Symbol, value=nothing)::Int =
+    Oxygen.Core.MCP.notify_change(CONTEXT[], kind, value)
+
 
 """
     @staticfiles(folder::String, mountdir::String, headers::Vector{Pair{String,String}}=[])
@@ -227,7 +549,7 @@ delete(func::Function, path::HOFRouter) = route([DELETE], path, func)
 Mount all files inside the /static folder (or user defined mount point)
 """
 macro staticfiles(folder, mountdir="static", headers=[])
-    printstyled("@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
+    printstyled(stderr, "@staticfiles macro is deprecated, please use the staticfiles() function instead\n", color = :red, bold = true) 
     quote
         staticfiles($(esc(folder)), $(esc(mountdir)); headers=$(esc(headers))) 
     end
@@ -241,7 +563,7 @@ Mount all files inside the /static folder (or user defined mount point),
 but files are re-read on each request
 """
 macro dynamicfiles(folder, mountdir="static", headers=[])
-    printstyled("@dynamicfiles macro is deprecated, please use the dynamicfiles() function instead\n", color = :red, bold = true) 
+    printstyled(stderr, "@dynamicfiles macro is deprecated, please use the dynamicfiles() function instead\n", color = :red, bold = true) 
     quote
         dynamicfiles($(esc(folder)), $(esc(mountdir)); headers=$(esc(headers))) 
     end      
@@ -289,7 +611,8 @@ internalrequest(req::Oxygen.Request; middleware::Vector=[], metrics::Bool=false,
                 tags::Vector{String} = Vector{String}(), 
                 middleware::Nullable{Vector} = nothing, 
                 interval::Nullable{Real} = nothing,
-                cron::Nullable{String} = nothing)
+                cron::Nullable{String} = nothing,
+                mcp::Nullable{MCPMetadata} = nothing)
 
 Create a new router instance.
 
@@ -299,6 +622,11 @@ Create a new router instance.
 - `middleware::Nullable{Vector}`: Optional middleware to be applied to all routes in the router.
 - `interval::Nullable{Real}`: Optional interval for scheduling tasks.
 - `cron::Nullable{String}`: Optional cron expression for scheduling tasks.
+- `mcp`: Optional MCP metadata inherited by every route in the router. Use
+  `mcp = false` to exclude the group, `mcp = true` to expose each route with
+  defaults, or a `NamedTuple`/`Dict` such as
+  `(description = "User management", parameters = Dict(:id => "User ID"))` to
+  provide defaults that routes can override.
 
 # Returns
 A router instance that can be used to define and manage a set of related routes.
@@ -307,9 +635,10 @@ function router(prefix::String = "";
                 tags::Vector{String} = Vector{String}(), 
                 middleware::Nullable{Vector} = nothing, 
                 interval::Nullable{Real} = nothing,
-                cron::Nullable{String} = nothing)
+                cron::Nullable{String} = nothing,
+                mcp::Nullable{MCPMetadata} = nothing)
 
-    return Oxygen.Core.router(CONTEXT[], prefix; tags, middleware, interval, cron)
+    return Oxygen.Core.router(CONTEXT[], prefix; tags, middleware, interval, cron, mcp)
 end
 
 

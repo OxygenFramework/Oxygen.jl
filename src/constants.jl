@@ -7,7 +7,7 @@ export PACKAGE_DIR, DATA_PATH,
     HTTP_METHODS,
     WEBSOCKET, STREAM,
     SPECIAL_METHODS, METHOD_ALIASES, TYPE_ALIASES,
-    SWAGGER_VERSION, REDOC_VERSION
+    SWAGGER_VERSION, REDOC_VERSION, MCP_EXPLORER_VERSION
 
 # Generate a reliable path to our package directory
 const PACKAGE_DIR = @path @__DIR__
@@ -48,5 +48,6 @@ const TYPE_ALIASES :: Dict{String, Type} = Dict(
 
 const SWAGGER_VERSION   :: String = "swagger@5.7.2"
 const REDOC_VERSION     :: String = "redoc@2.1.2"
+const MCP_EXPLORER_VERSION :: String = "mcp-explorer@0.2.2"
 
 end

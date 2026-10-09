@@ -99,4 +99,34 @@ end
 
 terminate()
 
+@testset "interruptible server wait" begin
+    serve(port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+    service = CONTEXT[].service
+    @test isopen(service)
+
+    # wait(service) returns once the server is closed from another task
+    waiter = @async wait(service)
+    sleep(0.2)
+    @test !istaskdone(waiter)
+    terminate()
+    wait(waiter)
+    @test istaskdone(waiter)
+    @test !isopen(service)
+
+    # and it is interruptible at a safe point (JuliaLang/julia#46635)
+    serve(port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, access_log=nothing)
+    service = CONTEXT[].service
+    caught = Ref{Any}(nothing)
+    waiter = @async try
+        wait(service)
+    catch e
+        caught[] = e
+    end
+    sleep(0.2)
+    schedule(waiter, InterruptException(); error=true)
+    wait(waiter)
+    @test caught[] isa InterruptException
+    terminate()
+end
+
 end

@@ -3,6 +3,7 @@ using JSON
 using Dates
 
 using ..Errors: ValidationError
+using ..Reflection: parse_enum
 
 export recursive_merge, parseparam, 
     redirect, queryparams, handlerequest,
@@ -112,9 +113,9 @@ function parseparam(::Type{Symbol}, str::String; escape=true)
     return Symbol(value)
 end
 
-
 function parseparam(::Type{T}, str::String; escape=true) where {T <: Enum}
-    return T(parse(Int, escape ? HTTP.unescapeuri(str) : str))
+    value = escape ? HTTP.unescapeuri(str) : str
+    return parse_enum(T, value)
 end
 
 """

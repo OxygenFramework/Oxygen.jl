@@ -2,7 +2,8 @@ module ProtoBufExt
 
 import HTTP
 import Oxygen: ProtoBuffer, protobuf
-import Oxygen.Types: Param, LazyRequest
+import Oxygen.Reflection: Param
+import Oxygen.Types: LazyRequest
 import Oxygen.Extractors: Extractor, extract, try_validate, safe_extract
 import ProtoBuf: encode, decode, ProtoDecoder, ProtoEncoder
 

@@ -380,10 +380,22 @@ r = internalrequest(HTTP.Request("GET", "/anyparams/hello"))
 r = internalrequest(HTTP.Request("GET", "/fruit/1"))
 @test r.status == 200
 
+# instance names are the wire form here too, and serialize back by name
+r = internalrequest(HTTP.Request("GET", "/fruit/apple"))
+@test r.status == 200
+@test text(r) == "\"apple\""
+
+r = internalrequest(HTTP.Request("GET", "/fruit/orange"))
+@test r.status == 200
+@test text(r) == "\"orange\""
+
 @suppress global r = internalrequest(HTTP.Request("GET", "/fruit/4"))
 @test r.status == 500
 
 @suppress global r = internalrequest(HTTP.Request("GET", "/fruit/-3"))
+@test r.status == 500
+
+@suppress global r = internalrequest(HTTP.Request("GET", "/fruit/grape"))
 @test r.status == 500
 
 # date

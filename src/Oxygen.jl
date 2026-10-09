@@ -13,7 +13,7 @@ include("instances.jl"); using .Instances
 
 import HTTP: Request, Response, Stream
 import HTTP.WebSockets: WebSocket
-using .Core: ServerContext, History, Server, Nullable, HOFRouter
+using .Core: ServerContext, History, Server, Nullable, HOFRouter, MCPMetadata
 using .Core: GET, POST, PUT, DELETE, PATCH, queryparams
 
 const CONTEXT :: Ref{ServerContext} = Ref(ServerContext())
@@ -26,8 +26,9 @@ include("deprecated.jl")
 macro oxidize()
     quote
         import Oxygen
-        import Oxygen: PACKAGE_DIR, ServerContext, Nullable, HOFRouter
+        import Oxygen: PACKAGE_DIR, ServerContext, Nullable, HOFRouter, MCPMetadata
         import Oxygen: GET, POST, PUT, DELETE, PATCH, STREAM, WEBSOCKET
+        import Oxygen: mcp_stream, emit, progress, check_cancelled, sse_stream, SSEEvent
 
         const CONTEXT :: Ref{ServerContext}  = Ref(ServerContext(; mod=$(__module__)))
         include(joinpath(PACKAGE_DIR, "methods.jl"))
@@ -52,6 +53,12 @@ export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route,
         # Docs
         configdocs, mergeschema, setschema, getschema, router,
         enabledocs, disabledocs, isdocsenabled, 
+        # MCP
+        @tool, tool, @prompt, prompt, @resource, resource, resource_folder,
+        mcp_stream, emit, progress, check_cancelled,
+        notify_change,
+        # Streaming
+        sse_stream, SSEEvent,
         # Tasks & Cron
         starttasks, stoptasks, cleartasks,
         startcronjobs, stopcronjobs, clearcronjobs, 

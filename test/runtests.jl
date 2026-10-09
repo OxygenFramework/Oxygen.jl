@@ -17,6 +17,7 @@ include("extensions/bonitotests.jl")
 include("ssetests.jl")
 include("websockettests.jl")
 include("streamingtests.jl")
+include("streamingenginetests.jl")
 include("handlertests.jl")
 
 #### Core Tests ####
@@ -42,6 +43,14 @@ include("path_prefix_tests.jl")
 include("staticfilestests.jl")
 include("originaltests.jl")
 include("revise.jl")
+include("mcptests.jl")
+include("mcp_streamtests.jl")
+include("mcp_router_tests.jl")
+include("mcp_resourcetests.jl")
+include("mcp_spec_tests.jl")
+include("pubsubtests.jl")
+include("mcp_subscriptiontests.jl")
+include("ssestreamtests.jl")
 
 #### Scenario Tests ####
 include("./scenarios/thunderingherd.jl")

@@ -985,7 +985,7 @@ function setupdocs(ctx::ServerContext, router::Router, schema::Dict, docspath::S
     register_internal(ctx, router, "GET", full_schema, () -> prefixed_openapi_schema)
 
     if mcp && has_mcp_content(ctx)
-        # get the mcp endpoint url
+        # get the mcp endpoint url, prefixed so it stays reachable behind a proxy
         endpoint = join_url_path(ctx.service.prefix[], ctx.mcp.path[])
         # Make sure the mcp endpoint has a leading slash
         if !startswith(endpoint, "/")
@@ -1003,21 +1003,16 @@ end
 # add the metrics dashboard routes 
 function setupmetrics(ctx::ServerContext, router::Router, docspath::String)
 
-    # If a global prefix is assigned, then we need to make sure we inject the prefixes into the source url as well.
-    prefixed_docspath = join_url_path(ctx.service.prefix[], docspath)
+    # Build the prefixed endpoint so it stays reachable when the server is mounted behind a proxy.
+    endpoint = join_url_path(join_url_path(ctx.service.prefix[], docspath), "metrics/data")
+    
+    # Make sure the endpoint has a leading slash
+    if !startswith(endpoint, "/")
+        endpoint = "/$endpoint"
+    end
+    register_internal(ctx, router, GET, "$docspath/metrics", () -> metricshtml(endpoint))
 
-    # The dashboard is a small host page that mounts the bundled
-    # `window.OxygenMetrics` global against this server's metrics API. The
-    # bundle (`index.js` + `styles.css`) is served as static files next to it
-    # and carries no baked-in paths, so no server-side rewriting is needed.
-    metricsurl = "$prefixed_docspath/metrics"
-    register_internal(ctx, router, GET, "$docspath/metrics", () -> metricshtml(metricsurl))
-    staticfiles(ctx, router, "$DATA_PATH/dashboard", "$docspath/metrics")
-
-    # Keep an incremental cache of the metrics aggregates so the dashboard
-    # doesn't have to rescan the entire history on every poll. `push_history`
-    # feeds new/evicted transactions into it. The cache lives on the service,
-    # so it is dropped with the context and no global registry is needed.
+    # Keep an incremental cache of the metrics aggregates so the dashboard doesn't have to rescan the entire history on every poll.
     Metrics.register_metrics_cache!(ctx.service)
 
     # Create a thread-safe copy of the history object and it's internal data

@@ -992,14 +992,18 @@ end
 
 
 """
-    metricshtml(metricsurl::String) :: HTTP.Response
+    metricshtml(endpoint::String) :: HTTP.Response
 
-Return an HTML page that mounts the Oxygen Metrics dashboard. `metricsurl` is
-the public URL the dashboard is served under; the bundle's `index.js` and
-`styles.css` are expected as siblings and the metrics API at
-`<metricsurl>/data`.
+Return an HTML page that mounts the Oxygen Metrics dashboard against
+`endpoint`, the metrics API url the dashboard bundle polls.
 """
-function metricshtml(metricsurl::String) :: HTTP.Response
+function metricshtml(endpoint::String) :: HTTP.Response
+
+    # load static content files
+    dashboardjs = readstaticfile("$METRICS_DASH_VERSION/index.js")
+    dashboardstyles = readstaticfile("$METRICS_DASH_VERSION/styles.css")
+    # Inline the shipped favicon so the standalone page carries its own icon.
+    dashboardicon = base64encode(readstaticfile("$METRICS_DASH_VERSION/favicon.ico"))
 
     html("""
         <!DOCTYPE html>
@@ -1009,16 +1013,17 @@ function metricshtml(metricsurl::String) :: HTTP.Response
             <title>Oxygen Metrics</title>
             <meta charset="utf-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <link rel="icon" type="image/png" href="$metricsurl/oxygen-logo.png" />
-            <link rel="stylesheet" href="$metricsurl/styles.css" />
+            <meta name="description" content="Oxygen Metrics" />
+            <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,$dashboardicon">
+            <style>$dashboardstyles</style>
         </head>
 
         <body>
             <div id="oxygen-metrics" style="height: 100vh"></div>
-            <script src="$metricsurl/index.js"></script>
+            <script>$dashboardjs</script>
             <script>
                 window.OxygenMetrics({
-                    endpoint: "$metricsurl/data",
+                    endpoint: "$endpoint",
                     domId: "oxygen-metrics",
                 });
             </script>

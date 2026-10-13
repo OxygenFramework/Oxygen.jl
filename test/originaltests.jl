@@ -710,6 +710,9 @@ r = internalrequest(HTTP.Request("GET", "/docs/schema"))
 r = internalrequest(HTTP.Request("GET", "/docs/metrics"), metrics=true)
 @test r.status == 200
 
+# the dashboard host page points at this server's metrics api
+@test occursin("endpoint: \"/docs/metrics/data\"", text(r))
+
 r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"), metrics=true)
 @test r.status == 200
 

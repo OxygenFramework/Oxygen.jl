@@ -14,7 +14,7 @@ using Oxygen.Core.Metrics:
     bin_transactions, requests_per_unit, avg_latency_per_unit,
     endpoint_metrics, MetricsCache, register_metrics_cache!,
     unregister_metrics_cache!, metrics_cache, resync_metrics_cache!, uri_prefix,
-    metrics_results
+    metrics_results, bin_cutoff, bin_totals
 
 # Mock Data
 const MOCK_TIMESTAMP = DateTime(2021, 1, 1, 12, 0, 0)
@@ -325,6 +325,7 @@ end
             @test Set(keys(error_distribution(get_history(service.history), nothing; max_depth=2))) ==
                   Set(["/a/b", "/a/x"])
             @test_throws ArgumentError error_distribution(cache, nothing; max_depth=4)
+            @test_throws ArgumentError all_endpoint_metrics(cache, nothing; max_depth=4)
 
             # Empty metrics carry `total_errors`, cached and uncached alike.
             empty_service = new_service(1)
@@ -390,6 +391,38 @@ end
             unregister_metrics_cache!(service)
             @test isnothing(metrics_cache(service))
         end
+
+        @testset "bin_cutoff derives the history lower bound" begin
+            # no lower bound means no cutoff at all
+            @test bin_cutoff(nothing) === nothing
+
+            # a period mirrors the recent-transactions window (one second of slack)
+            before = now(UTC)
+            cutoff = bin_cutoff(Minute(5))
+            after = now(UTC)
+            @test before - Minute(5) - Second(1) <= cutoff <= after - Minute(5) - Second(1)
+
+            # a DateTime bound becomes exclusive at the bound itself
+            bound = DateTime(2024, 1, 1, 12, 0, 0)
+            @test bin_cutoff(bound) == bound + Second(1)
+
+            # anything else is a programming error
+            @test_throws ArgumentError bin_cutoff(1.5)
+        end
+
+        @testset "bin_totals agrees between the cache and raw results" begin
+            service = new_service(10)
+            cache = register_metrics_cache!(service)
+            push_history(service, tx("/test/a", 0, 0.5))
+            push_history(service, tx("/test/a", 1, 1.5, false))
+
+            # the cache-backed method matches the equivalent results-backed one
+            @test !isempty(bin_totals(cache, Second, nothing))
+            @test bin_totals(cache, Second, nothing) ==
+                  bin_totals(metrics_results(cache), Second, nothing)
+            @test bin_totals(cache, Minute, nothing) ==
+                  bin_totals(metrics_results(cache), Minute, nothing)
+        end
     end
 
 
@@ -434,5 +467,36 @@ end
     end
 
 end 
+
+@testset "metrics endpoint falls back to raw history without a cache" begin
+    ctx = Oxygen.Core.ServerContext()
+    ctx.docs.router[] = HTTP.Router()
+    Oxygen.Core.setupdocs(ctx)
+    Oxygen.Core.setupmetrics(ctx, ctx.docs.router[], ctx.docs.docspath[])
+
+    # setupmetrics registers the incremental cache; dropping it forces the
+    # endpoint onto the raw-history snapshot path
+    unregister_metrics_cache!(ctx.service)
+    @test metrics_cache(ctx.service) === nothing
+
+    resp = Oxygen.Core.internalrequest(ctx, HTTP.Request("GET", "/docs/metrics/data/5/null"))
+    @test resp.status == 200
+    body = String(resp.body)
+    @test occursin("\"server\"", body)
+    @test occursin("\"total_requests\"", body)
+end
+
+@testset "prefixed metrics and explorer endpoints gain a leading slash" begin
+    # a slash-less global prefix flows into the metrics/explorer endpoints,
+    # which normalize themselves to root-relative URLs
+    ctx = Oxygen.Core.ServerContext()
+    ctx.service.prefix[] = "api"
+    ctx.docs.router[] = HTTP.Router()
+    Oxygen.Core.register_tool!(ctx, "one", Dict(), () -> "x"; name="prefixed_one")
+
+    Oxygen.Core.setupdocs(ctx)
+    Oxygen.Core.setupmetrics(ctx)
+    @test !isnothing(metrics_cache(ctx.service))
+end
 
 end

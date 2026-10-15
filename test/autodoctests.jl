@@ -75,6 +75,12 @@ struct ResponseEnvelope
     maybe::Union{ResponseItem,Nothing}
 end
 
+# A field whose type cannot be resolved to a concrete schema; the field is
+# skipped rather than failing the whole object schema.
+struct UnresolvableField
+    value::Union{Nothing,Missing}
+end
+
 @post "/test-nullable" function(req, body::Json{MyRequest})
     return body.payload
 end
@@ -555,6 +561,43 @@ end
         # Generic HTTP responses (from text()/html()) have no inferable payload
         @test getresponse(HTTP.Response) === nothing
     end
+end
+
+@testset "component refs and text/plain body schemas" begin
+    AutoDoc = Oxygen.Core.AutoDoc
+    Param = Oxygen.Core.Reflection.Param
+
+    # DataType components are addressed by their short name
+    @test AutoDoc.getcomponent(Int) == "#/components/schemas/Int64"
+
+    # A `Body{T}` extractor advertises the text/plain content type with the
+    # struct's component ref; a built-in payload only supplies the type.
+    body_param = Param(:body, Body{Person}, missing, false)
+    content = AutoDoc.formatcontent([body_param])
+    @test haskey(content, "text/plain")
+    @test content["text/plain"]["schema"]["allOf"] == [Dict("\$ref" => "#/components/schemas/Person")]
+
+    @test AutoDoc.formatcontent([Param(:body, Body{String}, missing, false)])["text/plain"]["schema"]["allOf"] == []
+end
+
+@testset "unresolvable types are skipped with a warning" begin
+    AutoDoc = Oxygen.Core.AutoDoc
+    Param = Oxygen.Core.Reflection.Param
+
+    # a union of only null-ish members resolves to bottom
+    schemas = Dict()
+    @test_logs (:warn, "Cannot convert unresolvable Union type") match_mode=:any begin
+        AutoDoc.convertobject!(Union{Nothing,Missing}, schemas)
+    end
+    @test isempty(schemas)
+
+    # a field whose type cannot be resolved is skipped; the object still lands
+    schemas = Dict()
+    @test_logs (:warn, r"Cannot resolve field type") match_mode=:any begin
+        AutoDoc.convertobject!(UnresolvableField, schemas)
+    end
+    @test haskey(schemas, "UnresolvableField")
+    @test isempty(schemas["UnresolvableField"]["properties"])
 end
 
 end

@@ -4,8 +4,11 @@ using Test
 using Base: @kwdef
 using Oxygen: splitdef, Json
 using Oxygen.Core.Reflection: getsignames, parsetype, kwarg_struct_builder, parse_array_value,
-    parse_dict_value, parse_union_value, parse_enum, struct_builder
+    parse_dict_value, parse_union_value, parse_enum, struct_builder, select_type, parse_number,
+    dict_keytype, dict_valtype, parse_dict_key, defname, has_kwdef_constructor, Param
 using Oxygen.Core.Util: parseparam
+using Oxygen.Core.Extractors: safe_extract, Query
+using Oxygen.Core.Errors: ValidationError
 
 
 global message = Dict("message" => "Hello, World!")
@@ -14,6 +17,12 @@ global message = Dict("message" => "Hello, World!")
 # reference (`var"#N#M"`); this is the bare-anonymous-function case that used
 # to shift keyword-argument alignment in `extract_defaults`.
 const bare_anon = function(a::Int; b = nothing)
+    return a, b
+end
+
+# A positional default computed from an earlier argument: supplied by the
+# generated one-argument method at call time, never by the signature.
+function referenced_default(a::Int, b::Int = a + 1)
     return a, b
 end
 
@@ -66,6 +75,35 @@ end
     label::String
     grid::Vector{Vector{Int}} = Vector{Vector{Int}}()
     people::Vector{Union{Person, Nothing}} = Vector{Union{Person, Nothing}}()
+end
+
+# Non-`@kwdef` structs exercising the `StructTypes.constructfrom` fast path's
+# per-field coercion (unions, arrays, enums, nested structs).
+struct UnionHolder
+    value::Union{Person, Cat, Nothing}
+end
+
+struct ArrayHolder
+    people::Vector{Person}
+end
+
+struct EnumHolder
+    fruit::Fruit
+end
+
+struct NestedHolder
+    person::Person
+end
+
+# Flat `@kwdef` struct for case-insensitive field matching through the kwarg path
+@kwdef struct CaseFold
+    name::String
+    count::Int = 0
+end
+
+# A field that can hold `missing`, for the missing-branch of the kwarg builder
+@kwdef struct MaybeCount
+    value::Union{Int, Missing} = 0
 end
 
 
@@ -510,6 +548,101 @@ end
         @test info.sig_map[:b].default == 3.0
         @test info.sig_map[:b].hasdefault == true
     end
+end
+
+@testset "defname: only named definitions carry a binding" begin
+    @test defname(:(function named(x) x end)) == :named
+    @test defname(:(short(x) = x)) == :short
+    # anonymous functions and do-blocks have no binding to attach a docstring to
+    @test defname(:(x -> x)) === nothing
+    @test defname(:(function (x) x end)) === nothing
+end
+
+@testset "select_type picks the more specific type" begin
+    @test select_type(Any, Int) === Int
+    @test select_type(Int, Any) === Int
+    @test select_type(Int, Real) === Int
+    @test select_type(Real, Int) === Int
+    @test select_type(String, Int) === String
+end
+
+@testset "struct_builder field coercion and case folding" begin
+    # `@kwdef` structs go through the constructor probe and the kwarg builder
+    @test has_kwdef_constructor(Home)
+    home = struct_builder(Home, Dict("address" => "x", "owner" => Dict("name" => "joe", "age" => 25)))
+    @test home == Home("x", Person("joe", 25))
+
+    # plain structs go through the StructTypes fast path, one branch per shape
+    @test struct_builder(UnionHolder, Dict("value" => Dict("meow" => "m"))) == UnionHolder(Cat("m"))
+    @test struct_builder(UnionHolder, Dict("value" => nothing)) == UnionHolder(nothing)
+    holder = struct_builder(ArrayHolder, Dict("people" => [Dict("name" => "joe", "age" => 25)]))
+    @test holder.people == [Person("joe", 25)]
+    @test struct_builder(EnumHolder, Dict("fruit" => "apple")) == EnumHolder(apple)
+    @test struct_builder(NestedHolder, Dict("person" => Dict("name" => "ann", "age" => 30))) ==
+          NestedHolder(Person("ann", 30))
+
+    # case-insensitive field matching (HTTP headers) at the top level
+    @test struct_builder(CaseFold, Dict(:NAME => "joe", :COUNT => 3); casesensitive=false) == CaseFold("joe", 3)
+end
+
+@testset "parse helpers coerce JSON values into Julia types" begin
+    # a float cannot be an enum value
+    @test_throws ArgumentError parse_enum(Fruit, 2.5)
+
+    # abstract number targets fall back to a Float64 conversion
+    @test parse_number(BigFloat, "1.25") == 1.25
+
+    # `Rational` is abstract and none of the integer/floats satisfy it, so the
+    # conversion fallback still produces a valid rational
+    @test parse_number(Rational, "1") == 1//1
+
+    # a union with only null-ish members has nothing to try
+    @test_throws MethodError parse_union_value(Union{Nothing, Missing}, 1)
+
+    # when every union member fails to parse, the last member's error is rethrown
+    @test_throws ArgumentError parse_union_value(Union{Int, Float64}, "abc")
+
+    # unparameterized wrappers have no key/value types
+    @test dict_keytype(Dict) === Any
+    @test dict_valtype(Dict) === Any
+
+    # JSON object keys are always strings; a concrete string target coerces
+    @test parse_dict_key(SubString{String}, "abc") == "abc"
+
+    # direct array conversion from a compatible element type
+    @test parse_array_value(Vector{Float64}, [1, 2]) == [1.0, 2.0]
+end
+
+@testset "kwarg_struct_builder: missing fields and string-encoded primitives" begin
+    # a missing value passes straight through to a Missing-capable field
+    @test kwarg_struct_builder(MaybeCount, Dict(:value => missing)).value === missing
+
+    # primitive fields are parsed with `parsetype`
+    family = kwarg_struct_builder(CaseFold, Dict(:name => "joe", :count => "3"))
+    @test family == CaseFold("joe", 3)
+end
+
+@testset "splitdef computed positional defaults" begin
+    # a default that references an earlier argument is supplied by the generated
+    # one-argument method and is not extracted as a literal default
+    info = splitdef(referenced_default)
+    @test info.args[2].name == :b
+    @test info.args[2].type == Int
+    @test info.args[2].hasdefault == false
+end
+
+@testset "safe_extract rethrows ValidationError unchanged" begin
+    param = Param(:value, Query{Int}, missing, false)
+    original = ValidationError("boom")
+
+    # a validation error raised while extracting is passed through, not wrapped
+    caught = try
+        safe_extract(() -> throw(original), param)
+        nothing
+    catch e
+        e
+    end
+    @test caught === original
 end
 
 

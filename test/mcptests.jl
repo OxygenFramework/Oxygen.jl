@@ -153,6 +153,29 @@ end
     return HTTP.Response(200, ["Content-Type" => "image/png"], UInt8[0x89, 0x50, 0x4e, 0x47])
 end
 
+# Non-text bytes have no bare content block in MCP, so they travel as an
+# embedded resource with a base64 blob. The Response variant goes through the
+# same path using the response's `Content-Type` instead of sniffing.
+@tool "Returns raw binary bytes" Dict() function binary_bytes_tool()
+    return UInt8[0x00, 0x01, 0xff]
+end
+
+@tool "Returns an octet-stream response" Dict() function octet_stream_tool()
+    return HTTP.Response(200, ["Content-Type" => "application/octet-stream"], UInt8[0x00, 0x01])
+end
+
+@tool "Takes a rational" Dict(:value => "a rational") function rational_tool(value::Rational{Int})
+    return value
+end
+
+@tool "Takes an int or float" Dict(:value => "an int or float") function union_coercion_tool(value::Union{Int,Float64})
+    return value
+end
+
+@tool "Takes an optional integer" Dict(:value => "an optional integer") function nullable_arg_tool(value::Union{Int,Nothing}=nothing)
+    return isnothing(value) ? "none" : value
+end
+
 # function + tool form
 function subtract(a::Int, b::Int)
     return a - b
@@ -197,6 +220,36 @@ end
 # ...and an undocumented handler simply gets an empty description
 @tool Dict(:x => "the x") function undocumented_tool(x::Int)
     return x
+end
+
+# The do..block form of the description-first macro registers the anonymous
+# handler directly.
+@tool("Do-block tool", Dict(:value => "a value")) do value::Int
+    return value * 3
+end
+
+# An anonymous handler in the two-argument form has no binding to attach a
+# docstring to, so it registers through the runtime fallback with an empty
+# description.
+@tool Dict(:value => "a value") function(value)
+    return value + 1
+end
+
+# A binding whose docs entry is a bare `DocStr` (rather than the usual
+# `MultiDoc`) supplies its raw text as the handler description.
+module RawDocStrHolder
+    rawdoc() = 1
+end
+
+Base.Docs.meta(RawDocStrHolder)[Base.Docs.Binding(RawDocStrHolder, :rawdoc)] =
+    Base.Docs.DocStr(Core.svec("raw docstring"), nothing, Dict{Symbol,Any}())
+
+# A streaming handler used to exercise streamed entries inside a JSON-RPC batch.
+function batch_stream_handler()
+    return mcp_stream() do stream
+        put!(stream, "chunk")
+        return "batch complete"
+    end
 end
 
 ### Registered prompts ###
@@ -250,6 +303,22 @@ end
             "user" => label]
 end
 
+# A non-collection return value becomes a single user message; a dict has no
+# content type, so it is JSON-encoded into a text block.
+@prompt "Returns a plain dictionary" function dict_prompt()
+    return Dict("answer" => 42)
+end
+
+# A bare scalar also goes JSON-encoded into the text block.
+@prompt "Returns a bare number" function number_prompt()
+    return 7
+end
+
+# A vector mixes pre-shaped message dicts with plain items.
+@prompt "Returns a mixed item vector" function mixed_items_prompt()
+    return [Dict("role" => "assistant", "content" => "shaped"), "plain", 3]
+end
+
 @prompt "Returns an invalid role" function bad_role_prompt()
     return "system" => "nope"
 end
@@ -266,6 +335,19 @@ end
 @prompt function undocumented_prompt(topic::String)
     return "Talk about $topic"
 end
+
+# An anonymous handler has no binding for the docstring machinery, so the
+# one-argument macro falls back to the runtime registration.
+@prompt function(prompt_value::String)
+    return "prompt says " * prompt_value
+end
+
+# The anonymous registrations above derive generated names; capture them once so
+# tests can address the registrations.
+const DOBLOCK_TOOL_NAME = first(k for (k, v) in CONTEXT[].mcp.tools if v.description == "Do-block tool")
+const ANON_TOOL_NAME = first(k for k in keys(CONTEXT[].mcp.tools)
+                             if startswith(k, "#") && CONTEXT[].mcp.tools[k].description == "")
+const ANON_PROMPT_NAME = first(k for k in keys(CONTEXT[].mcp.prompts) if startswith(k, "#"))
 
 ### Request helpers ###########################################################
 
@@ -342,7 +424,7 @@ end
     @test occursin("<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,", body)
 end
 
-@testset "reflection" begin
+@testset "tool reflection: required args, defaults, and injected keywords" begin
     tool = CONTEXT[].mcp.tools["add_numbers"]
     @test tool.has_context == false
     @test tool.has_request == false
@@ -449,6 +531,14 @@ end
     @test box_props["palette"]["\$ref"] == "#/\$defs/Palette"
     @test box_props["alternatives"]["items"]["\$ref"] == "#/\$defs/Palette"
     @test box_schema["\$defs"]["Palette"]["properties"]["primary"]["type"] == "string"
+
+    # a top-level nullable parameter is marked on its schema
+    nullable_schema = MCP.inputschema(CONTEXT[].mcp.tools["nullable_arg_tool"])
+    @test nullable_schema["properties"]["value"]["nullable"] === true
+    @test nullable_schema["properties"]["value"]["default"] === nothing
+
+    # a union of only null-ish members resolves to an empty schema
+    @test MCP.typeschema(Union{Nothing,Missing}) == (Dict{String,Any}(), Dict{String,Any}())
 end
 
 @testset "parameter declaration forms" begin
@@ -477,6 +567,28 @@ end
     # invocation uses the Julia parameter names
     r = call_tool("named_params", Dict("left" => 1, "right" => 2))
     @test parsebody(r)["result"]["content"][1]["text"] == "3"
+
+    # the two-argument MCPParam constructor derives the wire name from the
+    # Julia parameter name
+    described = MCP.MCPParam(Oxygen.Core.Reflection.Param(:value, Int, missing, false), "a value")
+    @test described.description == "a value"
+    @test described.wirename == "value"
+end
+
+@testset "do-block and anonymous handler fallbacks" begin
+    # the do-block form keeps its description and registers the anonymous handler
+    r = call_tool(DOBLOCK_TOOL_NAME, Dict("value" => 4))
+    @test r.status == 200
+    @test parsebody(r)["result"]["content"][1]["text"] == "12"
+
+    # anonymous handlers land under generated names
+    r = call_tool(ANON_TOOL_NAME, Dict("value" => 1))
+    @test r.status == 200
+    @test parsebody(r)["result"]["content"][1]["text"] == "2"
+
+    r = prompt_get(ANON_PROMPT_NAME, Dict("prompt_value" => "moon"))
+    @test r.status == 200
+    @test occursin("prompt says moon", JSON.json(parsebody(r)["result"]))
 end
 
 @testset "parameter metadata validation" begin
@@ -506,6 +618,9 @@ end
 
     r = call_tool("documented_tool", Dict("a" => 1, "b" => 2))
     @test parsebody(r)["result"]["content"][1]["text"] == "3"
+
+    # a raw `DocStr` docs entry (not a `MultiDoc`) is read directly
+    @test MCP.function_docstring(RawDocStrHolder.rawdoc) == "raw docstring"
 end
 
 @testset "docstring prompt description" begin
@@ -587,6 +702,13 @@ end
     ))
     @test box.palette.primary == red
     @test box.alternatives[1].primary == green
+
+    # a multi-member union is tried member-by-member (the value must not already
+    # be an instance of the union, or the early `value isa target` check wins)
+    @test MCP.parse_tool_argument(Union{Int,Float64}, "1.5") === 1.5
+    @test MCP.parse_tool_argument(Union{Int,Float64}, "3") == 3
+    # types with no dedicated branch fall through to `convert`
+    @test MCP.parse_tool_argument(Rational{Int}, 2) == 2//1
 end
 
 @testset "server/discover" begin
@@ -601,6 +723,12 @@ end
     @test result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "Oxygen"
     @test !haskey(result["_meta"]["io.modelcontextprotocol/serverInfo"], "description")
     @test result["cacheScope"] == "public"
+
+    # optional instructions are advertised when the context was built with them
+    instructed = Oxygen.Core.ServerContext(; mcp = Oxygen.Core.MCPContext(; instructions = "Use the tools wisely"))
+    @test !haskey(MCP.discover_result(CONTEXT[]), "instructions")
+    @test MCP.discover_result(instructed)["instructions"] == "Use the tools wisely"
+    @test MCP.initialize_result(instructed, Dict{String,Any}())["instructions"] == "Use the tools wisely"
 end
 
 @testset "tools/list" begin
@@ -632,7 +760,7 @@ end
     @test !haskey(Oxygen.CONTEXT[].mcp.prompts, "city_report")
 end
 
-@testset "prompt reflection" begin
+@testset "prompt reflection: required args, defaults, and injected keywords" begin
     city = CONTEXT[].mcp.prompts["city_report"]
     @test city.argnames == [:city, :tone]
     @test Oxygen.Core.isrequired(city.params[1].param)
@@ -707,6 +835,42 @@ end
     msg = parsebody(prompt_get("html_prompt", Dict()))["result"]["messages"][1]
     @test msg["role"] == "user"
     @test msg["content"] == Dict("type" => "text", "text" => "<p>hi</p>")
+end
+
+@testset "binary resource blocks and prompt return shaping" begin
+    # raw non-text bytes become an embedded resource with a base64 blob
+    r = call_tool("binary_bytes_tool", Dict())
+    block = parsebody(r)["result"]["content"][1]
+    @test block["type"] == "resource"
+    @test block["resource"]["uri"] == "oxygen://blob"
+    @test block["resource"]["blob"] == base64encode(UInt8[0x00, 0x01, 0xff])
+    @test block["resource"]["mimeType"] == HTTP.sniff(UInt8[0x00, 0x01, 0xff])
+
+    # an octet-stream response takes the same path, honoring its Content-Type
+    r = call_tool("octet_stream_tool", Dict())
+    block = parsebody(r)["result"]["content"][1]
+    @test block["type"] == "resource"
+    @test block["resource"]["mimeType"] == "application/octet-stream"
+    @test block["resource"]["blob"] == base64encode(UInt8[0x00, 0x01])
+
+    # a prompt returning a bare dict JSON-encodes it into a text block
+    msg = parsebody(prompt_get("dict_prompt", Dict()))["result"]["messages"][1]
+    @test msg["role"] == "user"
+    @test msg["content"]["type"] == "text"
+    @test JSON.parse(msg["content"]["text"]) == Dict("answer" => 42)
+
+    # a prompt returning a scalar does the same
+    msg = parsebody(prompt_get("number_prompt", Dict()))["result"]["messages"][1]
+    @test msg["content"]["text"] == "7"
+
+    # a vector mixes pre-shaped messages with plain items
+    msgs = parsebody(prompt_get("mixed_items_prompt", Dict()))["result"]["messages"]
+    @test length(msgs) == 3
+    @test msgs[1]["role"] == "assistant"
+    @test msgs[1]["content"]["text"] == "shaped"
+    @test msgs[2]["role"] == "user"
+    @test msgs[2]["content"]["text"] == "plain"
+    @test msgs[3]["content"]["text"] == "3"
 end
 
 @testset "prompt roles" begin
@@ -892,6 +1056,26 @@ end
     r = call_tool("does_not_exist", Dict())
     @test parsebody(r)["error"]["code"] == -32602
 
+    # legacy calls skip the header mirroring, so an unnamed call reaches the
+    # params resolver and is reported as a params error
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => 15, "method" => "tools/call", "params" => Dict()))
+    @test r.status == 200
+    body = parsebody(r)
+    @test body["error"]["code"] == MCP.MCP_INVALID_PARAMS
+    @test body["error"]["message"] == "Missing tool name"
+
+    # an explicit null arguments object means "no arguments"
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => 16, "method" => "tools/call",
+                      "params" => Dict("name" => "no_args", "arguments" => nothing)))
+    @test r.status == 200
+    @test parsebody(r)["result"]["isError"] == false
+
+    # non-object arguments are rejected
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => 17, "method" => "tools/call",
+                      "params" => Dict("name" => "no_args", "arguments" => 5)))
+    @test r.status == 200
+    @test parsebody(r)["error"]["message"] == "Invalid arguments: expected an object"
+
     # handler throws -> tool execution error
     r = call_tool("throws_tool", Dict())
     @test r.status == 200
@@ -918,7 +1102,7 @@ end
     @test parsebody(r)["result"]["content"][1]["text"] == "POST"
 end
 
-@testset "header validation" begin
+@testset "modern request headers: version, method, and name mirroring" begin
     payload = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "tools/list", "params" => Dict("_meta" => req_meta()))
 
     # missing MCP-Protocol-Version header
@@ -947,11 +1131,124 @@ end
     @test r.status == 400
     @test parsebody(r)["error"]["code"] == -32020
 
+    # a malformed Base64 sentinel in Mcp-Name is a header mismatch
+    r = rpc("tools/call", call_params; extra_headers=["Mcp-Name" => "=?base64?***?="])
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32020
+
     # missing _meta.clientCapabilities
     bare_meta = Dict("io.modelcontextprotocol/protocolVersion" => "2026-07-28")
     r = rpc("tools/list", Dict("_meta" => bare_meta))
     @test r.status == 400
     @test parsebody(r)["error"]["code"] == -32602
+
+    # a `_meta` that is not an object is treated as empty; the required version
+    # field is then reported missing
+    payload = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "tools/list", "params" => Dict("_meta" => 5))
+    r = raw_post(payload; headers=["MCP-Protocol-Version" => "2026-07-28", "Mcp-Method" => "tools/list"])
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32602
+end
+
+@testset "standard MCP headers: validation and base64 sentinels" begin
+    # a duplicated or unsafe standard header is rejected
+    unsafe = HTTP.Request("POST", "/", ["Mcp-Name" => "bad\x01value"])
+    @test MCP.mcp_standard_header(unsafe, "Mcp-Name") === :invalid
+    @test_throws MCP.MCPRequestError MCP.required_header(unsafe, "Mcp-Name")
+
+    duplicated = HTTP.Request("POST", "/", ["Mcp-Name" => "a"])
+    push!(duplicated.headers, "Mcp-Name" => "b")
+    @test MCP.mcp_standard_header(duplicated, "Mcp-Name") === :invalid
+
+    # non-sentinel values pass through; malformed sentinels decode to nothing
+    @test MCP.decode_header_value("plain value") == "plain value"
+    @test MCP.decode_header_value("=?base64?***?=") === nothing      # invalid alphabet
+    @test MCP.decode_header_value("=?base64?AAA?=") === nothing      # not a multiple of four
+    @test MCP.decode_header_value("=?base64?/w==?=") === nothing     # decodes to invalid UTF-8
+    @test MCP.decode_header_value("=?base64?b2s=?=") == "ok"
+
+    # the exception itself prints as a one-line message
+    @test sprint(showerror, MCP.MCPRequestError(MCP.MCP_INVALID_PARAMS, "nope")) ==
+          "MCP Request Error (-32602): nope"
+end
+
+@testset "session registry: sweeping, eviction, and resolution" begin
+    ctx = CONTEXT[]
+    lock(ctx.mcp.sessions_lock) do
+        empty!(ctx.mcp.sessions)
+    end
+
+    # a non-session entry is ignored by the sweeper and the evictor
+    ctx.mcp.sessions["junk"] = :not_a_session
+    @test isempty(MCP.sweep_sessions!(ctx))
+    @test MCP.evict_oldest!(ctx) === nothing
+    delete!(ctx.mcp.sessions, "junk")
+
+    session = MCP.MCPSession("unit-session")
+    ctx.mcp.sessions[session.id] = session
+
+    # an expired session is swept
+    session.last_seen = time() - (MCP.SESSION_TTL_SECONDS + 1)
+    @test MCP.sweep_sessions!(ctx) == [session]
+    @test !haskey(ctx.mcp.sessions, session.id)
+
+    # a closed session is not resolvable
+    closed = MCP.MCPSession("closed-session")
+    closed.closed = true
+    ctx.mcp.sessions[closed.id] = closed
+    @test MCP.find_session(ctx, closed.id) === nothing
+    delete!(ctx.mcp.sessions, closed.id)
+
+    # resolving an idle session refreshes its idle clock
+    idle = MCP.MCPSession("idle-session")
+    idle.last_seen = time() - (MCP.SESSION_TOUCH_SECONDS + 1)
+    ctx.mcp.sessions[idle.id] = idle
+    @test MCP.find_session(ctx, idle.id) === idle
+    @test idle.last_seen > time() - MCP.SESSION_TOUCH_SECONDS
+
+    # a malformed session header resolves to :invalid and surfaces as a 400
+    bad = HTTP.Request("POST", "/mcp", [MCP.SESSION_HEADER => "bad\x01value"])
+    @test MCP.resolve_session(ctx, bad) === :invalid
+    status, body = MCP.resolve_session_or_error(ctx, bad)
+    @test status == 400
+    @test body["error"]["code"] == MCP.MCP_INVALID_REQUEST
+
+    # a sink registered on an already-closed session is refused and torn down
+    sink_session = MCP.MCPSession("closed-sink")
+    sink_session.closed = true
+    sink = MCP.PubSub.subscribe!(MCP.broker(ctx), _ -> true)
+    @test MCP.add_sink!(ctx, sink_session, sink) === false
+    @test !isopen(sink)
+    @test isempty(sink_session.sinks)
+
+    # the oldest (and only) session is evicted when the registry is at capacity
+    lock(ctx.mcp.sessions_lock) do
+        for index in 1:MCP.MAX_SESSIONS
+            older = MCP.MCPSession("bulk-$index")
+            older.last_seen = time() - (2 * MCP.SESSION_TOUCH_SECONDS) - index
+            ctx.mcp.sessions[older.id] = older
+        end
+    end
+    created = MCP.new_session!(ctx)
+    @test haskey(ctx.mcp.sessions, created.id)
+    @test length(ctx.mcp.sessions) == MCP.MAX_SESSIONS
+    # the least-recently-seen session was dropped to make room
+    @test !haskey(ctx.mcp.sessions, "bulk-$(MCP.MAX_SESSIONS)")
+
+    # a full registry with nothing evictable makes the eviction loop give up and
+    # register the new session anyway
+    lock(ctx.mcp.sessions_lock) do
+        empty!(ctx.mcp.sessions)
+        for index in 1:MCP.MAX_SESSIONS
+            ctx.mcp.sessions["placeholder-$index"] = nothing
+        end
+    end
+    overflow = MCP.new_session!(ctx)
+    @test haskey(ctx.mcp.sessions, overflow.id)
+    @test length(ctx.mcp.sessions) == MCP.MAX_SESSIONS + 1
+
+    MCP.close_sessions!(ctx)
+    @test isempty(ctx.mcp.sessions)
 end
 
 @testset "protocol version" begin
@@ -981,7 +1278,7 @@ end
     @test MCP.decode_header_value("=?base64?" * base64encode("Hello, 世界") * "?=") == "Hello, 世界"
 end
 
-@testset "transport semantics" begin
+@testset "HTTP transport: status codes, framing, and SSE priming" begin
     # notifications -> 202 with no body
     notification = Dict("jsonrpc" => "2.0", "method" => "tools/list", "params" => Dict("_meta" => req_meta()))
     r = raw_post(notification; headers=["MCP-Protocol-Version" => "2026-07-28", "Mcp-Method" => "tools/list"])
@@ -1058,6 +1355,7 @@ end
         JSON.json(Dict("jsonrpc" => "2.0", "id" => 1, "method" => "server/discover", "params" => Dict("_meta" => req_meta()))),
         JSON.json(Dict("jsonrpc" => "2.0", "id" => 2, "method" => "tools/call", "params" => Dict("_meta" => req_meta(), "name" => "add_numbers", "arguments" => Dict("a" => 2, "b" => 5)))),
         JSON.json(notification),                # notification -> no response
+        JSON.json(Dict("jsonrpc" => "2.0", "method" => "notifications/cancelled", "params" => 5)),  # malformed cancellation -> no response
         "not json",                             # parse error
         JSON.json(Dict("jsonrpc" => "2.0", "id" => 3, "method" => "does/not/exist", "params" => Dict("_meta" => req_meta()))),
     ]
@@ -1193,6 +1491,11 @@ end
     @test r.status == 400
     @test parsebody(r)["error"]["code"] == -32600
 
+    # a non-string method -> -32600
+    r = raw_post(Dict("jsonrpc" => "2.0", "id" => 1, "method" => 5, "params" => Dict()))
+    @test r.status == 400
+    @test parsebody(r)["error"]["code"] == -32600
+
     # null id -> -32600 (forbidden by the MCP schema)
     r = raw_post(Dict("jsonrpc" => "2.0", "id" => nothing, "method" => "ping", "params" => Dict()))
     @test r.status == 400
@@ -1250,6 +1553,13 @@ end
     r = raw_post(Dict("jsonrpc" => "2.0", "id" => 6, "method" => "ping", "params" => Dict());
                  headers=[MCP.SESSION_HEADER => sid2])
     @test r.status == 404
+
+    # deleting an already-terminated (or plain unknown) session answers the same
+    # JSON 404 as any other request naming it
+    r = HTTP.request("DELETE", "$localhost/mcp", [MCP.SESSION_HEADER => sid2];
+                     status_exception=false, client=MCP_CLIENT)
+    @test r.status == 404
+    @test parsebody(r)["error"]["code"] == -32600
 
     # DELETE without a session header (and the modern era) stay 405
     @test HTTP.request("DELETE", "$localhost/mcp"; status_exception=false, client=MCP_CLIENT).status == 405
@@ -1341,6 +1651,33 @@ end
     @test batch isa Vector && length(batch) == 1
     @test batch[1]["id"] == 10
     @test batch[1]["result"]["content"][1]["text"] == "3"
+
+    # a batch entry may itself be a streamed tool call: it is drained to its
+    # terminal JSON body rather than upgrading to SSE
+    adapter_ctx = Oxygen.Core.ServerContext()
+    adapter_ctx.mcp.session_version[] = "2025-03-26"
+    Oxygen.Core.register_tool!(adapter_ctx, "Streams in a batch", Dict(), batch_stream_handler;
+                               name="batch_stream_tool")
+
+    streamed = Dict("jsonrpc" => "2.0", "id" => 11, "method" => "tools/call",
+                    "params" => Dict("name" => "batch_stream_tool", "arguments" => Dict()))
+    modern_meta = Dict("_meta" => Dict(
+        "io.modelcontextprotocol/protocolVersion" => MCP.PROTOCOL_VERSION,
+        "io.modelcontextprotocol/clientCapabilities" => Dict()))
+    listen = Dict("jsonrpc" => "2.0", "id" => 12, "method" => "subscriptions/listen",
+                  "params" => merge(Dict("notifications" => Dict("toolsListChanged" => true)),
+                                    modern_meta))
+
+    output = IOBuffer()
+    MCP.stdio_loop(adapter_ctx; input=IOBuffer(JSON.json([streamed, listen]) * "\n"), output=output)
+    batch = JSON.parse(String(take!(output)))
+    @test batch isa Vector && length(batch) == 2
+    @test batch[1]["id"] == 11
+    @test batch[1]["result"]["content"][1]["text"] == "batch complete"
+    # a listen entry (modern, so dispatchable) is refused inside a batch
+    @test batch[2]["id"] == 12
+    @test batch[2]["error"]["code"] == MCP.MCP_INVALID_REQUEST
+    @test occursin("not available in a batch", batch[2]["error"]["message"])
 end
 
 @testset "legacy stdio handshake" begin
@@ -1402,6 +1739,11 @@ end
         e
     end
     @test error isa ArgumentError
+
+    # a fully-specified registration under an existing wire name is rejected by
+    # the registry itself
+    @test_throws ArgumentError tool("Duplicate with params", Dict(:a => "left", :b => "right"),
+                                   subtract; name="subtract")
 end
 
 ### Instance isolation ########################################################
@@ -1529,6 +1871,43 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
 end
 
 terminate()
+
+### Legacy notification sink capacity ##########################################
+
+serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false, access_log=nothing)
+
+@testset "legacy SSE sink at broker capacity" begin
+    ctx = CONTEXT[]
+
+    # cap the broker at one subscriber and fill it: the SSE GET cannot register
+    # its sink and answers 503 instead of holding the connection open
+    mcp_broker = MCP.MCPBroker(; cap=1)
+    MCP.PubSub.subscribe!(mcp_broker, _ -> true; csize=4)
+    ctx.mcp.broker[] = mcp_broker
+
+    r = HTTP.request("GET", "$localhost/mcp"; headers=["Accept" => "text/event-stream"],
+                     status_exception=false, client=MCP_CLIENT)
+    @test r.status == 503
+    @test String(r.body) == "Notification capacity exhausted"
+
+    # restore an open broker so later MCP traffic is unaffected
+    MCP.close_broker!(ctx)
+end
+
+terminate()
+
+@testset "stdio notification sink at broker capacity" begin
+    ctx = Oxygen.Core.ServerContext()
+    mcp_broker = MCP.MCPBroker(; cap=1)
+    MCP.PubSub.subscribe!(mcp_broker, _ -> true; csize=4)
+    ctx.mcp.broker[] = mcp_broker
+
+    notifier = MCP.StdioNotifier(IOBuffer())
+    @test_logs (:warn, r"subscription capacity exhausted") match_mode=:any begin
+        @test MCP.subscribe_legacy_stdio!(ctx, notifier) === nothing
+    end
+    @test isempty(notifier.subs)
+end
 
 @testset "resetstate clears tools" begin
     Oxygen.tool("Resettable", Dict(), () -> "x"; name="resettable")

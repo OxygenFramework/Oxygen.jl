@@ -114,6 +114,16 @@ end
     return "template:$id"
 end
 
+# The one-argument macro falls back to the runtime registration for an
+# anonymous handler (there is no binding to attach a docstring to)...
+@resource "oxygen://anonymous" function()
+    return "anonymous"
+end
+
+# ...and the flipped convenience method takes the handler first.
+flipped_resource() = "flipped"
+resource(flipped_resource, "oxygen://flipped")
+
 ### Normalized / decorated resources ###
 
 # Pre-shaped contents missing `uri`/`mimeType` are normalized on the way out
@@ -139,6 +149,28 @@ end
 @resource "oxygen://annotated-content" "Annotated content" function annotated_content_resource()
     return Dict("uri" => "oxygen://annotated-content", "text" => "annotated",
                 "annotations" => Dict("audience" => ["user"]))
+end
+
+# Malformed pre-shaped entries are server bugs (each hits a distinct check)
+@resource "oxygen://bad-uri-content" "Bad uri content" function bad_uri_content_resource()
+    return Dict("uri" => 5, "text" => "x")
+end
+
+@resource "oxygen://bad-text-content" "Bad text content" function bad_text_content_resource()
+    return Dict("text" => 5)
+end
+
+@resource "oxygen://bad-blob-content" "Bad blob content" function bad_blob_content_resource()
+    return Dict("blob" => 5)
+end
+
+@resource "oxygen://bad-contents-shape" "Bad contents shape" function bad_contents_shape_resource()
+    return Dict("contents" => "nope")
+end
+
+# A Pair entry restates the content URI
+@resource "oxygen://paired" "Paired content" function paired_resource()
+    return "oxygen://paired-entry" => "paired text"
 end
 
 ### Annotated / icon resources ###
@@ -183,6 +215,10 @@ resource_folder("testfs://", FOLDER_ROOT)
 resource_folder("hiddenfs://", FOLDER_ROOT; hidden=true, name="hidden_folder")
 # caller-supplied MIME keys are matched case-insensitively, dot optional
 resource_folder("typedfs://", FOLDER_ROOT; mime_types=Dict(".XYZ" => "text/x-custom"))
+# exact keys (with or without the dot) short-circuit the case-insensitive scan,
+# and a non-string key is skipped instead of crashing the lookup
+resource_folder("mimefs://", FOLDER_ROOT; mime_types=Dict(".txt" => "text/x-dot", "md" => "text/x-md"))
+resource_folder("numericfs://", FOLDER_ROOT; mime_types=Dict(1 => "text/x-ignored"))
 
 ### Request helpers ###########################################################
 
@@ -249,6 +285,12 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false,
     # do-block form
     @test CONTEXT[].mcp.resources["oxygen://do"].name == "do_resource"
 
+    # an anonymous handler registers through the runtime fallback, and the
+    # flipped (handler-first) method mirrors the uri-first registration
+    @test haskey(CONTEXT[].mcp.resources, "oxygen://anonymous")
+    @test haskey(CONTEXT[].mcp.resources, "oxygen://flipped")
+    @test CONTEXT[].mcp.resources["oxygen://flipped"].name == "flipped_resource"
+
     # template variables are extracted in order
     @test CONTEXT[].mcp.resource_templates["oxygen://users/{id}/posts/{post}"].vars == ["id", "post"]
 end
@@ -269,6 +311,9 @@ end
     @test_throws ArgumentError resource("oxygen://bad/{?x}", "bad", () -> "x")
     @test_throws ArgumentError resource("oxygen://bad/{x", "bad", (x::String) -> x)
     @test_throws ArgumentError resource("oxygen://bad/x}", "bad", () -> "x")
+
+    # a variable may appear only once in a template
+    @test_throws ArgumentError resource("oxygen://dup/{x}/{x}", "bad", (x::String) -> x)
 
     # a trailing newline must not slip through the template-variable anchor
     @test_throws ArgumentError MCP.template_vars("oxygen://bad/{x\n}")
@@ -478,6 +523,29 @@ end
     body = parsebody(read_uri("oxygen://empty-shape"))
     @test body["error"]["code"] == -32603
     @test occursin("exactly one", body["error"]["message"])
+
+    # each malformed entry field reports its own internal error
+    body = parsebody(read_uri("oxygen://bad-uri-content"))
+    @test body["error"]["code"] == -32603
+    @test occursin("`uri` must be a string", body["error"]["message"])
+
+    body = parsebody(read_uri("oxygen://bad-text-content"))
+    @test body["error"]["code"] == -32603
+    @test occursin("`text` must be a string", body["error"]["message"])
+
+    body = parsebody(read_uri("oxygen://bad-blob-content"))
+    @test body["error"]["code"] == -32603
+    @test occursin("`blob` must be a base64 string", body["error"]["message"])
+
+    # a pre-shaped result whose `contents` is not an array is rejected too
+    body = parsebody(read_uri("oxygen://bad-contents-shape"))
+    @test body["error"]["code"] == -32603
+    @test occursin("`contents` must be an array", body["error"]["message"])
+
+    # a Pair entry overrides the content URI
+    content = only(parsebody(read_uri("oxygen://paired"))["result"]["contents"])
+    @test content["uri"] == "oxygen://paired-entry"
+    @test content["text"] == "paired text"
 end
 
 @testset "resource annotations and icons" begin
@@ -512,6 +580,10 @@ end
     @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=[Dict("mimeType" => "image/png")])
     @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=[Dict("src" => "x", "theme" => "blue")])
     @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=[Dict("src" => "x", "sizes" => [48])])
+    @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=42)
+    @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=42)
+    @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=[Dict("src" => "x", "mood" => "dark")])
+    @test_throws ArgumentError resource("oxygen://bad-icon", "bad", () -> "x"; icons=[Dict("src" => "x", "mimeType" => 5)])
     @test !haskey(CONTEXT[].mcp.resources, "oxygen://bad-annotation")
     @test !haskey(CONTEXT[].mcp.resources, "oxygen://bad-icon")
 end
@@ -553,11 +625,21 @@ end
     @test content["mimeType"] == "text/x-custom"
     @test content["text"] == "custom\n"
 
+    # exact keys (dot or bare) are honored directly
+    content = only(parsebody(read_uri("mimefs:///notes.txt"))["result"]["contents"])
+    @test content["mimeType"] == "text/x-dot"
+    content = only(parsebody(read_uri("mimefs:///readme.md"))["result"]["contents"])
+    @test content["mimeType"] == "text/x-md"
+
+    # a non-string MIME key is skipped and the built-in table still decides
+    content = only(parsebody(read_uri("numericfs:///readme.md"))["result"]["contents"])
+    @test content["mimeType"] == "text/markdown"
+
     # traversal, dotfiles, malformed escapes, and missing files are all not-found
     for uri in ["testfs:///../outside.txt", "testfs:///%2e%2e/outside.txt",
                 "testfs:///.secret", "testfs:///nested/../../outside.txt",
                 "testfs:///nope.txt", "testfs:///bad%", "testfs:///bad%2",
-                "testfs:///bad%zz"]
+                "testfs:///bad%zz", "testfs:///", "testfs:///bad\\path.txt"]
         body = parsebody(read_uri(uri))
         @test body["error"]["code"] == -32602
         @test body["error"]["message"] == "Resource not found"
@@ -572,6 +654,13 @@ end
     # hidden=true opts dotfiles in
     content = only(parsebody(read_uri("hiddenfs:///.secret"))["result"]["contents"])
     @test content["text"] == "hidden file\n"
+end
+
+@testset "resource folder validation" begin
+    @test_throws ArgumentError resource_folder("", FOLDER_ROOT)
+    @test_throws ArgumentError resource_folder("bad{prefix}://", FOLDER_ROOT)
+    @test_throws ArgumentError resource_folder("missingfs://", joinpath(FOLDER_ROOT, "does-not-exist"))
+    @test !haskey(CONTEXT[].mcp.resource_templates, "missingfs://{+path}")
 end
 
 @testset "modern Mcp-Name validation" begin

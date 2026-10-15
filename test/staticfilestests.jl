@@ -21,6 +21,10 @@ serve(port=PORT, host=HOST, async=true, show_errors=false, show_banner=false, ac
     @test String(r.body) == expected
 end
 
+@testset "readfile returns the file contents" begin
+    @test Oxygen.readfile("content/test.txt") == read("content/test.txt", String)
+end
+
 terminate()
 println()
 

@@ -39,8 +39,9 @@ const SPEC_TRAITS = (MCP.version_string, MCP.spec_rank, MCP.is_modern,
     end
 end
 
-# A profile that passes `@spec` validation. Malformed variants are expanded
-# (never evaluated), proving the macro rejects them without defining methods.
+# A complete, valid profile statement block. The malformed variants below are
+# built by adding to / trimming this block, so each case differs from a valid
+# profile in exactly one way.
 const PROFILE_STATEMENTS = (
     :(version_string = "2099-01-02"),
     :(spec_rank = 6),
@@ -54,25 +55,58 @@ const PROFILE_STATEMENTS = (
     :(not_found_code = MCP.MCP_RESOURCE_NOT_FOUND),
 )
 
+# Build the `@spec Val(:v2099_01_02) begin <statements> end` macro call.
 profile_expr(statements) = Expr(:macrocall, GlobalRef(MCP, Symbol("@spec")),
                                 LineNumberNode(0), :(Val(:v2099_01_02)),
                                 Expr(:block, statements...))
 
-@testset "mcp @spec validates the profile contract" begin
-    @test macroexpand(@__MODULE__, profile_expr(PROFILE_STATEMENTS)) isa Expr
+# Same, but with an arbitrary tag expression, for the tag-validation cases.
+profile_expr(tag, statements) = Expr(:macrocall, GlobalRef(MCP, Symbol("@spec")),
+                                     LineNumberNode(0), tag,
+                                     Expr(:block, statements...))
+
+# Malformed profiles are only expanded, never evaluated, so a rejected profile
+# cannot leave partial method definitions behind on the spec module.
+expand_profile(statements) = macroexpand(@__MODULE__, profile_expr(statements))
+
+@testset "mcp @spec guards the revision profile contract" begin
+    # A complete profile expands into one method definition per capability the
+    # contract knows about, so a new revision only has to state its answers.
+    expanded = expand_profile(PROFILE_STATEMENTS)
+    @test expanded isa Expr
+    for capability in keys(MCP.SPEC_TRAIT_TYPES)
+        @test occursin(string(capability), string(expanded))
+    end
+
+    # A capability the macro does not know (`spec_rnk` for `spec_rank`) would
+    # silently do nothing, so it is rejected instead.
+    @test_throws ErrorException expand_profile((PROFILE_STATEMENTS..., :(spec_rnk = 6)))
+
+    # Declaring a capability twice is ambiguous, so a repeated `spec_rank` is
+    # rejected rather than letting the last line win.
+    @test_throws ErrorException expand_profile((PROFILE_STATEMENTS..., :(spec_rank = 7)))
+
+    # Skipping a capability leaves the revision without an implementation, so a
+    # profile that stops before the final `not_found_code` line is rejected.
+    @test_throws ErrorException expand_profile(PROFILE_STATEMENTS[1:(end - 1)])
+
+    # ...and so is a block line that is not a capability declaration at all.
+    @test_throws ErrorException expand_profile((PROFILE_STATEMENTS..., :(1 + 1)))
+
+    # The revision tag must be a literal `Val(:symbol)`: a bare `Val`...
+    @test_throws ErrorException macroexpand(@__MODULE__, profile_expr(:Val, PROFILE_STATEMENTS))
+    # ...and a `Val` wrapping a string both fail to name a revision.
     @test_throws ErrorException macroexpand(@__MODULE__,
-        profile_expr((PROFILE_STATEMENTS..., :(spec_rnk = 6))))
-    @test_throws ErrorException macroexpand(@__MODULE__,
-        profile_expr((PROFILE_STATEMENTS..., :(spec_rank = 7))))
-    @test_throws ErrorException macroexpand(@__MODULE__,
-        profile_expr(PROFILE_STATEMENTS[1:(end - 1)]))
+        profile_expr(:(Val("v2099_01_02")), PROFILE_STATEMENTS))
 end
 
-@testset "mcp spec identity" begin
+@testset "mcp spec identity: version strings, ranks, and lookup" begin
     @test [MCP.version_string(spec) for spec in ALL_SPECS] ==
         ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
     @test [MCP.spec_rank(spec) for spec in ALL_SPECS] == collect(1:5)
 
+    # every advertised revision round-trips through the wire-string lookup, and
+    # anything else is not a revision at all
     for spec in ALL_SPECS
         @test MCP.spec_from_version(MCP.version_string(spec)) === spec
     end
@@ -81,6 +115,8 @@ end
 end
 
 @testset "mcp advertised spec tuples" begin
+    # MODERN_SPECS/LEGACY_SPECS group the revisions; the concatenation is the
+    # advertised set and the LATEST_* constants are the negotiation fallbacks.
     @test MCP.MODERN_SPECS == (MCP.V2026_07_28,)
     @test MCP.LEGACY_SPECS == (MCP.V2025_11_25, MCP.V2025_06_18,
                                MCP.V2025_03_26, MCP.V2024_11_05)
@@ -90,6 +126,7 @@ end
 end
 
 @testset "mcp era classification" begin
+    # exactly one era per revision: modern is 2026-07-28, everything else legacy
     @test MCP.is_modern(MCP.V2026_07_28)
     @test !MCP.is_legacy(MCP.V2026_07_28)
     for spec in MCP.LEGACY_SPECS
@@ -98,15 +135,19 @@ end
     end
 end
 
-@testset "mcp spec ordering" begin
+@testset "mcp spec_at_least orders by revision rank" begin
     @test MCP.spec_at_least(MCP.V2025_06_18, MCP.V2025_03_26)
     @test MCP.spec_at_least(MCP.V2025_06_18, MCP.V2025_06_18)
     @test !MCP.spec_at_least(MCP.V2025_03_26, MCP.V2025_06_18)
     @test MCP.spec_at_least(MCP.V2026_07_28, MCP.V2025_11_25)
 end
 
-@testset "mcp capability profiles" begin
+@testset "mcp revision capability profiles" begin
     ctx = Oxygen.Core.ServerContext()
+
+    # The golden answers for each revision's capability questions, pinned per
+    # revision; the conformance testsets below re-derive them from the era
+    # predicates.
 
     # Batching existed only in 2025-03-26.
     @test MCP.allows_batch(MCP.V2025_03_26)
@@ -145,31 +186,6 @@ end
     result = Dict{String,Any}("a" => 1)
     @test MCP.result_envelope(MCP.V2025_11_25, ctx, result) === result
     @test MCP.with_cache_hints(MCP.V2025_11_25, result) === result
-end
-
-@testset "mcp method availability" begin
-    for spec in ALL_SPECS
-        @test MCP.method_available(spec, Val(:tools_list))
-        @test MCP.method_available(spec, Val(:tools_call))
-        @test MCP.method_available(spec, Val(:prompts_list))
-        @test MCP.method_available(spec, Val(:resources_read))
-    end
-
-    for spec in MCP.LEGACY_SPECS
-        @test MCP.method_available(spec, Val(:initialize))
-        @test MCP.method_available(spec, Val(:ping))
-        @test MCP.method_available(spec, Val(:resources_subscribe))
-        @test MCP.method_available(spec, Val(:resources_unsubscribe))
-        @test !MCP.method_available(spec, Val(:server_discover))
-        @test !MCP.method_available(spec, Val(:subscriptions_listen))
-    end
-
-    @test !MCP.method_available(MCP.V2026_07_28, Val(:initialize))
-    @test !MCP.method_available(MCP.V2026_07_28, Val(:ping))
-    @test !MCP.method_available(MCP.V2026_07_28, Val(:resources_subscribe))
-    @test !MCP.method_available(MCP.V2026_07_28, Val(:resources_unsubscribe))
-    @test MCP.method_available(MCP.V2026_07_28, Val(:server_discover))
-    @test MCP.method_available(MCP.V2026_07_28, Val(:subscriptions_listen))
 end
 
 @testset "mcp method routing" begin
@@ -247,6 +263,8 @@ end
 end
 
 @testset "mcp wire version parsing" begin
+    # structuredContent and resource icons track the 2025-06-18 threshold for
+    # every advertised revision
     for version in ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28")
         spec = MCP.spec_from_version(version)
         @test MCP.emits_structured_content(spec) == MCP.spec_at_least(spec, MCP.V2025_06_18)
@@ -322,7 +340,10 @@ end
 end
 
 # The full method surface, by tag: shared methods are served by every revision,
-# the six era-exclusive methods only by their own era.
+# the six era-exclusive methods only by their own era. This is the table form
+# of the surface — the per-revision answers live in the capability profiles
+# above; this testset cross-checks them against the era predicates, so a
+# profile cannot drift from its declared era.
 const SHARED_METHOD_TAGS = (:tools_list, :tools_call, :prompts_list, :prompts_get,
                             :resources_list, :resources_templates_list, :resources_read)
 const LEGACY_ONLY_METHOD_TAGS = (:initialize, :ping, :resources_subscribe,
@@ -346,6 +367,9 @@ const MODERN_ONLY_METHOD_TAGS = (:server_discover, :subscriptions_listen)
 end
 
 @testset "mcp conformance: transport policy table" begin
+    # The policy answers must follow the era predicates for every revision:
+    # sessions and the legacy GET/DELETE policies belong to the legacy era,
+    # modern revisions reject both.
     for spec in ALL_SPECS
         modern = MCP.is_modern(spec)
         @test MCP.uses_sessions(spec) == !modern
@@ -375,10 +399,13 @@ end
         ("subscriptions/listen", :modern),
     )
 
+    # An era-exclusive method is only served by a spec of that era; the other
+    # era answers -32601 before reaching any handler.
     for spec in ALL_SPECS
-        for (wire, era) in exclusive
+        for (wire, method_era) in exclusive
+            served = (method_era === :modern) == MCP.is_modern(spec)
             body, status = MCP.dispatch(ctx, nothing, 1, wire, Dict{String,Any}(); spec=spec)
-            if (era === :modern) == MCP.is_modern(spec)
+            if served
                 # Served here: the handler ran (it may reject bad params, but
                 # never as an unknown method).
                 @test status in (200, 400)

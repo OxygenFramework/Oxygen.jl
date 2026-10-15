@@ -125,6 +125,26 @@ const DISCONNECTED = Ref(0)
     end
 end
 
+# A raw `Channel` return value is adopted by the framework: values are
+# normalized into progress events and an exhausted channel ends the stream with
+# an empty (JSON null) result, since a raw channel carries no return value.
+@tool "Streams from a prefilled raw channel" Dict(:count => "number of steps") function stream_raw_channel(count::Int)
+    channel = Channel{Any}(count)
+    for i in 1:count
+        put!(channel, "raw $i")
+    end
+    close(channel)
+    return channel
+end
+
+@tool "Streams from a producer raw channel" Dict(:count => "number of steps") function stream_producer_channel(count::Int)
+    return Channel{Any}(count) do channel
+        for i in 1:count
+            put!(channel, "produced $i")
+        end
+    end
+end
+
 ### Request helpers ###########################################################
 
 const STREAM_PORT = PORT + 3
@@ -224,11 +244,15 @@ end
 end
 
 @testset "quiet calls stay application/json" begin
-    for name in ("stream_quiet", "stream_quiet_injected")
+    # A call is quiet in two ways: the handler buffers a plain return value
+    # (`stream_quiet`), or the handler has an injected `; stream` handle but the
+    # request carried no progress token (`stream_quiet_injected`). Both must
+    # answer a single JSON document.
+    for (name, expected) in (("stream_quiet", "2"), ("stream_quiet_injected", "3"))
         payload = call_payload(name, Dict("value" => 1))
         response = json_call(payload; headers=call_headers(name))
         @test startswith(HTTP.header(response, "Content-Type"), "application/json")
-        @test parsebody(response)["result"]["content"][1]["text"] == (name == "stream_quiet" ? "2" : "3")
+        @test parsebody(response)["result"]["content"][1]["text"] == expected
     end
 
     # The same result serializes to the same bytes as the buffered path.
@@ -532,6 +556,55 @@ end
         "params" => Dict{String,Any}("progressToken" => "tok", "progress" => 1.0,
                                      "total" => 4.0, "message" => "go"),
     )
+end
+
+@testset "raw channel handlers are adopted" begin
+    # prefilled channel: every value becomes a progress event, the final result
+    # is the raw channel's empty (JSON null) terminal value
+    response, frames = sse_call(call_payload("stream_raw_channel", Dict("count" => 2)))
+    @test response.status == 200
+    progress_frames = [frame for frame in frames if haskey(frame, "method") && frame["method"] == "notifications/progress"]
+    @test [frame["params"]["message"] for frame in progress_frames] == ["raw 1", "raw 2"]
+    result = only(filter(frame -> haskey(frame, "result"), frames))["result"]
+    @test result["isError"] == false
+    @test result["content"][1]["text"] == "null"
+
+    # producer channel: the framework drains the child task and closes the stream
+    _, frames = sse_call(call_payload("stream_producer_channel", Dict("count" => 3)))
+    progress_frames = [frame for frame in frames if haskey(frame, "method") && frame["method"] == "notifications/progress"]
+    @test [frame["params"]["message"] for frame in progress_frames] == ["produced 1", "produced 2", "produced 3"]
+    @test any(frame -> haskey(frame, "result"), frames)
+end
+
+@testset "content events have no default wire mapping" begin
+    stream = MCP.MCPStream()
+    event = MCP.ContentEvent(Dict{String,Any}("type" => "text", "text" => "x"))
+    @test MCP.normalize_event(stream, event) === event
+    @test MCP.serialize_event("tok", event) === nothing
+end
+
+@testset "a drain without a terminal event becomes an error result" begin
+    call = MCP.StreamedCall(MCP.MCPStream(), 7, MCP.LATEST_LEGACY_SPEC)
+    body = MCP.streamed_body(CONTEXT[], call, nothing)
+    @test body["id"] == 7
+    @test body["result"]["isError"] == true
+    @test occursin("without a result", body["result"]["content"][1]["text"])
+end
+
+@testset "a stream cancelled before its first event answers nothing" begin
+    # The producer was cancelled before its first emit (the client is gone), so
+    # the channel is closed and empty; taking from it raises and the transport
+    # unwinds without writing a partial response.
+    stream = MCP.MCPStream()
+    stream.protocol.token = "tok"
+    close(stream.channel)
+
+    ctx = Oxygen.Core.ServerContext()
+    req = HTTP.Request("POST", "/mcp", ["Accept" => "text/event-stream"])
+    @test MCP.accepts_event_stream(req)
+    accepted = HTTP.Stream(req)
+    call = MCP.StreamedCall(stream, 1, MCP.LATEST_LEGACY_SPEC)
+    @test MCP.stream_call(ctx, accepted, req, call) === nothing
 end
 
 ### Teardown ##################################################################

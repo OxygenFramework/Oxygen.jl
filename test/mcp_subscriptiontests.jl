@@ -511,17 +511,22 @@ end
     @test isempty(ctx.mcp.listens)
 end
 
-@testset "parse_subscription_filter rules" begin
+@testset "parse_subscription_filter accepts known keys and rejects the rest" begin
+    # unknown keys are ignored; the known flags are recorded
     filter = MCP.parse_subscription_filter(Dict("unknownKey" => 1, "toolsListChanged" => true))
     @test filter isa MCP.SubscriptionFilter
     @test filter.tools_list_changed
 
+    # a malformed filter comes back as a rejection reason (a String) instead
     @test MCP.parse_subscription_filter(nothing) isa String
     @test MCP.parse_subscription_filter(Dict()) isa String
     @test MCP.parse_subscription_filter(Dict("resourceSubscriptions" => [1])) isa String
+
+    # a well-formed resourceSubscriptions list becomes a set of URIs
     @test MCP.parse_subscription_filter(Dict("resourceSubscriptions" => ["a", "b"])).resource_uris ==
           Set(["a", "b"])
 
+    # the parsed filter round-trips to the acknowledgement wire form
     wire = MCP.filter_to_wire(filter)
     @test wire == Dict{String,Any}("toolsListChanged" => true)
 end
@@ -910,6 +915,104 @@ end
 ### Teardown ###################################################################
 
 terminate()
+
+### Adapter-level tests (no server) ############################################
+
+@testset "honored filter advertises every deliverable type" begin
+    # fresh_ctx() has resources but neither tools nor prompts; register one of
+    # each so every requested type is honored and echoed in the acknowledgement
+    ctx = fresh_ctx()
+    Core.register_tool!(ctx, "only tool", Dict(), () -> "t"; name="only_tool")
+    Core.register_prompt!(ctx, "only prompt", () -> "p"; name="only_prompt")
+
+    call, status = adapter_listen(ctx, 1, Dict(
+        "toolsListChanged" => true,
+        "promptsListChanged" => true,
+        "resourcesListChanged" => true,
+        "resourceSubscriptions" => ["sub://alpha"]))
+    @test status == 200
+    ack = take!(call.stream.channel)
+    @test ack.params["notifications"] == Dict{String,Any}(
+        "toolsListChanged" => true,
+        "promptsListChanged" => true,
+        "resourcesListChanged" => true,
+        "resourceSubscriptions" => ["sub://alpha"])
+    MCP.remove_listen!(ctx, call.record)
+end
+
+@testset "broker capacity exhaustion rejects a listen" begin
+    # registry capacity is checked first; the broker cap is the safety net
+    # behind it, so exhaust the broker directly to exercise that catch
+    ctx = fresh_ctx()
+    ctx.mcp.broker[] = MCP.MCPBroker(; cap=1)
+    fill = Core.PubSub.subscribe!(ctx.mcp.broker[], _ -> true)
+
+    body, status = adapter_listen(ctx, 42, Dict("resourcesListChanged" => true))
+    @test status == 400
+    @test body["error"]["code"] == MCP.MCP_INTERNAL_ERROR
+    @test body["error"]["message"] == MCP.LISTEN_LIMIT_MESSAGE
+
+    Core.PubSub.unsubscribe!(ctx.mcp.broker[], fill)
+    @test MCP.subscribers(ctx.mcp.broker[]) == 0
+end
+
+@testset "listen_call validates the request id" begin
+    ctx = fresh_ctx()
+    notifications = Dict("toolsListChanged" => true)
+
+    body, status = MCP.listen_call(ctx, nothing, 1.5, listen_params(notifications))
+    @test status == 400
+    @test body["error"]["code"] == MCP.MCP_INVALID_REQUEST
+
+    too_long = "x"^(MCP.MAX_SUBSCRIPTION_ID_LENGTH + 1)
+    body, status = MCP.listen_call(ctx, nothing, too_long, listen_params(notifications))
+    @test status == 400
+    @test body["error"]["code"] == MCP.MCP_INVALID_REQUEST
+    @test occursin("exceeds", body["error"]["message"])
+end
+
+@testset "listen_frame maps error events to internal errors" begin
+    ctx = fresh_ctx()
+    call, status = adapter_listen(ctx, 7, Dict("toolsListChanged" => true))
+    @test status == 200
+
+    # an error event becomes a JSON-RPC internal error and ends the stream
+    body, terminal = MCP.listen_frame(call, Core.ErrorEvent(ErrorException("boom")))
+    @test terminal === true
+    @test body["id"] == 7
+    @test body["error"]["code"] == MCP.MCP_INTERNAL_ERROR
+    @test occursin("boom", body["error"]["message"])
+
+    MCP.remove_listen!(ctx, call.record)
+end
+
+@testset "legacy delivery gating: handshake and event filters" begin
+    ctx = fresh_ctx()
+
+    @test MCP.list_changed_capable(ctx, :tools) === true
+    @test MCP.list_changed_capable(ctx, :prompts) === false
+    @test MCP.list_changed_capable(ctx, :resources) === true
+    @test MCP.list_changed_capable(ctx, :bogus) === false
+
+    tool_event = MCP.SubscriptionNotification("notifications/tools/list_changed", Dict{String,Any}())
+
+    # anonymous state: no completed handshake, no delivery
+    @test MCP.legacy_event_wanted(ctx, tool_event) === false
+
+    session = MCP.MCPSession("gating-session")
+    @test MCP.legacy_event_wanted(ctx, tool_event; session=session) === false
+    session.initialized = true
+    session.handshake_complete = true
+    @test MCP.legacy_event_wanted(ctx, tool_event; session=session) === true
+
+    # a resources/updated event without a uri is never delivered
+    uri_event = MCP.SubscriptionNotification("notifications/resources/updated", Dict{String,Any}())
+    @test MCP.legacy_event_wanted(ctx, uri_event; session=session) === false
+
+    # unknown notification methods are never delivered
+    unknown = MCP.SubscriptionNotification("notifications/something/else", Dict{String,Any}())
+    @test MCP.legacy_event_wanted(ctx, unknown; session=session) === false
+end
 
 @testset "resetstate clears subscription state" begin
     # `resetstate` only resets the module-global context (the `@__MODULE__`

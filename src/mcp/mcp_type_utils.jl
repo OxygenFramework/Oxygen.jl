@@ -32,13 +32,20 @@ Parse a collection of parameter descriptions into a `Symbol => String` map.
 `Pair` (the common one-parameter shorthand), or a vector of `Pair`s. Each value
 is the parameter's human readable description. There is no per-parameter
 wire-name override: use the `names` map in `mcp` metadata to expose a parameter
-under a different JSON key. This is the single parser shared by `@tool`/`tool`
+under a different JSON key. A structured value (a `NamedTuple`/`Dict` carrying
+per-parameter metadata) is rejected rather than silently stringified. This is
+the single parser shared by `@tool`/`tool`
 and by router/route `mcp` metadata so both accept the same forms.
 """
 function parse_mcp_parameters(params)
     descriptions = Dict{Symbol,String}()
     for (key, value) in mcp_entries(params)
         name = symbol_key(key)
+        if value isa NamedTuple || value isa AbstractDict
+            throw(ArgumentError(
+                "Per-parameter `description`/`name` metadata is not supported; " *
+                "pass a plain description and use `names` to override wire names"))
+        end
         desc = mcp_description(value)
         if !isempty(desc)
             descriptions[name] = desc

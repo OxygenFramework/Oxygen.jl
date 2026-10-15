@@ -88,6 +88,64 @@ end
     @test terminal isa ErrorEvent
 end
 
+@testset "enqueue re-checks cancellation under the lock" begin
+    stream = EventStream(Channel{StreamEvent}(4), nothing)
+    Streaming.cancel_stream!(stream)
+    # the pre-lock `check_cancelled` caller may race a cancellation; enqueue
+    # refuses again once it holds the lock
+    @test_throws StreamCancelled Streaming.enqueue!(stream, "late")
+end
+
+@testset "EventStream channel interface: fetch, take!, wait, bind" begin
+    stream = EventStream(Channel{StreamEvent}(4), nothing)
+    Streaming.emit(stream, "a")
+    Streaming.emit(stream, "b")
+
+    # `take!` pops; `fetch` peeks without consuming
+    @test fetch(stream).value == "a"
+    @test take!(stream).value == "a"
+    @test take!(stream).value == "b"
+
+    # `wait` returns once the stream has a value ready
+    ready = EventStream(Channel{StreamEvent}(4), nothing)
+    Streaming.emit(ready, "queued")
+    @test isready(ready)
+    wait(ready)
+    @test take!(ready).value == "queued"
+
+    # `bind` ties the handle's channel to a task and returns the handle
+    bindable = EventStream(Channel{StreamEvent}(4), nothing)
+    task = @async 1
+    @test bind(bindable, task) === bindable
+    wait(task)
+
+    # already-normalized events pass through normalization untouched
+    event = Streaming.FinalEvent("done")
+    @test Streaming.normalize_event(stream, event) === event
+
+    # the cancellation error prints its message
+    @test sprint(showerror, StreamCancelled()) == "stream was cancelled"
+    @test sprint(showerror, StreamCancelled("custom reason")) == "custom reason"
+end
+
+@testset "format_response rethrows a drained producer error" begin
+    stream = make_stream() do s
+        Streaming.emit(s, "first")
+        error("drained boom")
+    end
+
+    # an internal request has no live connection, so the stream is drained and
+    # a producer failure surfaces as a thrown error
+    caught = try
+        Streaming.format_response(Request("GET", "/internal"), stream)
+        nothing
+    catch error
+        error
+    end
+    @test caught isa ErrorException
+    @test occursin("drained boom", sprint(showerror, caught))
+end
+
 @testset "closing a stream cancels it and blocks late emits" begin
     stream = EventStream(Channel{StreamEvent}(4), nothing)
     Streaming.emit(stream, "first")

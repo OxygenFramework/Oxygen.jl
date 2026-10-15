@@ -365,4 +365,71 @@ end
     end
 end
 
+@testset "broker and subscription argument validation" begin
+    @test_throws ArgumentError Broker{Int}(; cap=-1)
+    broker = Broker{Int}()
+    @test_throws ArgumentError PubSub.subscribe!(broker, "a"; csize=-1)
+    @test_throws ArgumentError PubSub.subscribe!(broker, "a"; callback=5)
+    @test PubSub.subscribers(broker) == 0
+end
+
+@testset "channel probes never block or accept unbuffered queues" begin
+    # unbuffered queues cannot hold a value without a taker
+    @test PubSub.try_put!(Channel{Int}(0), 1) === false
+    @test PubSub.try_take!(Channel{Int}(0)) === (nothing, false)
+    # buffered but empty
+    empty_buffered = Channel{Int}(2)
+    @test PubSub.try_take!(empty_buffered) === (nothing, false)
+    # closed queues refuse puts
+    closed = Channel{Int}(2)
+    close(closed)
+    @test PubSub.try_put!(closed, 1) === false
+    @test PubSub.try_take!(closed) === (nothing, false)
+    # a full queue refuses the put, an empty one yields the value
+    full = Channel{Int}(1)
+    put!(full, 7)
+    @test PubSub.try_put!(full, 8) === false
+    @test PubSub.try_take!(full) === (7, true)
+end
+
+@testset "dead records are swept on the publish fast path" begin
+    # the topic's only record is dead: the publish sweeps it and delivers nowhere
+    solo_broker = Broker{Int}()
+    solo = PubSub.subscribe!(solo_broker, "solo")
+    close(solo)
+    @test PubSub.publish!(solo_broker, "solo", 1) == 0
+    @test PubSub.subscribers(solo_broker) == 0
+
+    # a dead record next to a live one is swept without disturbing delivery
+    broker = Broker{Int}()
+    dead = PubSub.subscribe!(broker, "a")
+    alive = PubSub.subscribe!(broker, "a")
+    close(dead)
+    @test PubSub.publish!(broker, "a", 2) == 1
+    @test queued(alive) == [2]
+    @test PubSub.subscribers(broker) == 1
+end
+
+@testset "pattern callbacks observe matched values" begin
+    broker = Broker{Int}()
+    seen = Tuple{String,Int}[]
+    sub = PubSub.subscribe!(broker, r"^orders/"; callback=(topic, value) -> push!(seen, (topic, value)))
+
+    @test PubSub.publish!(broker, "orders/created", 1) == 1
+    @test PubSub.publish!(broker, "users/created", 2) == 0
+    @test seen == [("orders/created", 1)]
+    @test queued(sub) == [1]
+end
+
+@testset "a dead subscription refuses delivery" begin
+    broker = Broker{Int}()
+    sub = PubSub.subscribe!(broker, "a")
+    close(sub)
+    @test PubSub.deliver!(sub, 1) === false
+end
+
+@testset "CapacityError message names the cap" begin
+    @test sprint(showerror, PubSub.CapacityError(2)) == "subscription limit reached (2)"
+end
+
 end

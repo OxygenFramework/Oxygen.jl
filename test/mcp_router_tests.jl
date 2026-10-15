@@ -92,6 +92,39 @@ end
     return "static"
 end
 
+# An explicit route-level `name` sets the tool wire name.
+@get api("/explicit", mcp = (description = "Explicitly named", name = "explicit_user_tool")) function route_explicit_name(req::HTTP.Request)
+    return "explicit"
+end
+
+# The same handler mounted under two HTTP methods is one tool, not a collision.
+const verbs = router("/verbs", mcp = true)
+function route_shared_handler(req::HTTP.Request)
+    return "shared"
+end
+@get verbs("/shared") route_shared_handler
+@post verbs("/shared") route_shared_handler
+
+# An explicit name that is already taken is rejected (with a warning) without
+# breaking the HTTP route itself.
+@get api("/collide", mcp = (description = "Collides", name = "explicit_user_tool")) function route_collision(req::HTTP.Request)
+    return "collision"
+end
+
+# A route with metadata under a router that has none: the route config alone
+# decides (there is no outer config to merge with).
+const bare = router("/bare")
+@get bare("/direct", mcp = (description = "Direct route tool")) function route_direct_tool(req::HTTP.Request)
+    return "direct"
+end
+
+# A handler whose leading positional argument is not the request cannot become a
+# tool: the route still registers, the tool is skipped (with a warning).
+const incompatible = router("/incompatible", mcp = true)
+@get incompatible("/bad") function route_incompatible(id::Int)
+    return id
+end
+
 ### Request helpers ###########################################################
 
 const MCP_CLIENT = HTTP.Client()
@@ -184,6 +217,9 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false, ac
     @test resolved.group == "Group"
     @test resolved.parameters[:id] == "Override"
 
+    # with no router-level config the route config is used untouched
+    @test MCP.resolve_mcp_config(nothing, route) === route
+
     # a disabled route excludes itself even when the router enables it
     @test MCP.resolve_mcp_config(outer, MCP.normalize_mcp_config(false)) === nothing
 
@@ -205,6 +241,11 @@ end
     # streaming/websocket routes are never exposed
     @test !compat("WEBSOCKET", function(ws) end)
     @test !compat("STREAM", function(stream) end)
+
+    # a route whose handler is not MCP-compatible is skipped (with a warning)
+    # while the HTTP route itself still registers
+    @test !haskey(CONTEXT[].mcp.tools, "route_incompatible")
+    @test HTTP.get("$localhost/incompatible/bad"; status_exception=false).status != 404
 end
 
 @testset "route-backed tools" begin
@@ -267,13 +308,32 @@ end
     @test haskey(tools, "get_coll_id")
     @test haskey(tools, "get_coll_id_2")
 
+    # an explicit route-level name is used as the tool wire name
+    @test haskey(tools, "explicit_user_tool")
+    @test tools["explicit_user_tool"].handler === route_explicit_name
+
+    # a colliding explicit name is dropped (the HTTP route still serves)
+    @test count(t -> t.handler === route_collision, values(tools)) == 0
+    @test text(HTTP.get("$localhost/users/collide")) == "collision"
+
+    # one handler mounted under GET and POST yields one tool
+    @test haskey(tools, "route_shared_handler")
+    @test count(t -> t.handler === route_shared_handler, values(tools)) == 1
+
+    # a route that slugs to nothing still gets a usable name
+    @test MCP.derived_tool_name("GET", "///") == "get_tool"
+
+    # a route with metadata under a bare router uses its own config
+    @test tools["route_direct_tool"].description == "Direct route tool"
+
     # an unnamed non-request handler parameter is rejected before registration
     @test_throws ArgumentError MCP.register_route_tool!(
         CONTEXT[], MCP.normalize_mcp_config(true),
         (req::HTTP.Request, ::Int) -> 1; httpmethod="GET", route="/unnamed")
 
-    # excluded route is not served
-    @test !any(t -> t["name"] == "route_health", parsebody(rpc("tools/list", Dict("_meta" => req_meta())))["result"]["tools"])
+    # the excluded route is absent from the `tools/list` response as well
+    listed = parsebody(rpc("tools/list", Dict("_meta" => req_meta())))["result"]["tools"]
+    @test !any(tool -> tool["name"] == "route_health", listed)
 end
 
 @testset "route-backed tool invocation" begin

@@ -249,14 +249,21 @@ end
 function pump_channel(stream::EventStream, channel::AbstractChannel)
     value = nothing
     try
-        for item in channel
+        while true
+            # Take rather than iterate: `iterate` swallows a failed producer on
+            # Julia < 1.12, while `take!` rethrows it on every version.
+            item = try
+                take!(channel)
+            catch error
+                error isa InvalidStateException && break
+                rethrow()
+            end
             if item isa FinalEvent
                 value = item.value
                 close_source!(stream)
                 break
-            else
-                enqueue!(stream, item)
             end
+            enqueue!(stream, item)
         end
     catch error
         if error isa TaskFailedException

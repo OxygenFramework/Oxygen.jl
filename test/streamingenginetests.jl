@@ -122,6 +122,12 @@ end
         put!(channel, "before")
         error("raw boom")
     end
+    # wait for the producer to fail and close the channel before adopting it:
+    # the pump then finds the failure on an already-closed channel, the path
+    # Julia 1.11's `iterate` ends silently on
+    while isopen(source)
+        sleep(0.01)
+    end
 
     stream = Streaming.adopt_channel(source, nothing)
     terminal = Streaming.drain_stream!(stream)

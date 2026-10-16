@@ -1,4 +1,4 @@
-# 2025-03-26 — the revision that added JSON-RPC batching (removed again in
+# 2025-03-26: the revision that added JSON-RPC batching (removed again in
 # 2025-06-18). Complete profile, nothing inherited.
 
 @spec Val(:v2025_03_26) begin

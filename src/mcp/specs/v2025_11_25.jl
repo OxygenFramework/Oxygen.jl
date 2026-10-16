@@ -1,4 +1,4 @@
-# 2025-11-25 — the latest legacy revision. Complete profile, nothing inherited.
+# 2025-11-25: the latest legacy revision. Complete profile, nothing inherited.
 
 @spec Val(:v2025_11_25) begin
     version_string           = "2025-11-25"

@@ -19,15 +19,23 @@ end
 
 function serve(; kwargs...) 
     async = Base.get(kwargs, :async, false)
+    server = nothing
     try
         # return the resulting HTTP.Server object
-        return Oxygen.Core.serve(CONTEXT[]; kwargs...)
+        server = Oxygen.Core.serve(CONTEXT[]; kwargs...)
+        return server
     finally
         # close server on exit if we aren't running asynchronously
-        if !async 
-            terminate()
-            # only reset state on exit if we aren't running asynchronously & are running it interactively 
-            isinteractive() && resetstate()
+        if !async
+            # A newer serve() may already own the service: this call's server
+            # was stopped while that serve was starting, and tearing the
+            # service down (or resetting the context) from here would clobber
+            # the new server. Only clean up what this call started.
+            if isnothing(server) || CONTEXT[].service.server[] === server
+                terminate()
+                # only reset state on exit if we aren't running asynchronously & are running it interactively 
+                isinteractive() && resetstate()
+            end
         end
     end
 end

@@ -79,6 +79,57 @@ end
     @test terminal.value == "done"
 end
 
+@testset "drain_stream! keeps the first terminal" begin
+    stream = EventStream(Channel{StreamEvent}(4), nothing)
+    put!(stream.channel, FinalEvent("first"))
+    put!(stream.channel, FinalEvent("second"))
+    close(stream.channel)
+
+    terminal = Streaming.drain_stream!(stream)
+    @test terminal isa FinalEvent
+    @test terminal.value == "first"
+
+    # a producer failure after a result must not overwrite it either
+    failed = EventStream(Channel{StreamEvent}(4), nothing)
+    put!(failed.channel, FinalEvent("kept"))
+    put!(failed.channel, ErrorEvent(ErrorException("late boom")))
+    close(failed.channel)
+    @test Streaming.drain_stream!(failed).value == "kept"
+end
+
+@testset "adopt_channel ends at the first marker and closes the source" begin
+    source = Channel{Any}(4)
+    put!(source, "tick")
+    put!(source, FinalEvent("the answer"))
+    put!(source, "after the marker")
+    # deliberately left open: the framework must close it at the marker
+
+    stream = Streaming.adopt_channel(source, nothing)
+    events = collect(stream)
+
+    # the marker never left the wrapper; it ended the stream and the framework
+    # closed the source, so nothing after it was consumed
+    @test length(events) == 2
+    @test events[1].value == "tick"
+    terminals = filter(event -> event isa FinalEvent, events)
+    @test length(terminals) == 1
+    @test terminals[1].value == "the answer"
+    @test !isopen(source)
+end
+
+@testset "adopt_channel unwraps a failed producer task" begin
+    source = Channel{Any}(2) do channel
+        put!(channel, "before")
+        error("raw boom")
+    end
+
+    stream = Streaming.adopt_channel(source, nothing)
+    terminal = Streaming.drain_stream!(stream)
+    @test terminal isa ErrorEvent
+    @test terminal.error isa ErrorException
+    @test sprint(showerror, terminal.error) == "raw boom"
+end
+
 @testset "a failing producer becomes an ErrorEvent" begin
     stream = make_stream() do s
         error("boom")
@@ -146,6 +197,36 @@ end
     @test occursin("drained boom", sprint(showerror, caught))
 end
 
+@testset "format_response adopts a raw channel" begin
+    # the marker value is the buffered-fallback body; other values are dropped
+    source = Channel{Any}(2)
+    put!(source, "ignored")
+    put!(source, FinalEvent(42))
+    close(source)
+
+    response = Streaming.format_response(Request("GET", "/internal"), source)
+    @test response.status == 200
+    @test String(response.body) == "42"
+
+    # a channel that produced no marker answers null
+    empty = Channel{Any}(1)
+    close(empty)
+    response = Streaming.format_response(Request("GET", "/internal"), empty)
+    @test response.status == 200
+    @test String(response.body) == "null"
+end
+
+@testset "format_response dispatch prefers EventStream over AbstractChannel" begin
+    stream = make_stream(_ -> "done")
+    method = which(Streaming.format_response, Tuple{Request, typeof(stream)})
+    @test method.sig.parameters[3] === EventStream
+
+    raw = Channel{Any}(1)
+    close(raw)
+    raw_method = which(Streaming.format_response, Tuple{Request, typeof(raw)})
+    @test raw_method.sig.parameters[3] === AbstractChannel
+end
+
 @testset "closing a stream cancels it and blocks late emits" begin
     stream = EventStream(Channel{StreamEvent}(4), nothing)
     Streaming.emit(stream, "first")
@@ -186,6 +267,51 @@ end
         sleep(0.001)
     end
     @test caught[] isa StreamCancelled
+end
+
+@testset "cancel_stream! closes an adopted source" begin
+    source = Channel{Any}(0)
+    stream = Streaming.adopt_channel(source, nothing)
+    @test stream.source === source
+
+    Streaming.cancel_stream!(stream)
+    @test !isopen(stream)
+    @test !isopen(source)
+    @test_throws InvalidStateException put!(source, "late")
+
+    # `Base.close` is cancellation too, so it inherits the source close
+    other_source = Channel{Any}(0)
+    other = Streaming.adopt_channel(other_source, nothing)
+    close(other)
+    @test !isopen(other_source)
+end
+
+@testset "cancelling an adopted stream releases a blocked source producer" begin
+    finished = Ref(false)
+    caught = Ref{Any}(nothing)
+    source = Channel{Any}(0)
+    producer = @async begin
+        try
+            for i in 1:10_000
+                put!(source, "tick $i")
+            end
+        catch error
+            caught[] = error
+        finally
+            finished[] = true
+        end
+    end
+    stream = Streaming.adopt_channel(source, nothing)
+    sleep(0.05)  # let the pump and producer reach their blocked state
+    Streaming.cancel_stream!(stream)
+
+    deadline = time() + 5
+    while time() < deadline && !finished[]
+        sleep(0.001)
+    end
+    @test finished[]
+    # the blocked `put!` was released by the close
+    @test caught[] isa InvalidStateException
 end
 
 @testset "channel interface: buffer state and readable show" begin

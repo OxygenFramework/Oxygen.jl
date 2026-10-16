@@ -1,4 +1,4 @@
-# 2026-07-28 — the modern, stateless revision. Complete profile plus the
+# 2026-07-28: the modern, stateless revision. Complete profile plus the
 # behavior only this revision customizes: it validates every request's `_meta`
 # contract (and mirrored HTTP headers), envelopes results with `resultType` +
 # server info, and adds cache hints.
@@ -20,8 +20,8 @@ end
     validate_modern_request(ctx, req, method, params)
 
 Enforce the modern-era (2026-07-28) per-request contract: a supported
-`_meta.protocolVersion`, the required `_meta.clientCapabilities`, and — over
-HTTP — mirrored standard headers (`MCP-Protocol-Version`, `Mcp-Method`, and
+`_meta.protocolVersion`, the required `_meta.clientCapabilities`, and, over
+HTTP, mirrored standard headers (`MCP-Protocol-Version`, `Mcp-Method`, and
 `Mcp-Name` for `tools/call`/`prompts/get`/`resources/read`). Legacy requests
 skip all of this.
 """

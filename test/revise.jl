@@ -62,6 +62,10 @@ serve(port=PORT, host=HOST, show_errors=false, show_banner=false, access_log=not
 # Hopefully this doesn't affect any other tests.
 Oxygen.WAS_LOADED_AFTER_REVISE[] = false
 
+# The lazy server above (async=true) is still running; stop it before the
+# eager one starts, otherwise it keeps PORT bound for every later suite.
+terminate()
+
 # Eager revision: the service runs revisions while the server is up, and a
 # blocking serve closes it on the way out.
 

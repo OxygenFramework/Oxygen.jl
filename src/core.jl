@@ -456,8 +456,12 @@ function start_server(ctx::ServerContext; show_banner=false, docs=false, metrics
         mcp_path = ctx.mcp.path[]
     )
 
-    # start the HTTP server
-    ctx.service.server[] = start(preprocesskwargs(kwargs))
+    # start the HTTP server. The local reference let's us reference this 
+    # specific call and properly wait on it blow. It's possible
+    # for a newer serve() call to replaced the shared server instance 
+    # before it's shutdown
+    server = start(preprocesskwargs(kwargs))
+    ctx.service.server[] = server
 
     # optionally speak the MCP stdio transport over stdin/stdout. Per the spec,
     # closing stdin is the graceful shutdown signal, so we terminate on EOF.
@@ -486,7 +490,7 @@ function start_server(ctx::ServerContext; show_banner=false, docs=false, metrics
 
     if !async
         try
-            wait(ctx.service)
+            wait(server)
         catch error
             !isa(error, InterruptException) && @error "ERROR: " exception = (error, catch_backtrace())
         finally
@@ -494,7 +498,7 @@ function start_server(ctx::ServerContext; show_banner=false, docs=false, metrics
         end
     end
 
-    return ctx.service.server[]
+    return server
 end
 
 

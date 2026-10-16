@@ -155,8 +155,8 @@ end
 
 The modern-era claim of a request, before the session's negotiated version is
 consulted. Returns the claimed `Val` revision when `params._meta` names a
-supported modern revision, the method is `server/discover` (modern-only), or —
-over HTTP — the `MCP-Protocol-Version` header names a modern revision.
+supported modern revision, the method is `server/discover` (modern-only), or
+(over HTTP) the `MCP-Protocol-Version` header names a modern revision.
 `:unsupported` is returned when `_meta.protocolVersion` is a string naming a
 revision this server cannot serve as a modern request; `nothing` means the
 request claims nothing modern (a legacy request). See `request_spec` for the

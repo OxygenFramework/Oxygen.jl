@@ -109,6 +109,57 @@ const DISCONNECTED = Ref(0)
     end
 end
 
+# Raw channels are adopted like `sse_stream`: values become data frames, while
+# `result(value)` ends the stream (the framework closes the channel) — it has
+# no frame on the live wire and is the buffered-fallback body for callers
+# without a connection.
+@get "/sse/raw" function()
+    channel = Channel{Any}(4)
+    put!(channel, Dict("raw" => 1))
+    put!(channel, "raw text")
+    close(channel)
+    return channel
+end
+
+@get "/sse/raw_result" function()
+    channel = Channel{Any}(4)
+    put!(channel, Dict("raw" => 1))
+    put!(channel, result(Dict("final" => 42)))
+    return channel
+end
+
+@get "/sse/raw_producer" function()
+    return Channel{Any}(2) do channel
+        put!(channel, Dict("produced" => 1))
+        put!(channel, SSEEvent(Dict("named" => 2); event="update", id="9"))
+    end
+end
+
+@get "/sse/raw_error" function()
+    return Channel{Any}(2) do channel
+        put!(channel, Dict("ok" => true))
+        error("raw route boom")
+    end
+end
+
+# A long raw-channel stream for the disconnect test.
+const RAW_DISCONNECTED = Ref(0)
+
+@get "/sse/raw_long" function()
+    channel = Channel{Any}(8)
+    @async begin
+        try
+            for i in 1:100_000
+                put!(channel, "tick $i " * ("payload " ^ 100))
+                sleep(0.005)
+            end
+        finally
+            RAW_DISCONNECTED[] += 1
+        end
+    end
+    return channel
+end
+
 ### Request helpers ###########################################################
 
 const SSE_PORT = PORT + 4
@@ -204,6 +255,74 @@ end
         sleep(0.1)
     end
     @test DISCONNECTED[] > before
+end
+
+@testset "raw channels stream frames on the live wire" begin
+    response, body, frames = sse_lines("/sse/raw")
+    @test response.status == 200
+    @test HTTP.header(response, "Content-Type") == "text/event-stream"
+    @test length(frames) == 2
+    @test JSON.parse(frames[1]) == Dict("raw" => 1)
+    @test frames[2] == "raw text"
+end
+
+@testset "the result marker has no frame on the live wire" begin
+    response, body, frames = sse_lines("/sse/raw_result")
+    @test response.status == 200
+    @test length(frames) == 1
+    @test JSON.parse(frames[1]) == Dict("raw" => 1)
+    @test !occursin("final", body)
+    @test !occursin("\"result\"", body)
+end
+
+@testset "internal requests get the marker value (or null)" begin
+    response = internalrequest(HTTP.Request("GET", "/sse/raw_result"))
+    @test response.status == 200
+    @test JSON.parse(String(response.body)) == Dict("final" => 42)
+
+    response = internalrequest(HTTP.Request("GET", "/sse/raw"))
+    @test response.status == 200
+    @test String(response.body) == "null"
+end
+
+@testset "SSEEvent control survives adoption" begin
+    _, body, frames = sse_lines("/sse/raw_producer")
+    @test length(frames) == 2
+    @test frames[2] == "{\"named\":2}"
+    @test occursin("event: update", body)
+    @test occursin("id: 9", body)
+end
+
+@testset "raw channel producer errors become error frames" begin
+    _, body, frames = sse_lines("/sse/raw_error")
+    @test frames[1] == "{\"ok\":true}"
+    @test occursin("event: error", body)
+    @test occursin("raw route boom", body)
+    @test !occursin("TaskFailedException", body)
+end
+
+@testset "internal requests surface raw channel producer errors" begin
+    caught = try
+        internalrequest(HTTP.Request("GET", "/sse/raw_error"); catch_errors=false)
+        nothing
+    catch error
+        error
+    end
+    @test caught isa ErrorException
+    @test occursin("raw route boom", sprint(showerror, caught))
+end
+
+@testset "disconnect releases a raw channel producer" begin
+    before = RAW_DISCONNECTED[]
+    io = HTTP.open("GET", "$SSE_URL/sse/raw_long")
+    readline(io)  # wait until the first frame is on the wire
+    close(io)     # hang up while the producer is still running
+
+    deadline = time() + 15
+    while time() < deadline && RAW_DISCONNECTED[] == before
+        sleep(0.1)
+    end
+    @test RAW_DISCONNECTED[] > before
 end
 
 ### Teardown ##################################################################

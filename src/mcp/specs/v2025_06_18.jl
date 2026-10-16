@@ -1,4 +1,4 @@
-# 2025-06-18 — the revision that introduced `structuredContent` tool results
+# 2025-06-18: the revision that introduced `structuredContent` tool results
 # and resource icons. Complete profile, nothing inherited.
 
 @spec Val(:v2025_06_18) begin

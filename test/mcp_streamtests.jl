@@ -126,8 +126,8 @@ const DISCONNECTED = Ref(0)
 end
 
 # A raw `Channel` return value is adopted by the framework: values are
-# normalized into progress events and an exhausted channel ends the stream with
-# an empty (JSON null) result, since a raw channel carries no return value.
+# normalized into progress events, and an exhausted channel ends the stream
+# with empty content unless it carried a `result` marker.
 @tool "Streams from a prefilled raw channel" Dict(:count => "number of steps") function stream_raw_channel(count::Int)
     channel = Channel{Any}(count)
     for i in 1:count
@@ -143,6 +143,64 @@ end
             put!(channel, "produced $i")
         end
     end
+end
+
+# A raw channel may declare its final result with `result(value)`; earlier
+# values are streamed as progress, and the marker ends the stream (the
+# framework closes the channel) and becomes the tool result.
+@tool "Completes a raw channel with a string result" Dict(:count => "number of steps") function stream_raw_result_text(count::Int)
+    channel = Channel{Any}(count + 1)
+    for i in 1:count
+        put!(channel, "raw result step $i")
+    end
+    put!(channel, result("raw finished"))
+    return channel
+end
+
+@tool "Completes a raw channel with a dict result" Dict(:count => "number of steps") function stream_raw_result_dict(count::Int)
+    channel = Channel{Any}(count + 1)
+    for i in 1:count
+        put!(channel, "dict step $i")
+    end
+    put!(channel, result(Dict("count" => count, "ok" => true)))
+    return channel
+end
+
+# The first marker ends the stream: the framework closes the channel, so
+# anything written after it is never consumed.
+@tool "Ends the stream at the first marker" Dict() function stream_raw_first_marker()
+    channel = Channel{Any}(4)
+    put!(channel, "before")
+    put!(channel, result("first"))
+    put!(channel, "after")
+    put!(channel, result("second"))
+    return channel
+end
+
+@tool "Fails inside a raw channel producer" Dict() function stream_raw_failure()
+    return Channel{Any}(2) do channel
+        put!(channel, "before the failure")
+        error("raw producer boom")
+    end
+end
+
+# A long raw-channel stream for the disconnect test; the payload is fat on
+# purpose so the server's write fails shortly after the client hangs up.
+const RAW_DISCONNECTED = Ref(0)
+
+@tool "Long running raw channel stream" Dict() function stream_raw_long()
+    channel = Channel{Any}(8)
+    @async begin
+        try
+            for i in 1:100_000
+                put!(channel, "tick $i " * ("payload " ^ 100))
+                sleep(0.005)
+            end
+        finally
+            RAW_DISCONNECTED[] += 1
+        end
+    end
+    return channel
 end
 
 ### Request helpers ###########################################################
@@ -559,21 +617,119 @@ end
 end
 
 @testset "raw channel handlers are adopted" begin
-    # prefilled channel: every value becomes a progress event, the final result
-    # is the raw channel's empty (JSON null) terminal value
+    # prefilled channel: every value becomes a progress event; a channel with
+    # no `result` marker ends with empty content (never a fabricated "null"
+    # block)
     response, frames = sse_call(call_payload("stream_raw_channel", Dict("count" => 2)))
     @test response.status == 200
     progress_frames = [frame for frame in frames if haskey(frame, "method") && frame["method"] == "notifications/progress"]
     @test [frame["params"]["message"] for frame in progress_frames] == ["raw 1", "raw 2"]
     result = only(filter(frame -> haskey(frame, "result"), frames))["result"]
     @test result["isError"] == false
-    @test result["content"][1]["text"] == "null"
+    @test result["content"] == []
+
+    # the drained (no token) path shapes the same empty content
+    response = json_call(call_payload("stream_raw_channel", Dict("count" => 2); token=nothing);
+                         headers=call_headers("stream_raw_channel"))
+    @test parsebody(response)["result"]["content"] == []
 
     # producer channel: the framework drains the child task and closes the stream
     _, frames = sse_call(call_payload("stream_producer_channel", Dict("count" => 3)))
     progress_frames = [frame for frame in frames if haskey(frame, "method") && frame["method"] == "notifications/progress"]
     @test [frame["params"]["message"] for frame in progress_frames] == ["produced 1", "produced 2", "produced 3"]
     @test any(frame -> haskey(frame, "result"), frames)
+end
+
+@testset "result() builds the terminal marker" begin
+    marker = MCP.result("done")
+    @test marker isa MCP.FinalEvent
+    @test marker.value == "done"
+end
+
+@testset "raw channel results match with and without streaming opted in" begin
+    arguments = Dict("count" => 2)
+
+    # opted in: progress notifications on the SSE stream, result as the last frame
+    _, frames = sse_call(call_payload("stream_raw_result_text", arguments; id=41))
+    progress_frames = [frame for frame in frames if haskey(frame, "method") && frame["method"] == "notifications/progress"]
+    @test [frame["params"]["message"] for frame in progress_frames] ==
+          ["raw result step 1", "raw result step 2"]
+    streamed = only(filter(frame -> haskey(frame, "result"), frames))
+    @test streamed["id"] == 41
+    @test streamed["result"]["content"][1]["text"] == "raw finished"
+
+    # not opted in: the drained path returns exactly the same JSON-RPC body
+    response = json_call(call_payload("stream_raw_result_text", arguments; token=nothing, id=41);
+                         headers=call_headers("stream_raw_result_text"))
+    @test parsebody(response) == streamed
+end
+
+@testset "result() shapes strings and dicts for both spec eras" begin
+    # modern: a dict result also carries structuredContent
+    _, frames = sse_call(call_payload("stream_raw_result_dict", Dict("count" => 1)))
+    final = frames[end]["result"]
+    @test final["content"][1]["text"] == JSON.json(Dict("count" => 1, "ok" => true))
+    @test final["structuredContent"] == Dict("count" => 1, "ok" => true)
+    @test final["resultType"] == "complete"
+    @test final["isError"] == false
+
+    # legacy: structuredContent is kept (2025-11-25 emits it) but the modern
+    # envelope (resultType / _meta) is not
+    payload = call_payload("stream_raw_result_dict", Dict("count" => 1);
+                           token="tok-legacy", modern=false, id=51)
+    _, frames = sse_call(payload; headers=call_headers("stream_raw_result_dict"; modern=false))
+    legacy = frames[end]["result"]
+    @test !haskey(legacy, "resultType")
+    @test !haskey(legacy, "_meta")
+    @test legacy["structuredContent"] == Dict("count" => 1, "ok" => true)
+    @test legacy["content"][1]["text"] == JSON.json(Dict("count" => 1, "ok" => true))
+end
+
+@testset "the first marker ends the stream" begin
+    _, frames = sse_call(call_payload("stream_raw_first_marker", Dict()))
+    progress_frames = [frame for frame in frames if haskey(frame, "method") && frame["method"] == "notifications/progress"]
+    @test [frame["params"]["message"] for frame in progress_frames] == ["before"]
+    final = only(filter(frame -> haskey(frame, "result"), frames))["result"]
+    @test final["content"][1]["text"] == "first"
+end
+
+@testset "failing raw channel producers surface the real error" begin
+    # opted in: the streamed value is followed by the error result
+    payload = call_payload("stream_raw_failure", Dict())
+    _, frames = sse_call(payload)
+    progress_frames = [frame for frame in frames if haskey(frame, "method") && frame["method"] == "notifications/progress"]
+    @test [frame["params"]["message"] for frame in progress_frames] == ["before the failure"]
+    result = only(filter(frame -> haskey(frame, "result"), frames))["result"]
+    @test result["isError"] == true
+    @test result["content"][1]["text"] == "raw producer boom"
+
+    # drained path: the same error result in one JSON body
+    response = json_call(call_payload("stream_raw_failure", Dict(); token=nothing);
+                         headers=call_headers("stream_raw_failure"))
+    result = parsebody(response)["result"]
+    @test result["isError"] == true
+    @test result["content"][1]["text"] == "raw producer boom"
+end
+
+@testset "disconnect releases a raw channel producer" begin
+    before = RAW_DISCONNECTED[]
+    payload = call_payload("stream_raw_long", Dict(); id=61)
+    io = HTTP.open("POST", STREAM_URL, call_headers("stream_raw_long"))
+    write(io, JSON.json(payload))
+    HTTP.closewrite(io)
+    seen = 0
+    for line in eachline(io)
+        startswith(line, "data:") || continue
+        seen += 1
+        seen >= 2 && break
+    end
+    close(io)  # hang up while the producer is still running
+
+    deadline = time() + 15
+    while time() < deadline && RAW_DISCONNECTED[] == before
+        sleep(0.1)
+    end
+    @test RAW_DISCONNECTED[] > before
 end
 
 @testset "content events have no default wire mapping" begin

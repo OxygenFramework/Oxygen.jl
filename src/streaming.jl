@@ -18,7 +18,7 @@ using JSON
 import ..Util: format_response, format_sse_message
 
 export StreamEvent, DataEvent, FinalEvent, ErrorEvent, StreamCancelled,
-    EventStream, stream_events, emit, pump_stream, drain_stream!,
+    EventStream, stream_events, adopt_channel, emit, pump_stream, drain_stream!,
     cancel_stream!, check_cancelled, sse_stream, SSEEvent, stream_sse,
     STREAM_BUFFER_SIZE, STREAM_POLL_SECONDS, SSE_KEEPALIVE_SECONDS
 
@@ -84,27 +84,31 @@ the consumer sees and `P` is mutable, wrapper-owned protocol state (MCP stores
 its progress token and counter there; the SSE adapter needs none).
 
 It subclasses `AbstractChannel{T}` so a handler result can be recognized with
-one `isa AbstractChannel` check, while `channel`, `cancel` and `lock` carry the
-engine mechanics:
+one `isa AbstractChannel` check, while `channel`, `cancel`, `lock` and `source`
+carry the engine mechanics:
 
 - `cancel` is the cooperative cancellation flag;
 - `lock` is held across the blocking channel `put!`, which both serializes
-  concurrent emitters (in order) and applies backpressure.
+  concurrent emitters (in order) and applies backpressure;
+- `source` is the caller-owned channel this stream was adopted from (see
+  `adopt_channel`), closed on cancellation so the caller's producer unwinds.
 """
 mutable struct EventStream{T,P} <: AbstractChannel{T}
     channel  :: Channel{T}
     protocol :: P
     cancel   :: Threads.Atomic{Bool}
     lock     :: ReentrantLock
+    source   :: Union{Nothing,AbstractChannel}
 end
 
-function EventStream(channel::Channel{T}, protocol::P) where {T,P}
-    return EventStream{T,P}(channel, protocol, Threads.Atomic{Bool}(false), ReentrantLock())
+function EventStream(channel::Channel{T}, protocol::P,
+                     source::Union{Nothing,AbstractChannel}=nothing) where {T,P}
+    return EventStream{T,P}(channel, protocol, Threads.Atomic{Bool}(false), ReentrantLock(), source)
 end
 
 # Readable REPL display: lifecycle state and queued depth instead of the raw
-# `channel`/`cancel`/`lock` fields. `cancelled` distinguishes an explicit close
-# (or client disconnect) from a producer that finished normally.
+# struct fields. `cancelled` distinguishes an explicit close (or client
+# disconnect) from a producer that finished normally.
 function Base.show(io::IO, stream::EventStream{T}) where {T}
     state = stream.cancel[] ? "cancelled" : isopen(stream) ? "open" : "closed"
     print(io, "EventStream{", T, "}(", state, ", ", Base.n_avail(stream), " buffered)")
@@ -208,6 +212,61 @@ function produce_stream(stream::EventStream, f::Function)
     return nothing
 end
 
+# ----------------------------------------------------------------------------
+# Channel adoption
+# ----------------------------------------------------------------------------
+
+"""
+    adopt_channel(channel, protocol; csize=STREAM_BUFFER_SIZE) :: EventStream
+
+Adopt a caller-owned `channel` as an `EventStream`: every value it yields is
+normalized into the adopted stream, while a `FinalEvent` (the marker built by
+`result`) ends the stream. The marker is intercepted as the producer's return
+value instead of an event, and the framework closes `channel`, so it must be
+written last; later writes fail. The returned handle terminates with exactly
+one `FinalEvent` carrying that value (`nothing` when the channel produced no
+marker). A failure of the channel's producer is reported with the original
+exception (task failures are unwrapped), and the source is recorded so
+cancellation closes it, releasing a producer blocked in `put!`.
+
+`protocol` is the wrapper-owned state the handle carries, exactly as in
+`stream_events`.
+"""
+function adopt_channel(channel::AbstractChannel, protocol::P;
+                       csize::Integer=STREAM_BUFFER_SIZE) where {P}
+    stream = EventStream(Channel{StreamEvent}(csize), protocol, channel)
+    start_stream!(stream, _ -> pump_channel(stream, channel))
+    return stream
+end
+
+# The adoption pump: forward every value of the adopted channel, interpreting a
+# `FinalEvent` as the producer's return value instead of an event (the marker
+# therefore never reaches the adopted stream). The first marker ends the
+# stream: the pump closes the source channel, so the writer does not have to,
+# and nothing written after it is consumed. A task-bound source whose producer
+# failed surfaces as `TaskFailedException`; unwrap it so the consumer sees the
+# real error.
+function pump_channel(stream::EventStream, channel::AbstractChannel)
+    value = nothing
+    try
+        for item in channel
+            if item isa FinalEvent
+                value = item.value
+                close_source!(stream)
+                break
+            else
+                enqueue!(stream, item)
+            end
+        end
+    catch error
+        if error isa TaskFailedException
+            throw(error.task.exception)
+        end
+        rethrow()
+    end
+    return value
+end
+
 function Base.put!(stream::EventStream, value)
     check_cancelled(stream)
     enqueue!(stream, value)
@@ -282,10 +341,26 @@ end
 # streamed call finishes and any child producers must stop). Setting the flag
 # makes future `emit`s throw; closing the channel releases a producer blocked
 # on `put!` with an `InvalidStateException`, which `enqueue!` maps back to
-# `StreamCancelled`.
+# `StreamCancelled`. An adopted source (see `adopt_channel`) is closed too, so
+# the caller's producer unwinds and its `finally` runs.
 function cancel_stream!(stream::EventStream)
     stream.cancel[] = true
     close(stream.channel)
+    close_source!(stream)
+    return nothing
+end
+
+# Close the caller-owned channel an adopted stream wrapped, if any. Guarded:
+# the source may already be closed (closing a channel is only idempotent for
+# `Channel`) or owned by an implementation without a working `close`.
+function close_source!(stream::EventStream)
+    source = stream.source
+    if !isnothing(source)
+        try
+            close(source)
+        catch
+        end
+    end
     return nothing
 end
 
@@ -352,7 +427,9 @@ function pump_stream(stream::EventStream, on_event::Function;
 end
 
 # Drain a stream without writing it and return its terminal event. Every event
-# is taken so a producer can never block on a full buffer.
+# is taken so a producer can never block on a full buffer. The first terminal
+# wins, matching `pump_stream` (which stops on it); later terminals are taken
+# and dropped so a misbehaving producer cannot overwrite the result.
 function drain_stream!(stream::EventStream)::Union{Nothing,FinalEvent,ErrorEvent}
     terminal::Union{Nothing,FinalEvent,ErrorEvent} = nothing
     while true
@@ -364,7 +441,7 @@ function drain_stream!(stream::EventStream)::Union{Nothing,FinalEvent,ErrorEvent
             end
             rethrow()
         end
-        if event isa FinalEvent || event isa ErrorEvent
+        if (event isa FinalEvent || event isa ErrorEvent) && isnothing(terminal)
             terminal = event
         end
     end
@@ -407,6 +484,14 @@ value `f` returns is not streamed; a thrown error ends the stream with an
 Return the stream from any handler (`@get`, `@stream`, ...) and Oxygen writes
 the SSE response to the connection; requests without a live connection (e.g.
 `internalrequest`) buffer the stream and return its final value instead.
+
+A handler may also return a raw `AbstractChannel`: the framework adopts it on
+the same terms, streaming its values as frames. A `result(value)` marker ends
+the stream and the framework closes the channel; on a live connection the
+marker has no frame: closing the connection is the ending, while a caller
+without a connection (`internalrequest`, cron, tasks) receives the marker
+value as the response body (`null` when the channel had no marker). `SSEEvent`
+remains the way to control a frame's `event:`, `id:` and `retry:` fields.
 """
 function sse_stream(f::Function; csize::Integer=STREAM_BUFFER_SIZE)
     return stream_events(f, nothing; csize=csize)
@@ -520,7 +605,7 @@ function stream_sse(connection::HTTP.Stream, source::EventStream, write_event::F
                 on_idle = () -> keepalive!(connection, last_write))
         end
     catch
-        # A failed write means the client disconnected — end quietly.
+        # A failed write means the client disconnected; end quietly.
     finally
         # The write side must close even when `cleanup` fails, so nest it: a
         # throwing cleanup would otherwise leak the connection.
@@ -551,6 +636,17 @@ function format_response(req::HTTP.Request, source::EventStream)
     end
     value = terminal isa FinalEvent ? terminal.value : nothing
     return format_response(req, value)
+end
+
+# A handler may also return a raw `AbstractChannel`; the engine adopts it on the
+# same terms as MCP (`result` marks the terminal value). A live connection gets
+# SSE frames: the marker itself has no frame, and closing the connection is
+# the ending, while a request without one (internalrequest, cron, tasks) drains
+# the stream and answers with the marker value (or `null` without one). The
+# `EventStream` method above stays more specific, so helper-created streams
+# keep taking the direct path.
+function format_response(req::HTTP.Request, source::AbstractChannel)
+    return format_response(req, adopt_channel(source, nothing))
 end
 
 end

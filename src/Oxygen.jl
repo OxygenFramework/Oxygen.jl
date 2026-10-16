@@ -28,7 +28,7 @@ macro oxidize()
         import Oxygen
         import Oxygen: PACKAGE_DIR, ServerContext, Nullable, HOFRouter, MCPMetadata
         import Oxygen: GET, POST, PUT, DELETE, PATCH, STREAM, WEBSOCKET
-        import Oxygen: mcp_stream, emit, progress, check_cancelled, sse_stream, SSEEvent
+        import Oxygen: mcp_stream, emit, progress, result, check_cancelled, sse_stream, SSEEvent
 
         const CONTEXT :: Ref{ServerContext}  = Ref(ServerContext(; mod=$(__module__)))
         include(joinpath(PACKAGE_DIR, "methods.jl"))
@@ -55,7 +55,7 @@ export  @oxidize, @oxidise, @get, @post, @put, @patch, @delete, @route,
         enabledocs, disabledocs, isdocsenabled, 
         # MCP
         @tool, tool, @prompt, prompt, @resource, resource, resource_folder,
-        mcp_stream, emit, progress, check_cancelled,
+        mcp_stream, emit, progress, result, check_cancelled,
         notify_change,
         # Streaming
         sse_stream, SSEEvent,

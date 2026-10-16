@@ -465,12 +465,59 @@ cooperative loops can call `Oxygen.check_cancelled(stream)` between steps to
 stop promptly, and `emit(stream, ...)` throws once the request has been
 cancelled.
 
+### Raw channels
+
+A tool may return any `Channel` instead of calling `mcp_stream`. The framework
+adopts it: every value is classified exactly like a `put!` into an
+`mcp_stream`, and `result(value)` marks the terminal answer:
+
+```julia
+@tool "Import a catalog" Dict(:urls => "catalog URLs") function import_catalog(urls::Vector{String})
+    channel = Channel{Any}(length(urls) + 1)
+    for url in urls
+        put!(channel, "imported $url")     # progress notification
+    end
+    put!(channel, result("Imported $(length(urls)) records"))
+    return channel
+end
+```
+
+The call is streamed (or drained) on exactly the same terms as `mcp_stream`:
+with a progress token and SSE acceptance the values become progress
+notifications and the `result` value is the final `CallToolResult`; without
+them the channel is drained and the same result is returned as one JSON body.
+`result(value)` ends the stream and the framework closes the channel for you,
+so write it last — the first marker wins, and anything written after it fails
+because the channel is closed. A channel that closes without a marker ends
+with an empty result (`content: []` — never a fabricated `null`), and a
+failure inside a `Channel(f)` producer is reported with the original error
+message.
+
+Prefer the producer form for long-running work:
+
+```julia
+return Channel{Any}(0) do channel
+    for url in urls
+        put!(channel, "imported $url")
+    end
+    put!(channel, result("Imported $(length(urls)) records"))
+end
+```
+
+The do-block runs in a child task and the framework drains it as it goes; a
+prefilled channel, by contrast, must be sized to fit every value, because
+nothing consumes it until the handler returns and a full `put!` blocks.
+
+A hand-rolled producer task that can fail before writing `result(...)` should
+still `close(channel)` in a `finally` (or use the do-block form): the framework
+can only end the stream when it sees the marker or the close.
+
 Streaming works on both the modern and legacy POST paths. Over stdio there is
 no SSE: progress notifications are written as newline-delimited JSON-RPC
 messages, interleaved with the eventual response. Only tool handlers can
 stream; route-backed tools invoke the route's own request and never emit.
 
-`mcp_stream`, `emit`, and `progress` are exported by Oxygen;
+`mcp_stream`, `emit`, `progress`, and `result` are exported by Oxygen;
 `Oxygen.check_cancelled(stream)` is available for cooperative loops but is not
 exported.
 

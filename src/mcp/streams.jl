@@ -21,9 +21,11 @@ struct ProgressEvent <: StreamEvent
 end
 
 # Reserved for the deferred partial-content mappings (FastMCP's
-# `notifications/tool/streamContent`, SEP-2998's `notifications/tools/partial_result`).
-# No default normalization produces it; `serialize_event` keeps the row so
-# landing a mapping later is additive.
+# `notifications/tool/streamContent`; SEP-2998's `notifications/tools/partial_result`).
+# SEP-2998 was closed in Sep 2026 and redirected to the MCP Working Group
+# process, so no wire shape is final yet. No default normalization produces
+# this event; `serialize_event` keeps the row so landing a mapping later is
+# additive.
 struct ContentEvent <: StreamEvent
     block :: Dict{String,Any}
 end
@@ -75,6 +77,19 @@ function progress(current::Real, total::Union{Nothing,Real}=nothing; message=not
     )
 end
 
+"""
+    result(value)
+
+Build the terminal marker for a raw channel: `put!(channel, result(value))`
+ends the stream, and the framework closes the channel, so it must be the
+last value written. `value` becomes the tool result (or, on a route, the
+buffered-fallback response body); earlier values are streamed as progress,
+and the first marker wins. Writing to the channel after the marker fails
+because the framework has closed it, and a channel that closes without a
+marker ends the call with an empty `content: []` result.
+"""
+result(value) = FinalEvent(value)
+
 # ----------------------------------------------------------------------------
 # Producer side
 # ----------------------------------------------------------------------------
@@ -99,9 +114,10 @@ function mcp_stream(f::Function; csize::Integer=STREAM_BUFFER_SIZE)
 end
 
 # Adopt the stream a handler returned. An `mcp_stream` handle only needs its
-# request token attached; a raw `AbstractChannel` is consumed on a helper
-# task, normalizing each value and appending an empty final result when it
-# closes (raw channels have no return value to carry).
+# request token attached; a raw `AbstractChannel` is handed to the engine
+# (`adopt_channel`), which intercepts a `result` marker as the terminal value
+# (ending the stream and closing the channel) and otherwise ends the call
+# with an empty result.
 function adopt_stream(stream::MCPStream, token)
     stream.protocol.token = token
     stream.protocol.managed = true
@@ -109,17 +125,7 @@ function adopt_stream(stream::MCPStream, token)
 end
 
 function adopt_stream(channel::AbstractChannel, token)
-    stream = MCPStream(STREAM_BUFFER_SIZE; token=token, managed=true)
-    # Raw channels have no return value to carry, so an exhausted channel ends
-    # the stream with an empty result. This is exactly `produce_stream`'s
-    # producer contract; reuse it instead of duplicating the error handling.
-    start_stream!(stream, _ -> begin
-        for value in channel
-            enqueue!(stream, value)
-        end
-        return nothing
-    end)
-    return stream
+    return adopt_channel(channel, MCPState(token, true, 0.0))
 end
 
 """
@@ -257,7 +263,7 @@ end
     streamed_frame(ctx, call, event) :: (body, terminal)
 
 Map one event of a streamed `tools/call` to the JSON-RPC body a transport should
-write — `nothing` when the client did not opt into the notification — and
+write (`nothing` when the client did not opt into the notification), and
 whether the stream ended.
 """
 function streamed_frame(ctx::ServerContext, call::StreamedCall, event)::Tuple{Union{Nothing,Dict{String,Any}},Bool}

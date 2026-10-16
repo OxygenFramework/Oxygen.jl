@@ -13,12 +13,12 @@ using ..PubSub
 using ..Util: response_bytes
 using ..Streaming: StreamEvent, FinalEvent, ErrorEvent, StreamCancelled,
     EventStream, enqueue!, start_stream!, pump_stream, drain_stream!,
-    cancel_stream!, check_cancelled,
+    cancel_stream!, check_cancelled, adopt_channel,
     STREAM_BUFFER_SIZE, stream_sse
 import ..Streaming: emit, normalize_event
 
 export register_tool!, register_prompt!, register_resource!, register_resource_folder!,
-    mcp_stream, emit, progress, check_cancelled,
+    mcp_stream, emit, progress, result, check_cancelled,
     MCPRequestError, MCP_PARSE_ERROR, MCP_INVALID_REQUEST,
     MCP_METHOD_NOT_FOUND, MCP_INVALID_PARAMS, MCP_INTERNAL_ERROR,
     MCP_HEADER_MISMATCH, MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
@@ -134,8 +134,8 @@ end
 
 The revision governing transport policy for a request, resolved before
 `process` determines the revision it dispatches under (see `request_spec`). A
-modern claim — supported or not, because an unsupported one is answered
-`-32022` before any session matters — classifies as the latest modern revision;
+modern claim (supported or not, because an unsupported one is answered
+`-32022` before any session matters) classifies as the latest modern revision;
 a legacy request falls back to the legacy revision negotiated on the context.
 Only the policy interface (`uses_sessions`, `get_policy`, `delete_policy`) may
 be asked of the result; it is a classification, not the request's revision.
@@ -608,7 +608,7 @@ function reject_transport(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Req
     end
 
     # Explicit Content-Type: only JSON bodies are accepted. Accept-header
-    # handling is deliberately lenient — clients that send no or partial Accept
+    # handling is deliberately lenient; clients that send no or partial Accept
     # headers still work.
     content_type = HTTP.header(req, "Content-Type", "")
     if !startswith(String(content_type), "application/json")
@@ -878,7 +878,7 @@ end
 
 Terminate the legacy session named by `Mcp-Session-Id`. A DELETE without the
 header is `405` (the server does not accept anonymous termination), an unknown
-or expired id is `404`, and the modern era — which has no sessions — is `405`.
+or expired id is `404`, and the modern era, which has no sessions, is `405`.
 An accepted termination closes the session's notification streams and removes
 its state; later requests naming it get `404`.
 """

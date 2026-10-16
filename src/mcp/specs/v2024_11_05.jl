@@ -1,4 +1,4 @@
-# 2024-11-05 — the first revision. Complete profile, nothing inherited.
+# 2024-11-05: the first revision. Complete profile, nothing inherited.
 
 @spec Val(:v2024_11_05) begin
     version_string           = "2024-11-05"

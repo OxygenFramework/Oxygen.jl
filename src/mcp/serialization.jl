@@ -439,7 +439,11 @@ function content_result(block::Dict{String,Any}, structured_content=nothing)::Di
 end
 
 function toolresult(value; structured::Bool=true)::Dict{String,Any}
-    if value isa HTTP.Response || 
+    if isnothing(value)
+        # No result value (a handler returning `nothing`, or an adopted channel
+        # that closed without a `result` marker): the answer is empty content.
+        return Dict{String,Any}("content" => Any[], "isError" => false)
+    elseif value isa HTTP.Response || 
         value isa AbstractString ||
         value isa AbstractVector{UInt8} ||
         (value isa AbstractDict && get(value, "type", nothing) in MCP_CONTENT_TYPES)

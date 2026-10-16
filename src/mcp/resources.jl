@@ -74,7 +74,7 @@ end
 # Compile a template into an anchored regex whose positional capture groups
 # correspond, in order, to `variables`. Literal segments are matched verbatim; a
 # simple variable captures a single path segment (RFC 6570 encodes `/` inside the
-# value), while a reserved variable captures any run — `.+` so an empty path
+# value), while a reserved variable captures any run (`.+`), so an empty path
 # cannot match. Greedy reserved captures resolve multiple-variable templates
 # against the last possible separator, which is deterministic.
 function compile_template(uri::String, variables::Vector{TemplateVariable})::Regex
@@ -407,7 +407,7 @@ end
 # ----------------------------------------------------------------------------
 
 # `resources/read` contents carry `uri`/`mimeType` plus exactly one of `text` or
-# `blob` — the content-block shape (`type`/`resource`) is for tool results.
+# `blob`; the content-block shape (`type`/`resource`) is for tool results.
 resource_text(uri::String, mime::AbstractString, content)::Dict{String,Any} =
     Dict{String,Any}("uri" => uri, "mimeType" => String(mime), "text" => string(content))
 

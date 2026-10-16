@@ -266,7 +266,7 @@ One registered listen stream.
 - `filter`: the honored filter (the broker predicate closes over it)
 - `sub`: the broker subscription (its queue is `stream.channel`)
 - `stream`: the transport-facing event stream
-- `cancellable`: true for routeless (stdio) streams only — an in-band
+- `cancellable`: true for routeless (stdio) streams only; an in-band
   `notifications/cancelled` must never be honored for an HTTP stream, where the
   message can arrive on any connection and would let one client kill another
   client's stream by guessing its id
@@ -298,7 +298,7 @@ end
 # JSON-RPC ids are String or Int; stringifying makes ids comparable regardless
 # of wire form. The registry is not keyed by id: ids are only unique within one
 # connection, so cross-client duplicates are legal. Only the routeless (stdio)
-# records — all owned by the single stdio client — are addressable by id.
+# records (all owned by the single stdio client) are addressable by id.
 listen_key(id) = string(id)
 
 # The stdio (cancellable) record carrying `id`, if any. HTTP streams are not
@@ -437,8 +437,8 @@ end
     remove_listen!(ctx, record::ListenRecord)
 
 Tombstone and remove a listen record: the transport hands back the record it
-owns because the stream is closed (or about to close). Removing by record — not
-by id — is what keeps one connection's teardown from pruning another
+owns because the stream is closed (or about to close). Removing by record (not
+by id) is what keeps one connection's teardown from pruning another
 connection's stream when both use the same JSON-RPC id.
 """
 function remove_listen!(ctx::ServerContext, record::ListenRecord)
@@ -452,7 +452,7 @@ end
 """
     cancel_listen!(ctx, id) :: Bool
 
-Cancel a routeless (stdio) listen stream by its request id — the
+Cancel a routeless (stdio) listen stream by its request id, the
 `notifications/cancelled` path. Per JSON-RPC cancellation semantics no response
 is sent. Only stdio streams are addressable by id; HTTP streams are never
 cancellable this way (see `ListenRecord.cancellable`). Returns `true` when an
@@ -533,10 +533,10 @@ end
 Publish a server-initiated change notification to every matching subscriber.
 `kind` selects the notification:
 
-  * `notify_change(ctx, :resource_updated, uri)` — the contents of `uri` changed
+  * `notify_change(ctx, :resource_updated, uri)`: the contents of `uri` changed
     (`notifications/resources/updated`);
   * `notify_change(ctx, :tools_changed)`, `notify_change(ctx, :prompts_changed)`,
-    `notify_change(ctx, :resources_changed)` — the corresponding list changed
+    `notify_change(ctx, :resources_changed)`: the corresponding list changed
     (`notifications/{tools,prompts,resources}/list_changed`).
 
 Returns the number of subscriber queues the notification was enqueued into; a
@@ -634,7 +634,7 @@ function subscribe_legacy!(ctx::ServerContext; csize::Integer=LEGACY_NOTIFICATIO
 end
 
 # Legacy `resources/subscribe` / `resources/unsubscribe`: record or remove the
-# URI (both idempotent). The URI need not be registered — the spec has servers
+# URI (both idempotent). The URI need not be registered: the spec has servers
 # acknowledge subscriptions they can deliver, and a template may match it later.
 function resource_subscription_legacy(ctx::ServerContext, id, params;
                                       session::Union{Nothing,MCPSession}=nothing,

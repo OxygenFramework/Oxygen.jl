@@ -50,6 +50,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Protocol Buffer Support
 - Route tagging
 - Repeat tasks
+- Model Context Protocol (MCP) server support
 
 ## Installation
 
@@ -71,6 +72,46 @@ end
 # start the web server
 serve()
 ```
+
+## MCP Server
+
+Oxygen can expose functions as [Model Context Protocol](https://modelcontextprotocol.io) tools and serve them over the stateless Streamable HTTP transport (protocol revision `2026-07-28`).
+
+```julia
+using Oxygen
+
+@tool "Add two integers" Dict(:a => "first number", :b => "second number") function add(a::Int, b::Int)
+    return a + b
+end
+
+serve() # exposes POST /mcp
+```
+
+Prompts are registered the same way, with the handler signature doubling as the argument list:
+
+```julia
+@prompt "Report on a city" function city_report(city::String)
+    return "Write a report about $city"
+end
+```
+
+Long-running tools can stream progress while they run. The do-block's return value is still the final result:
+
+```julia
+@tool "Import a catalog" Dict(:urls => "catalog URLs") function import_catalog(urls::Vector{String})
+    return mcp_stream() do stream
+        for url in urls
+            put!(stream, "imported $url")  # auto-numbered progress notification
+        end
+        return "Imported $(length(urls)) records"
+    end
+end
+```
+
+A client that sends `_meta.progressToken` and accepts `text/event-stream` receives the notifications on the request-scoped SSE stream, terminated by the complete result. Without a token (or without SSE acceptance) notifications are dropped and the call returns the usual JSON, so no call fails for a client that did not opt in. Tools may also return a raw `Channel` (with `result(value)` marking the final answer) and the framework adopts it the same way. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for the full streaming API.
+
+Tools are registered per application instance (including `@oxidize` modules and `instance()` apps). The `/mcp` endpoint is exposed automatically as soon as a tool or prompt is registered; use `serve(mcp_path = "/custom/mcp")` to mount it elsewhere, or `serve(stdio = true)` to additionally speak the MCP stdio transport over stdin/stdout. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
+
 ## Handlers
 
 Handlers are used to connect your code to the server in a clean & straightforward way. 
@@ -160,6 +201,47 @@ Websocket handlers are used to handle websocket connections. They are defined us
 - You need to explicitly include the type definition so Oxygen can identify this as a `Websocket` handler
 
 </details>
+
+
+## Server-Sent Events
+
+Any handler can return a stream. `sse_stream` runs a do-block in a producer
+task and writes each yielded value as a `data:` frame on a live connection:
+
+```julia
+@get "/events" function()
+    return sse_stream() do stream
+        for i in 1:10
+            put!(stream, Dict("tick" => i))
+            sleep(1)
+        end
+    end
+end
+```
+
+Strings are written as-is and everything else is JSON-encoded; `SSEEvent`
+controls the frame's `event:`, `id:` and `retry:` fields:
+
+```julia
+put!(stream, SSEEvent(Dict("progress" => 0.5); event="update", id="7", retry=1000))
+```
+
+A handler may also return any `Channel` directly and the framework adopts it on
+the same terms. `result(value)` ends the stream and closes the channel: on a
+live connection the marker has no frame — closing the connection is the ending
+— while callers without a connection (`internalrequest`, cron jobs, background
+tasks) receive the marker value as the response body, or `null` when the
+channel had no marker. When the client disconnects, an adopted channel is
+closed so a producer blocked in `put!` unwinds and its `finally` runs:
+
+```julia
+@get "/events/raw" function()
+    return Channel{Any}(0) do channel
+        put!(channel, Dict("tick" => 1))
+        put!(channel, result(Dict("done" => true)))  # buffered fallback body only
+    end
+end
+```
 
 
 ## Routing Macro & Function Syntax

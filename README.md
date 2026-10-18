@@ -445,17 +445,51 @@ end
 end
 ```
 
+## Server-Sent Events
+
+Any handler can return a stream. `sse_stream` runs a do-block in a producer
+task and writes each yielded value as a `data:` frame on a live connection:
+
+```julia
+@get "/events" function()
+    return sse_stream() do stream
+        for i in 1:10
+            put!(stream, Dict("tick" => i))
+            sleep(1)
+        end
+    end
+end
+```
+
+A handler may also return a `Channel` directly; its values are streamed the
+same way. Call `result(value)` to end the stream:
+
+```julia
+@get "/events/raw" function()
+    return Channel{Any}(0) do channel
+        put!(channel, Dict("tick" => 1))
+        put!(channel, result(Dict("done" => true)))
+    end
+end
+```
+
+Strings are written as-is and everything else is JSON-encoded; `SSEEvent`
+controls the frame's `event:`, `id:` and `retry:` fields:
+
+```julia
+put!(stream, SSEEvent(Dict("progress" => 0.5); event="update", id="7", retry=1000))
+```
+
+You normally don't need this API, since plain values already stream as
+`data:` frames, but it's here whenever you want direct control over the frame.
+
 ## Model Context Protocol (MCP) support
 
 Oxygen has built-in support for the [Model Context Protocol](https://modelcontextprotocol.io) and has utils for exposing functions as tools, prompts, and resources.
 
 It also ships with a swagger-like UI for interacting with the mcp server [@refactorful/mcp-explorer](https://github.com/Refactorful/mcp-explorer).
 
-### Dual-era protocols
-
-The server speaks both the stateless modern revision (`2026-07-28`), where the protocol version and capabilities travel in each request's `_meta`, and the legacy `initialize`-handshake revisions (`2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`), scoped by `Mcp-Session-Id`. Era is a property of the request, not the transport, so both share the same `/mcp` endpoint; `server/discover` lists every supported revision.
-
-### Tools
+### Tools, prompts & resources
 
 ```julia
 using Oxygen
@@ -467,92 +501,21 @@ end
 serve() # exposes POST /mcp
 ```
 
-If you need to have a longer description for a tool/prompt/resource, you can just add a doc string to the handler like below and it will get used as the description.
-
-```julia
-"""
-Look up a user by ID.
-"""
-@tool Dict(:id => "user ID") function get_user(id::Int)
-    return "user $id"
-end
-```
-
-### Route-backed tools
-
-Existing routes can be exposed by attaching `mcp` metadata, which routers inherit and merge into their routes (route values win). `mcp = true` enables with defaults, a `NamedTuple`/`Dict` supplies overrides, and `mcp = false` disables it. Tool names default to the handler name (`name = "..."`, or `names` to remap a parameter), and only plain request handlers qualify.
-
-```julia
-api = router("/users", mcp = (description = "User management", parameters = Dict(:id => "User ID")))
-
-@get api("/{id}", mcp = (description = "Get a user")) function get_user(req, id::Int)
-    return "user $id"
-end
-```
-
-### Prompts
-
-Prompts use the handler signature as the argument list, and — like tools — can take the description from a docstring:
+Prompts are registered the same way, with the handler signature doubling as the argument list. Resources use a URI with `{var}` placeholders:
 
 ```julia
 @prompt "Report on a city" function city_report(city::String)
     return "Write a report about $city"
 end
 
-"""
-Summarize a document.
-"""
-@prompt function summarize(document::String)
-    return "Summarize $document"
-end
-```
-
-### Resources
-
-A URI with `{var}` placeholders becomes a resource template whose handler parameters are the template variables (a description is optional; the handler's docstring is used when omitted):
-
-```julia
 @resource "oxygen://docs/{page}" "Look up a docs page" function docs(page::String)
     return read("docs/$page.md", String)
 end
 ```
 
-To serve a whole directory, `resource_folder` registers a `{+path}` template that reads regular files below it, with traversal protection built in:
-
-```julia
-resource_folder("file:///srv/data", "/srv/data")
-# file:///srv/data/readme.md serves /srv/data/readme.md
-```
-
-Dotfiles are rejected unless `hidden = true`, and `mime_types` overrides the extension table.
-
-### Parameter types & injection
-
-Schemas are generated from the handler's Julia types: primitives map directly, enums become string enums, and structs are inlined with `$defs`. Inputs are coerced before the handler runs and custom classes are serialized back to JSON automatically:
-
-```julia
-struct Place
-    name::String
-    lat::Float64
-    lon::Float64
-end
-
-@tool "Echo a place" Dict(:place => "a place") function echo_place(place::Place)
-    return place  # JSON in, Place in the handler, JSON out
-end
-```
-
-Injected arguments (`context`, `request`, and `stream` for tools) are excluded from the schema:
-
-```julia
-@tool "Uses the app context" Dict() function whoami(; context)
-    return context.username
-end
-```
-
 ### Streaming progress
 
-Tools can report progress with `mcp_stream()`; the do-block's return value is still the final result:
+Long-running tools can stream progress with `mcp_stream()`; the do-block's return value is still the final result:
 
 ```julia
 @tool "Import a catalog" Dict(:urls => "catalog URLs") function import_catalog(urls::Vector{String})
@@ -565,25 +528,11 @@ Tools can report progress with `mcp_stream()`; the do-block's return value is st
 end
 ```
 
-Clients opt in with `_meta.progressToken` and `Accept: text/event-stream`; otherwise notifications are dropped and the call returns plain JSON. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for the full streaming API.
-
-### Subscriptions
-
-Publish changes with `notify_change(:resource_updated, uri)` for one resource or `notify_change(:tools_changed)`, `notify_change(:prompts_changed)`, and `notify_change(:resources_changed)` for list changes; modern clients receive them on `subscriptions/listen` and legacy clients on their `resources/subscribe`. Registration publishes list changes automatically.
+Clients opt in with `_meta.progressToken` and `Accept: text/event-stream`; otherwise notifications are dropped and the call returns plain JSON.
 
 ### The MCP endpoint
 
-Tools are registered per application instance (`@oxidize` modules and `instance()` apps included); `/mcp` is mounted once a tool, prompt, or resource exists, or mount it elsewhere with `serve(mcp_path = "/custom/mcp")`.
-
-### stdio transport
-
-Pass `stdio = true` to `serve()` to additionally speak the protocol over stdin/stdout, with `stdout` reserved for JSON-RPC, status output on `stderr`, and closing `stdin` as graceful shutdown:
-
-```julia
-serve(stdio = true)
-```
-
-See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
+Tools, prompts, and resources are registered per application instance (`@oxidize` modules and `instance()` apps included), and `/mcp` is exposed automatically as soon as one exists. Mount it elsewhere with `serve(mcp_path = "/custom/mcp")` or additionally speak the stdio transport with `serve(stdio = true)`. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
 
 ## Application Context
 

@@ -8,7 +8,7 @@ using ..Constants
 
 const MCP = Oxygen.Core.MCP
 const Core = Oxygen.Core
-const META_ID = MCP.META_SUBSCRIPTION_ID
+const META_ID = MCP.Notifications.META_SUBSCRIPTION_ID
 const SUB_URL = "$localhost/mcp"
 const MCP_CLIENT = HTTP.Client()
 
@@ -42,7 +42,7 @@ end
 
 function req_meta()
     return Dict{String,Any}(
-        "io.modelcontextprotocol/protocolVersion" => MCP.PROTOCOL_VERSION,
+        "io.modelcontextprotocol/protocolVersion" => MCP.Specs.PROTOCOL_VERSION,
         "io.modelcontextprotocol/clientInfo" => Dict{String,Any}("name" => "OxygenTests", "version" => "1.0.0"),
         "io.modelcontextprotocol/clientCapabilities" => Dict{String,Any}(),
     )
@@ -58,7 +58,7 @@ end
 parsebody(r::HTTP.Response) = JSON.parse(String(copy(r.body)))
 
 function rpc(method::String, params::AbstractDict; id=1, accept=nothing, headers=Pair{String,String}[])
-    base = Pair{String,String}["MCP-Protocol-Version" => MCP.PROTOCOL_VERSION, "Mcp-Method" => method]
+    base = Pair{String,String}["MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION, "Mcp-Method" => method]
     accept === nothing || push!(base, "Accept" => accept)
     append!(base, headers)
     payload = Dict{String,Any}("jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params)
@@ -79,7 +79,7 @@ function open_listen(notifications; id=1, accept="text/event-stream")
         try
             HTTP.open("POST", SUB_URL,
                       ["Content-Type" => "application/json", "Accept" => accept,
-                       "MCP-Protocol-Version" => MCP.PROTOCOL_VERSION,
+                       "MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION,
                        "Mcp-Method" => "subscriptions/listen"];
                       client=HTTP.Client()) do io
                 io_ref[] = io
@@ -149,17 +149,17 @@ end
 
 # The listen registry is a Set of records (ids are only unique per connection,
 # so they cannot key it); this is the by-id view the tests assert on.
-has_listen(ctx, id) = any(r -> MCP.listen_key(r.id) == MCP.listen_key(id), ctx.mcp.listens)
+has_listen(ctx, id) = any(r -> MCP.Subscriptions.listen_key(r.id) == MCP.Subscriptions.listen_key(id), ctx.mcp.listens)
 
 # Wait until the broker holds exactly `n` subscriptions, i.e. all transport
 # teardowns have pruned. Necessary when two streams share an id, where
 # `has_listen` cannot tell which one is still live.
 function wait_subscribers(n; timeout=15)
     deadline = time() + timeout
-    while time() < deadline && MCP.subscribers(MCP.broker(CONTEXT[])) != n
+    while time() < deadline && MCP.subscribers(MCP.Notifications.broker(CONTEXT[])) != n
         sleep(0.05)
     end
-    return MCP.subscribers(MCP.broker(CONTEXT[])) == n
+    return MCP.subscribers(MCP.Notifications.broker(CONTEXT[])) == n
 end
 
 # Disconnect a listen and nudge the server into writing, so the teardown does
@@ -187,8 +187,8 @@ end
 
 function adapter_listen(ctx, id, notifications)
     payload = Dict{String,Any}("params" => listen_params(notifications))
-    return MCP.dispatch(ctx, nothing, id, "subscriptions/listen", payload;
-                        spec=MCP.V2026_07_28)
+    return MCP.Dispatch.dispatch(ctx, nothing, id, "subscriptions/listen", payload;
+                        spec=MCP.Specs.V2026_07_28)
 end
 
 # Legacy session state is context-wide (single-session semantics), so tests that
@@ -298,7 +298,7 @@ end
 
     @test disconnect_listen(io_a, 11)
     @test disconnect_listen(io_b, 12)
-    @test MCP.subscribers(MCP.broker(CONTEXT[])) == 0
+    @test MCP.subscribers(MCP.Notifications.broker(CONTEXT[])) == 0
 end
 
 @testset "the acknowledgement always precedes concurrent notifications" begin
@@ -344,7 +344,7 @@ end
     @test parsebody(r)["error"]["code"] == -32602
 
     # over the per-filter URI limit
-    uris = ["sub://x$i" for i in 1:(MCP.MAX_RESOURCE_SUBSCRIPTIONS + 1)]
+    uris = ["sub://x$i" for i in 1:(MCP.Notifications.MAX_RESOURCE_SUBSCRIPTIONS + 1)]
     r = rpc("subscriptions/listen", Dict("_meta" => req_meta(),
               "notifications" => Dict("resourceSubscriptions" => uris)))
     @test parsebody(r)["error"]["code"] == -32602
@@ -359,13 +359,13 @@ end
     r = rpc("subscriptions/listen", listen_params(Dict("toolsListChanged" => true)); id=1.5)
     @test parsebody(r)["error"]["code"] == -32600
     r = rpc("subscriptions/listen", listen_params(Dict("toolsListChanged" => true));
-            id="x"^(MCP.MAX_SUBSCRIPTION_ID_LENGTH + 1))
+            id="x"^(MCP.Notifications.MAX_SUBSCRIPTION_ID_LENGTH + 1))
     @test parsebody(r)["error"]["code"] == -32600
 
     # the modern request contract still applies to listen
     payload = Dict{String,Any}("jsonrpc" => "2.0", "id" => 1, "method" => "subscriptions/listen",
                                "params" => listen_params(Dict("toolsListChanged" => true)))
-    r = raw_post(payload; headers=["MCP-Protocol-Version" => MCP.PROTOCOL_VERSION])
+    r = raw_post(payload; headers=["MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION])
     @test r.status == 400
     @test parsebody(r)["error"]["code"] == -32020
 
@@ -384,7 +384,7 @@ end
 end
 
 @testset "listen ids are scoped to a connection" begin
-    count_id(id) = count(r -> MCP.listen_key(r.id) == MCP.listen_key(id), CONTEXT[].mcp.listens)
+    count_id(id) = count(r -> MCP.Subscriptions.listen_key(r.id) == MCP.Subscriptions.listen_key(id), CONTEXT[].mcp.listens)
 
     # JSON-RPC ids are unique per client, not per server: two connections (two
     # clients behind a dev server) reusing an id are two independent streams.
@@ -425,7 +425,7 @@ end
         sleep(0.05)
     end
     @test !has_listen(CONTEXT[], 15)
-    @test MCP.subscribers(MCP.broker(CONTEXT[])) == 0
+    @test MCP.subscribers(MCP.Notifications.broker(CONTEXT[])) == 0
 end
 
 ### Adapter-level limits and lifecycle #########################################
@@ -448,7 +448,7 @@ end
 @testset "listen capacity is enforced" begin
     ctx = fresh_ctx()
     calls = Any[]
-    for id in 1:MCP.MAX_LISTEN_SUBSCRIPTIONS
+    for id in 1:MCP.Notifications.MAX_LISTEN_SUBSCRIPTIONS
         call, status = adapter_listen(ctx, id, Dict("resourcesListChanged" => true))
         @test status == 200
         push!(calls, call)
@@ -463,7 +463,7 @@ end
     call, status = adapter_listen(ctx, 10_001, Dict("resourcesListChanged" => true))
     @test status == 200
     MCP.close_listens!(ctx)
-    @test MCP.subscribers(MCP.broker(ctx)) == 0
+    @test MCP.subscribers(MCP.Notifications.broker(ctx)) == 0
 end
 
 @testset "listen backlog sheds on overflow and drains buffered frames" begin
@@ -472,15 +472,15 @@ end
     @test status == 200
     take!(call.stream.channel)  # ack
 
-    for _ in 1:MCP.LISTEN_BACKLOG_CAP
+    for _ in 1:MCP.Notifications.LISTEN_BACKLOG_CAP
         @test MCP.notify_change(ctx, :resources_changed) == 1
     end
 
     # The queue is full: the next broadcast disconnects and prunes the stream.
     @test MCP.notify_change(ctx, :resources_changed) == 0
     @test !isopen(call.stream.channel)
-    @test Base.n_avail(call.stream.channel) == MCP.LISTEN_BACKLOG_CAP
-    @test MCP.subscribers(MCP.broker(ctx)) == 0
+    @test Base.n_avail(call.stream.channel) == MCP.Notifications.LISTEN_BACKLOG_CAP
+    @test MCP.subscribers(MCP.Notifications.broker(ctx)) == 0
 
     # Already-buffered frames stay drainable.
     while isready(call.stream.channel)
@@ -513,21 +513,21 @@ end
 
 @testset "parse_subscription_filter accepts known keys and rejects the rest" begin
     # unknown keys are ignored; the known flags are recorded
-    filter = MCP.parse_subscription_filter(Dict("unknownKey" => 1, "toolsListChanged" => true))
-    @test filter isa MCP.SubscriptionFilter
+    filter = MCP.Notifications.parse_subscription_filter(Dict("unknownKey" => 1, "toolsListChanged" => true))
+    @test filter isa MCP.Notifications.SubscriptionFilter
     @test filter.tools_list_changed
 
     # a malformed filter comes back as a rejection reason (a String) instead
-    @test MCP.parse_subscription_filter(nothing) isa String
-    @test MCP.parse_subscription_filter(Dict()) isa String
-    @test MCP.parse_subscription_filter(Dict("resourceSubscriptions" => [1])) isa String
+    @test MCP.Notifications.parse_subscription_filter(nothing) isa String
+    @test MCP.Notifications.parse_subscription_filter(Dict()) isa String
+    @test MCP.Notifications.parse_subscription_filter(Dict("resourceSubscriptions" => [1])) isa String
 
     # a well-formed resourceSubscriptions list becomes a set of URIs
-    @test MCP.parse_subscription_filter(Dict("resourceSubscriptions" => ["a", "b"])).resource_uris ==
+    @test MCP.Notifications.parse_subscription_filter(Dict("resourceSubscriptions" => ["a", "b"])).resource_uris ==
           Set(["a", "b"])
 
     # the parsed filter round-trips to the acknowledgement wire form
-    wire = MCP.filter_to_wire(filter)
+    wire = MCP.Notifications.filter_to_wire(filter)
     @test wire == Dict{String,Any}("toolsListChanged" => true)
 end
 
@@ -572,7 +572,7 @@ end
     # delivery-count assertions are not raced by this connection.
     close(io_ref[])
     notify_change(:resources_changed)
-    broker = MCP.broker(CONTEXT[])
+    broker = MCP.Notifications.broker(CONTEXT[])
     deadline = time() + 15
     while time() < deadline && MCP.subscribers(broker) > 0
         sleep(0.05)
@@ -589,8 +589,8 @@ end
              "params" => Dict("uri" => uri));
         headers=Pair{String,String}["Mcp-Session-Id" => sid])
 
-    sid1 = HTTP.header(session_init("2025-11-25"), MCP.SESSION_HEADER)
-    sid2 = HTTP.header(session_init("2025-11-25"), MCP.SESSION_HEADER)
+    sid1 = HTTP.header(session_init("2025-11-25"), MCP.Sessions.SESSION_HEADER)
+    sid2 = HTTP.header(session_init("2025-11-25"), MCP.Sessions.SESSION_HEADER)
     @test sid1 isa String && sid2 isa String && sid1 != sid2
 
     for sid in (sid1, sid2)
@@ -620,10 +620,10 @@ end
     @test r.status == 200
     @test !haskey(ctx.mcp.sessions, sid1)
     deadline = time() + 10
-    while time() < deadline && MCP.subscribers(MCP.broker(ctx)) > 1
+    while time() < deadline && MCP.subscribers(MCP.Notifications.broker(ctx)) > 1
         sleep(0.05)
     end
-    @test MCP.subscribers(MCP.broker(ctx)) == 1   # the other session's sink only
+    @test MCP.subscribers(MCP.Notifications.broker(ctx)) == 1   # the other session's sink only
     @test notify_change(:resource_updated, "sub://alpha") == 0
 
     # a request naming the terminated session is rejected
@@ -635,15 +635,15 @@ end
     close(io2[])
     notify_change(:resource_updated, "sub://beta")
     deadline = time() + 10
-    while time() < deadline && MCP.subscribers(MCP.broker(ctx)) > 0
+    while time() < deadline && MCP.subscribers(MCP.Notifications.broker(ctx)) > 0
         sleep(0.05)
     end
-    @test MCP.subscribers(MCP.broker(ctx)) == 0
+    @test MCP.subscribers(MCP.Notifications.broker(ctx)) == 0
 end
 
 @testset "legacy delivery requires a completed handshake" begin
     ctx = fresh_ctx()
-    sub = MCP.subscribe_legacy!(ctx)
+    sub = MCP.Subscriptions.subscribe_legacy!(ctx)
     lock(ctx.mcp.subscriptions_lock) do
         push!(ctx.mcp.legacy_subscriptions, "sub://alpha")
     end
@@ -660,7 +660,7 @@ end
 @testset "legacy list_changed is capability-gated" begin
     ctx = Core.ServerContext()
     Core.register_tool!(ctx, "gate tool", Dict(), () -> "t"; name="gate_tool")
-    sub = MCP.subscribe_legacy!(ctx)
+    sub = MCP.Subscriptions.subscribe_legacy!(ctx)
     ctx.mcp.initialized[] = true
     ctx.mcp.handshake_complete[] = true
 
@@ -675,8 +675,8 @@ end
     @test r.status == 404  # modern era sees no such method
 
     ctx = Core.ServerContext()
-    body, status = MCP.dispatch(ctx, nothing, 1, "resources/subscribe",
-                                Dict("params" => Dict()); spec=MCP.LATEST_LEGACY_SPEC)
+    body, status = MCP.Dispatch.dispatch(ctx, nothing, 1, "resources/subscribe",
+                                Dict("params" => Dict()); spec=MCP.Specs.LATEST_LEGACY_SPEC)
     @test status == 200
     @test body["error"]["code"] == -32602
 end
@@ -787,9 +787,9 @@ end
 
 @testset "stdio notifier serializes concurrent writes line-atomically" begin
     output = IOBuffer()
-    notifier = MCP.StdioNotifier(output)
+    notifier = MCP.Transports.StdioNotifier(output)
     @sync for i in 1:100
-        @async MCP.respond(notifier, Dict("i" => i))
+        @async MCP.Transports.respond(notifier, Dict("i" => i))
     end
 
     lines = split(strip(String(take!(output))), "\n")
@@ -799,12 +799,12 @@ end
 
 @testset "stdio notifier prunes finished forwarding tasks" begin
     ctx = fresh_ctx()
-    notifier = MCP.StdioNotifier(IOBuffer())
+    notifier = MCP.Transports.StdioNotifier(IOBuffer())
 
     for id in 1:5
         call, status = adapter_listen(ctx, id, Dict("toolsListChanged" => true))
         @test status == 200
-        MCP.forward_listen_call(ctx, notifier, call)
+        MCP.Transports.forward_listen_call(ctx, notifier, call)
         MCP.close_listens!(ctx)
         deadline = time() + 5
         while time() < deadline && !all(istaskdone, notifier.tasks)
@@ -815,7 +815,7 @@ end
     # Finished tasks are dropped on the next push, so a long-lived notifier
     # holds at most the live task instead of one per closed stream.
     @test length(notifier.tasks) <= 1
-    MCP.close_notifier!(notifier)
+    MCP.Transports.close_notifier!(notifier)
 end
 
 ### Regression / lifecycle #####################################################
@@ -829,7 +829,7 @@ end
     frames = Any[]
     HTTP.open("POST", SUB_URL, ["Content-Type" => "application/json",
                                 "Accept" => "application/json, text/event-stream",
-                                "MCP-Protocol-Version" => MCP.PROTOCOL_VERSION,
+                                "MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION,
                                 "Mcp-Method" => "tools/call",
                                 "Mcp-Name" => "publish_update"];
                client=HTTP.Client()) do io
@@ -860,7 +860,7 @@ end
                                    "arguments" => Dict("steps" => 1),
                                    "_meta" => req_meta()))
     response = raw_post(payload; headers=Pair{String,String}[
-        "MCP-Protocol-Version" => MCP.PROTOCOL_VERSION,
+        "MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION,
         "Mcp-Method" => "tools/call",
         "Mcp-Name" => "publish_update"])
     @test response.status == 200
@@ -887,13 +887,13 @@ end
 @testset "a closed broker is retired and rebuilt on demand" begin
     ctx = fresh_ctx()
 
-    first_broker = MCP.broker(ctx)
+    first_broker = MCP.Notifications.broker(ctx)
     @test isopen(first_broker)
 
     # a broker closed out-of-band is never handed back by the accessor
     close(first_broker)
     @test !isopen(first_broker)
-    second_broker = MCP.broker(ctx)
+    second_broker = MCP.Notifications.broker(ctx)
     @test isopen(second_broker)
     @test second_broker !== first_broker
 
@@ -902,7 +902,7 @@ end
     @test !isopen(second_broker)
     @test ctx.mcp.broker[] === nothing
 
-    third_broker = MCP.broker(ctx)
+    third_broker = MCP.Notifications.broker(ctx)
     @test isopen(third_broker)
     @test third_broker !== second_broker
     @test ctx.mcp.broker[] === third_broker
@@ -937,20 +937,20 @@ terminate()
         "promptsListChanged" => true,
         "resourcesListChanged" => true,
         "resourceSubscriptions" => ["sub://alpha"])
-    MCP.remove_listen!(ctx, call.record)
+    MCP.Subscriptions.remove_listen!(ctx, call.record)
 end
 
 @testset "broker capacity exhaustion rejects a listen" begin
     # registry capacity is checked first; the broker cap is the safety net
     # behind it, so exhaust the broker directly to exercise that catch
     ctx = fresh_ctx()
-    ctx.mcp.broker[] = MCP.MCPBroker(; cap=1)
+    ctx.mcp.broker[] = MCP.Notifications.MCPBroker(; cap=1)
     fill = Core.PubSub.subscribe!(ctx.mcp.broker[], _ -> true)
 
     body, status = adapter_listen(ctx, 42, Dict("resourcesListChanged" => true))
     @test status == 400
-    @test body["error"]["code"] == MCP.MCP_INTERNAL_ERROR
-    @test body["error"]["message"] == MCP.LISTEN_LIMIT_MESSAGE
+    @test body["error"]["code"] == MCP.Errors.MCP_INTERNAL_ERROR
+    @test body["error"]["message"] == MCP.Notifications.LISTEN_LIMIT_MESSAGE
 
     Core.PubSub.unsubscribe!(ctx.mcp.broker[], fill)
     @test MCP.subscribers(ctx.mcp.broker[]) == 0
@@ -960,14 +960,14 @@ end
     ctx = fresh_ctx()
     notifications = Dict("toolsListChanged" => true)
 
-    body, status = MCP.listen_call(ctx, nothing, 1.5, listen_params(notifications))
+    body, status = MCP.Subscriptions.listen_call(ctx, nothing, 1.5, listen_params(notifications))
     @test status == 400
-    @test body["error"]["code"] == MCP.MCP_INVALID_REQUEST
+    @test body["error"]["code"] == MCP.Errors.MCP_INVALID_REQUEST
 
-    too_long = "x"^(MCP.MAX_SUBSCRIPTION_ID_LENGTH + 1)
-    body, status = MCP.listen_call(ctx, nothing, too_long, listen_params(notifications))
+    too_long = "x"^(MCP.Notifications.MAX_SUBSCRIPTION_ID_LENGTH + 1)
+    body, status = MCP.Subscriptions.listen_call(ctx, nothing, too_long, listen_params(notifications))
     @test status == 400
-    @test body["error"]["code"] == MCP.MCP_INVALID_REQUEST
+    @test body["error"]["code"] == MCP.Errors.MCP_INVALID_REQUEST
     @test occursin("exceeds", body["error"]["message"])
 end
 
@@ -977,41 +977,41 @@ end
     @test status == 200
 
     # an error event becomes a JSON-RPC internal error and ends the stream
-    body, terminal = MCP.listen_frame(call, Core.ErrorEvent(ErrorException("boom")))
+    body, terminal = MCP.Subscriptions.listen_frame(call, Core.ErrorEvent(ErrorException("boom")))
     @test terminal === true
     @test body["id"] == 7
-    @test body["error"]["code"] == MCP.MCP_INTERNAL_ERROR
+    @test body["error"]["code"] == MCP.Errors.MCP_INTERNAL_ERROR
     @test occursin("boom", body["error"]["message"])
 
-    MCP.remove_listen!(ctx, call.record)
+    MCP.Subscriptions.remove_listen!(ctx, call.record)
 end
 
 @testset "legacy delivery gating: handshake and event filters" begin
     ctx = fresh_ctx()
 
-    @test MCP.list_changed_capable(ctx, :tools) === true
-    @test MCP.list_changed_capable(ctx, :prompts) === false
-    @test MCP.list_changed_capable(ctx, :resources) === true
-    @test MCP.list_changed_capable(ctx, :bogus) === false
+    @test MCP.Notifications.list_changed_capable(ctx, :tools) === true
+    @test MCP.Notifications.list_changed_capable(ctx, :prompts) === false
+    @test MCP.Notifications.list_changed_capable(ctx, :resources) === true
+    @test MCP.Notifications.list_changed_capable(ctx, :bogus) === false
 
-    tool_event = MCP.SubscriptionNotification("notifications/tools/list_changed", Dict{String,Any}())
+    tool_event = MCP.Notifications.SubscriptionNotification("notifications/tools/list_changed", Dict{String,Any}())
 
     # anonymous state: no completed handshake, no delivery
-    @test MCP.legacy_event_wanted(ctx, tool_event) === false
+    @test MCP.Subscriptions.legacy_event_wanted(ctx, tool_event) === false
 
-    session = MCP.MCPSession("gating-session")
-    @test MCP.legacy_event_wanted(ctx, tool_event; session=session) === false
+    session = MCP.Sessions.MCPSession("gating-session")
+    @test MCP.Subscriptions.legacy_event_wanted(ctx, tool_event; session=session) === false
     session.initialized = true
     session.handshake_complete = true
-    @test MCP.legacy_event_wanted(ctx, tool_event; session=session) === true
+    @test MCP.Subscriptions.legacy_event_wanted(ctx, tool_event; session=session) === true
 
     # a resources/updated event without a uri is never delivered
-    uri_event = MCP.SubscriptionNotification("notifications/resources/updated", Dict{String,Any}())
-    @test MCP.legacy_event_wanted(ctx, uri_event; session=session) === false
+    uri_event = MCP.Notifications.SubscriptionNotification("notifications/resources/updated", Dict{String,Any}())
+    @test MCP.Subscriptions.legacy_event_wanted(ctx, uri_event; session=session) === false
 
     # unknown notification methods are never delivered
-    unknown = MCP.SubscriptionNotification("notifications/something/else", Dict{String,Any}())
-    @test MCP.legacy_event_wanted(ctx, unknown; session=session) === false
+    unknown = MCP.Notifications.SubscriptionNotification("notifications/something/else", Dict{String,Any}())
+    @test MCP.Subscriptions.legacy_event_wanted(ctx, unknown; session=session) === false
 end
 
 @testset "resetstate clears subscription state" begin
@@ -1019,7 +1019,7 @@ end
     # guard in methods.jl), so seed subscription state in Oxygen's context and
     # verify the whole context — broker included — is replaced.
     ctx = Oxygen.CONTEXT[]
-    MCP.broker(ctx)
+    MCP.Notifications.broker(ctx)
     lock(ctx.mcp.subscriptions_lock) do
         push!(ctx.mcp.legacy_subscriptions, "sub://alpha")
     end

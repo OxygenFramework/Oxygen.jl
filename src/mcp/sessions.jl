@@ -1,5 +1,5 @@
 # HTTP session management for the legacy (initialize-handshake) era.
-# Included into the `MCP` module by `../mcp.jl`, before `subscriptions.jl`.
+# Included into `MCP` by the `MCP.Sessions` submodule file.
 #
 # The modern revision is stateless and never resolves a session. Legacy clients
 # that want isolation from other clients echo the `Mcp-Session-Id` returned by
@@ -7,6 +7,20 @@
 # anonymous state (the original single-session behavior). A header naming an
 # unknown or expired session is rejected with HTTP 404, as the transport
 # requires.
+
+module Sessions
+
+using UUIDs
+using HTTP
+using ...PubSub
+
+using ...AppContext: ServerContext
+
+using ..Errors: error_body, MCP_INVALID_REQUEST
+using ..Headers: mcp_standard_header
+using ..Specs: LATEST_LEGACY
+
+export close_sessions!
 
 const SESSION_HEADER = "Mcp-Session-Id"
 const SESSION_TTL_SECONDS = 3600.0
@@ -96,7 +110,7 @@ function terminate_session!(ctx::ServerContext, session::MCPSession)
 
     for sub in sinks
         try
-            broker isa MCPBroker ? PubSub.unsubscribe!(broker, sub) : close(sub)
+            broker isa PubSub.Broker ? PubSub.unsubscribe!(broker, sub) : close(sub)
         catch
         end
     end
@@ -310,7 +324,12 @@ function add_sink!(ctx::ServerContext, session::MCPSession, sub::PubSub.Subscrip
         return true
     end
     if !accepted
-        PubSub.unsubscribe!(broker(ctx), sub)
+        mcp_broker = ctx.mcp.broker[]
+        try
+            mcp_broker isa PubSub.Broker ? PubSub.unsubscribe!(mcp_broker, sub) : close(sub)
+        catch
+            close(sub)
+        end
     end
     return accepted
 end
@@ -321,3 +340,5 @@ function remove_sink!(session::MCPSession, sub::PubSub.Subscription)
     end
     return nothing
 end
+
+end # module Sessions

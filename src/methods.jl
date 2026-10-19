@@ -465,7 +465,7 @@ non-regular file is reported as the spec's resource-not-found error for the
 request's protocol era.
 """
 resource_folder(prefix::AbstractString, directory::AbstractString; kwargs...) =
-    Oxygen.Core.MCP.register_resource_folder!(CONTEXT[], string(prefix), string(directory); kwargs...)
+    Oxygen.Core.MCP.Resources.register_resource_folder!(CONTEXT[], string(prefix), string(directory); kwargs...)
 
 
 """
@@ -548,7 +548,7 @@ List changes are published automatically whenever a tool, prompt, or resource
 is registered. Returns the number of streams the notification was enqueued on.
 """
 notify_change(kind::Symbol, value=nothing)::Int =
-    Oxygen.Core.MCP.notify_change(CONTEXT[], kind, value)
+    Oxygen.Core.MCP.Notifications.notify_change(CONTEXT[], kind, value)
 
 
 """

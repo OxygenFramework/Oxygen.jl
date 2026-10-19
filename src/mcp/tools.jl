@@ -1,81 +1,35 @@
 # Tool registration and the `tools/list` / `tools/call` methods.
-# Included into the `MCP` module by `../mcp.jl`.
+# Included into `MCP` by the `MCP.Tools` submodule file.
+
+module Tools
+
+using HTTP
+
+using ...AppContext: ServerContext
+using ...Types: MCPConfig, MCPParam, MCPTool, parse_mcp_parameters
+using ...Streaming: STREAM_BUFFER_SIZE, start_stream!
+
+using ..Envelopes: META_KEY
+using ..Errors: MCPRequestError, MCP_INVALID_PARAMS, MCP_INTERNAL_ERROR,
+    error_body, toolerror_result
+using ..Notifications: notify_change
+using ..Serialization: HandlerSignature, reflect_handler, function_docstring,
+    resolve_registered_node, resolve_registered, invoke_registered,
+    inputschema, list_result, result_response, request_error_body,
+    tool_success_result
+using ..Specs: LATEST_LEGACY_SPEC
+using ..Streams: MCPStream, StreamedCall, adopt_stream
+
+import ..Dispatch: handle_method
+
+export register_tool!, register_route_tool!, validate_mcp_param_keys
 
 # ----------------------------------------------------------------------------
 # Registration (the only write path to the registry)
 # ----------------------------------------------------------------------------
 
-# The framework-injected handler parameters. They are never part of a schema;
-# `context`/`request` are injected as keywords, while `stream` is the Surface A
-# entry point (the framework creates the channel, injects it, and routes the
-# call through the streaming path).
-const INJECTED_PARAMS = (:context, :request, :stream)
-
-# The compiler-generated name Julia reflects for an unnamed argument. It has no
-# usable wire name, so registration rejects it. Checked after `skip_first` drops
-# the route's leading request argument, which is allowed to be unnamed.
-const UNNAMED_PARAM = Symbol("#unused#")
-
-"""
-    HandlerSignature
-
-The reflected view of a handler: `info` is the `splitdef` result, `argnames`
-are the positional parameter names included in schemas (in order), `params`
-are the positional-then-keyword `MCPParam`s (injected names dropped), and the
-flags say which injected keywords the handler declares.
-"""
-struct HandlerSignature
-    info        :: NamedTuple
-    argnames    :: Vector{Symbol}
-    params      :: Vector{MCPParam}
-    has_context :: Bool
-    has_request :: Bool
-    has_stream  :: Bool
-end
-
-mcp_param(p, descriptions, names) =
-    MCPParam(p, get(descriptions, p.name, ""), get(names, p.name, string(p.name)))
-
-# Single reflection walk shared by tools, prompts, and resources. The explicit
-# `descriptions`/`names` maps override the reflected values, and `skip_first`
-# drops the leading positional handler argument (the HTTP request / stream /
-# websocket injected by the routing layer for route-backed tools).
-function reflect_handler(func::Function;
-                         descriptions::Dict{Symbol,String}=Dict{Symbol,String}(),
-                         names::Dict{Symbol,String}=Dict{Symbol,String}(),
-                         skip_first::Bool=false)::HandlerSignature
-    info = Reflection.splitdef(func; start=1)
-
-    positional = info.args
-    if skip_first && !isempty(info.args)
-        positional = info.args[2:end]
-    end
-
-    argnames = Symbol[]
-    mcp_params = MCPParam[]
-    for p in positional
-        if p.name in INJECTED_PARAMS
-            continue
-        end
-        if p.name === UNNAMED_PARAM
-            throw(ArgumentError(
-                "MCP handlers cannot declare unnamed parameters; " *
-                "give the `::$(p.type)` parameter a name"))
-        end
-        push!(argnames, p.name)
-        push!(mcp_params, mcp_param(p, descriptions, names))
-    end
-    for p in info.kwargs
-        if p.name in INJECTED_PARAMS
-            continue
-        end
-        push!(mcp_params, mcp_param(p, descriptions, names))
-    end
-
-    kwdecl = Tuple(p.name for p in info.kwargs)
-    return HandlerSignature(info, argnames, mcp_params,
-                            :context in kwdecl, :request in kwdecl, :stream in kwdecl)
-end
+# `HandlerSignature`, `reflect_handler`, and `function_docstring` are shared
+# with prompts and resources and live in `MCP.Serialization`.
 
 # Guard against mistyped parameter metadata: every key in `descriptions`/`names`
 # must name a real handler parameter, and when `require_complete` is set every
@@ -112,35 +66,7 @@ end
 
 # Extract a handler's docstring, if one was attached to its binding. Returns an
 # empty string for anonymous functions or undocumented handlers.
-function function_docstring(func::Function)::String
-    try
-        mod = parentmodule(func)
-        binding = Base.Docs.Binding(mod, nameof(func))
-        entry = get(Base.Docs.meta(mod), binding, nothing)
-        if isnothing(entry)
-            return ""
-        end
-        if entry isa Base.Docs.MultiDoc
-            texts = String[]
-            for docstr in values(entry.docs)
-                text = strip(join(docstr.text, "\n"))
-                if !isempty(text)
-                    push!(texts, text)
-                end
-            end
-            if isempty(texts)
-                return ""
-            end
-            # Multiple methods may each carry a docstring; pick deterministically.
-            sort!(texts)
-            return first(texts)
-        elseif entry isa Base.Docs.DocStr
-            return strip(join(entry.text, "\n"))
-        end
-    catch
-    end
-    return ""
-end
+# (Defined in `MCP.Serialization`; used by `register_tool!` and route tools.)
 
 """
     register_tool!(ctx::ServerContext, desc, params, func::Function; name=nothing)
@@ -216,8 +142,7 @@ function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Funct
     if !isnothing(existing)
         if existing.handler === func
             return existing
-        end
-        if explicit
+        elseif explicit
             throw(ArgumentError("An MCP tool named `$wirename` is already registered"))
         end
         base = wirename
@@ -335,9 +260,11 @@ end
 # Served in every revision; the result-shaping differences live behind the
 # strategy interface (`list_result`, `tool_success_result`).
 handle_method(spec::Val, ::Val{:tools_list}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+              id, params, raw::String; session=nothing) =
     result_response(ctx, id, tools_list(ctx; spec=spec); spec=spec)
 
 handle_method(spec::Val, ::Val{:tools_call}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session::Union{Nothing,MCPSession}=nothing) =
+              id, params, raw::String; session=nothing) =
     call_tool(ctx, req, id, params; spec=spec)
+
+end # module Tools

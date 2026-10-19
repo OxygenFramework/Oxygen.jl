@@ -237,14 +237,14 @@ end
 
 function req_meta()
     return Dict(
-        "io.modelcontextprotocol/protocolVersion" => MCP.PROTOCOL_VERSION,
+        "io.modelcontextprotocol/protocolVersion" => MCP.Specs.PROTOCOL_VERSION,
         "io.modelcontextprotocol/clientInfo" => Dict("name" => "OxygenTests", "version" => "1.0.0"),
         "io.modelcontextprotocol/clientCapabilities" => Dict(),
     )
 end
 
 function rpc(method::String, params::AbstractDict; extra_headers=[], id=1)::HTTP.Response
-    headers = ["MCP-Protocol-Version" => MCP.PROTOCOL_VERSION, "Mcp-Method" => method]
+    headers = ["MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION, "Mcp-Method" => method]
     append!(headers, extra_headers)
     payload = Dict("jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params)
     return raw_post(payload; headers=headers)
@@ -316,7 +316,7 @@ end
     @test_throws ArgumentError resource("oxygen://dup/{x}/{x}", "bad", (x::String) -> x)
 
     # a trailing newline must not slip through the template-variable anchor
-    @test_throws ArgumentError MCP.template_vars("oxygen://bad/{x\n}")
+    @test_throws ArgumentError MCP.Resources.template_vars("oxygen://bad/{x\n}")
 
     # resources are not streamed
     @test_throws ArgumentError resource("oxygen://bad-stream", "bad", (; stream) -> stream)
@@ -564,9 +564,9 @@ end
 
     # icons postdate the oldest legacy revisions, so entries gate them by revision
     decorated_resource = CONTEXT[].mcp.resources["oxygen://decorated"]
-    @test haskey(MCP.resource_entry(decorated_resource; spec=MCP.V2025_11_25), "icons")
-    @test !haskey(MCP.resource_entry(decorated_resource; spec=MCP.V2025_03_26), "icons")
-    @test !haskey(MCP.resource_entry(decorated_resource; spec=MCP.V2024_11_05), "icons")
+    @test haskey(MCP.Resources.resource_entry(decorated_resource; spec=MCP.Specs.V2025_11_25), "icons")
+    @test !haskey(MCP.Resources.resource_entry(decorated_resource; spec=MCP.Specs.V2025_03_26), "icons")
+    @test !haskey(MCP.Resources.resource_entry(decorated_resource; spec=MCP.Specs.V2024_11_05), "icons")
 
     # invalid metadata never registers anything
     @test_throws ArgumentError resource("oxygen://bad-annotation", "bad", () -> "x"; annotations=(audience=["robot"],))
@@ -779,7 +779,7 @@ resource_app.serve(port=PORT + 5, async=true, show_banner=false, show_errors=fal
     client = HTTP.Client()
     params = Dict("_meta" => req_meta())
     headers = ["Content-Type" => "application/json",
-               "MCP-Protocol-Version" => MCP.PROTOCOL_VERSION,
+               "MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION,
                "Mcp-Method" => "resources/list"]
     payload = Dict("jsonrpc" => "2.0", "id" => 1, "method" => "resources/list", "params" => params)
     r = HTTP.request("POST", "http://$HOST:$(PORT + 5)/mcp", headers, JSON.json(payload);

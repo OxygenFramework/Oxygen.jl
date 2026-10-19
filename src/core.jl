@@ -271,9 +271,9 @@ function terminate(context::ServerContext)
 
         # gracefully close any open MCP subscription streams and legacy sessions
         # before the server goes away
-        MCP.close_listens!(context)
-        MCP.close_sessions!(context)
-        MCP.close_broker!(context)
+        MCP.Subscriptions.close_listens!(context)
+        MCP.Sessions.close_sessions!(context)
+        MCP.Notifications.close_broker!(context)
 
         # drop the incremental metrics cache tied to this server's history
         Metrics.unregister_metrics_cache!(context.service)
@@ -468,7 +468,7 @@ function start_server(ctx::ServerContext; show_banner=false, docs=false, metrics
     if stdio && mcp
         errormonitor(@async begin
             try
-                MCP.stdio_loop(ctx)
+                MCP.Transports.stdio_loop(ctx)
             finally
                 terminate(ctx)
             end
@@ -779,14 +779,14 @@ function register(ctx::ServerContext, httpmethod::String, route::Union{String,HO
             # A mistyped route-level parameter is a developer error, so it is
             # raised instead of contained.
             if !isnothing(mcp_overrides) && mcp_overrides.enabled
-                MCP.validate_mcp_param_keys(func, mcp_overrides.parameters,
+                MCP.Tools.validate_mcp_param_keys(func, mcp_overrides.parameters,
                                             mcp_overrides.names; skip_first=true)
             end
             # Other tool-build failures are contained so a bad tool never
             # prevents the HTTP route from being served (mirroring how schema
             # generation errors are handled below).
             try
-                MCP.register_route_tool!(ctx, mcp_config, func; httpmethod=httpmethod, route=route)
+                MCP.Tools.register_route_tool!(ctx, mcp_config, func; httpmethod=httpmethod, route=route)
             catch error
                 @warn "Failed to register MCP tool for route: $route" exception=(error, catch_backtrace())
             end
@@ -1089,9 +1089,9 @@ function setupmcp(ctx::ServerContext)
 
     # Both handlers take the raw stream via `select_handler(::Type{HTTP.Stream})`
     # so they can hold the connection open and write frames themselves.
-    mcp_post(stream::HTTP.Stream) = MCP.handle(ctx, stream)
-    mcp_get(stream::HTTP.Stream) = MCP.handle_get(ctx, stream)
-    mcp_delete(req::HTTP.Request) = MCP.handle_delete(ctx, req)
+    mcp_post(stream::HTTP.Stream) = MCP.Transports.handle(ctx, stream)
+    mcp_get(stream::HTTP.Stream) = MCP.Transports.handle_get(ctx, stream)
+    mcp_delete(req::HTTP.Request) = MCP.Transports.handle_delete(ctx, req)
 
     register_internal(ctx, router, "POST", path, mcp_post)
     register_internal(ctx, router, STREAM, path, mcp_get)

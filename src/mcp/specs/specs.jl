@@ -1,5 +1,5 @@
-# Protocol revision identity and ordering. Included into the `MCP` module by
-# `../mcp.jl`, before the revision files.
+# Protocol revision identity and ordering. Included into `MCP.Specs` by `../specs.jl`,
+# before the revision files.
 #
 # Every revision is a `Val` singleton, so capabilities and behavior are
 # selected by dispatch (`f(spec::Val)`) and never by a runtime lookup table.

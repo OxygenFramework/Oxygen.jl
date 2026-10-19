@@ -1,5 +1,21 @@
 # Prompt registration, prompt message serialization, and the `prompts/list` /
-# `prompts/get` methods. Included into the `MCP` module by `../mcp.jl`.
+# `prompts/get` methods. Included into `MCP` by the `MCP.Prompts` submodule file.
+
+module Prompts
+
+using HTTP
+
+using ...AppContext: ServerContext
+using ...Types: MCPPrompt, isrequired
+
+using ..Errors: MCPRequestError, MCP_INTERNAL_ERROR, error_body
+using ..Notifications: notify_change
+using ..Serialization: reflect_handler, function_docstring, resolve_registered_node, invoke_registered, result_response, request_error_body, list_result, content_block
+using ..Specs: LATEST_LEGACY_SPEC
+
+import ..Dispatch: handle_method
+
+export register_prompt!
 
 # ----------------------------------------------------------------------------
 # Registration
@@ -147,7 +163,7 @@ handle_method(
     id, 
     params, 
     raw::String; 
-    session::Union{Nothing,MCPSession}=nothing) = result_response(ctx, id, prompts_list(ctx; spec=spec); spec=spec)
+    session=nothing) = result_response(ctx, id, prompts_list(ctx; spec=spec); spec=spec)
 
 handle_method(
     spec::Val, 
@@ -157,4 +173,6 @@ handle_method(
     id, 
     params, 
     raw::String; 
-    session::Union{Nothing,MCPSession}=nothing) = get_prompt(ctx, req, id, params; spec=spec)
+    session=nothing) = get_prompt(ctx, req, id, params; spec=spec)
+
+end # module Prompts

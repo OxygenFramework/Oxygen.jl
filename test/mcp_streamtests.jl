@@ -215,7 +215,7 @@ const STREAM_CLIENT = HTTP.Client()
 function call_payload(name::String, arguments::AbstractDict;
                       token="tok-1", meta_extra=Dict{String,Any}(), id=1, modern=true)
     meta = modern ? Dict{String,Any}(
-        "io.modelcontextprotocol/protocolVersion" => MCP.PROTOCOL_VERSION,
+        "io.modelcontextprotocol/protocolVersion" => MCP.Specs.PROTOCOL_VERSION,
         "io.modelcontextprotocol/clientCapabilities" => Dict{String,Any}(),
     ) : Dict{String,Any}()
     token === nothing || (meta["progressToken"] = token)
@@ -229,7 +229,7 @@ function call_headers(name::String; accept="application/json, text/event-stream"
     headers = ["Content-Type" => "application/json", "Accept" => accept]
     if modern
         append!(headers, [
-            "MCP-Protocol-Version" => MCP.PROTOCOL_VERSION,
+            "MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION,
             "Mcp-Method" => "tools/call",
             "Mcp-Name" => name,
         ])
@@ -269,7 +269,7 @@ serve(port=STREAM_PORT, host=HOST, async=true, show_banner=false, show_errors=fa
 @testset "registry records the injected stream" begin
     tool = CONTEXT[].mcp.tools["stream_injected"]
     @test tool.has_stream
-    schema = MCP.inputschema(tool)
+    schema = MCP.Serialization.inputschema(tool)
     @test !haskey(schema["properties"], "stream")
     @test schema["required"] == ["count"]
 
@@ -448,7 +448,7 @@ end
 end
 
 @testset "Accept negotiation for the SSE upgrade" begin
-    accept(header) = MCP.accepts_event_stream(HTTP.Request("POST", "/", ["Accept" => header]))
+    accept(header) = MCP.Transports.accepts_event_stream(HTTP.Request("POST", "/", ["Accept" => header]))
 
     @test accept("application/json, text/event-stream")
     @test accept("text/event-stream")
@@ -459,7 +459,7 @@ end
     @test !accept("application/json")
     @test !accept("text/event-stream;q=0")
     @test !accept("text/event-stream;q=0, */*")
-    @test !MCP.accepts_event_stream(HTTP.Request("POST", "/"))
+    @test !MCP.Transports.accepts_event_stream(HTTP.Request("POST", "/"))
 end
 
 @testset "modern validation runs before any streaming" begin
@@ -468,7 +468,7 @@ end
     response = json_call(payload; headers=["Content-Type" => "application/json",
                                            "Accept" => "application/json, text/event-stream"])
     @test response.status == 400
-    @test parsebody(response)["error"]["code"] == MCP.MCP_HEADER_MISMATCH
+    @test parsebody(response)["error"]["code"] == MCP.Errors.MCP_HEADER_MISMATCH
 end
 
 @testset "concurrent streams are isolated" begin
@@ -568,7 +568,7 @@ end
 end
 
 @testset "emit is a no-op without a token" begin
-    stream = MCP.MCPStream(4; managed=true)
+    stream = MCP.Streams.MCPStream(4; managed=true)
     MCP.emit(stream, "dropped")
     @test !isready(stream.channel)
 end
@@ -593,12 +593,12 @@ end
         sleep(0.05)
     end
     @test finished[]
-    @test_throws MCP.MCPCancelled MCP.check_cancelled(stream)
-    @test_throws MCP.MCPCancelled MCP.emit(stream, "late")
+    @test_throws MCP.Streams.MCPCancelled MCP.check_cancelled(stream)
+    @test_throws MCP.Streams.MCPCancelled MCP.emit(stream, "late")
 end
 
 @testset "explicit progress must increase" begin
-    stream = MCP.MCPStream(4; token="tok", managed=true)
+    stream = MCP.Streams.MCPStream(4; token="tok", managed=true)
     MCP.emit(stream, MCP.progress(2, 5; message="two"))
     @test_throws ArgumentError MCP.emit(stream, MCP.progress(1, 5))
     MCP.emit(stream, "next")  # auto-increments above 2
@@ -607,8 +607,8 @@ end
 end
 
 @testset "serialize_event opt-in gates" begin
-    @test MCP.serialize_event(nothing, MCP.progress(1)) === nothing
-    @test MCP.serialize_event("tok", MCP.progress(1, 4; message="go")) == Dict{String,Any}(
+    @test MCP.Streams.serialize_event(nothing, MCP.progress(1)) === nothing
+    @test MCP.Streams.serialize_event("tok", MCP.progress(1, 4; message="go")) == Dict{String,Any}(
         "jsonrpc" => "2.0",
         "method" => "notifications/progress",
         "params" => Dict{String,Any}("progressToken" => "tok", "progress" => 1.0,
@@ -733,15 +733,15 @@ end
 end
 
 @testset "content events have no default wire mapping" begin
-    stream = MCP.MCPStream()
-    event = MCP.ContentEvent(Dict{String,Any}("type" => "text", "text" => "x"))
+    stream = MCP.Streams.MCPStream()
+    event = MCP.Streams.ContentEvent(Dict{String,Any}("type" => "text", "text" => "x"))
     @test MCP.normalize_event(stream, event) === event
-    @test MCP.serialize_event("tok", event) === nothing
+    @test MCP.Streams.serialize_event("tok", event) === nothing
 end
 
 @testset "a drain without a terminal event becomes an error result" begin
-    call = MCP.StreamedCall(MCP.MCPStream(), 7, MCP.LATEST_LEGACY_SPEC)
-    body = MCP.streamed_body(CONTEXT[], call, nothing)
+    call = MCP.Streams.StreamedCall(MCP.Streams.MCPStream(), 7, MCP.Specs.LATEST_LEGACY_SPEC)
+    body = MCP.Streams.streamed_body(CONTEXT[], call, nothing)
     @test body["id"] == 7
     @test body["result"]["isError"] == true
     @test occursin("without a result", body["result"]["content"][1]["text"])
@@ -751,16 +751,16 @@ end
     # The producer was cancelled before its first emit (the client is gone), so
     # the channel is closed and empty; taking from it raises and the transport
     # unwinds without writing a partial response.
-    stream = MCP.MCPStream()
+    stream = MCP.Streams.MCPStream()
     stream.protocol.token = "tok"
     close(stream.channel)
 
     ctx = Oxygen.Core.ServerContext()
     req = HTTP.Request("POST", "/mcp", ["Accept" => "text/event-stream"])
-    @test MCP.accepts_event_stream(req)
+    @test MCP.Transports.accepts_event_stream(req)
     accepted = HTTP.Stream(req)
-    call = MCP.StreamedCall(stream, 1, MCP.LATEST_LEGACY_SPEC)
-    @test MCP.stream_call(ctx, accepted, req, call) === nothing
+    call = MCP.Streams.StreamedCall(stream, 1, MCP.Specs.LATEST_LEGACY_SPEC)
+    @test MCP.Transports.stream_call(ctx, accepted, req, call) === nothing
 end
 
 ### Teardown ##################################################################

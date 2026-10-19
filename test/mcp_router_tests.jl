@@ -138,14 +138,14 @@ end
 
 function req_meta()
     return Dict(
-        "io.modelcontextprotocol/protocolVersion" => MCP.PROTOCOL_VERSION,
+        "io.modelcontextprotocol/protocolVersion" => MCP.Specs.PROTOCOL_VERSION,
         "io.modelcontextprotocol/clientInfo" => Dict("name" => "OxygenTests", "version" => "1.0.0"),
         "io.modelcontextprotocol/clientCapabilities" => Dict(),
     )
 end
 
 function rpc(method::String, params::AbstractDict; extra_headers=[], id=1)::HTTP.Response
-    headers = ["MCP-Protocol-Version" => MCP.PROTOCOL_VERSION, "Mcp-Method" => method]
+    headers = ["MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION, "Mcp-Method" => method]
     append!(headers, extra_headers)
     payload = Dict("jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params)
     return raw_post(payload; headers=headers)
@@ -284,7 +284,7 @@ end
     @test rename.params[1].wirename == "val"
     @test rename.params[1].description == "the value"
 
-    schema = MCP.inputschema(rename)
+    schema = MCP.Serialization.inputschema(rename)
     @test haskey(schema["properties"], "val")
     @test schema["properties"]["val"]["description"] == "the value"
 
@@ -321,7 +321,7 @@ end
     @test count(t -> t.handler === route_shared_handler, values(tools)) == 1
 
     # a route that slugs to nothing still gets a usable name
-    @test MCP.derived_tool_name("GET", "///") == "get_tool"
+    @test MCP.Tools.derived_tool_name("GET", "///") == "get_tool"
 
     # a route with metadata under a bare router uses its own config
     @test tools["route_direct_tool"].description == "Direct route tool"

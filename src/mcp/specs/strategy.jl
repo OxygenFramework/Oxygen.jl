@@ -1,6 +1,6 @@
 # The protocol strategy interface: every capability and behavior the
-# spec-agnostic core asks the active revision about. Included into the `MCP`
-# module by `../mcp.jl`, before the revision files.
+# spec-agnostic core asks the active revision about. Included into `MCP.Specs` by `../specs.jl`,
+# before the revision files.
 #
 # Each revision declares its *complete* profile with an `@spec` block in its own
 # `vYYYY_MM_DD.jl` file; nothing is inherited and `@spec` rejects unknown,

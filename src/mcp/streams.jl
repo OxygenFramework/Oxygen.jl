@@ -1,11 +1,26 @@
 # MCP-specific streaming policy: the progress event model, the request-scoped
 # state, and the wire mapping from events to JSON-RPC notifications. The
 # protocol-free engine (bounded channel, producer task, backpressure,
-# cancellation, consumer pump) lives in `../streaming.jl`; this file layers MCP
-# on top of it.
-#
-# Included into the `MCP` module by `../mcp.jl`, before `tools.jl` (which
-# creates streams) and before `prompts.jl` (which never does).
+# cancellation, consumer pump) lives in `../streaming.jl`; this module layers
+# MCP on top of it and extends the `Streaming.emit`/`normalize_event` generics.
+
+module Streams
+
+using JSON
+
+using ...AppContext: ServerContext
+using ...Streaming: StreamEvent, FinalEvent, ErrorEvent, StreamCancelled,
+    EventStream, enqueue!, start_stream!, adopt_channel,
+    check_cancelled, STREAM_BUFFER_SIZE
+
+# New methods are added to these functions: keep the extension imports explicit.
+import ...Streaming: emit, normalize_event
+
+using ..Errors: toolerror_result
+using ..Serialization: tool_success_result, result_body
+using ..Specs: result_envelope
+
+export mcp_stream, emit, progress, result, check_cancelled
 
 # ----------------------------------------------------------------------------
 # Events
@@ -272,3 +287,5 @@ function streamed_frame(ctx::ServerContext, call::StreamedCall, event)::Tuple{Un
     end
     return serialize_event(call.stream.protocol.token, event), false
 end
+
+end # module Streams

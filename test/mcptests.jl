@@ -368,14 +368,14 @@ end
 
 function req_meta()
     return Dict(
-        "io.modelcontextprotocol/protocolVersion" => MCP.PROTOCOL_VERSION,
+        "io.modelcontextprotocol/protocolVersion" => MCP.Specs.PROTOCOL_VERSION,
         "io.modelcontextprotocol/clientInfo" => Dict("name" => "OxygenTests", "version" => "1.0.0"),
         "io.modelcontextprotocol/clientCapabilities" => Dict(),
     )
 end
 
 function rpc(method::String, params::AbstractDict; extra_headers=[], id=1)::HTTP.Response
-    headers = ["MCP-Protocol-Version" => MCP.PROTOCOL_VERSION, "Mcp-Method" => method]
+    headers = ["MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION, "Mcp-Method" => method]
     append!(headers, extra_headers)
     payload = Dict("jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params)
     return raw_post(payload; headers=headers)
@@ -452,32 +452,32 @@ end
 end
 
 @testset "input schema" begin
-    add = MCP.inputschema(CONTEXT[].mcp.tools["add_numbers"])
+    add = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["add_numbers"])
     @test add["type"] == "object"
     @test sort(add["required"]) == ["a", "b"]
     @test add["properties"]["a"]["type"] == "integer"
     @test add["properties"]["a"]["format"] == "int64"
     @test add["properties"]["a"]["description"] == "first number"
 
-    default_schema = MCP.inputschema(CONTEXT[].mcp.tools["with_default"])
+    default_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["with_default"])
     @test default_schema["required"] == ["x"]
     @test default_schema["properties"]["y"]["default"] == 10
 
-    empty_schema = MCP.inputschema(CONTEXT[].mcp.tools["no_args"])
+    empty_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["no_args"])
     @test empty_schema["additionalProperties"] == false
 
     # enums advertise their instance names (the JSON-body wire form); the
     # integer values never appear on the wire
-    enum_schema = MCP.inputschema(CONTEXT[].mcp.tools["enum_tool"])
+    enum_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["enum_tool"])
     @test enum_schema["properties"]["color"]["enum"] == ["red", "blue", "green"]
     @test enum_schema["properties"]["color"]["type"] == "string"
 
-    vec_schema = MCP.inputschema(CONTEXT[].mcp.tools["vector_tool"])
+    vec_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["vector_tool"])
     @test vec_schema["properties"]["nums"]["type"] == "array"
     @test vec_schema["properties"]["nums"]["items"]["type"] == "integer"
 
     # enums nested in arrays and dictionaries
-    collections_schema = MCP.inputschema(CONTEXT[].mcp.tools["enum_collections_tool"])
+    collections_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["enum_collections_tool"])
     color_items = collections_schema["properties"]["colors"]["items"]
     @test color_items["type"] == "string"
     @test color_items["enum"] == ["red", "blue", "green"]
@@ -485,32 +485,32 @@ end
     @test label_values["type"] == "string"
     @test label_values["enum"] == ["red", "blue", "green"]
 
-    struct_schema = MCP.inputschema(CONTEXT[].mcp.tools["struct_tool"])
+    struct_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["struct_tool"])
     @test struct_schema["properties"]["place"]["\$ref"] == "#/\$defs/Place"
     @test haskey(struct_schema["\$defs"], "Place")
     @test haskey(struct_schema["\$defs"], "Coordinates")
     @test !occursin("#/components/schemas/", JSON.json(struct_schema))
     @test struct_schema["\$defs"]["Place"]["properties"]["tags"]["default"] == String[]
 
-    dict_schema = MCP.inputschema(CONTEXT[].mcp.tools["dict_tool"])
+    dict_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["dict_tool"])
     @test dict_schema["properties"]["sites"]["type"] == "object"
     @test dict_schema["properties"]["sites"]["additionalProperties"]["\$ref"] == "#/\$defs/Coordinates"
     @test haskey(dict_schema["\$defs"], "Coordinates")
 
-    region_schema = MCP.inputschema(CONTEXT[].mcp.tools["region_tool"])
+    region_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["region_tool"])
     region_props = region_schema["\$defs"]["Region"]["properties"]
     @test region_props["sites"]["type"] == "object"
     @test region_props["sites"]["additionalProperties"]["\$ref"] == "#/\$defs/Coordinates"
     @test region_props["sites"]["default"] == Dict{String,Coordinates}()
 
-    mixed_schema = MCP.inputschema(CONTEXT[].mcp.tools["mixed_tool"])
+    mixed_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["mixed_tool"])
     mixed_items = mixed_schema["properties"]["items"]["items"]
     @test mixed_items["nullable"] == true
     @test Set(ref["\$ref"] for ref in mixed_items["anyOf"]) ==
           Set(["#/\$defs/Coordinates", "#/\$defs/Place"])
 
     # enum fields inside registered structs are string enums too, at any depth
-    palette_schema = MCP.inputschema(CONTEXT[].mcp.tools["palette_tool"])
+    palette_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["palette_tool"])
     palette_props = palette_schema["\$defs"]["Palette"]["properties"]
     @test palette_props["primary"]["type"] == "string"
     @test palette_props["primary"]["enum"] == ["red", "blue", "green"]
@@ -520,25 +520,25 @@ end
     @test palette_props["accent"]["type"] == "string"
     @test palette_props["accent"]["nullable"] == true
 
-    plain_schema = MCP.inputschema(CONTEXT[].mcp.tools["plain_palette_tool"])
+    plain_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["plain_palette_tool"])
     plain_props = plain_schema["\$defs"]["PlainPalette"]["properties"]
     @test plain_props["primary"]["enum"] == ["red", "blue", "green"]
     @test plain_props["colors"]["items"]["type"] == "string"
 
     # a struct of structs keeps the string convention inside nested $defs
-    box_schema = MCP.inputschema(CONTEXT[].mcp.tools["palette_box_tool"])
+    box_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["palette_box_tool"])
     box_props = box_schema["\$defs"]["PaletteBox"]["properties"]
     @test box_props["palette"]["\$ref"] == "#/\$defs/Palette"
     @test box_props["alternatives"]["items"]["\$ref"] == "#/\$defs/Palette"
     @test box_schema["\$defs"]["Palette"]["properties"]["primary"]["type"] == "string"
 
     # a top-level nullable parameter is marked on its schema
-    nullable_schema = MCP.inputschema(CONTEXT[].mcp.tools["nullable_arg_tool"])
+    nullable_schema = MCP.Serialization.inputschema(CONTEXT[].mcp.tools["nullable_arg_tool"])
     @test nullable_schema["properties"]["value"]["nullable"] === true
     @test nullable_schema["properties"]["value"]["default"] === nothing
 
     # a union of only null-ish members resolves to an empty schema
-    @test MCP.typeschema(Union{Nothing,Missing}) == (Dict{String,Any}(), Dict{String,Any}())
+    @test MCP.Serialization.typeschema(Union{Nothing,Missing}) == (Dict{String,Any}(), Dict{String,Any}())
 end
 
 @testset "parameter declaration forms" begin
@@ -602,12 +602,12 @@ end
     @test_throws ArgumentError tool("String key", Dict("a" => "left"), subtract)
     # unnamed handler parameters have no wire name and are rejected, even when
     # every parameter carries a description
-    @test_throws ArgumentError MCP.reflect_handler((a, ::Int) -> a)
+    @test_throws ArgumentError MCP.Serialization.reflect_handler((a, ::Int) -> a)
     @test_throws ArgumentError tool("Unnamed", Dict(:a => "left", Symbol("#unused#") => "unused"),
                                    (a, ::Int) -> a)
     # the leading request argument of a route handler is skipped, so it may be
     # unnamed without tripping the guard
-    route_sig = MCP.reflect_handler((::HTTP.Request, id::Int) -> id; skip_first=true)
+    route_sig = MCP.Serialization.reflect_handler((::HTTP.Request, id::Int) -> id; skip_first=true)
     @test [p.param.name for p in route_sig.params] == [:id]
 end
 
@@ -620,7 +620,7 @@ end
     @test parsebody(r)["result"]["content"][1]["text"] == "3"
 
     # a raw `DocStr` docs entry (not a `MultiDoc`) is read directly
-    @test MCP.function_docstring(RawDocStrHolder.rawdoc) == "raw docstring"
+    @test MCP.Serialization.function_docstring(RawDocStrHolder.rawdoc) == "raw docstring"
 end
 
 @testset "docstring prompt description" begin
@@ -634,35 +634,35 @@ end
 end
 
 @testset "parse_tool_argument" begin
-    @test MCP.parse_tool_argument(Int, 3) === 3
-    @test MCP.parse_tool_argument(Int, "3") === 3
-    @test MCP.parse_tool_argument(Float64, 3) === 3.0
-    @test MCP.parse_tool_argument(Bool, true) === true
-    @test MCP.parse_tool_argument(Union{String, Nothing}, nothing) === nothing
-    @test MCP.parse_tool_argument(String, 3) == "3"
-    @test MCP.parse_tool_argument(Color, 2) == blue
-    @test MCP.parse_tool_argument(Color, "3") == green
-    @test MCP.parse_tool_argument(Color, "blue") == blue
-    @test MCP.parse_tool_argument(Union{Color, Nothing}, "blue") == blue
-    @test_throws ArgumentError MCP.parse_tool_argument(Color, "nope")
-    @test_throws ArgumentError MCP.parse_tool_argument(Color, 9)
-    @test MCP.parse_tool_argument(Vector{Color}, ["red", 2]) == [red, blue]
-    @test MCP.parse_tool_argument(Vector{Dict{String,Color}},
+    @test MCP.Serialization.parse_tool_argument(Int, 3) === 3
+    @test MCP.Serialization.parse_tool_argument(Int, "3") === 3
+    @test MCP.Serialization.parse_tool_argument(Float64, 3) === 3.0
+    @test MCP.Serialization.parse_tool_argument(Bool, true) === true
+    @test MCP.Serialization.parse_tool_argument(Union{String, Nothing}, nothing) === nothing
+    @test MCP.Serialization.parse_tool_argument(String, 3) == "3"
+    @test MCP.Serialization.parse_tool_argument(Color, 2) == blue
+    @test MCP.Serialization.parse_tool_argument(Color, "3") == green
+    @test MCP.Serialization.parse_tool_argument(Color, "blue") == blue
+    @test MCP.Serialization.parse_tool_argument(Union{Color, Nothing}, "blue") == blue
+    @test_throws ArgumentError MCP.Serialization.parse_tool_argument(Color, "nope")
+    @test_throws ArgumentError MCP.Serialization.parse_tool_argument(Color, 9)
+    @test MCP.Serialization.parse_tool_argument(Vector{Color}, ["red", 2]) == [red, blue]
+    @test MCP.Serialization.parse_tool_argument(Vector{Dict{String,Color}},
                                   [Dict("a" => "green")]) == [Dict("a" => green)]
-    @test MCP.parse_tool_argument(Dict{String,Color}, Dict("a" => "blue")) == Dict("a" => blue)
-    @test MCP.parse_tool_argument(Dict{Color,Int}, Dict("red" => 1)) == Dict(red => 1)
-    @test MCP.parse_tool_argument(Coordinates, Dict("lat" => 1.0, "lon" => 2.0)) == Coordinates(1.0, 2.0)
-    @test MCP.parse_tool_argument(Vector{Int}, [1, 2, 3]) == [1, 2, 3]
-    @test MCP.parse_tool_argument(Vector{Int}, ["1", "2"]) == [1, 2]
-    @test MCP.parse_tool_argument(Vector{Bool}, ["true", "false"]) == [true, false]
-    @test MCP.parse_tool_argument(Vector{Union{Coordinates, Nothing}},
+    @test MCP.Serialization.parse_tool_argument(Dict{String,Color}, Dict("a" => "blue")) == Dict("a" => blue)
+    @test MCP.Serialization.parse_tool_argument(Dict{Color,Int}, Dict("red" => 1)) == Dict(red => 1)
+    @test MCP.Serialization.parse_tool_argument(Coordinates, Dict("lat" => 1.0, "lon" => 2.0)) == Coordinates(1.0, 2.0)
+    @test MCP.Serialization.parse_tool_argument(Vector{Int}, [1, 2, 3]) == [1, 2, 3]
+    @test MCP.Serialization.parse_tool_argument(Vector{Int}, ["1", "2"]) == [1, 2]
+    @test MCP.Serialization.parse_tool_argument(Vector{Bool}, ["true", "false"]) == [true, false]
+    @test MCP.Serialization.parse_tool_argument(Vector{Union{Coordinates, Nothing}},
                                   [Dict("lat" => 1.0, "lon" => 2.0), nothing]) == [Coordinates(1.0, 2.0), nothing]
-    @test MCP.parse_tool_argument(Vector{Union{Color, Nothing}}, [1, nothing]) == [red, nothing]
-    @test MCP.parse_tool_argument(Dict{String,Coordinates},
+    @test MCP.Serialization.parse_tool_argument(Vector{Union{Color, Nothing}}, [1, nothing]) == [red, nothing]
+    @test MCP.Serialization.parse_tool_argument(Dict{String,Coordinates},
                                   Dict("a" => Dict("lat" => 1.0, "lon" => 2.0))) ==
           Dict("a" => Coordinates(1.0, 2.0))
-    @test MCP.parse_tool_argument(Dict{String,Int}, Dict("a" => "1")) == Dict("a" => 1)
-    mixed = MCP.parse_tool_argument(Vector{Union{Coordinates,Place,Nothing}},
+    @test MCP.Serialization.parse_tool_argument(Dict{String,Int}, Dict("a" => "1")) == Dict("a" => 1)
+    mixed = MCP.Serialization.parse_tool_argument(Vector{Union{Coordinates,Place,Nothing}},
                                     [Dict("lat" => 1.0, "lon" => 2.0),
                                      Dict("name" => "x", "coordinates" => Dict("lat" => 1.0, "lon" => 2.0)),
                                      nothing])
@@ -674,7 +674,7 @@ end
     @test mixed[3] === nothing
 
     # deep nesting: enums inside struct fields, arrays, maps and unions
-    palette = MCP.parse_tool_argument(Palette, Dict(
+    palette = MCP.Serialization.parse_tool_argument(Palette, Dict(
         "primary" => "blue",
         "colors" => ["red", 2],
         "labels" => Dict("a" => "green"),
@@ -685,7 +685,7 @@ end
     @test palette.labels == Dict("a" => green)
     @test palette.accent == blue
 
-    plain = MCP.parse_tool_argument(PlainPalette, Dict(
+    plain = MCP.Serialization.parse_tool_argument(PlainPalette, Dict(
         "primary" => "green",
         "colors" => ["blue"],
         "labels" => Dict("a" => "red"),
@@ -696,7 +696,7 @@ end
     @test plain.labels == Dict("a" => red)
     @test plain.accent === nothing
 
-    box = MCP.parse_tool_argument(PaletteBox, Dict(
+    box = MCP.Serialization.parse_tool_argument(PaletteBox, Dict(
         "palette" => Dict("primary" => "red"),
         "alternatives" => [Dict("primary" => "green")],
     ))
@@ -705,10 +705,10 @@ end
 
     # a multi-member union is tried member-by-member (the value must not already
     # be an instance of the union, or the early `value isa target` check wins)
-    @test MCP.parse_tool_argument(Union{Int,Float64}, "1.5") === 1.5
-    @test MCP.parse_tool_argument(Union{Int,Float64}, "3") == 3
+    @test MCP.Serialization.parse_tool_argument(Union{Int,Float64}, "1.5") === 1.5
+    @test MCP.Serialization.parse_tool_argument(Union{Int,Float64}, "3") == 3
     # types with no dedicated branch fall through to `convert`
-    @test MCP.parse_tool_argument(Rational{Int}, 2) == 2//1
+    @test MCP.Serialization.parse_tool_argument(Rational{Int}, 2) == 2//1
 end
 
 @testset "server/discover" begin
@@ -726,9 +726,9 @@ end
 
     # optional instructions are advertised when the context was built with them
     instructed = Oxygen.Core.ServerContext(; mcp = Oxygen.Core.MCPContext(; instructions = "Use the tools wisely"))
-    @test !haskey(MCP.discover_result(CONTEXT[]), "instructions")
-    @test MCP.discover_result(instructed)["instructions"] == "Use the tools wisely"
-    @test MCP.initialize_result(instructed, Dict{String,Any}())["instructions"] == "Use the tools wisely"
+    @test !haskey(MCP.Discovery.discover_result(CONTEXT[]), "instructions")
+    @test MCP.Discovery.discover_result(instructed)["instructions"] == "Use the tools wisely"
+    @test MCP.Discovery.initialize_result(instructed, Dict{String,Any}())["instructions"] == "Use the tools wisely"
 end
 
 @testset "tools/list" begin
@@ -874,9 +874,9 @@ end
 end
 
 @testset "prompt roles" begin
-    @test MCP.normalize_role(:assistant) == "assistant"
-    @test MCP.normalize_role("USER") == "user"
-    @test_throws ArgumentError MCP.normalize_role("system")
+    @test MCP.Prompts.normalize_role(:assistant) == "assistant"
+    @test MCP.Prompts.normalize_role("USER") == "user"
+    @test_throws ArgumentError MCP.Prompts.normalize_role("system")
 
     msgs = parsebody(prompt_get("image_prompt", Dict("label" => "look")))["result"]["messages"]
     @test msgs[1]["role"] == "assistant"
@@ -886,7 +886,7 @@ end
 
     # a handler-authoring bug surfaces as an internal error, server stays up
     err = parsebody(prompt_get("bad_role_prompt", Dict()))
-    @test err["error"]["code"] == MCP.MCP_INTERNAL_ERROR
+    @test err["error"]["code"] == MCP.Errors.MCP_INTERNAL_ERROR
 end
 
 @testset "prompts/get errors" begin
@@ -1153,19 +1153,19 @@ end
 @testset "standard MCP headers: validation and base64 sentinels" begin
     # a duplicated or unsafe standard header is rejected
     unsafe = HTTP.Request("POST", "/", ["Mcp-Name" => "bad\x01value"])
-    @test MCP.mcp_standard_header(unsafe, "Mcp-Name") === :invalid
-    @test_throws MCP.MCPRequestError MCP.required_header(unsafe, "Mcp-Name")
+    @test MCP.Headers.mcp_standard_header(unsafe, "Mcp-Name") === :invalid
+    @test_throws MCP.MCPRequestError MCP.Headers.required_header(unsafe, "Mcp-Name")
 
     duplicated = HTTP.Request("POST", "/", ["Mcp-Name" => "a"])
     push!(duplicated.headers, "Mcp-Name" => "b")
-    @test MCP.mcp_standard_header(duplicated, "Mcp-Name") === :invalid
+    @test MCP.Headers.mcp_standard_header(duplicated, "Mcp-Name") === :invalid
 
     # non-sentinel values pass through; malformed sentinels decode to nothing
-    @test MCP.decode_header_value("plain value") == "plain value"
-    @test MCP.decode_header_value("=?base64?***?=") === nothing      # invalid alphabet
-    @test MCP.decode_header_value("=?base64?AAA?=") === nothing      # not a multiple of four
-    @test MCP.decode_header_value("=?base64?/w==?=") === nothing     # decodes to invalid UTF-8
-    @test MCP.decode_header_value("=?base64?b2s=?=") == "ok"
+    @test MCP.Headers.decode_header_value("plain value") == "plain value"
+    @test MCP.Headers.decode_header_value("=?base64?***?=") === nothing      # invalid alphabet
+    @test MCP.Headers.decode_header_value("=?base64?AAA?=") === nothing      # not a multiple of four
+    @test MCP.Headers.decode_header_value("=?base64?/w==?=") === nothing     # decodes to invalid UTF-8
+    @test MCP.Headers.decode_header_value("=?base64?b2s=?=") == "ok"
 
     # the exception itself prints as a one-line message
     @test sprint(showerror, MCP.MCPRequestError(MCP.MCP_INVALID_PARAMS, "nope")) ==
@@ -1180,72 +1180,72 @@ end
 
     # a non-session entry is ignored by the sweeper and the evictor
     ctx.mcp.sessions["junk"] = :not_a_session
-    @test isempty(MCP.sweep_sessions!(ctx))
-    @test MCP.evict_oldest!(ctx) === nothing
+    @test isempty(MCP.Sessions.sweep_sessions!(ctx))
+    @test MCP.Sessions.evict_oldest!(ctx) === nothing
     delete!(ctx.mcp.sessions, "junk")
 
-    session = MCP.MCPSession("unit-session")
+    session = MCP.Sessions.MCPSession("unit-session")
     ctx.mcp.sessions[session.id] = session
 
     # an expired session is swept
-    session.last_seen = time() - (MCP.SESSION_TTL_SECONDS + 1)
-    @test MCP.sweep_sessions!(ctx) == [session]
+    session.last_seen = time() - (MCP.Sessions.SESSION_TTL_SECONDS + 1)
+    @test MCP.Sessions.sweep_sessions!(ctx) == [session]
     @test !haskey(ctx.mcp.sessions, session.id)
 
     # a closed session is not resolvable
-    closed = MCP.MCPSession("closed-session")
+    closed = MCP.Sessions.MCPSession("closed-session")
     closed.closed = true
     ctx.mcp.sessions[closed.id] = closed
-    @test MCP.find_session(ctx, closed.id) === nothing
+    @test MCP.Sessions.find_session(ctx, closed.id) === nothing
     delete!(ctx.mcp.sessions, closed.id)
 
     # resolving an idle session refreshes its idle clock
-    idle = MCP.MCPSession("idle-session")
-    idle.last_seen = time() - (MCP.SESSION_TOUCH_SECONDS + 1)
+    idle = MCP.Sessions.MCPSession("idle-session")
+    idle.last_seen = time() - (MCP.Sessions.SESSION_TOUCH_SECONDS + 1)
     ctx.mcp.sessions[idle.id] = idle
-    @test MCP.find_session(ctx, idle.id) === idle
-    @test idle.last_seen > time() - MCP.SESSION_TOUCH_SECONDS
+    @test MCP.Sessions.find_session(ctx, idle.id) === idle
+    @test idle.last_seen > time() - MCP.Sessions.SESSION_TOUCH_SECONDS
 
     # a malformed session header resolves to :invalid and surfaces as a 400
-    bad = HTTP.Request("POST", "/mcp", [MCP.SESSION_HEADER => "bad\x01value"])
-    @test MCP.resolve_session(ctx, bad) === :invalid
-    status, body = MCP.resolve_session_or_error(ctx, bad)
+    bad = HTTP.Request("POST", "/mcp", [MCP.Sessions.SESSION_HEADER => "bad\x01value"])
+    @test MCP.Sessions.resolve_session(ctx, bad) === :invalid
+    status, body = MCP.Sessions.resolve_session_or_error(ctx, bad)
     @test status == 400
-    @test body["error"]["code"] == MCP.MCP_INVALID_REQUEST
+    @test body["error"]["code"] == MCP.Errors.MCP_INVALID_REQUEST
 
     # a sink registered on an already-closed session is refused and torn down
-    sink_session = MCP.MCPSession("closed-sink")
+    sink_session = MCP.Sessions.MCPSession("closed-sink")
     sink_session.closed = true
-    sink = MCP.PubSub.subscribe!(MCP.broker(ctx), _ -> true)
-    @test MCP.add_sink!(ctx, sink_session, sink) === false
+    sink = MCP.PubSub.subscribe!(MCP.Notifications.broker(ctx), _ -> true)
+    @test MCP.Sessions.add_sink!(ctx, sink_session, sink) === false
     @test !isopen(sink)
     @test isempty(sink_session.sinks)
 
     # the oldest (and only) session is evicted when the registry is at capacity
     lock(ctx.mcp.sessions_lock) do
-        for index in 1:MCP.MAX_SESSIONS
-            older = MCP.MCPSession("bulk-$index")
-            older.last_seen = time() - (2 * MCP.SESSION_TOUCH_SECONDS) - index
+        for index in 1:MCP.Sessions.MAX_SESSIONS
+            older = MCP.Sessions.MCPSession("bulk-$index")
+            older.last_seen = time() - (2 * MCP.Sessions.SESSION_TOUCH_SECONDS) - index
             ctx.mcp.sessions[older.id] = older
         end
     end
-    created = MCP.new_session!(ctx)
+    created = MCP.Sessions.new_session!(ctx)
     @test haskey(ctx.mcp.sessions, created.id)
-    @test length(ctx.mcp.sessions) == MCP.MAX_SESSIONS
+    @test length(ctx.mcp.sessions) == MCP.Sessions.MAX_SESSIONS
     # the least-recently-seen session was dropped to make room
-    @test !haskey(ctx.mcp.sessions, "bulk-$(MCP.MAX_SESSIONS)")
+    @test !haskey(ctx.mcp.sessions, "bulk-$(MCP.Sessions.MAX_SESSIONS)")
 
     # a full registry with nothing evictable makes the eviction loop give up and
     # register the new session anyway
     lock(ctx.mcp.sessions_lock) do
         empty!(ctx.mcp.sessions)
-        for index in 1:MCP.MAX_SESSIONS
+        for index in 1:MCP.Sessions.MAX_SESSIONS
             ctx.mcp.sessions["placeholder-$index"] = nothing
         end
     end
-    overflow = MCP.new_session!(ctx)
+    overflow = MCP.Sessions.new_session!(ctx)
     @test haskey(ctx.mcp.sessions, overflow.id)
-    @test length(ctx.mcp.sessions) == MCP.MAX_SESSIONS + 1
+    @test length(ctx.mcp.sessions) == MCP.Sessions.MAX_SESSIONS + 1
 
     MCP.close_sessions!(ctx)
     @test isempty(ctx.mcp.sessions)
@@ -1272,10 +1272,10 @@ end
     @test r.status == 200
     @test parsebody(r)["result"]["content"][1]["text"] == "9"
 
-    @test MCP.decode_header_value(encoded) == "add_numbers"
-    @test MCP.decode_header_value("add_numbers") == "add_numbers"
-    @test MCP.decode_header_value("=?base64?YWJj?=") == "abc"
-    @test MCP.decode_header_value("=?base64?" * base64encode("Hello, 世界") * "?=") == "Hello, 世界"
+    @test MCP.Headers.decode_header_value(encoded) == "add_numbers"
+    @test MCP.Headers.decode_header_value("add_numbers") == "add_numbers"
+    @test MCP.Headers.decode_header_value("=?base64?YWJj?=") == "abc"
+    @test MCP.Headers.decode_header_value("=?base64?" * base64encode("Hello, 世界") * "?=") == "Hello, 世界"
 end
 
 @testset "HTTP transport: status codes, framing, and SSE priming" begin
@@ -1308,7 +1308,19 @@ end
     r = HTTP.request("GET", "$localhost/mcp"; status_exception=false, client=MCP_CLIENT)
     @test r.status == 200
     @test parsebody(r)["status"] == "ok"
+    @test HTTP.header(r, "Content-Type") == "application/json; charset=utf-8"
+    @test HTTP.header(r, "Connection") == "close"
+    @test parse(Int, HTTP.header(r, "Content-Length")) > 0
     @test HTTP.request("DELETE", "$localhost/mcp"; status_exception=false, client=MCP_CLIENT).status == 405
+
+    # GET only upgrades to SSE for an explicit, acceptable text/event-stream;
+    # q=0 and wildcards must stay on the JSON health path.
+    for accept in ("text/event-stream;q=0", "text/*", "*/*")
+        r = HTTP.request("GET", "$localhost/mcp"; headers=["Accept" => accept],
+                         status_exception=false, client=MCP_CLIENT)
+        @test r.status == 200
+        @test parsebody(r)["status"] == "ok"
+    end
 
     # a modern version header on GET is rejected with 405
     r = HTTP.request("GET", "$localhost/mcp"; headers=["MCP-Protocol-Version" => "2026-07-28"],
@@ -1447,9 +1459,9 @@ end
     ping = Dict("jsonrpc" => "2.0", "id" => 5, "method" => "ping", "params" => Dict())
     @test isempty(parsebody(raw_post(ping))["result"])
 
-    @test MCP.negotiate_version("2025-06-18") == "2025-06-18"
-    @test MCP.negotiate_version("1900-01-01") == "2025-11-25"
-    @test MCP.negotiate_version(nothing) == "2025-11-25"
+    @test MCP.Specs.negotiate_version("2025-06-18") == "2025-06-18"
+    @test MCP.Specs.negotiate_version("1900-01-01") == "2025-11-25"
+    @test MCP.Specs.negotiate_version(nothing) == "2025-11-25"
 end
 
 @testset "legacy structuredContent gating" begin
@@ -1508,7 +1520,7 @@ end
 
 @testset "legacy HTTP sessions" begin
     ctx = CONTEXT[]
-    sid_of(r) = HTTP.header(r, MCP.SESSION_HEADER)
+    sid_of(r) = HTTP.header(r, MCP.Sessions.SESSION_HEADER)
     init(version) = raw_post(Dict("jsonrpc" => "2.0", "id" => 1, "method" => "initialize",
                                   "params" => Dict("protocolVersion" => version, "capabilities" => Dict())))
     echo(sid, id) = raw_post(
@@ -1516,7 +1528,7 @@ end
              "params" => Dict("name" => "echo_place",
                               "arguments" => Dict("place" => Dict("name" => "S",
                                                                   "coordinates" => Dict("lat" => 1.0, "lon" => 2.0)))));
-        headers=[MCP.SESSION_HEADER => sid])
+        headers=[MCP.Sessions.SESSION_HEADER => sid])
 
     # initialize mints a session and returns its id; header-less initialize also
     # keeps the anonymous state in sync for old clients
@@ -1541,22 +1553,22 @@ end
 
     # an unknown session id is rejected with 404
     r = raw_post(Dict("jsonrpc" => "2.0", "id" => 5, "method" => "ping", "params" => Dict());
-                 headers=[MCP.SESSION_HEADER => "00000000-0000-0000-0000-000000000000"])
+                 headers=[MCP.Sessions.SESSION_HEADER => "00000000-0000-0000-0000-000000000000"])
     @test r.status == 404
     @test parsebody(r)["error"]["code"] == -32600
 
     # DELETE terminates the session; later requests naming it get 404
-    r = HTTP.request("DELETE", "$localhost/mcp", [MCP.SESSION_HEADER => sid2];
+    r = HTTP.request("DELETE", "$localhost/mcp", [MCP.Sessions.SESSION_HEADER => sid2];
                      status_exception=false, client=MCP_CLIENT)
     @test r.status == 200
     @test !haskey(ctx.mcp.sessions, sid2)
     r = raw_post(Dict("jsonrpc" => "2.0", "id" => 6, "method" => "ping", "params" => Dict());
-                 headers=[MCP.SESSION_HEADER => sid2])
+                 headers=[MCP.Sessions.SESSION_HEADER => sid2])
     @test r.status == 404
 
     # deleting an already-terminated (or plain unknown) session answers the same
     # JSON 404 as any other request naming it
-    r = HTTP.request("DELETE", "$localhost/mcp", [MCP.SESSION_HEADER => sid2];
+    r = HTTP.request("DELETE", "$localhost/mcp", [MCP.Sessions.SESSION_HEADER => sid2];
                      status_exception=false, client=MCP_CLIENT)
     @test r.status == 404
     @test parsebody(r)["error"]["code"] == -32600
@@ -1570,16 +1582,16 @@ end
 
     # expired sessions are swept when a new one is minted
     adapter_ctx = Oxygen.Core.ServerContext()
-    stale = MCP.MCPSession("stale")
-    stale.last_seen = time() - MCP.SESSION_TTL_SECONDS - 1
+    stale = MCP.Sessions.MCPSession("stale")
+    stale.last_seen = time() - MCP.Sessions.SESSION_TTL_SECONDS - 1
     lock(adapter_ctx.mcp.sessions_lock) do
         adapter_ctx.mcp.sessions["stale"] = stale
     end
-    fresh = MCP.new_session!(adapter_ctx)
+    fresh = MCP.Sessions.new_session!(adapter_ctx)
     @test !haskey(adapter_ctx.mcp.sessions, "stale")
     @test adapter_ctx.mcp.sessions[fresh.id] === fresh
-    @test MCP.legacy_version(adapter_ctx, fresh) == "2025-11-25"
-    @test MCP.legacy_version(adapter_ctx, nothing) == adapter_ctx.mcp.session_version[]
+    @test MCP.Sessions.legacy_version(adapter_ctx, fresh) == "2025-11-25"
+    @test MCP.Sessions.legacy_version(adapter_ctx, nothing) == adapter_ctx.mcp.session_version[]
 
     # restore the anonymous default for the tests that follow
     init("2025-11-25")
@@ -1632,7 +1644,7 @@ end
 
     # the modern era removed batching
     init("2025-11-25")
-    r = raw_post([add_call(4)]; headers=["MCP-Protocol-Version" => MCP.PROTOCOL_VERSION,
+    r = raw_post([add_call(4)]; headers=["MCP-Protocol-Version" => MCP.Specs.PROTOCOL_VERSION,
                                          "Mcp-Method" => "tools/call"])
     @test r.status == 400
     @test parsebody(r)["error"]["code"] == -32600
@@ -1662,7 +1674,7 @@ end
     streamed = Dict("jsonrpc" => "2.0", "id" => 11, "method" => "tools/call",
                     "params" => Dict("name" => "batch_stream_tool", "arguments" => Dict()))
     modern_meta = Dict("_meta" => Dict(
-        "io.modelcontextprotocol/protocolVersion" => MCP.PROTOCOL_VERSION,
+        "io.modelcontextprotocol/protocolVersion" => MCP.Specs.PROTOCOL_VERSION,
         "io.modelcontextprotocol/clientCapabilities" => Dict()))
     listen = Dict("jsonrpc" => "2.0", "id" => 12, "method" => "subscriptions/listen",
                   "params" => merge(Dict("notifications" => Dict("toolsListChanged" => true)),
@@ -1676,7 +1688,7 @@ end
     @test batch[1]["result"]["content"][1]["text"] == "batch complete"
     # a listen entry (modern, so dispatchable) is refused inside a batch
     @test batch[2]["id"] == 12
-    @test batch[2]["error"]["code"] == MCP.MCP_INVALID_REQUEST
+    @test batch[2]["error"]["code"] == MCP.Errors.MCP_INVALID_REQUEST
     @test occursin("not available in a batch", batch[2]["error"]["message"])
 end
 
@@ -1881,7 +1893,7 @@ serve(port=PORT, host=HOST, async=true, show_banner=false, show_errors=false, ac
 
     # cap the broker at one subscriber and fill it: the SSE GET cannot register
     # its sink and answers 503 instead of holding the connection open
-    mcp_broker = MCP.MCPBroker(; cap=1)
+    mcp_broker = MCP.Notifications.MCPBroker(; cap=1)
     MCP.PubSub.subscribe!(mcp_broker, _ -> true; csize=4)
     ctx.mcp.broker[] = mcp_broker
 
@@ -1898,13 +1910,13 @@ terminate()
 
 @testset "stdio notification sink at broker capacity" begin
     ctx = Oxygen.Core.ServerContext()
-    mcp_broker = MCP.MCPBroker(; cap=1)
+    mcp_broker = MCP.Notifications.MCPBroker(; cap=1)
     MCP.PubSub.subscribe!(mcp_broker, _ -> true; csize=4)
     ctx.mcp.broker[] = mcp_broker
 
-    notifier = MCP.StdioNotifier(IOBuffer())
+    notifier = MCP.Transports.StdioNotifier(IOBuffer())
     @test_logs (:warn, r"subscription capacity exhausted") match_mode=:any begin
-        @test MCP.subscribe_legacy_stdio!(ctx, notifier) === nothing
+        @test MCP.Transports.subscribe_legacy_stdio!(ctx, notifier) === nothing
     end
     @test isempty(notifier.subs)
 end

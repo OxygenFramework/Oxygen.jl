@@ -26,6 +26,7 @@ function check_origin(ctx::ServerContext, req::HTTP.Request)
             port = isnothing(uri.port) ? "" : ":" * string(uri.port)
             string(something(uri.host, "")) * port
         catch
+            # An unparseable Origin is not same-host; reject it below.
             ""
         end
         if !isempty(origin_host) && origin_host == String(host)
@@ -39,7 +40,7 @@ end
 # Pre-dispatch transport rejections: origin allowlist, JSON content type, and
 # (informationally) an unknown protocol version header. Writes the fixed
 # rejection itself and returns `true` when the request was answered.
-function reject_transport(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request)::Bool
+function reject_transport(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request) :: Bool
     origin_response = check_origin(ctx, req)
     if !isnothing(origin_response)
         write_stream_response(stream, origin_response.status, "text/plain; charset=utf-8", "Forbidden")
@@ -60,7 +61,7 @@ function reject_transport(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Req
     # strictly validated later, so this is informational only.
     header_version = HTTP.header(req, "MCP-Protocol-Version", "")
     if !isempty(header_version) && !(strip(String(header_version)) in SUPPORTED_VERSIONS)
-        @debug "Client requested unsupported protocol version" client_version=String(header_version) supported=SUPPORTED_VERSIONS
+        @debug("Client requested unsupported protocol version", client_version=String(header_version), supported=SUPPORTED_VERSIONS)
     end
     return false
 end
@@ -68,8 +69,14 @@ end
 # Write a dispatch result. Streamed tool calls and listen streams upgrade to
 # SSE; a `nothing` body (notification or client response) writes a bare status;
 # everything else is a JSON reply.
-function write_result(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request,
-                      body, status::Int, headers::Vector{Pair{String,String}})
+function write_result(
+    ctx::ServerContext,
+    stream::HTTP.Stream,
+    req::HTTP.Request,
+    body,
+    status::Int,
+    headers::Vector{Pair{String,String}})
+
     if body isa StreamedCall
         return stream_call(ctx, stream, req, body)
     elseif body isa ListenCall
@@ -206,7 +213,7 @@ or expired id is `404`, and the modern era, which has no sessions, is `405`.
 An accepted termination closes the session's notification streams and removes
 its state; later requests naming it get `404`.
 """
-function handle_delete(ctx::ServerContext, req::HTTP.Request)::HTTP.Response
+function handle_delete(ctx::ServerContext, req::HTTP.Request) :: HTTP.Response
     # A DELETE carries no body: its policy revision comes from the version
     # header alone. Revisions that reject DELETE answer before session
     # resolution, so a bad session id cannot mask the 405.

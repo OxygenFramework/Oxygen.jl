@@ -19,7 +19,7 @@ import ..Dispatch: handle_method
 # always served; prompts and resources only when at least one is registered.
 # Registration functions push list-changed notifications, so every advertised
 # `listChanged` flag is truthful; resources also support subscriptions.
-function server_capabilities(ctx::ServerContext)::Dict{String,Any}
+function server_capabilities(ctx::ServerContext) :: Dict{String,Any}
     capabilities = Dict{String,Any}(
         "tools" => Dict{String,Any}("listChanged" => true)
     )
@@ -32,7 +32,7 @@ function server_capabilities(ctx::ServerContext)::Dict{String,Any}
     return capabilities
 end
 
-function discover_result(ctx::ServerContext)::Dict{String,Any}
+function discover_result(ctx::ServerContext) :: Dict{String,Any}
     result = Dict{String,Any}(
         "supportedVersions" => copy(SUPPORTED_VERSIONS),
         "capabilities" => server_capabilities(ctx),
@@ -53,7 +53,11 @@ supported, otherwise the latest legacy revision is offered; the negotiated
 version is remembered on `session` (or on the context-wide anonymous state for
 stdio and header-less HTTP clients) for later feature gating.
 """
-function initialize_result(ctx::ServerContext, params; session::Union{Nothing,MCPSession}=nothing)::Dict{String,Any}
+function initialize_result(
+    ctx::ServerContext,
+    params;
+    session::Union{Nothing,MCPSession}=nothing) :: Dict{String,Any}
+
     client_version = get(params, "protocolVersion", nothing)
     if !(client_version isa AbstractString)
         client_version = nothing
@@ -77,41 +81,41 @@ end
 # Discovery methods, declared with the capability and version code above.
 
 function handle_method(
-    spec::Val, 
-    ::Val{:initialize}, 
-    ctx::ServerContext, 
+    spec::Val,
+    ::Val{:initialize},
+    ctx::ServerContext,
     req::Union{Nothing,HTTP.Request},
-    id, 
-    params, 
-    raw::String; 
+    id,
+    params,
+    raw::String;
     session::Union{Nothing,MCPSession}=nothing)
-    
+
     return result_response(ctx, id, initialize_result(ctx, params; session=session); spec=spec)
 end
 
 function handle_method(
-    spec::Val, 
-    ::Val{:server_discover}, 
-    ctx::ServerContext, 
-    req::Union{Nothing,HTTP.Request}, 
-    id, 
-    params, 
-    raw::String; 
+    spec::Val,
+    ::Val{:server_discover},
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    params,
+    raw::String;
     session::Union{Nothing,MCPSession}=nothing)
-    
+
     return result_response(ctx, id, discover_result(ctx); spec=spec)
 end
 
 function handle_method(
-    spec::Val, 
-    ::Val{:ping}, 
-    ctx::ServerContext, 
+    spec::Val,
+    ::Val{:ping},
+    ctx::ServerContext,
     req::Union{Nothing,HTTP.Request},
-    id, 
-    params, 
-    raw::String; 
+    id,
+    params,
+    raw::String;
     session::Union{Nothing,MCPSession}=nothing)
-    
+
     return result_response(ctx, id, Dict{String,Any}(); spec=spec)
 end
 

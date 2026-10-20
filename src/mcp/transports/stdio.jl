@@ -140,6 +140,7 @@ function close_notifier!(notifier::StdioNotifier)
         try
             wait(task)
         catch
+            # A forwarding task may have failed; shutdown still proceeds.
         end
     end
     empty!(notifier.tasks)

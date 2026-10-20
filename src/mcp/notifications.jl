@@ -29,7 +29,10 @@ struct SubscriptionNotification <: StreamEvent
     uri    :: Union{Nothing,String}
 end
 
-function SubscriptionNotification(method::AbstractString, params::AbstractDict)::SubscriptionNotification
+function SubscriptionNotification(
+    method::AbstractString,
+    params::AbstractDict) :: SubscriptionNotification
+
     return SubscriptionNotification(String(method), string_keyed(params), nothing)
 end
 
@@ -82,7 +85,7 @@ with `-32602`: the filter must be an object, the `*ListChanged` flags booleans,
 strings, and at least one notification type must be requested. Unknown keys are
 ignored for forward compatibility.
 """
-function parse_subscription_filter(notifications)::Union{SubscriptionFilter,String}
+function parse_subscription_filter(notifications) :: Union{SubscriptionFilter,String}
     if !(notifications isa AbstractDict)
         return "notifications must be an object"
     end
@@ -131,7 +134,7 @@ Serialize the honored filter subset to the `notifications` field of the
 acknowledgement. Types not subscribed are omitted; URIs are emitted sorted (the
 set has no stable order).
 """
-function filter_to_wire(filter::SubscriptionFilter)::Dict{String,Any}
+function filter_to_wire(filter::SubscriptionFilter) :: Dict{String,Any}
     wire = Dict{String,Any}()
     if filter.tools_list_changed
         wire["toolsListChanged"] = true
@@ -153,7 +156,10 @@ end
 
 Whether `event` was opted into by `filter`.
 """
-function filter_wants(filter::SubscriptionFilter, event::SubscriptionNotification)::Bool
+function filter_wants(
+    filter::SubscriptionFilter,
+    event::SubscriptionNotification) :: Bool
+
     method = event.method
     if method == "notifications/tools/list_changed"
         return filter.tools_list_changed
@@ -169,7 +175,7 @@ end
 
 # Whether the server currently advertises the `listChanged` capability for a
 # kind. Kept as a function (not a constant) because the registries are mutable.
-function list_changed_capable(ctx::ServerContext, kind::Symbol)::Bool
+function list_changed_capable(ctx::ServerContext, kind::Symbol) :: Bool
     if kind === :tools
         return true
     elseif kind === :prompts
@@ -180,8 +186,7 @@ function list_changed_capable(ctx::ServerContext, kind::Symbol)::Bool
     return false
 end
 
-has_resources(ctx::ServerContext)::Bool =
-    !isempty(ctx.mcp.resources) || !isempty(ctx.mcp.resource_templates)
+has_resources(ctx::ServerContext) :: Bool = !isempty(ctx.mcp.resources) || !isempty(ctx.mcp.resource_templates)
 
 """
     honored_filter(ctx, requested) :: SubscriptionFilter
@@ -214,7 +219,7 @@ is built on the next call. The `isopen` check is lock-free, which keeps it safe
 under `subscriptions_lock` (acquiring `broker.lock` there would violate this
 file's lock ordering).
 """
-function broker(ctx::ServerContext)::MCPBroker
+function broker(ctx::ServerContext) :: MCPBroker
     existing = ctx.mcp.broker[]
     if existing isa MCPBroker && isopen(existing)
         return existing
@@ -264,7 +269,7 @@ end
 Publish a server notification to every matching subscriber (listen streams and
 the legacy sinks). Returns the number of queues it was enqueued into.
 """
-function broadcast_notification(ctx::ServerContext, event::SubscriptionNotification)::Int
+function broadcast_notification(ctx::ServerContext, event::SubscriptionNotification) :: Int
     return PubSub.publish!(broker(ctx), event.method, event)
 end
 
@@ -284,7 +289,7 @@ Returns the number of subscriber queues the notification was enqueued into; a
 queue that dropped the value (`:drop_newest`) or was disconnected does not
 count.
 """
-function notify_change(ctx::ServerContext, kind::Symbol, value=nothing)::Int
+function notify_change(ctx::ServerContext, kind::Symbol, value=nothing) :: Int
     if kind === :resource_updated
         if !(value isa AbstractString)
             throw(ArgumentError("notify_change: :resource_updated requires a resource uri"))

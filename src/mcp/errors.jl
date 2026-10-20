@@ -5,7 +5,13 @@ module Errors
 
 export MCPRequestError, MCP_INVALID_PARAMS, MCP_RESOURCE_NOT_FOUND
 
-# Thrown while processing an MCP request to signal a JSON-RPC protocol error
+"""
+    MCPRequestError(code, message, data=nothing)
+
+An error raised while processing an MCP request. It carries the JSON-RPC error
+`code`, the client-facing `message`, and optional structured `data`; the
+transport turns it into an error response.
+"""
 struct MCPRequestError <: Exception
     code    :: Int
     message :: String
@@ -34,19 +40,19 @@ const MCP_UNSUPPORTED_PROTOCOL_VERSION           :: Int = -32022
 # this case into `MCP_INVALID_PARAMS` (-32602); `read_resource` picks by era.
 const MCP_RESOURCE_NOT_FOUND                     :: Int = -32002
 
-function toolerror_result(error)::Dict{String,Any}
+function toolerror_result(error) :: Dict{String,Any}
     return Dict{String,Any}(
         "content" => [Dict{String,Any}("type" => "text", "text" => sprint(showerror, error))],
         "isError" => true,
     )
 end
 
-function error_body(id, code::Int, message::String, data=nothing)::Dict{String,Any}
-    error = Dict{String,Any}("code" => code, "message" => message)
+function error_body(id, code::Int, message::String, data=nothing) :: Dict{String,Any}
+    error_object = Dict{String,Any}("code" => code, "message" => message)
     if !isnothing(data)
-        error["data"] = data
+        error_object["data"] = data
     end
-    return Dict{String,Any}("jsonrpc" => "2.0", "id" => id, "error" => error)
+    return Dict{String,Any}("jsonrpc" => "2.0", "id" => id, "error" => error_object)
 end
 
 # The modern-era per-request contract (`validate_modern_request`) is a revision

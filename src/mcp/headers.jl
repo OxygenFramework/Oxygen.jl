@@ -12,7 +12,7 @@ using ..Errors: MCPRequestError, MCP_HEADER_MISMATCH
 # ASCII case-insensitive comparison of wire names. Header names are ASCII and
 # lookups run several times per request, so folding byte-by-byte replaces the
 # `lowercase(String(key))` allocation this used to do for every header.
-function header_name_equals(name::AbstractString, target::AbstractString)::Bool
+function header_name_equals(name::AbstractString, target::AbstractString) :: Bool
     ncodeunits(name) == ncodeunits(target) || return false
     @inbounds for index in 1:ncodeunits(target)
         lhs = codeunit(name, index)
@@ -35,7 +35,7 @@ Case-insensitive lookup of a standard MCP request header. Returns `nothing` when
 absent, `:invalid` when the header is duplicated or carries unsafe bytes, and the
 whitespace-stripped value otherwise.
 """
-function mcp_standard_header(req::HTTP.Request, name::String)::Union{Nothing,String,Symbol}
+function mcp_standard_header(req::HTTP.Request, name::String) :: Union{Nothing,String,Symbol}
     found = nothing
     for (key, value) in req.headers
         header_name_equals(key, name) || continue
@@ -59,7 +59,7 @@ Base64 is validated strictly (canonical alphabet, correct padding, length a
 multiple of four) and must decode to valid UTF-8. Returns `nothing` when the
 value is a malformed sentinel; non-sentinel values are returned unchanged.
 """
-function decode_header_value(value::String)::Union{Nothing,String}
+function decode_header_value(value::String) :: Union{Nothing,String}
     prefix = "=?base64?"
     suffix = "?="
     if startswith(value, prefix) && endswith(value, suffix) && length(value) >= length(prefix) + length(suffix)
@@ -73,6 +73,7 @@ function decode_header_value(value::String)::Union{Nothing,String}
         decoded = try
             String(base64decode(encoded))
         catch
+            # Invalid Base64 cannot represent a sentinel value.
             return nothing
         end
         if !all(isvalid, decoded)
@@ -85,7 +86,7 @@ end
 
 # A required, well-formed standard header: throws the transport's
 # `-32020` error when the header is missing, duplicated, or unsafe.
-function required_header(req::HTTP.Request, name::String)::String
+function required_header(req::HTTP.Request, name::String) :: String
     value = mcp_standard_header(req, name)
     if value === :invalid
         throw(MCPRequestError(MCP_HEADER_MISMATCH,

@@ -8,8 +8,13 @@ Write a complete, non-streaming HTTP response directly to a raw `HTTP.Stream`.
 The MCP `GET` route is registered as a streaming route (so it can hold the
 connection open for SSE), so its fixed-body replies are written by hand.
 """
-function write_stream_response(stream::HTTP.Stream, status::Int, content_type::String, body::AbstractString;
-                               headers::Vector{Pair{String,String}}=Pair{String,String}[])
+function write_stream_response(
+    stream::HTTP.Stream,
+    status::Int,
+    content_type::String,
+    body::AbstractString;
+    headers::Vector{Pair{String,String}}=Pair{String,String}[])
+
     HTTP.setstatus(stream, status)
     HTTP.setheader(stream, "Content-Type" => content_type)
     # These fixed-body replies are written by a streaming handler, so the server
@@ -26,8 +31,12 @@ function write_stream_response(stream::HTTP.Stream, status::Int, content_type::S
     return nothing
 end
 
-function write_json_response(stream::HTTP.Stream, body; status::Int=200,
-                             headers::Vector{Pair{String,String}}=Pair{String,String}[])
+function write_json_response(
+    stream::HTTP.Stream,
+    body;
+    status::Int=200,
+    headers::Vector{Pair{String,String}}=Pair{String,String}[])
+
     return write_stream_response(stream, status, "application/json; charset=utf-8", JSON.json(body);
                                  headers=headers)
 end
@@ -42,16 +51,17 @@ end
 # The transport adapter decodes the request body before middleware runs, so the
 # stream's own message carries headers only; `decorate_request` stashes the
 # buffered request (body included) on the shared request context.
-function buffered_request(stream::HTTP.Stream)::HTTP.Request
+function buffered_request(stream::HTTP.Stream) :: HTTP.Request
     request = get(stream.message.context, :buffered_request, stream.message)
     return request isa HTTP.Request ? request : stream.message
 end
 
 # Decode the JSON request body; `(false, nothing)` marks a malformed body.
-function decode_body(req::HTTP.Request)::Tuple{Bool,Any}
+function decode_body(req::HTTP.Request) :: Tuple{Bool,Any}
     try
         return true, JSON.parse(String(req.body))
     catch
+        # A malformed body is reported as a parse error by the caller.
         return false, nothing
     end
 end

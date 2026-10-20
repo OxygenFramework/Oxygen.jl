@@ -13,8 +13,11 @@
 Build a `*/list` result under `key` through the revision's result strategy: the
 modern revision adds cache hints, legacy revisions leave the result untouched.
 """
-function list_result(key::String, items::Vector{Dict{String,Any}};
-                     spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+function list_result(
+    key::String,
+    items::Vector{Dict{String,Any}};
+    spec::Val=LATEST_LEGACY_SPEC) :: Dict{String,Any}
+
     return with_cache_hints(spec, Dict{String,Any}(key => items))
 end
 
@@ -25,7 +28,7 @@ end
 # JSON-RPC response helper used by the buffered and streamed result paths
 # alike. Transport-specific writers live in `../transports/io.jl` and
 # `../transports/transport.jl`.
-function result_body(id, result)::Dict{String,Any}
+function result_body(id, result) :: Dict{String,Any}
     return Dict{String,Any}("jsonrpc" => "2.0", "id" => id, "result" => result)
 end
 
@@ -36,8 +39,12 @@ Shape `result` through the revision's envelope (a no-op for legacy revisions)
 and wrap it in its JSON-RPC body. The single place the envelope is applied to
 successful results.
 """
-function result_response(ctx::ServerContext, id, result::Dict{String,Any};
-                         spec::Val=LATEST_LEGACY_SPEC)::Tuple{Dict{String,Any},Int}
+function result_response(
+    ctx::ServerContext,
+    id,
+    result::Dict{String,Any};
+    spec::Val=LATEST_LEGACY_SPEC) :: Tuple{Dict{String,Any},Int}
+
     return result_body(id, result_envelope(spec, ctx, result)), 200
 end
 
@@ -48,6 +55,6 @@ The JSON-RPC error body for a thrown `MCPRequestError`, normally using the
 error's own code. `read_resource` overrides the code to translate the legacy
 not-found error by era.
 """
-function request_error_body(id, error::MCPRequestError, code::Int=error.code)::Dict{String,Any}
+function request_error_body(id, error::MCPRequestError, code::Int=error.code) :: Dict{String,Any}
     return error_body(id, code, error.message, error.data)
 end

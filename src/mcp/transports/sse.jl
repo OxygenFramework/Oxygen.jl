@@ -58,7 +58,12 @@ subscription id under `params._meta`, and a `FinalEvent` is written as the
 JSON-RPC response that closes the stream gracefully. On disconnect the stream is
 cancelled (which prunes the broker subscription) and the record removed.
 """
-function stream_listen_call(ctx::ServerContext, stream::HTTP.Stream, req::HTTP.Request, call::ListenCall)
+function stream_listen_call(
+    ctx::ServerContext,
+    stream::HTTP.Stream,
+    req::HTTP.Request,
+    call::ListenCall)
+
     if !accepts_event_stream(req)
         remove_listen!(ctx, call.record)
         cancel_stream!(call.stream)
@@ -92,8 +97,11 @@ terminated with `DELETE`; a header-less sink keeps using the anonymous set. It
 stays open until the client disconnects. This is what stops mainstream clients
 from tearing the stream down and reconnecting once per second.
 """
-function stream_notifications(ctx::ServerContext, stream::HTTP.Stream;
-                              session::Union{Nothing,MCPSession}=nothing)
+function stream_notifications(
+    ctx::ServerContext,
+    stream::HTTP.Stream;
+    session::Union{Nothing,MCPSession}=nothing)
+
     mcp_broker = broker(ctx)
     sub = try
         subscribe_legacy!(ctx; label="legacy-http", session=session)

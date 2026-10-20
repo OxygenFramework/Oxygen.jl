@@ -9,7 +9,8 @@ using HTTP
 
 using ...AppContext: ServerContext
 
-using ..Errors: MCPRequestError, MCP_INVALID_PARAMS, MCP_RESOURCE_NOT_FOUND, MCP_UNSUPPORTED_PROTOCOL_VERSION, MCP_HEADER_MISMATCH
+using ..Errors: MCPRequestError, MCP_INVALID_PARAMS, MCP_RESOURCE_NOT_FOUND,
+    MCP_UNSUPPORTED_PROTOCOL_VERSION, MCP_HEADER_MISMATCH
 using ..Envelopes: META_KEY, META_PROTOCOL, META_CLIENT_CAPABILITIES, LIST_TTL_MS, modern_envelope
 using ..Headers: required_header, decode_header_value
 
@@ -55,7 +56,7 @@ Negotiate the protocol version for a legacy `initialize` handshake: echo the
 client's version when it is a supported legacy revision, otherwise fall back to
 the latest legacy revision and let the client decide whether it can proceed.
 """
-function negotiate_version(client_version::Union{Nothing,AbstractString})::String
+function negotiate_version(client_version::Union{Nothing,AbstractString}) :: String
     if !isnothing(client_version)
         spec = spec_from_version(client_version)
         if !isnothing(spec) && is_legacy(spec)

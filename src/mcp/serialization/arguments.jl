@@ -110,10 +110,18 @@ Resolve the wire arguments into the positional values and keyword pairs that
 invoke the handler. Kept separate from the invocation so a streaming call can
 surface argument-validation errors before its producer task starts.
 """
-function resolve_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-                            params::Vector{MCPParam}, argnames::Vector{Symbol},
-                            has_context::Bool, has_request::Bool, arguments;
-                            inject_request::Bool=false, has_stream::Bool=false, stream=nothing)
+function resolve_registered(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    params::Vector{MCPParam},
+    argnames::Vector{Symbol},
+    has_context::Bool,
+    has_request::Bool,
+    arguments;
+    inject_request::Bool=false,
+    has_stream::Bool=false,
+    stream=nothing)
+
     pos_values = Any[]
     kwpairs = Pair{Symbol,Any}[]
 
@@ -135,7 +143,7 @@ function resolve_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request}
     if has_context
         push!(kwpairs, :context => getappcontext(ctx))
     end
-    
+
     if has_request
         push!(kwpairs, :request => req)
     end
@@ -147,10 +155,19 @@ function resolve_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request}
     return pos_values, kwpairs
 end
 
-function invoke_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, handler::Function,
-                           params::Vector{MCPParam}, argnames::Vector{Symbol},
-                           has_context::Bool, has_request::Bool, arguments;
-                           inject_request::Bool=false, has_stream::Bool=false, stream=nothing)
+function invoke_registered(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    handler::Function,
+    params::Vector{MCPParam},
+    argnames::Vector{Symbol},
+    has_context::Bool,
+    has_request::Bool,
+    arguments;
+    inject_request::Bool=false,
+    has_stream::Bool=false,
+    stream=nothing)
+
     pos_values, kwpairs = resolve_registered(ctx, req, params, argnames,
                                              has_context, has_request, arguments;
                                              inject_request=inject_request,
@@ -160,14 +177,24 @@ end
 
 # Node-based entry points: dispatch on the registered component once instead of
 # threading its fields through every call site.
-function resolve_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-                            node::MCPCallable, arguments; kwargs...)
+function resolve_registered(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    node::MCPCallable,
+    arguments;
+    kwargs...)
+
     return resolve_registered(ctx, req, node.params, node.argnames, node.has_context,
                               node.has_request, arguments; kwargs...)
 end
 
-function invoke_registered(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-                           node::MCPCallable, arguments; kwargs...)
+function invoke_registered(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    node::MCPCallable,
+    arguments;
+    kwargs...)
+
     return invoke_registered(ctx, req, node.handler, node.params, node.argnames,
                              node.has_context, node.has_request, arguments; kwargs...)
 end
@@ -202,7 +229,8 @@ function resolve_registered_node(registry, id, params, label::String)
         arguments = Dict{String,Any}()
     end
     if !(arguments isa AbstractDict)
-        return nothing, (error_body(id, MCP_INVALID_PARAMS, "Invalid arguments: expected an object"), 200)
+        return nothing, (
+            error_body(id, MCP_INVALID_PARAMS, "Invalid arguments: expected an object"), 200)
     end
 
     return node, arguments

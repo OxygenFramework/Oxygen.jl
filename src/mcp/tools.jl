@@ -31,18 +31,30 @@ export register_tool!, register_route_tool!, validate_mcp_param_keys
 # `HandlerSignature`, `reflect_handler`, and `function_docstring` are shared
 # with prompts and resources and live in `MCP.Serialization`.
 
-# Guard against mistyped parameter metadata: every key in `descriptions`/`names`
-# must name a real handler parameter, and when `require_complete` is set every
-# handler parameter must carry a description. Throws `ArgumentError` otherwise.
-function validate_mcp_param_keys(func::Function, descriptions::Dict{Symbol,String},
-                                 names::Dict{Symbol,String}; skip_first::Bool=false,
-                                 require_complete::Bool=false)
+"""
+    validate_mcp_param_keys(func, descriptions, names; skip_first=false, require_complete=false)
+
+Guard against mistyped parameter metadata: every key in `descriptions`/`names`
+must name a real handler parameter, and when `require_complete` is set every
+handler parameter must carry a description. Throws `ArgumentError` otherwise.
+"""
+function validate_mcp_param_keys(
+    func::Function,
+    descriptions::Dict{Symbol,String},
+    names::Dict{Symbol,String};
+    skip_first::Bool=false,
+    require_complete::Bool=false)
+
     return validate_mcp_param_keys(reflect_handler(func; skip_first=skip_first),
                                    descriptions, names; require_complete=require_complete)
 end
 
-function validate_mcp_param_keys(signature::HandlerSignature, descriptions::Dict{Symbol,String},
-                                 names::Dict{Symbol,String}; require_complete::Bool=false)
+function validate_mcp_param_keys(
+    signature::HandlerSignature,
+    descriptions::Dict{Symbol,String},
+    names::Dict{Symbol,String};
+    require_complete::Bool=false)
+
     allowed = Set(p.param.name for p in signature.params)
 
     # Metadata keys that don't name a real handler parameter (mistyped or extra)
@@ -106,12 +118,18 @@ router description is used as a group prefix for the tool description. The
 tool's wire name defaults to the handler's name (endpoint-specific) unless the
 route metadata supplies `name`.
 """
-function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Function; httpmethod::String="", route::String="")
+function register_route_tool!(
+    ctx::ServerContext,
+    config::MCPConfig,
+    func::Function;
+    httpmethod::String="",
+    route::String="")
+
     signature = reflect_handler(func; descriptions=config.parameters, names=config.names, skip_first=true)
     inject_request = !isempty(signature.info.args)
 
     own = !isempty(config.description) ? config.description : function_docstring(func)
-    description = 
+    description =
         if !isempty(config.group) && !isempty(own)
             "$(config.group): $own"
         elseif !isempty(own)
@@ -120,7 +138,7 @@ function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Funct
             config.group
         end
 
-    wirename = 
+    wirename =
         if !isnothing(config.toolname)
             string(config.toolname)
         elseif !Base.isgensym(signature.info.name)
@@ -159,7 +177,7 @@ function register_route_tool!(ctx::ServerContext, config::MCPConfig, func::Funct
 end
 
 # Build a stable, endpoint-specific tool name for an anonymous handler.
-function derived_tool_name(httpmethod::String, route::String)::String
+function derived_tool_name(httpmethod::String, route::String) :: String
     slug = strip(replace(route, r"[^A-Za-z0-9]+" => "_"), '_')
     if isempty(slug)
         slug = "tool"
@@ -169,7 +187,14 @@ function derived_tool_name(httpmethod::String, route::String)::String
 end
 
 # Shared registry write. A wire name may only be claimed once.
-function store_tool!(ctx::ServerContext, wirename::String, description::String, func::Function, signature::HandlerSignature, inject_request::Bool)
+function store_tool!(
+    ctx::ServerContext,
+    wirename::String,
+    description::String,
+    func::Function,
+    signature::HandlerSignature,
+    inject_request::Bool)
+
     if haskey(ctx.mcp.tools, wirename)
         throw(ArgumentError("An MCP tool named `$wirename` is already registered"))
     end
@@ -183,7 +208,7 @@ function store_tool!(ctx::ServerContext, wirename::String, description::String, 
 end
 
 # The client's per-request progress token (a string or integer per the spec).
-function progress_token(params)::Any
+function progress_token(params) :: Any
     meta = get(params, META_KEY, nothing)
     if !(meta isa AbstractDict)
         return nothing
@@ -195,7 +220,7 @@ end
 # Methods
 # ----------------------------------------------------------------------------
 
-function tools_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+function tools_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC) :: Dict{String,Any}
     tools = Dict{String,Any}[]
     for name in sort(collect(keys(ctx.mcp.tools)))
         tool = ctx.mcp.tools[name]
@@ -208,8 +233,13 @@ function tools_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{Stri
     return list_result("tools", tools; spec=spec)
 end
 
-function call_tool(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
-                   spec::Val=LATEST_LEGACY_SPEC)::Tuple{Union{Dict{String,Any},StreamedCall},Int}
+function call_tool(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    params;
+    spec::Val=LATEST_LEGACY_SPEC) :: Tuple{Union{Dict{String,Any},StreamedCall},Int}
+
     tool, arguments = resolve_registered_node(ctx.mcp.tools, id, params, "tool")
     if isnothing(tool)
         return arguments
@@ -259,12 +289,24 @@ end
 
 # Served in every revision; the result-shaping differences live behind the
 # strategy interface (`list_result`, `tool_success_result`).
-handle_method(spec::Val, ::Val{:tools_list}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session=nothing) =
-    result_response(ctx, id, tools_list(ctx; spec=spec); spec=spec)
+handle_method(
+    spec::Val,
+    ::Val{:tools_list},
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    params,
+    raw::String;
+    session=nothing) = result_response(ctx, id, tools_list(ctx; spec=spec); spec=spec)
 
-handle_method(spec::Val, ::Val{:tools_call}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session=nothing) =
-    call_tool(ctx, req, id, params; spec=spec)
+handle_method(
+    spec::Val,
+    ::Val{:tools_call},
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    params,
+    raw::String;
+    session=nothing) = call_tool(ctx, req, id, params; spec=spec)
 
 end # module Tools

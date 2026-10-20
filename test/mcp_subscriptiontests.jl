@@ -513,9 +513,10 @@ end
 
 @testset "parse_subscription_filter accepts known keys and rejects the rest" begin
     # unknown keys are ignored; the known flags are recorded
-    filter = MCP.Notifications.parse_subscription_filter(Dict("unknownKey" => 1, "toolsListChanged" => true))
-    @test filter isa MCP.Notifications.SubscriptionFilter
-    @test filter.tools_list_changed
+    subscription_filter = MCP.Notifications.parse_subscription_filter(
+        Dict("unknownKey" => 1, "toolsListChanged" => true))
+    @test subscription_filter isa MCP.Notifications.SubscriptionFilter
+    @test subscription_filter.tools_list_changed
 
     # a malformed filter comes back as a rejection reason (a String) instead
     @test MCP.Notifications.parse_subscription_filter(nothing) isa String
@@ -527,7 +528,7 @@ end
           Set(["a", "b"])
 
     # the parsed filter round-trips to the acknowledgement wire form
-    wire = MCP.Notifications.filter_to_wire(filter)
+    wire = MCP.Notifications.filter_to_wire(subscription_filter)
     @test wire == Dict{String,Any}("toolsListChanged" => true)
 end
 

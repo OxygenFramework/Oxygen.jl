@@ -9,12 +9,13 @@ export parse_mcp_parameters, normalize_mcp_config, merge_mcp_configs, resolve_mc
 # them comparable to reflected parameter names without the String->Symbol
 # coercion that would silently mask a typo, and lets `get` work uniformly across
 # `NamedTuple` and `Dict` metadata.
-symbol_key(key::Symbol)::Symbol = key
-symbol_key(key) = throw(ArgumentError("MCP metadata and parameter names must be Symbols, got a $(typeof(key)): $(repr(key))"))
+symbol_key(key::Symbol) :: Symbol = key
+symbol_key(key) = throw(ArgumentError(
+    "MCP metadata and parameter names must be Symbols, got a $(typeof(key)): $(repr(key))"))
 
 # MCP description text: `nothing` means "not supplied" rather than the string "nothing"
-mcp_description(::Nothing)::String = ""
-mcp_description(value::Any)::String = string(value)
+mcp_description(::Nothing) :: String = ""
+mcp_description(value::Any) :: String = string(value)
 
 # Normalize a collection of parameter declarations into an iterable of `(key, value)` pairs
 mcp_entries(::Nothing) = ()
@@ -67,16 +68,16 @@ explicitly disabled config), `true` (an enabled config with defaults), a
 The override container (`NamedTuple` or `Dict`) must use `Symbol` keys; the two
 are normalized by the same helper.
 """
-normalize_mcp_config(::Nothing)::Nullable{MCPConfig} = nothing
-normalize_mcp_config(mcp::Bool)::Nullable{MCPConfig} = MCPConfig(enabled=mcp)
+normalize_mcp_config(::Nothing) :: Nullable{MCPConfig} = nothing
+normalize_mcp_config(mcp::Bool) :: Nullable{MCPConfig} = MCPConfig(enabled=mcp)
 # A bare string is a description shorthand. This also makes the natural
 # single-field form `mcp = (description = "...")` work, since Julia parses a
 # one-element `(key = value)` as an assignment rather than a NamedTuple.
-normalize_mcp_config(mcp::AbstractString)::Nullable{MCPConfig} =
+normalize_mcp_config(mcp::AbstractString) :: Nullable{MCPConfig} =
     MCPConfig(enabled=true, description=String(mcp))
-normalize_mcp_config(mcp::NamedTuple)::Nullable{MCPConfig} = normalize_mcp_overrides(mcp)
-normalize_mcp_config(mcp::AbstractDict)::Nullable{MCPConfig} = normalize_mcp_overrides(mcp)
-normalize_mcp_config(mcp)::Nullable{MCPConfig} = throw(ArgumentError(
+normalize_mcp_config(mcp::NamedTuple) :: Nullable{MCPConfig} = normalize_mcp_overrides(mcp)
+normalize_mcp_config(mcp::AbstractDict) :: Nullable{MCPConfig} = normalize_mcp_overrides(mcp)
+normalize_mcp_config(mcp) :: Nullable{MCPConfig} = throw(ArgumentError(
     "Invalid `mcp` metadata: expected true, false, a description string, a NamedTuple, or a Dict"))
 
 # Parse the `description`/`parameters`/`names`/`name` overrides carried by a
@@ -104,9 +105,13 @@ function normalize_mcp_overrides(mcp::Union{NamedTuple,AbstractDict})
     )
 end
 
-# Combine an enclosing router's config with a route's config, letting the route
-# win. `group` carries the router description so it can prefix the final text.
-function merge_mcp_configs(outer::MCPConfig, route::MCPConfig)::MCPConfig
+"""
+    merge_mcp_configs(outer::MCPConfig, route::MCPConfig) :: MCPConfig
+
+Combine an enclosing router's config with a route's config, letting the route
+win. `group` carries the router description so it can prefix the final text.
+"""
+function merge_mcp_configs(outer::MCPConfig, route::MCPConfig) :: MCPConfig
     return MCPConfig(
         enabled = route.enabled,
         description = route.description,
@@ -125,7 +130,8 @@ authoritative: inner (route) metadata cannot re-enable it. An explicitly disable
 route (`mcp = false`) excludes the route. Otherwise the route's values override
 the router's, with parameter descriptions/wire names merged.
 """
-function resolve_mcp_config(outer::Nullable{MCPConfig}, route::Nullable{MCPConfig})::Nullable{MCPConfig}
+function resolve_mcp_config(outer::Nullable{MCPConfig}, route::Nullable{MCPConfig}) :: Nullable{MCPConfig}
+
     # A disabled router excludes its whole group; a route cannot opt back in.
     if !isnothing(outer) && !outer.enabled
         return nothing

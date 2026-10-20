@@ -9,8 +9,10 @@
 # identifier key (`uri` vs `uriTemplate`). `icons` postdate the oldest legacy
 # revisions, so the revision gates it off for clients that may reject unknown
 # fields; passing `nothing` keeps it for direct callers.
-function resource_entry(resource::MCPResource;
-                        spec::Union{Nothing,Val}=nothing)::Dict{String,Any}
+function resource_entry(
+    resource::MCPResource;
+    spec::Union{Nothing,Val}=nothing) :: Dict{String,Any}
+
     entry = Dict{String,Any}(
         "name" => resource.name,
         "description" => resource.description,
@@ -34,17 +36,23 @@ function resource_entry(resource::MCPResource;
     return entry
 end
 
-function resource_list(entries::Dict{String,MCPResource}, key::String;
-                       spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+function resource_list(
+    entries::Dict{String,MCPResource},
+    key::String;
+    spec::Val=LATEST_LEGACY_SPEC) :: Dict{String,Any}
+
     items = [resource_entry(entries[uri]; spec=spec) for uri in sort(collect(keys(entries)))]
     return list_result(key, items; spec=spec)
 end
 
-function resources_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+function resources_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC) :: Dict{String,Any}
     return resource_list(ctx.mcp.resources, "resources"; spec=spec)
 end
 
-function resource_templates_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+function resource_templates_list(
+    ctx::ServerContext;
+    spec::Val=LATEST_LEGACY_SPEC) :: Dict{String,Any}
+
     return resource_list(ctx.mcp.resource_templates, "resourceTemplates"; spec=spec)
 end
 
@@ -67,8 +75,13 @@ function resolve_resource(ctx::ServerContext, uri::String)
     return nothing
 end
 
-function read_resource(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
-                       spec::Val=LATEST_LEGACY_SPEC)::Tuple{Dict{String,Any},Int}
+function read_resource(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    params;
+    spec::Val=LATEST_LEGACY_SPEC) :: Tuple{Dict{String,Any},Int}
+
     body_uri = get(params, "uri", nothing)
     if !(body_uri isa AbstractString) || isempty(body_uri)
         return error_body(id, MCP_INVALID_PARAMS, "Missing resource URI"), 200
@@ -107,15 +120,35 @@ end
 
 # Served in every revision; the list/read shaping differences (icons, cache
 # hints, not-found code) live behind the strategy interface.
-handle_method(spec::Val, ::Val{:resources_list}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session=nothing) =
+handle_method(
+    spec::Val,
+    ::Val{:resources_list},
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    params,
+    raw::String;
+    session=nothing) =
     result_response(ctx, id, resources_list(ctx; spec=spec); spec=spec)
 
-handle_method(spec::Val, ::Val{:resources_templates_list}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session=nothing) =
+handle_method(
+    spec::Val,
+    ::Val{:resources_templates_list},
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    params,
+    raw::String;
+    session=nothing) =
     result_response(ctx, id, resource_templates_list(ctx; spec=spec); spec=spec)
 
-handle_method(spec::Val, ::Val{:resources_read}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-              id, params, raw::String; session=nothing) =
+handle_method(
+    spec::Val,
+    ::Val{:resources_read},
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    params,
+    raw::String;
+    session=nothing) =
     read_resource(ctx, req, id, params; spec=spec)
-

@@ -10,7 +10,8 @@ using ...Types: MCPPrompt, isrequired
 
 using ..Errors: MCPRequestError, MCP_INTERNAL_ERROR, error_body
 using ..Notifications: notify_change
-using ..Serialization: reflect_handler, function_docstring, resolve_registered_node, invoke_registered, result_response, request_error_body, list_result, content_block
+using ..Serialization: reflect_handler, function_docstring, resolve_registered_node,
+    invoke_registered, result_response, request_error_body, list_result, content_block
 using ..Specs: LATEST_LEGACY_SPEC
 
 import ..Dispatch: handle_method
@@ -57,7 +58,7 @@ end
 # The spec allows only `user` and `assistant` in prompt messages.
 const PROMPT_ROLES = ("user", "assistant")
 
-function normalize_role(role)::String
+function normalize_role(role) :: String
     r = lowercase(string(role))
     if !(r in PROMPT_ROLES)
         throw(ArgumentError("Invalid prompt role `$role`; expected \"user\" or \"assistant\""))
@@ -65,7 +66,7 @@ function normalize_role(role)::String
     return r
 end
 
-function prompt_message(role, content)::Dict{String,Any}
+function prompt_message(role, content) :: Dict{String,Any}
     return Dict{String,Any}(
         "role" => normalize_role(role),
         "content" => content_block(content),
@@ -82,13 +83,13 @@ function prompt_result(value)
     elseif value isa AbstractString || value isa HTTP.Response || value isa AbstractVector{UInt8}
         return Any[prompt_message("user", value)]
     elseif value isa AbstractVector
-        return Any[_prompt_entry(item) for item in value]
+        return Any[prompt_entry(item) for item in value]
     else
         return Any[prompt_message("user", value)]
     end
 end
 
-function _prompt_entry(item)
+function prompt_entry(item)
     if item isa Pair
         return prompt_message(item.first, item.second)
     elseif item isa AbstractDict && haskey(item, "role") && haskey(item, "content")
@@ -104,7 +105,7 @@ end
 
 # The prompt's argument list is its handler signature: every non-injected
 # parameter becomes a template variable, required when it has no default.
-function prompt_arguments(prompt::MCPPrompt)::Vector{Any}
+function prompt_arguments(prompt::MCPPrompt) :: Vector{Any}
     args = Any[]
     for p in prompt.params
         push!(args, Dict{String,Any}(
@@ -115,7 +116,7 @@ function prompt_arguments(prompt::MCPPrompt)::Vector{Any}
     return args
 end
 
-function prompts_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+function prompts_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC) :: Dict{String,Any}
     prompts = Dict{String,Any}[]
     for name in sort(collect(keys(ctx.mcp.prompts)))
         prompt = ctx.mcp.prompts[name]
@@ -128,8 +129,13 @@ function prompts_list(ctx::ServerContext; spec::Val=LATEST_LEGACY_SPEC)::Dict{St
     return list_result("prompts", prompts; spec=spec)
 end
 
-function get_prompt(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, params;
-                    spec::Val=LATEST_LEGACY_SPEC)::Tuple{Dict{String,Any},Int}
+function get_prompt(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    params;
+    spec::Val=LATEST_LEGACY_SPEC) :: Tuple{Dict{String,Any},Int}
+
     prompt, arguments = resolve_registered_node(ctx.mcp.prompts, id, params, "prompt")
     if isnothing(prompt)
         return arguments
@@ -156,23 +162,23 @@ end
 
 # Served in every revision; the list result is shaped by the strategy interface.
 handle_method(
-    spec::Val, 
-    ::Val{:prompts_list}, 
-    ctx::ServerContext, 
+    spec::Val,
+    ::Val{:prompts_list},
+    ctx::ServerContext,
     req::Union{Nothing,HTTP.Request},
-    id, 
-    params, 
-    raw::String; 
+    id,
+    params,
+    raw::String;
     session=nothing) = result_response(ctx, id, prompts_list(ctx; spec=spec); spec=spec)
 
 handle_method(
-    spec::Val, 
-    ::Val{:prompts_get}, 
-    ctx::ServerContext, 
+    spec::Val,
+    ::Val{:prompts_get},
+    ctx::ServerContext,
     req::Union{Nothing,HTTP.Request},
-    id, 
-    params, 
-    raw::String; 
+    id,
+    params,
+    raw::String;
     session=nothing) = get_prompt(ctx, req, id, params; spec=spec)
 
 end # module Prompts

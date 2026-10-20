@@ -3,7 +3,7 @@
 
 # Collect every `Accept` header value (`Accept` may be spread across repeated
 # header entries).
-function accept_headers(req::HTTP.Request)::Vector{String}
+function accept_headers(req::HTTP.Request) :: Vector{String}
     accept = String[]
     for (key, value) in req.headers
         if header_name_equals(key, "accept")
@@ -15,7 +15,7 @@ end
 
 # Split one `Accept` media-range into its lowercased media type and its `q`
 # weight (default 1.0; a malformed weight is read as a refusal).
-function parse_media_range(entry::AbstractString)::Tuple{String,Float64}
+function parse_media_range(entry::AbstractString) :: Tuple{String,Float64}
     fields = split(entry, ';')
     media = lowercase(strip(fields[1]))
     q = 1.0
@@ -41,7 +41,7 @@ With `explicit=true`, only an explicit `text/event-stream` range opts in; a
 wildcard does not. The legacy `GET` endpoint uses this form so an `Accept: */*`
 health check does not accidentally hold the connection open as SSE.
 """
-function accepts_event_stream(req::HTTP.Request; explicit::Bool=false)::Bool
+function accepts_event_stream(req::HTTP.Request; explicit::Bool=false) :: Bool
     accept = accept_headers(req)
     isempty(accept) && return false
 

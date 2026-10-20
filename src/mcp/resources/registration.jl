@@ -11,8 +11,13 @@
 # parameter name, including the injected names `reflect_handler` drops from
 # the schema: a positional `request`/`context`/`stream` would be silently
 # dropped and then fail at invocation time, because injection is keyword-based.
-function validate_resource_params(uri::String, template::Bool, vars::Vector{String},
-                                  mcp_params::Vector{MCPParam}, positional::Vector{Symbol})
+function validate_resource_params(
+    uri::String,
+    template::Bool,
+    vars::Vector{String},
+    mcp_params::Vector{MCPParam},
+    positional::Vector{Symbol})
+
     for name in positional
         if name in (:context, :request, :stream)
             throw(ArgumentError(
@@ -70,7 +75,7 @@ Validate the optional spec `annotations` object: `audience` (an array of
 `lastModified` (an ISO 8601 string). Unknown keys are authoring errors rather
 than silently dropped fields.
 """
-function normalize_annotations(annotations)::Nullable{Dict{String,Any}}
+function normalize_annotations(annotations) :: Nullable{Dict{String,Any}}
     if isnothing(annotations)
         return nothing
     end
@@ -132,7 +137,7 @@ Validate the optional spec `icons` array. An icon is a `src` string shorthand
 or a `NamedTuple`/`Dict` with a non-empty `src` plus optional `mimeType`,
 `sizes` (an array of strings), and `theme` (`"light"`/`"dark"`).
 """
-function normalize_icons(icons)::Nullable{Vector{Dict{String,Any}}}
+function normalize_icons(icons) :: Nullable{Vector{Dict{String,Any}}}
     if isnothing(icons)
         return nothing
     end
@@ -143,7 +148,7 @@ function normalize_icons(icons)::Nullable{Vector{Dict{String,Any}}}
     return Dict{String,Any}[normalize_icon(icon) for icon in entries]
 end
 
-function normalize_icon(icon)::Dict{String,Any}
+function normalize_icon(icon) :: Dict{String,Any}
     if icon isa AbstractString
         return Dict{String,Any}("src" => String(icon))
     end
@@ -177,11 +182,11 @@ function normalize_icon(icon)::Dict{String,Any}
 
     if haskey(normalized, "sizes")
         sizes = normalized["sizes"]
-        if !(sizes isa AbstractVector && all(size -> size isa AbstractString, sizes))
+        if !(sizes isa AbstractVector && all(dimension -> dimension isa AbstractString, sizes))
             throw(ArgumentError(
                 "MCP resource icon `sizes` must be an array of strings"))
         end
-        normalized["sizes"] = String[String(size) for size in sizes]
+        normalized["sizes"] = String[String(dimension) for dimension in sizes]
     end
 
     if haskey(normalized, "theme")
@@ -213,9 +218,18 @@ anonymous handlers) and `mime_type` becomes the default content type of
 `resources/read` replies. `annotations` (`audience`/`priority`/`lastModified`)
 and `icons` are validated and emitted on the resource entry.
 """
-function register_resource!(ctx::ServerContext, uri::String, desc, func::Function;
-                            name=nothing, title=nothing, mime_type=nothing, size=nothing,
-                            annotations=nothing, icons=nothing)
+function register_resource!(
+    ctx::ServerContext,
+    uri::String,
+    desc,
+    func::Function;
+    name=nothing,
+    title=nothing,
+    mime_type=nothing,
+    size=nothing,
+    annotations=nothing,
+    icons=nothing)
+
     if isempty(uri)
         throw(ArgumentError("An MCP resource URI cannot be empty"))
     end
@@ -271,4 +285,3 @@ function register_resource!(ctx::ServerContext, uri::String, desc, func::Functio
     notify_change(ctx, :resources_changed)
     return resource
 end
-

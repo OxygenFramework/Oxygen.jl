@@ -85,8 +85,12 @@ routeless stdio stream) also rejects duplicate ids, because all of one
 connection's streams share the registry; on HTTP each listen stream is its own
 connection, so two clients using the same id are two independent subscriptions.
 """
-function listen_admission(ctx::ServerContext, id; cancellable::Bool,
-                          record::Union{Nothing,ListenRecord}=nothing)::Symbol
+function listen_admission(
+    ctx::ServerContext,
+    id;
+    cancellable::Bool,
+    record::Union{Nothing,ListenRecord}=nothing) :: Symbol
+
     return lock(ctx.mcp.subscriptions_lock) do
         sweep_listens!(ctx)
         if length(ctx.mcp.listens) >= MAX_LISTEN_SUBSCRIPTIONS
@@ -130,8 +134,9 @@ function listen_call(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, p
                           "subscriptions/listen requires a string or integer request id"), 400
     end
     if id isa String && ncodeunits(id) > MAX_SUBSCRIPTION_ID_LENGTH
-        return error_body(id, MCP_INVALID_REQUEST,
-                          "subscriptions/listen id exceeds $(MAX_SUBSCRIPTION_ID_LENGTH) bytes"), 400
+        return error_body(
+            id, MCP_INVALID_REQUEST,
+            "subscriptions/listen id exceeds $(MAX_SUBSCRIPTION_ID_LENGTH) bytes"), 400
     end
 
     key = listen_key(id)
@@ -206,7 +211,7 @@ is sent. Only stdio streams are addressable by id; HTTP streams are never
 cancellable this way (see `ListenRecord.cancellable`). Returns `true` when an
 active cancellable stream was cancelled.
 """
-function cancel_listen!(ctx::ServerContext, id)::Bool
+function cancel_listen!(ctx::ServerContext, id) :: Bool
     record = lock(ctx.mcp.subscriptions_lock) do
         found = stdio_listen(ctx, id)
         if isnothing(found)
@@ -248,13 +253,15 @@ function close_listens!(ctx::ServerContext)
         try
             close(record.stream.channel)
         catch
+            # The transport may have closed the channel first; either way the
+            # stream is already ending.
         end
     end
     return nothing
 end
 
 # The JSON-RPC response that closes a listen stream gracefully.
-function closing_body(ctx::ServerContext, id)::Dict{String,Any}
+function closing_body(ctx::ServerContext, id) :: Dict{String,Any}
     result = result_envelope(LATEST_MODERN_SPEC, ctx, Dict{String,Any}())
     meta = result[META_KEY]
     meta[META_SUBSCRIPTION_ID] = id
@@ -273,7 +280,8 @@ Map one listen-stream event to the JSON-RPC message that carries it. The
 subscription id is merged into any existing `params._meta` (never overwriting
 the whole dictionary), so the ack's own metadata survives.
 """
-function serialize_listen_event(subscription_id, event::SubscriptionNotification)::Dict{String,Any}
+function serialize_listen_event(subscription_id, event::SubscriptionNotification) :: Dict{String,Any}
+
     params = Dict{String,Any}(event.params)
     existing = get(params, META_KEY, nothing)
     meta = existing isa AbstractDict ?
@@ -290,7 +298,7 @@ Map one `subscriptions/listen` stream event to the JSON-RPC message a transport
 should write and whether the stream ended. Shared by the HTTP and stdio listen
 transports.
 """
-function listen_frame(call::ListenCall, event)::Tuple{Dict{String,Any},Bool}
+function listen_frame(call::ListenCall, event) :: Tuple{Dict{String,Any},Bool}
     if event isa FinalEvent
         return event.value, true
     elseif event isa ErrorEvent
@@ -298,4 +306,3 @@ function listen_frame(call::ListenCall, event)::Tuple{Dict{String,Any},Bool}
     end
     return serialize_listen_event(call.id, event), false
 end
-

@@ -15,8 +15,11 @@
 # legacy clients never observe each other's subscriptions. Sinks without a
 # session (stdio and header-less HTTP) keep using the context-wide anonymous
 # state, preserving the original single-session behavior.
-function legacy_event_wanted(ctx::ServerContext, event::SubscriptionNotification;
-                             session::Union{Nothing,MCPSession}=nothing)::Bool
+function legacy_event_wanted(
+    ctx::ServerContext,
+    event::SubscriptionNotification;
+    session::Union{Nothing,MCPSession}=nothing) :: Bool
+
     if !handshake_ready(ctx, session)
         return false
     end
@@ -47,11 +50,15 @@ subscription's queue and forwards its events. Session-scoped sinks are tracked
 on the session so `DELETE` can end them; `nothing` is returned when the session
 was terminated concurrently.
 """
-function subscribe_legacy!(ctx::ServerContext; csize::Integer=LEGACY_NOTIFICATION_CAP,
-                           label::String="legacy",
-                           session::Union{Nothing,MCPSession}=nothing)
+function subscribe_legacy!(
+    ctx::ServerContext;
+    csize::Integer=LEGACY_NOTIFICATION_CAP,
+    label::String="legacy",
+    session::Union{Nothing,MCPSession}=nothing)
+
     sub = PubSub.subscribe!(broker(ctx),
-        event -> event isa SubscriptionNotification && legacy_event_wanted(ctx, event; session=session);
+        event -> event isa SubscriptionNotification &&
+                 legacy_event_wanted(ctx, event; session=session);
         csize=csize, policy=:drop_newest, label=label)
     if !(session isa MCPSession)
         return sub
@@ -65,9 +72,13 @@ end
 # Legacy `resources/subscribe` / `resources/unsubscribe`: record or remove the
 # URI (both idempotent). The URI need not be registered: the spec has servers
 # acknowledge subscriptions they can deliver, and a template may match it later.
-function resource_subscription_legacy(ctx::ServerContext, id, params;
-                                      session::Union{Nothing,MCPSession}=nothing,
-                                      subscribe::Bool)
+function resource_subscription_legacy(
+    ctx::ServerContext,
+    id,
+    params;
+    session::Union{Nothing,MCPSession}=nothing,
+    subscribe::Bool)
+
     uri = get(params, "uri", nothing)
     if !(uri isa AbstractString) || isempty(uri)
         return error_body(id, MCP_INVALID_PARAMS, "Missing resource URI"), 200
@@ -76,9 +87,16 @@ function resource_subscription_legacy(ctx::ServerContext, id, params;
     return result_response(ctx, id, Dict{String,Any}())
 end
 
-subscribe_resource_legacy(ctx::ServerContext, id, params; session::Union{Nothing,MCPSession}=nothing) =
+subscribe_resource_legacy(
+    ctx::ServerContext,
+    id,
+    params;
+    session::Union{Nothing,MCPSession}=nothing) =
     resource_subscription_legacy(ctx, id, params; session=session, subscribe=true)
 
-unsubscribe_resource_legacy(ctx::ServerContext, id, params; session::Union{Nothing,MCPSession}=nothing) =
+unsubscribe_resource_legacy(
+    ctx::ServerContext,
+    id,
+    params;
+    session::Union{Nothing,MCPSession}=nothing) =
     resource_subscription_legacy(ctx, id, params; session=session, subscribe=false)
-

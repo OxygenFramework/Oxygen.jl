@@ -20,7 +20,7 @@ using ..Sessions: MCPSession, legacy_version
 # ----------------------------------------------------------------------------
 
 # The `params` object of a request, empty when absent or not an object.
-function request_params(payload)::AbstractDict
+function request_params(payload) :: AbstractDict
     params = get(payload, "params", Dict{String,Any}())
     return params isa AbstractDict ? params : Dict{String,Any}()
 end
@@ -28,7 +28,7 @@ end
 # Classify a parsed JSON-RPC message by shape: request (method + id),
 # notification (method, no id), client response (result/error + id, no method),
 # or invalid. Returns a Symbol.
-function message_shape(payload)::Symbol
+function message_shape(payload) :: Symbol
     if !(payload isa AbstractDict)
         return :invalid
     end
@@ -51,7 +51,7 @@ Enforce the JSON-RPC 2.0 envelope MCP requires: `jsonrpc` must be exactly
 number (a null id is forbidden by the MCP schema). Returns an error body, or
 `nothing` when the envelope is well formed.
 """
-function validate_envelope(payload)::Union{Nothing,Dict{String,Any}}
+function validate_envelope(payload) :: Union{Nothing,Dict{String,Any}}
     version = get(payload, "jsonrpc", nothing)
     if !(version isa AbstractString) || String(version) != "2.0"
         return error_body(get(payload, "id", nothing), MCP_INVALID_REQUEST,
@@ -119,7 +119,7 @@ end
 # The revision a legacy request runs under: parse the negotiated wire version
 # on demand. Sessions (and the anonymous state on `MCPContext`, which predates
 # this module) keep wire strings, so the `Val` never enters the context.
-legacy_spec(ctx::ServerContext, session::Union{Nothing,MCPSession})::Val =
+legacy_spec(ctx::ServerContext, session::Union{Nothing,MCPSession}) :: Val =
     spec_or_latest_legacy(legacy_version(ctx, session))
 
 """
@@ -130,9 +130,13 @@ The protocol revision a request runs under. A modern claim (see
 session's negotiated version. Returns `nothing` when the request claims a
 modern revision this server cannot serve; the caller answers `-32022`.
 """
-function request_spec(ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-                      method::String, params;
-                      session::Union{Nothing,MCPSession}=nothing)
+function request_spec(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    method::String,
+    params;
+    session::Union{Nothing,MCPSession}=nothing)
+
     claim = request_claim(req, method, params)
     if isnothing(claim)
         return legacy_spec(ctx, session)
@@ -151,7 +155,7 @@ a legacy request falls back to the legacy revision negotiated on the context.
 Only the policy interface (`uses_sessions`, `get_policy`, `delete_policy`) may
 be asked of the result; it is a classification, not the request's revision.
 """
-function transport_spec(ctx::ServerContext, req::HTTP.Request, payload=nothing)::Val
+function transport_spec(ctx::ServerContext, req::HTTP.Request, payload=nothing) :: Val
     method = ""
     params = Dict{String,Any}()
     if payload isa AbstractDict
@@ -210,9 +214,15 @@ method_val(method::String) = get(METHOD_TAGS, method, Val(:unknown))
 # the active revision serves the method at all (an era-exclusive method answers
 # `-32601` on the other era), then `handle_method` selects its one implementation,
 # which lives with its domain (tools, prompts, resources, subscriptions).
-function dispatch(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, id, method::String, payload;
-                  spec::Val=LATEST_LEGACY_SPEC,
-                  session::Union{Nothing,MCPSession}=nothing)
+function dispatch(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    id,
+    method::String,
+    payload;
+    spec::Val=LATEST_LEGACY_SPEC,
+    session::Union{Nothing,MCPSession}=nothing)
+
     tag = method_val(method)
     if !method_available(spec, tag)
         return error_body(id, MCP_METHOD_NOT_FOUND, "Unknown method: $method"), 404

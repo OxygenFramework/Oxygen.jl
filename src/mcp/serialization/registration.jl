@@ -41,10 +41,12 @@ mcp_param(p, descriptions, names) =
 # `descriptions`/`names` maps override the reflected values, and `skip_first`
 # drops the leading positional handler argument (the HTTP request / stream /
 # websocket injected by the routing layer for route-backed tools).
-function reflect_handler(func::Function;
-                         descriptions::Dict{Symbol,String}=Dict{Symbol,String}(),
-                         names::Dict{Symbol,String}=Dict{Symbol,String}(),
-                         skip_first::Bool=false)::HandlerSignature
+function reflect_handler(
+    func::Function;
+    descriptions::Dict{Symbol,String}=Dict{Symbol,String}(),
+    names::Dict{Symbol,String}=Dict{Symbol,String}(),
+    skip_first::Bool=false) :: HandlerSignature
+
     info = Reflection.splitdef(func; start=1)
 
     positional = info.args
@@ -80,7 +82,7 @@ end
 
 # Extract a handler's docstring, if one was attached to its binding. Returns an
 # empty string for anonymous functions or undocumented handlers.
-function function_docstring(func::Function)::String
+function function_docstring(func::Function) :: String
     try
         mod = parentmodule(func)
         binding = Base.Docs.Binding(mod, nameof(func))
@@ -106,6 +108,7 @@ function function_docstring(func::Function)::String
             return strip(join(entry.text, "\n"))
         end
     catch
+        # Docstring lookup is best effort; an undocumented handler returns "".
     end
     return ""
 end

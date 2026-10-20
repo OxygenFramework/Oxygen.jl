@@ -193,14 +193,14 @@ end
 
 # The auto counter always lands on the next integer above the last value, so a
 # string yield after an explicit `progress(2.5)` is 3 and never repeats.
-function next_progress!(stream::MCPStream)::Float64
+function next_progress!(stream::MCPStream) :: Float64
     stream.protocol.sequence = floor(stream.protocol.sequence) + 1
     return stream.protocol.sequence
 end
 
 # Explicit values must strictly increase (the spec requires monotonic
 # progress); a smaller or repeated value is an authoring bug.
-function record_progress!(stream::MCPStream, value::Real)::Float64
+function record_progress!(stream::MCPStream, value::Real) :: Float64
     current = Float64(value)
     if current <= stream.protocol.sequence
         throw(ArgumentError("progress must increase monotonically (got $current after $(stream.protocol.sequence))"))
@@ -213,7 +213,7 @@ end
 # Wire mapping
 # ----------------------------------------------------------------------------
 
-function notification(method::String, params::Dict{String,Any})::Dict{String,Any}
+function notification(method::String, params::Dict{String,Any}) :: Dict{String,Any}
     return Dict{String,Any}("jsonrpc" => "2.0", "method" => method, "params" => params)
 end
 
@@ -258,19 +258,27 @@ struct StreamedCall
     spec   :: Val
 end
 
-function streamed_body(ctx::ServerContext, call::StreamedCall, event::FinalEvent)::Dict{String,Any}
+function streamed_body(
+    ctx::ServerContext,
+    call::StreamedCall,
+    event::FinalEvent) :: Dict{String,Any}
+
     result = tool_success_result(event.value; spec=call.spec)
     return result_body(call.id, result_envelope(call.spec, ctx, result))
 end
 
-function streamed_body(ctx::ServerContext, call::StreamedCall, event::ErrorEvent)::Dict{String,Any}
+function streamed_body(
+    ctx::ServerContext,
+    call::StreamedCall,
+    event::ErrorEvent) :: Dict{String,Any}
+
     result = toolerror_result(event.error)
     return result_body(call.id, result_envelope(call.spec, ctx, result))
 end
 
 # A drain can end without a terminal event (only possible after cancellation or
 # a producer bug). Be explicit rather than writing a half response.
-function streamed_body(ctx::ServerContext, call::StreamedCall, ::Nothing)::Dict{String,Any}
+function streamed_body(ctx::ServerContext, call::StreamedCall, ::Nothing) :: Dict{String,Any}
     return streamed_body(ctx, call, ErrorEvent(ErrorException("tool stream ended without a result")))
 end
 
@@ -281,7 +289,11 @@ Map one event of a streamed `tools/call` to the JSON-RPC body a transport should
 write (`nothing` when the client did not opt into the notification), and
 whether the stream ended.
 """
-function streamed_frame(ctx::ServerContext, call::StreamedCall, event)::Tuple{Union{Nothing,Dict{String,Any}},Bool}
+function streamed_frame(
+    ctx::ServerContext,
+    call::StreamedCall,
+    event) :: Tuple{Union{Nothing,Dict{String,Any}},Bool}
+
     if event isa FinalEvent || event isa ErrorEvent
         return streamed_body(ctx, call, event), true
     end

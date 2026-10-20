@@ -30,7 +30,7 @@ a single path segment (RFC 6570 percent-encodes `/` inside the value); reserved
 else (other operators, empty names, unbalanced braces) is rejected with an
 `ArgumentError`.
 """
-function template_variables(uri::String)::Vector{TemplateVariable}
+function template_variables(uri::String) :: Vector{TemplateVariable}
     variables = TemplateVariable[]
     for matched in eachmatch(TEMPLATE_EXPRESSION, uri)
         expression = String(matched.captures[1])
@@ -64,9 +64,10 @@ end
 The variable names of a resource URI template, in order. See `template_variables`
 for the full parse.
 """
-template_vars(uri::String)::Vector{String} = [variable.name for variable in template_variables(uri)]
+template_vars(uri::String) :: Vector{String} =
+    [variable.name for variable in template_variables(uri)]
 
-function escape_regex(literal::AbstractString)::String
+function escape_regex(literal::AbstractString) :: String
     return replace(literal, r"([\\^$.|?*+()\[\]{}])" => s"\\\1")
 end
 
@@ -76,7 +77,7 @@ end
 # value), while a reserved variable captures any run (`.+`), so an empty path
 # cannot match. Greedy reserved captures resolve multiple-variable templates
 # against the last possible separator, which is deterministic.
-function compile_template(uri::String, variables::Vector{TemplateVariable})::Regex
+function compile_template(uri::String, variables::Vector{TemplateVariable}) :: Regex
     buffer = IOBuffer()
     write(buffer, "^")
     position = 1
@@ -97,7 +98,7 @@ Match a requested URI against a registered template, returning the decoded
 template variables as a client-argument dictionary, or `nothing` when the URI
 does not fit the template.
 """
-function match_template(resource::MCPResource, uri::String)::Union{Nothing,Dict{String,Any}}
+function match_template(resource::MCPResource, uri::String) :: Union{Nothing,Dict{String,Any}}
     pattern = resource.pattern
     if isnothing(pattern)
         return nothing
@@ -122,4 +123,3 @@ function match_template(resource::MCPResource, uri::String)::Union{Nothing,Dict{
     end
     return arguments
 end
-

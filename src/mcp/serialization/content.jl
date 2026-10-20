@@ -9,7 +9,7 @@
 const MCP_CONTENT_TYPES = ("text", "image", "audio", "resource_link", "resource")
 
 # MIME types carried in a `text` content block even without a `text/` prefix.
-function is_text_mime(mime::AbstractString)::Bool
+function is_text_mime(mime::AbstractString) :: Bool
     m = lowercase(mime)
     return startswith(m, "text/") ||
            m in ("application/json", "application/xml", "application/javascript",
@@ -18,12 +18,13 @@ function is_text_mime(mime::AbstractString)::Bool
 end
 
 # The media type of an `HTTP.Response`, with any parameters (`; charset=...`) dropped.
-function response_mime(resp::HTTP.Response)::String
+function response_mime(resp::HTTP.Response) :: String
     header = HTTP.header(resp, "Content-Type", "application/octet-stream")
     return lowercase(strip(split(String(header), ';')[1]))
 end
 
-text_block(content)::Dict{String,Any} = Dict{String,Any}("type" => "text", "text" => string(content))
+text_block(content) :: Dict{String,Any} =
+    Dict{String,Any}("type" => "text", "text" => string(content))
 
 """
     binary_block(bytes, mime) :: Dict
@@ -33,7 +34,7 @@ or `audio` block (base64 `data`), a `text` block for textual media, or an
 embedded `resource` (base64 `blob`) for any other binary, since MCP has no bare
 binary content block.
 """
-function binary_block(bytes::Vector{UInt8}, mime::String)::Dict{String,Any}
+function binary_block(bytes::Vector{UInt8}, mime::String) :: Dict{String,Any}
     mime = String(strip(split(mime, ';')[1]))
     m = lowercase(mime)
     kind = startswith(m, "image/") ? "image" : startswith(m, "audio/") ? "audio" : nothing
@@ -53,7 +54,7 @@ function binary_block(bytes::Vector{UInt8}, mime::String)::Dict{String,Any}
     end
 end
 
-response_block(resp::HTTP.Response)::Dict{String,Any} =
+response_block(resp::HTTP.Response) :: Dict{String,Any} =
     binary_block(response_bytes(resp), response_mime(resp))
 
 """
@@ -67,13 +68,14 @@ into a text block.
 """
 content_block(value::HTTP.Response) :: Dict{String,Any} = response_block(value)
 content_block(value::AbstractString) :: Dict{String,Any} = text_block(String(value))
-content_block(value::AbstractVector{UInt8}) :: Dict{String,Any} = binary_block(value, HTTP.sniff(value))
+content_block(value::AbstractVector{UInt8}) :: Dict{String,Any} =
+    binary_block(value, HTTP.sniff(value))
 
 # Dispatch is by type, not value, so the "known content type" test has to stay
 # inside the `AbstractDict` method; a plain dict falls back to JSON text here
 # because the `Any` method below can never be more specific than this one.
 function content_block(value::AbstractDict) :: Dict{String,Any}
-    if get(value, "type", nothing) in MCP_CONTENT_TYPES 
+    if get(value, "type", nothing) in MCP_CONTENT_TYPES
         return value
     end
     return text_block(JSON.json(value))
@@ -82,7 +84,7 @@ end
 # Default case: anything not matched above is JSON-encoded into a text block.
 content_block(value::Any) :: Dict{String,Any} = text_block(JSON.json(value))
 
-function content_result(block::Dict{String,Any}, structured_content=nothing)::Dict{String,Any}
+function content_result(block::Dict{String,Any}, structured_content=nothing) :: Dict{String,Any}
     result = Dict{String,Any}(
         "content" => Any[block],
         "isError" => false,
@@ -93,12 +95,12 @@ function content_result(block::Dict{String,Any}, structured_content=nothing)::Di
     return result
 end
 
-function toolresult(value; structured::Bool=true)::Dict{String,Any}
+function toolresult(value; structured::Bool=true) :: Dict{String,Any}
     if isnothing(value)
         # No result value (a handler returning `nothing`, or an adopted channel
         # that closed without a `result` marker): the answer is empty content.
         return Dict{String,Any}("content" => Any[], "isError" => false)
-    elseif value isa HTTP.Response || 
+    elseif value isa HTTP.Response ||
         value isa AbstractString ||
         value isa AbstractVector{UInt8} ||
         (value isa AbstractDict && get(value, "type", nothing) in MCP_CONTENT_TYPES)
@@ -122,6 +124,6 @@ content blocks, with `structuredContent` emitted only for revisions that
 introduced it (2025-06-18+). Shared by the buffered and streamed `tools/call`
 paths so both produce identical bytes.
 """
-function tool_success_result(value; spec::Val=LATEST_LEGACY_SPEC)::Dict{String,Any}
+function tool_success_result(value; spec::Val=LATEST_LEGACY_SPEC) :: Dict{String,Any}
     return toolresult(value; structured=emits_structured_content(spec))
 end

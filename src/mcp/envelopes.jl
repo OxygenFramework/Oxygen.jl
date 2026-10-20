@@ -29,7 +29,7 @@ The server identity object carried by the legacy `initialize` result
 `_meta`). The optional `description` is present only when configured through
 `mcp_server_description`.
 """
-function server_info(ctx::ServerContext)::Dict{String,Any}
+function server_info(ctx::ServerContext) :: Dict{String,Any}
     info = Dict{String,Any}(
         "name" => ctx.mcp.server_name[],
         "version" => ctx.mcp.server_version[],
@@ -48,7 +48,7 @@ Apply the modern-era result envelope to `result`: every modern result MUST carry
 `io.modelcontextprotocol/serverInfo` in the result `_meta`. Legacy results are
 left untouched (legacy clients choke on unexpected `resultType`/`ttlMs`).
 """
-function modern_envelope(ctx::ServerContext, result::Dict{String,Any})::Dict{String,Any}
+function modern_envelope(ctx::ServerContext, result::Dict{String,Any}) :: Dict{String,Any}
     result["resultType"] = "complete"
 
     meta = get(result, META_KEY, nothing)

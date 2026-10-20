@@ -8,7 +8,8 @@ using HTTP
 using ...AppContext: ServerContext
 using ...Streaming: cancel_stream!, drain_stream!
 
-using ..Dispatch: dispatch, request_spec, request_params, message_shape, validate_envelope, request_claim, legacy_spec
+using ..Dispatch: dispatch, request_spec, request_params, message_shape,
+    validate_envelope, request_claim, legacy_spec
 using ..Envelopes: META_KEY, META_PROTOCOL
 using ..Errors: MCPRequestError, MCP_INVALID_REQUEST, MCP_UNSUPPORTED_PROTOCOL_VERSION, error_body
 using ..Sessions: MCPSession, mark_initialized!
@@ -22,8 +23,13 @@ using ..Subscriptions: ListenCall, cancel_listen!
 # written), a `StreamedCall` for a streamed tools/call, a `ListenCall` for a
 # `subscriptions/listen` stream, or a JSON-RPC body. `session` carries the
 # legacy Streamable HTTP session resolved by the transport, when any.
-function process(ctx::ServerContext, payload, req::Union{Nothing,HTTP.Request};
-                 session::Union{Nothing,MCPSession}=nothing)::Tuple{Union{Nothing,Dict{String,Any},StreamedCall,ListenCall},Int}
+function process(
+    ctx::ServerContext,
+    payload,
+    req::Union{Nothing,HTTP.Request};
+    session::Union{Nothing,MCPSession}=nothing) :: Tuple{
+        Union{Nothing,Dict{String,Any},StreamedCall,ListenCall},Int}
+
     shape = message_shape(payload)
 
     if shape === :invalid
@@ -87,7 +93,7 @@ end
 # The `-32022` response for a request claiming a modern revision this server
 # does not serve. `request_spec` returns `nothing` only for such a claim, so the
 # requested version is always the string in `_meta.protocolVersion`.
-function unsupported_version_response(id, params)::Tuple{Dict{String,Any},Int}
+function unsupported_version_response(id, params) :: Tuple{Dict{String,Any},Int}
     meta = get(params, META_KEY, nothing)
     requested = meta isa AbstractDict ? get(meta, META_PROTOCOL, nothing) : nothing
     return error_body(id, MCP_UNSUPPORTED_PROTOCOL_VERSION, "Unsupported protocol version",
@@ -108,9 +114,12 @@ tool calls are drained to their terminal JSON body (batches never upgrade to
 SSE), and `subscriptions/listen` is rejected because it is a modern-only
 stream.
 """
-function process_batch(ctx::ServerContext, payload::AbstractVector,
-                       req::Union{Nothing,HTTP.Request};
-                       session::Union{Nothing,MCPSession}=nothing)
+function process_batch(
+    ctx::ServerContext,
+    payload::AbstractVector,
+    req::Union{Nothing,HTTP.Request};
+    session::Union{Nothing,MCPSession}=nothing)
+
     if isempty(payload)
         return error_body(nothing, MCP_INVALID_REQUEST, "Invalid Request: empty batch"), 400
     end

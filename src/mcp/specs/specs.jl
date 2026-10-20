@@ -32,11 +32,11 @@ const LATEST_LEGACY_SPEC = V2025_11_25
 
 # Revision order only (ordering, negotiation). Capabilities are not derived
 # from rank: each revision declares them explicitly in its profile.
-spec_at_least(a::Val, b::Val)::Bool = spec_rank(a) >= spec_rank(b)
+spec_at_least(a::Val, b::Val) :: Bool = spec_rank(a) >= spec_rank(b)
 
 # Legacy is the complement of modern; `is_modern` is part of each revision's
 # `@spec` profile.
-is_legacy(spec::Val)::Bool = !is_modern(spec)
+is_legacy(spec::Val) :: Bool = !is_modern(spec)
 
 # ----------------------------------------------------------------------------
 # Wire parsing

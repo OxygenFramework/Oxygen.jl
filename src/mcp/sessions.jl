@@ -53,7 +53,7 @@ MCPSession(id::AbstractString) = MCPSession(
 
 # Remove sessions idle past the TTL. Callers hold `sessions_lock`; the return
 # value lets them run the (broker-touching) teardown after releasing it.
-function sweep_sessions!(ctx::ServerContext)::Vector{MCPSession}
+function sweep_sessions!(ctx::ServerContext) :: Vector{MCPSession}
     cutoff = time() - SESSION_TTL_SECONDS
     expired = MCPSession[]
     ids = String[]
@@ -77,7 +77,7 @@ end
 
 # Drop the least-recently-seen session, returning it for teardown. Callers hold
 # `sessions_lock`.
-function evict_oldest!(ctx::ServerContext)::Union{Nothing,MCPSession}
+function evict_oldest!(ctx::ServerContext) :: Union{Nothing,MCPSession}
     oldest = nothing
     for value in values(ctx.mcp.sessions)
         if !(value isa MCPSession)
@@ -112,6 +112,7 @@ function terminate_session!(ctx::ServerContext, session::MCPSession)
         try
             broker isa PubSub.Broker ? PubSub.unsubscribe!(broker, sub) : close(sub)
         catch
+            # Teardown is best effort: the broker or queue may already be closed.
         end
     end
     return nothing
@@ -142,7 +143,7 @@ end
 
 Create a session, sweeping expired ones and evicting the oldest at capacity.
 """
-function new_session!(ctx::ServerContext)::MCPSession
+function new_session!(ctx::ServerContext) :: MCPSession
     evicted = MCPSession[]
     session = MCPSession(string(UUIDs.uuid4()))
     lock(ctx.mcp.sessions_lock) do
@@ -167,7 +168,7 @@ end
 
 Look up a live session and touch its `last_seen` timestamp.
 """
-function find_session(ctx::ServerContext, id::AbstractString)::Union{Nothing,MCPSession}
+function find_session(ctx::ServerContext, id::AbstractString) :: Union{Nothing,MCPSession}
     return lock(ctx.mcp.sessions_lock) do
         session = get(ctx.mcp.sessions, String(id), nothing)
         if !(session isa MCPSession)
@@ -232,7 +233,7 @@ end
 # session keeps the same fields on `MCPSession`. These accessors read or write
 # whichever is in effect, so callers do not repeat the ternary.
 
-legacy_version(ctx::ServerContext, session::Union{Nothing,MCPSession})::String =
+legacy_version(ctx::ServerContext, session::Union{Nothing,MCPSession}) :: String =
     isnothing(session) ? ctx.mcp.session_version[] : session.version
 
 function mark_initialized!(ctx::ServerContext, session::Union{Nothing,MCPSession})
@@ -263,7 +264,7 @@ end
 
 # Whether the client completed an `initialize` handshake (see
 # `legacy_event_wanted` for why `notifications/initialized` alone is not proof).
-function handshake_ready(ctx::ServerContext, session::Union{Nothing,MCPSession})::Bool
+function handshake_ready(ctx::ServerContext, session::Union{Nothing,MCPSession}) :: Bool
     if isnothing(session)
         return ctx.mcp.initialized[] && ctx.mcp.handshake_complete[]
     end
@@ -273,8 +274,11 @@ function handshake_ready(ctx::ServerContext, session::Union{Nothing,MCPSession})
 end
 
 # Legacy `resources/subscribe` membership for the anonymous state or a session.
-function legacy_subscribed(ctx::ServerContext, session::Union{Nothing,MCPSession},
-                           uri::String)::Bool
+function legacy_subscribed(
+    ctx::ServerContext,
+    session::Union{Nothing,MCPSession},
+    uri::String) :: Bool
+
     if isnothing(session)
         return lock(ctx.mcp.subscriptions_lock) do
             uri in ctx.mcp.legacy_subscriptions
@@ -285,8 +289,12 @@ function legacy_subscribed(ctx::ServerContext, session::Union{Nothing,MCPSession
     end
 end
 
-function set_legacy_subscribed(ctx::ServerContext, session::Union{Nothing,MCPSession},
-                               uri::String; subscribed::Bool)
+function set_legacy_subscribed(
+    ctx::ServerContext,
+    session::Union{Nothing,MCPSession},
+    uri::String;
+    subscribed::Bool)
+
     if isnothing(session)
         lock(ctx.mcp.subscriptions_lock) do
             subscribed ? push!(ctx.mcp.legacy_subscriptions, uri) :
@@ -315,7 +323,7 @@ end
 
 # Register a legacy notification sink on a session, rejecting it when the
 # session was terminated between resolution and registration.
-function add_sink!(ctx::ServerContext, session::MCPSession, sub::PubSub.Subscription)::Bool
+function add_sink!(ctx::ServerContext, session::MCPSession, sub::PubSub.Subscription) :: Bool
     accepted = lock(session.lock) do
         if session.closed
             return false

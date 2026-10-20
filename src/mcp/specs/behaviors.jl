@@ -12,7 +12,12 @@ HTTP, mirrored standard headers (`MCP-Protocol-Version`, `Mcp-Method`, and
 `Mcp-Name` for `tools/call`/`prompts/get`/`resources/read`). Legacy requests
 skip all of this.
 """
-function validate_modern_request(ctx::ServerContext, req::Union{Nothing,HTTP.Request}, method::String, params)
+function validate_modern_request(
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    method::String,
+    params)
+
     meta = get(params, META_KEY, Dict{String,Any}())
     if !(meta isa AbstractDict)
         meta = Dict{String,Any}()
@@ -25,14 +30,18 @@ function validate_modern_request(ctx::ServerContext, req::Union{Nothing,HTTP.Req
 
     body_spec = spec_from_version(String(body_version))
     if isnothing(body_spec) || !is_modern(body_spec)
-        throw(MCPRequestError(MCP_UNSUPPORTED_PROTOCOL_VERSION, "Unsupported protocol version", Dict{String,Any}(
-            "supported" => copy(SUPPORTED_VERSIONS),
-            "requested" => String(body_version),
-        )))
+        throw(MCPRequestError(
+            MCP_UNSUPPORTED_PROTOCOL_VERSION, "Unsupported protocol version",
+            Dict{String,Any}(
+                "supported" => copy(SUPPORTED_VERSIONS),
+                "requested" => String(body_version),
+            )))
     end
 
     if !haskey(meta, META_CLIENT_CAPABILITIES)
-        throw(MCPRequestError(MCP_INVALID_PARAMS, "Missing required _meta field: $META_CLIENT_CAPABILITIES"))
+        throw(MCPRequestError(
+            MCP_INVALID_PARAMS,
+            "Missing required _meta field: $META_CLIENT_CAPABILITIES"))
     end
 
     # The remaining checks are specific to the Streamable HTTP transport.
@@ -79,8 +88,13 @@ function validate_modern_request(ctx::ServerContext, req::Union{Nothing,HTTP.Req
     return nothing
 end
 
-validate_request(::Val{:v2026_07_28}, ctx::ServerContext, req::Union{Nothing,HTTP.Request},
-                 method::String, params) = validate_modern_request(ctx, req, method, params)
+validate_request(
+    ::Val{:v2026_07_28},
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    method::String,
+    params) =
+    validate_modern_request(ctx, req, method, params)
 
 result_envelope(::Val{:v2026_07_28}, ctx::ServerContext, result) = modern_envelope(ctx, result)
 

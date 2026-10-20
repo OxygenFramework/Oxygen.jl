@@ -8,7 +8,8 @@
 # Copy any keyed container (`Dict`, `NamedTuple`, ...) into a `Dict{String,Any}`
 # with stringified keys. The MCP wire layer accepts symbol- and string-keyed
 # input uniformly, so validation and serialization normalize through here.
-string_keyed(entries)::Dict{String,Any} = Dict{String,Any}(String(key) => value for (key, value) in pairs(entries))
+string_keyed(entries) :: Dict{String,Any} =
+    Dict{String,Any}(String(key) => value for (key, value) in pairs(entries))
 
 # ----------------------------------------------------------------------------
 # Schema generation
@@ -48,18 +49,18 @@ function typeschema(T::Type)
         resolved = T
     end
 
-    schema = _typeschema(resolved, defs)
+    schema = build_typeschema(resolved, defs)
     if nullable
         schema["nullable"] = true
     end
     return schema, defs
 end
 
-function _typeschema(T::Type, defs::Dict{String,Any})
+function build_typeschema(T::Type, defs::Dict{String,Any})
     T = AutoDoc.unwrap_type(T)
 
     if T isa Union
-        return _unionschema(T, defs)
+        return build_unionschema(T, defs)
     elseif T <: Enum
         # Enum names are the wire form (the JSON-body convention); integer
         # values stay an accepted input for backwards compatibility.
@@ -101,7 +102,7 @@ end
 
 # Schema for a Union type: one member keeps its schema (marked `nullable` when
 # the union admits Nothing/Missing), several members become `anyOf`.
-function _unionschema(T::Union, defs::Dict{String,Any})
+function build_unionschema(T::Union, defs::Dict{String,Any})
     members = Dict{String,Any}[]
     nullable = false
 
@@ -109,7 +110,7 @@ function _unionschema(T::Union, defs::Dict{String,Any})
         if member === Nothing || member === Missing
             nullable = true
         else
-            push!(members, _typeschema(member, defs))
+            push!(members, build_typeschema(member, defs))
         end
     end
 
@@ -143,9 +144,9 @@ registration (see `inputschema(::Vector{MCPParam})`) and cached on the tool: the
 schema cannot change after registration, and regenerating it means re-reflecting
 every custom struct parameter on every `tools/list`.
 """
-inputschema(tool::MCPTool)::Dict{String,Any} = tool.input_schema
+inputschema(tool::MCPTool) :: Dict{String,Any} = tool.input_schema
 
-function inputschema(params::Vector{MCPParam})::Dict{String,Any}
+function inputschema(params::Vector{MCPParam}) :: Dict{String,Any}
     if isempty(params)
         return Dict{String,Any}("type" => "object", "additionalProperties" => false)
     end
@@ -173,4 +174,3 @@ function inputschema(params::Vector{MCPParam})::Dict{String,Any}
     end
     return result
 end
-

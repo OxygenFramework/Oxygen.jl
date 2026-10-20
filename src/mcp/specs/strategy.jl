@@ -62,7 +62,7 @@ const SPEC_TRAIT_TYPES = (
     end
 
 Declare a revision's complete capability profile, defining one typed interface
-method per key (`version_string(::Val{:vYYYY_MM_DD})::String`, ...). Every key
+method per key (`version_string(::Val{:vYYYY_MM_DD}) :: String`, ...). Every key
 of `SPEC_TRAIT_TYPES` must appear exactly once: unknown, duplicated, or omitted
 keys are expansion-time errors, so a typo cannot silently become a new function
 or a half-declared revision.
@@ -105,7 +105,7 @@ macro spec(spec, block)
         push!(declared, name)
         target = GlobalRef(SPEC_MODULE, name)
         type = SPEC_TRAIT_TYPES[name]
-        push!(definitions, :($target(::Val{$(tag)})::$(type) = $(esc(value))))
+        push!(definitions, :($target(::Val{$(tag)}) :: $(type) = $(esc(value))))
     end
 
     omitted = [name for name in keys(SPEC_TRAIT_TYPES) if !(name in declared)]
@@ -123,7 +123,12 @@ end
 # A revision overrides one of these only when it changes the result; the
 # no-op/identity implementation is the correct neutral behavior, not a
 # capability a revision must restate.
-validate_request(::Val, ctx::ServerContext, req::Union{Nothing,HTTP.Request}, method::String, params) = nothing
+validate_request(
+    ::Val,
+    ctx::ServerContext,
+    req::Union{Nothing,HTTP.Request},
+    method::String,
+    params) = nothing
 
 result_envelope(::Val, ctx::ServerContext, result) = result
 
@@ -137,10 +142,10 @@ with_cache_hints(::Val, result; scope::String="public") = result
 # revision; the six era-exclusive methods name their era once here rather than
 # in every profile. The handler for an unavailable method is never reached:
 # dispatch answers `-32601` first.
-method_available(::Val, ::Val)::Bool = true
-method_available(spec::Val, ::Val{:initialize})::Bool = is_legacy(spec)
-method_available(spec::Val, ::Val{:ping})::Bool = is_legacy(spec)
-method_available(spec::Val, ::Val{:resources_subscribe})::Bool = is_legacy(spec)
-method_available(spec::Val, ::Val{:resources_unsubscribe})::Bool = is_legacy(spec)
-method_available(spec::Val, ::Val{:server_discover})::Bool = is_modern(spec)
-method_available(spec::Val, ::Val{:subscriptions_listen})::Bool = is_modern(spec)
+method_available(::Val, ::Val) :: Bool = true
+method_available(spec::Val, ::Val{:initialize}) :: Bool = is_legacy(spec)
+method_available(spec::Val, ::Val{:ping}) :: Bool = is_legacy(spec)
+method_available(spec::Val, ::Val{:resources_subscribe}) :: Bool = is_legacy(spec)
+method_available(spec::Val, ::Val{:resources_unsubscribe}) :: Bool = is_legacy(spec)
+method_available(spec::Val, ::Val{:server_discover}) :: Bool = is_modern(spec)
+method_available(spec::Val, ::Val{:subscriptions_listen}) :: Bool = is_modern(spec)

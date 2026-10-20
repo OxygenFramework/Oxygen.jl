@@ -35,15 +35,19 @@ and combined:
     toolname    :: Nullable{String}    = nothing
 end
 
-# The raw `mcp` metadata forms accepted by `router()` and route registration:
-# `false` to disable, `true`/a description `String`, or a `NamedTuple`/`Dict` of
-# overrides. Kept as a union so the public HOF router signatures are strongly
-# typed instead of implicitly `Any`; wrap it in `Nullable` for the optional
-# (default `nothing`) case.
+"""
+The raw `mcp` metadata forms accepted by `router()` and route registration:
+`false` to disable, `true`/a description `String`, or a `NamedTuple`/`Dict` of
+overrides. Kept as a union so the public HOF router signatures are strongly
+typed instead of implicitly `Any`; wrap it in `Nullable` for the optional
+(default `nothing`) case.
+"""
 const MCPMetadata = Union{Bool, AbstractString, NamedTuple, AbstractDict}
 
-# A single tool parameter paired with its explicit (human readable) description
-# and the MCP wire name used on the JSON schema / invocation boundary.
+"""
+A single tool parameter paired with its explicit (human readable) description
+and the MCP wire name used on the JSON schema / invocation boundary.
+"""
 struct MCPParam
     param       :: Param
     description :: String
@@ -62,9 +66,11 @@ hook for the shared invocation/resolution path.
 """
 abstract type MCPCallable end
 
-# A registered MCP tool. `params` contains the positional arguments (in order)
-# followed by the keyword arguments. `argnames` identifies which parameters are
-# positional so handlers can be invoked correctly.
+"""
+A registered MCP tool. `params` contains the positional arguments (in order)
+followed by the keyword arguments. `argnames` identifies which parameters are
+positional so handlers can be invoked correctly.
+"""
 struct MCPTool <: MCPCallable
     name        :: String
     description :: String
@@ -78,9 +84,11 @@ struct MCPTool <: MCPCallable
     input_schema :: Dict{String,Any}  # JSON Schema, generated once at registration
 end
 
-# A registered MCP prompt. The prompt arguments are the handler's own parameters
-# (minus `context`/`request`), so the signature doubles as the template variable
-# list. `argnames` identifies which parameters are positional.
+"""
+A registered MCP prompt. The prompt arguments are the handler's own parameters
+(minus `context`/`request`), so the signature doubles as the template variable
+list. `argnames` identifies which parameters are positional.
+"""
 struct MCPPrompt <: MCPCallable
     name        :: String
     description :: String
@@ -91,11 +99,13 @@ struct MCPPrompt <: MCPCallable
     has_request :: Bool          # handler wants `request` injected
 end
 
-# A registered MCP resource. Static resources use `uri` as their registry key and
-# take no handler arguments; templated ones (RFC 6570 `{var}` and `{+var}`
-# expansions) use the template as their key, and their handler parameters are the
-# template variables. `pattern` is the compiled matcher linking a requested URI
-# back to the template, and `vars` lists the capture names in pattern order.
+"""
+A registered MCP resource. Static resources use `uri` as their registry key and
+take no handler arguments; templated ones (RFC 6570 `{var}` and `{+var}`
+expansions) use the template as their key, and their handler parameters are the
+template variables. `pattern` is the compiled matcher linking a requested URI
+back to the template, and `vars` lists the capture names in pattern order.
+"""
 struct MCPResource <: MCPCallable
     uri         :: String
     name        :: String

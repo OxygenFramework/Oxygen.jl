@@ -50,6 +50,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Protocol Buffer Support
 - Route tagging
 - Repeat tasks
+- Model Context Protocol (MCP) server support
 
 ## Installation
 
@@ -71,6 +72,7 @@ end
 # start the web server
 serve()
 ```
+
 ## Handlers
 
 Handlers are used to connect your code to the server in a clean & straightforward way. 
@@ -442,6 +444,132 @@ end
     return newperson.payload
 end
 ```
+
+## Streaming (Raw + SSE)
+
+Oxygen has three ways to stream data from a handler, from the most control to the least boilerplate:
+
+1. `@stream` — write to the raw `HTTP.Stream` yourself.
+2. Return a `Channel` — Oxygen streams its values over SSE.
+3. `sse_stream()` — Oxygen creates the channel and runs your producer.
+
+### Raw streams with `@stream`
+
+`@stream` hands you the raw request stream, so you can choose the headers, framing, and wire protocol. Most handlers won't need this level of control, but it's here when you do. You're responsible for opening and closing the write side.
+
+```julia
+@stream "/events" function(stream::HTTP.Stream)
+    HTTP.setheader(stream, "Content-Type" => "application/x-ndjson")
+    HTTP.setheader(stream, "Transfer-Encoding" => "chunked")
+
+    startwrite(stream)
+
+    for i in 1:10
+        write(stream, JSON.json(Dict("tick" => i)) * "\n")
+        sleep(1)
+    end
+
+    closewrite(stream)
+end
+```
+
+### Returning a `Channel`
+
+When you just want values to reach the client, let Oxygen handle the SSE framing. Any handler can return a `Channel`; Oxygen reads from it and writes each value as a `data:` frame. This is a natural fit when the values already come from another task or producer.
+
+Call `result(value)` as the last value to send `value` as the final event and close the stream and channel. A buffered channel lets the producer run ahead while Oxygen starts consuming:
+
+```julia
+@get "/events" function()
+    return Channel{Any}(64) do channel
+        put!(channel, Dict("tick" => 1))
+        put!(channel, result(Dict("done" => true)))
+    end
+end
+```
+
+### Producing a stream with `sse_stream()`
+
+Use `sse_stream()` when the handler is the producer. It creates the stream and runs your do-block in a task:
+
+```julia
+@get "/events" function()
+    return sse_stream() do stream
+        for i in 1:10
+            put!(stream, Dict("tick" => i))
+            sleep(1)
+        end
+        return "done!" # sent as the final event (optional return value)
+    end
+end
+```
+
+The return value is sent as the final event, so there's no separate `result(value)` marker. On a live connection it is written as the final `data:` frame; return `nothing` if you don't want one. An error thrown in the do-block ends the stream with an `event: error` frame.
+
+Compared with a bare `Channel`, `sse_stream` manages more of the lifecycle:
+
+- creates the channel for you and closes it when your producer finishes or fails
+- lets your producer exit when the client disconnects (`put!`/`emit` throw `StreamCancelled`; long loops can call `check_cancelled(stream)`)
+- uses one buffer, sized with `csize`, instead of an extra internal buffer and copying step
+
+Strings are written as-is and everything else is JSON-encoded. When you need the rest of the SSE frame, wrap a value in an `SSEEvent` (including the value you return, to control the final frame):
+
+```julia
+put!(stream, SSEEvent(Dict("progress" => 0.5); event="update", id="7", retry=1000))
+```
+
+`event` sets the event name, `id` identifies the event (useful for reconnects), and `retry` tells the client how long to wait before reconnecting. Returning an `SSEEvent` from the do-block (or passing `result(SSEEvent(...))` on a raw `Channel`) applies the same fields to the final event.
+
+## Model Context Protocol (MCP) support
+
+Oxygen has built-in support for the [Model Context Protocol](https://modelcontextprotocol.io) and has utils for exposing functions as tools, prompts, and resources.
+
+It also ships with a swagger-like UI for interacting with the mcp server [@refactorful/mcp-explorer](https://github.com/Refactorful/mcp-explorer).
+
+### Tools, prompts & resources
+
+```julia
+using Oxygen
+
+@tool "Add two integers" Dict(:a => "first number", :b => "second number") function add(a::Int, b::Int)
+    return a + b
+end
+
+serve() # exposes POST /mcp
+```
+
+Prompts are registered the same way, with the handler signature doubling as the argument list. Resources use a URI with `{var}` placeholders:
+
+```julia
+@prompt "Report on a city" function city_report(city::String)
+    return "Write a report about $city"
+end
+
+@resource "oxygen://docs/{page}" "Look up a docs page" function docs(page::String)
+    return read("docs/$page.md", String)
+end
+```
+
+### Streaming progress
+
+Long-running tools can stream progress with `mcp_stream()`; the do-block's return value is still the final result:
+
+```julia
+@tool "Import a catalog" Dict(:urls => "catalog URLs") function import_catalog(urls::Vector{String})
+    return mcp_stream() do stream
+        for url in urls
+            put!(stream, "imported $url")  # auto-numbered progress notification
+        end
+        return "Imported $(length(urls)) records"
+    end
+end
+```
+
+Clients opt in with `_meta.progressToken` and `Accept: text/event-stream`; otherwise notifications are dropped and the call returns plain JSON.
+
+### The MCP endpoint
+
+Tools, prompts, and resources are registered per application instance (`@oxidize` modules and `instance()` apps included), and `/mcp` is exposed automatically as soon as one exists. Mount it elsewhere with `serve(mcp_path = "/custom/mcp")` or additionally speak the stdio transport with `serve(stdio = true)`. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
 
 ## Application Context
 

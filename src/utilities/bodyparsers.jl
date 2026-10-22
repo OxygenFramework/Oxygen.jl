@@ -2,64 +2,12 @@ using HTTP
 using JSON
 using URIs
 
+# The request-body readers live in the lower-level `RequestBody` module so
+# `Types` can use them without depending on `Util`; importing the bindings here
+# keeps them as methods of the same functions Util exports.
+import ..RequestBody: text, binary, json, formdata
+
 export text, binary, json, formdata
-
-### Helper functions used to parse the body of a HTTP.Request object
-
-request_bytes(req::HTTP.Request) = req.body isa HTTP.EmptyBody ? UInt8[] : copy(req.body)
-
-"""
-    text(request::HTTP.Request)
-
-Read the body of a HTTP.Request as a String
-"""
-function text(req::HTTP.Request) :: String
-    body = IOBuffer(request_bytes(req))
-    return eof(body) ? nothing : read(seekstart(body), String)
-end
-
-
-"""
-    formdata(request::HTTP.Request)
-
-Read the html form data from the body of a HTTP.Request
-"""
-function formdata(req::HTTP.Request) :: Dict
-    return HTTP.queryparams(text(req))
-end
-
-
-"""
-    binary(request::HTTP.Request)
-
-Read the body of a HTTP.Request as a Vector{UInt8}
-"""
-function binary(req::HTTP.Request) :: Vector{UInt8}
-    body = IOBuffer(request_bytes(req))
-    return eof(body) ? nothing : readavailable(body)
-end
-
-
-"""
-    json(request::HTTP.Request; keyword_arguments...)
-
-Read the body of a HTTP.Request as JSON with additional arguments for the read/serializer.
-"""
-function json(req::HTTP.Request; kwargs...)
-    body = IOBuffer(request_bytes(req))
-    return eof(body) ? nothing : JSON.parse(body; kwargs...)
-end
-
-"""
-    json(request::HTTP.Request, class_type; keyword_arguments...)
-
-Read the body of a HTTP.Request as JSON with additional arguments for the read/serializer into a custom struct.
-"""
-function json(req::HTTP.Request, class_type::Type{T}; kwargs...) :: T where {T}
-    body = IOBuffer(request_bytes(req))
-    return eof(body) ? nothing : JSON.parse(body, class_type; kwargs...)
-end
-
 
 ### Helper functions used to parse the body of an HTTP.Response object
 

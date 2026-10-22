@@ -17,7 +17,8 @@ makedocs(
             "tutorial/request_body.md",
             "tutorial/cron_scheduling.md",
             "tutorial/bigger_applications.md",
-            "tutorial/oauth2.md"
+            "tutorial/oauth2.md",
+            "tutorial/mcp.md"
         ]
     ]
 )

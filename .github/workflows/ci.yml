@@ -3,11 +3,19 @@ on:
   pull_request:
     branches:
       - master
+    paths-ignore:
+      - 'docs/**'
+      - 'demo/**'
+      - '**.md'
   push:
     branches:
       - master
     tags:
       - '*'
+    paths-ignore:
+      - 'docs/**'
+      - 'demo/**'
+      - '**.md'
 permissions:
   actions: write
   contents: read

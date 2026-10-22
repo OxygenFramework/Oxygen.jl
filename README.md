@@ -445,7 +445,7 @@ end
 end
 ```
 
-## Streaming
+## Streaming (Raw + SSE)
 
 Oxygen has three ways to stream data from a handler, from the most control to the least boilerplate:
 
@@ -458,7 +458,7 @@ Oxygen has three ways to stream data from a handler, from the most control to th
 `@stream` hands you the raw request stream, so you can choose the headers, framing, and wire protocol. Most handlers won't need this level of control, but it's here when you do. You're responsible for opening and closing the write side.
 
 ```julia
-@stream "/api/chunked/json" function(stream::HTTP.Stream)
+@stream "/events" function(stream::HTTP.Stream)
     HTTP.setheader(stream, "Content-Type" => "application/x-ndjson")
     HTTP.setheader(stream, "Transfer-Encoding" => "chunked")
 
@@ -480,7 +480,7 @@ When you just want values to reach the client, let Oxygen handle the SSE framing
 Call `result(value)` as the last value to send `value` as the final event and close the stream and channel. A buffered channel lets the producer run ahead while Oxygen starts consuming:
 
 ```julia
-@get "/events/raw" function()
+@get "/events" function()
     return Channel{Any}(64) do channel
         put!(channel, Dict("tick" => 1))
         put!(channel, result(Dict("done" => true)))

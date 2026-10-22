@@ -97,11 +97,13 @@ end
 
 Build the terminal marker for a raw channel: `put!(channel, result(value))`
 ends the stream, and the framework closes the channel, so it must be the
-last value written. `value` becomes the tool result (or, on a route, the
-buffered-fallback response body); earlier values are streamed as progress,
-and the first marker wins. Writing to the channel after the marker fails
-because the framework has closed it, and a channel that closes without a
-marker ends the call with an empty `content: []` result.
+last value written. `value` becomes the tool result; on a route it is written
+as the final SSE frame and used as the buffered-fallback response body when
+there is no live connection (`nothing` writes no frame). Earlier values are
+streamed as progress (or as SSE frames on a route), and the first marker wins.
+Writing to the channel after the marker fails because the framework has closed
+it, and a channel that closes without a marker ends the call with an empty
+`content: []` result.
 """
 result(value) = FinalEvent(value)
 

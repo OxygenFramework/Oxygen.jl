@@ -79,6 +79,16 @@ end
     @test terminal.value == "done"
 end
 
+@testset "a producer may return a FinalEvent without double-wrapping" begin
+    stream = make_stream() do s
+        return Streaming.FinalEvent("done")
+    end
+
+    terminal = Streaming.drain_stream!(stream)
+    @test terminal isa FinalEvent
+    @test terminal.value == "done"
+end
+
 @testset "drain_stream! keeps the first terminal" begin
     stream = EventStream(Channel{StreamEvent}(4), nothing)
     put!(stream.channel, FinalEvent("first"))

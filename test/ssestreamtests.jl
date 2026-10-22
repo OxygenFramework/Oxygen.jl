@@ -14,7 +14,7 @@ using ..Constants
         put!(stream, [1, 2, 3])
         put!(stream, "plain text")
         emit(stream, Dict("via" => "emit"))
-        return "ignored"
+        return "done"
     end
 end
 
@@ -110,9 +110,9 @@ const DISCONNECTED = Ref(0)
 end
 
 # Raw channels are adopted like `sse_stream`: values become data frames, while
-# `result(value)` ends the stream (the framework closes the channel) — it has
-# no frame on the live wire and is the buffered-fallback body for callers
-# without a connection.
+# `result(value)` ends the stream, writes `value` as the final frame (when it is
+# not `nothing`), and is the buffered-fallback body for callers without a
+# connection.
 @get "/sse/raw" function()
     channel = Channel{Any}(4)
     put!(channel, Dict("raw" => 1))
@@ -125,6 +125,20 @@ end
     channel = Channel{Any}(4)
     put!(channel, Dict("raw" => 1))
     put!(channel, result(Dict("final" => 42)))
+    return channel
+end
+
+@get "/sse/final_event" function()
+    return sse_stream() do stream
+        put!(stream, Dict("step" => 1))
+        return SSEEvent(Dict("done" => true); event="done", id="3")
+    end
+end
+
+@get "/sse/raw_final_event" function()
+    channel = Channel{Any}(2)
+    put!(channel, Dict("step" => 1))
+    put!(channel, result(SSEEvent(Dict("done" => true); event="done")))
     return channel
 end
 
@@ -182,14 +196,14 @@ end
     response, body, frames = sse_lines("/sse/data")
     @test response.status == 200
     @test HTTP.header(response, "Content-Type") == "text/event-stream"
-    @test length(frames) == 4
+    @test length(frames) == 5
     @test JSON.parse(frames[1]) == Dict("i" => 1)
     @test JSON.parse(frames[2]) == [1, 2, 3]
     # Strings are streamed as-is, which is what `EventSource.data` expects.
     @test frames[3] == "plain text"
     @test JSON.parse(frames[4]) == Dict("via" => "emit")
-    # The producer's return value is not streamed.
-    @test !occursin("ignored", body)
+    # The producer's return value is the final frame.
+    @test frames[5] == "done"
 end
 
 @testset "custom structs and named tuples serialize" begin
@@ -266,13 +280,33 @@ end
     @test frames[2] == "raw text"
 end
 
-@testset "the result marker has no frame on the live wire" begin
+@testset "the result marker writes the final frame" begin
     response, body, frames = sse_lines("/sse/raw_result")
     @test response.status == 200
-    @test length(frames) == 1
+    @test length(frames) == 2
     @test JSON.parse(frames[1]) == Dict("raw" => 1)
-    @test !occursin("final", body)
-    @test !occursin("\"result\"", body)
+    @test JSON.parse(frames[2]) == Dict("final" => 42)
+    @test occursin("final", body)
+end
+
+@testset "a returned SSEEvent controls the final frame" begin
+    _, body, frames = sse_lines("/sse/final_event")
+    @test length(frames) == 2
+    @test JSON.parse(frames[1]) == Dict("step" => 1)
+    @test JSON.parse(frames[2]) == Dict("done" => true)
+    @test occursin("event: done", body)
+    @test occursin("id: 3", body)
+end
+
+@testset "result(SSEEvent(...)) controls the final frame on a raw channel" begin
+    _, body, frames = sse_lines("/sse/raw_final_event")
+    @test length(frames) == 2
+    @test JSON.parse(frames[2]) == Dict("done" => true)
+    @test occursin("event: done", body)
+
+    response = internalrequest(HTTP.Request("GET", "/sse/raw_final_event"))
+    @test response.status == 200
+    @test JSON.parse(String(response.body)) == Dict("done" => true)
 end
 
 @testset "internal requests get the marker value (or null)" begin

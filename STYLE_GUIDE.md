@@ -227,8 +227,8 @@ code and code you are already changing should follow the guide exactly.
 
 ## 7. Docstrings
 
-- Every exported function, type, macro, and non-obvious internal helper gets a
-  docstring.
+- Every exported function, type, macro, constant, and non-obvious internal
+  helper gets a docstring.
 - Use the following shape. The signature line is indented four spaces, followed
   by a blank line and prose.
 
@@ -252,10 +252,22 @@ code and code you are already changing should follow the guide exactly.
   """
   ````
 
+- Constant docstrings are the exception: the binding name already identifies the
+  constant, so omit the name line and the leading blank line. Start the prose
+  directly:
+
+  ```julia
+  """
+  Interval between keep-alive comments on an idle SSE stream.
+  """
+  const SSE_KEEPALIVE_SECONDS = 3
+  ```
+
 - Start the description with a short sentence. Use `# Arguments`, `# Returns`,
   and `# Example` when they add information; omit empty sections.
-- Use backticks for code identifiers, `[`Name`](@ref)` for cross-references, and
-  fenced `julia` blocks for examples.
+- Use backticks for code identifiers and fenced `julia` blocks for examples.
+  Reference another name with the backticked name alone (`adopt_channel`); do
+  not use `@ref` cross-reference syntax.
 - Use `raw"""` when a docstring contains dollar signs or backslashes that Julia
   would otherwise interpolate.
 - Do not restate the signature in prose. Explain behavior, edge cases, and side

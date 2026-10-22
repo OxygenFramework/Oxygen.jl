@@ -445,10 +445,52 @@ end
 end
 ```
 
-## Server-Sent Events
+## Streaming
 
-Any handler can return a stream. `sse_stream` runs a do-block in a producer
-task and writes each yielded value as a `data:` frame on a live connection:
+Oxygen has three ways to stream data from a handler, from the most control to the least boilerplate:
+
+1. `@stream` — write to the raw `HTTP.Stream` yourself.
+2. Return a `Channel` — Oxygen streams its values over SSE.
+3. `sse_stream()` — Oxygen creates the channel and runs your producer.
+
+### Raw streams with `@stream`
+
+`@stream` hands you the raw request stream, so you can choose the headers, framing, and wire protocol. Most handlers won't need this level of control, but it's here when you do. You're responsible for opening and closing the write side.
+
+```julia
+@stream "/api/chunked/json" function(stream::HTTP.Stream)
+    HTTP.setheader(stream, "Content-Type" => "application/x-ndjson")
+    HTTP.setheader(stream, "Transfer-Encoding" => "chunked")
+
+    startwrite(stream)
+
+    for i in 1:10
+        write(stream, JSON.json(Dict("tick" => i)) * "\n")
+        sleep(1)
+    end
+
+    closewrite(stream)
+end
+```
+
+### Returning a `Channel`
+
+When you just want values to reach the client, let Oxygen handle the SSE framing. Any handler can return a `Channel`; Oxygen reads from it and writes each value as a `data:` frame. This is a natural fit when the values already come from another task or producer.
+
+Call `result(value)` as the last value to send `value` as the final event and close the stream and channel. A buffered channel lets the producer run ahead while Oxygen starts consuming:
+
+```julia
+@get "/events/raw" function()
+    return Channel{Any}(64) do channel
+        put!(channel, Dict("tick" => 1))
+        put!(channel, result(Dict("done" => true)))
+    end
+end
+```
+
+### Producing a stream with `sse_stream()`
+
+Use `sse_stream()` when the handler is the producer. It creates the stream and runs your do-block in a task:
 
 ```julia
 @get "/events" function()
@@ -457,31 +499,26 @@ task and writes each yielded value as a `data:` frame on a live connection:
             put!(stream, Dict("tick" => i))
             sleep(1)
         end
+        return "done!" # sent as the final event (optional return value)
     end
 end
 ```
 
-A handler may also return a `Channel` directly; its values are streamed the
-same way. Call `result(value)` to end the stream:
+The return value is sent as the final event, so there's no separate `result(value)` marker. On a live connection it is written as the final `data:` frame; return `nothing` if you don't want one. An error thrown in the do-block ends the stream with an `event: error` frame.
 
-```julia
-@get "/events/raw" function()
-    return Channel{Any}(0) do channel
-        put!(channel, Dict("tick" => 1))
-        put!(channel, result(Dict("done" => true)))
-    end
-end
-```
+Compared with a bare `Channel`, `sse_stream` manages more of the lifecycle:
 
-Strings are written as-is and everything else is JSON-encoded; `SSEEvent`
-controls the frame's `event:`, `id:` and `retry:` fields:
+- creates the channel for you and closes it when your producer finishes or fails
+- lets your producer exit when the client disconnects (`put!`/`emit` throw `StreamCancelled`; long loops can call `check_cancelled(stream)`)
+- uses one buffer, sized with `csize`, instead of an extra internal buffer and copying step
+
+Strings are written as-is and everything else is JSON-encoded. When you need the rest of the SSE frame, wrap a value in an `SSEEvent` (including the value you return, to control the final frame):
 
 ```julia
 put!(stream, SSEEvent(Dict("progress" => 0.5); event="update", id="7", retry=1000))
 ```
 
-You normally don't need this API, since plain values already stream as
-`data:` frames, but it's here whenever you want direct control over the frame.
+`event` sets the event name, `id` identifies the event (useful for reconnects), and `retry` tells the client how long to wait before reconnecting. Returning an `SSEEvent` from the do-block (or passing `result(SSEEvent(...))` on a raw `Channel`) applies the same fields to the final event.
 
 ## Model Context Protocol (MCP) support
 

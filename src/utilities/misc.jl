@@ -235,7 +235,7 @@ function format_sse_message(
     has_retry  && write(io, "retry: $retry\n")
     has_event  && write(io, "event: $event\n")
 
-    # Terminate the event, by marking it with a doubule newline
+    # Terminate the event, by marking it with a double newline
     write(io, "\n")
 
     # return the content of the buffer as a string

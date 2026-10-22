@@ -67,8 +67,7 @@ struct CapacityError <: Exception
     cap :: Int
 end
 
-Base.showerror(io::IO, error::CapacityError) =
-    print(io, "subscription limit reached ($(error.cap))")
+Base.showerror(io::IO, error::CapacityError) = print(io, "subscription limit reached ($(error.cap))")
 
 """
     Subscription{T}
@@ -273,12 +272,8 @@ function try_put!(channel::Channel{T}, value::T) where {T}
     end
 end
 
-# `Base.isfull` only exists on Julia >= 1.12; older versions need the capacity
-# check expressed against the stable `data`/`sz_max` fields.
+# returns whether the queue itself has a free slot or not
 function queue_full(channel::Channel)::Bool
-    if isdefined(Base, :isfull)
-        return Base.isfull(channel)
-    end
     return length(channel.data) >= channel.sz_max
 end
 

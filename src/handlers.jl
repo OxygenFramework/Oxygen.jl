@@ -100,7 +100,9 @@ Returns a handler for `HTTP.Stream` types
 function select_handler(::Type{HTTP.Stream}, has_ctx_kwarg::Bool, has_req_kwarg::Bool, has_path_params::Bool, ctx::ServerContext; no_args=false)
     invoker = get_invoker_strategy(has_ctx_kwarg, has_req_kwarg, has_path_params, no_args, ctx)
     function (req::HTTP.Request, func::Function; parameters::Nullable{Vector}=nothing)
-        invoker(func, req.context[:stream], req, parameters)
+        stream = req.context[:stream]
+        result = invoker(func, stream, req, parameters)
+        return isnothing(result) ? stream.response : result
     end
 end
 
@@ -112,7 +114,12 @@ Returns a handler for `HTTP.WebSockets.WebSocket`types
 function select_handler(::Type{HTTP.WebSockets.WebSocket}, has_ctx_kwarg::Bool, has_req_kwarg::Bool, has_path_params::Bool, ctx::ServerContext; no_args=false)
     invoker = get_invoker_strategy(has_ctx_kwarg, has_req_kwarg, has_path_params, no_args, ctx)
     function (req::HTTP.Request, func::Function; parameters::Nullable{Vector}=nothing)
-        HTTP.WebSockets.isupgrade(req) && HTTP.WebSockets.upgrade(ws -> invoker(func, ws, req, parameters), req.context[:stream])
+        stream = req.context[:stream]
+        if HTTP.WebSockets.isupgrade(req)
+            HTTP.WebSockets.upgrade(ws -> invoker(func, ws, req, parameters), stream)
+            return stream.response
+        end
+        return HTTP.Response(400, "Bad Request")
     end
 end
 

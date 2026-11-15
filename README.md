@@ -9,10 +9,10 @@
   </p>
   <p align="center">
     <a href='https://juliahub.com/ui/Packages/General/Oxygen'><img src='https://juliahub.com/docs/General/Oxygen/stable/version.svg' alt='Version' /></a>
-    <a href='https://oxygenframework.github.io/Oxygen.jl/stable/'><img src='https://img.shields.io/badge/docs-stable-blue.svg' alt='documentation stable' /></a>
-    <a href='https://github.com/OxygenFramework/Oxygen.jl/actions/workflows/ci.yml'><img src='https://github.com/OxygenFramework/Oxygen.jl/actions/workflows/ci.yml/badge.svg' alt='Build Status' /></a>
-    <a href='https://coveralls.io/github/OxygenFramework/Oxygen.jl?branch=master'><img src='https://coveralls.io/repos/github/OxygenFramework/Oxygen.jl/badge.svg?branch=master' alt='Coverage Status' /></a>
-    <!-- <a href='https://codecov.io/gh/OxygenFramework/Oxygen.jl'><img src='https://codecov.io/gh/OxygenFramework/Oxygen.jl/branch/master/graph/badge.svg' alt='Coverage Status' /></a> -->
+    <a href='https://refactorful.github.io/Oxygen.jl/stable/'><img src='https://img.shields.io/badge/docs-stable-blue.svg' alt='documentation stable' /></a>
+    <a href='https://github.com/Refactorful/Oxygen.jl/actions/workflows/ci.yml'><img src='https://github.com/Refactorful/Oxygen.jl/actions/workflows/ci.yml/badge.svg' alt='Build Status' /></a>
+    <a href='https://coveralls.io/github/Refactorful/Oxygen.jl?branch=master'><img src='https://coveralls.io/repos/github/Refactorful/Oxygen.jl/badge.svg?branch=master' alt='Coverage Status' /></a>
+    <!-- <a href='https://codecov.io/gh/Refactorful/Oxygen.jl'><img src='https://codecov.io/gh/Refactorful/Oxygen.jl/branch/master/graph/badge.svg' alt='Coverage Status' /></a> -->
   </p>
 </div>
 <!-- END HTML -->
@@ -26,7 +26,7 @@ Breathe easy knowing you can quickly spin up a web server with abstractions you'
 Need Help? Feel free to reach out on our social media channels.
 
 [![Chat on Discord](https://img.shields.io/badge/chat-Discord-7289DA?logo=discord)](https://discord.gg/g5dmzRkdAR) 
-[![Discuss on GitHub](https://img.shields.io/badge/discussions-GitHub-333333?logo=github)](https://github.com/OxygenFramework/Oxygen.jl/discussions)
+[![Discuss on GitHub](https://img.shields.io/badge/discussions-GitHub-333333?logo=github)](https://github.com/Refactorful/Oxygen.jl/discussions)
 
 ## Features
 
@@ -569,7 +569,7 @@ Clients opt in with `_meta.progressToken` and `Accept: text/event-stream`; other
 
 ### The MCP endpoint
 
-Tools, prompts, and resources are registered per application instance (`@oxidize` modules and `instance()` apps included), and `/mcp` is exposed automatically as soon as one exists. Mount it elsewhere with `serve(mcp_path = "/custom/mcp")` or additionally speak the stdio transport with `serve(stdio = true)`. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
+Tools, prompts, and resources are registered per application instance (`@oxidize` modules and `instance()` apps included), and `/mcp` is exposed automatically as soon as one exists. Mount it elsewhere with `serve(mcp_path = "/custom/mcp")` or additionally speak the stdio transport with `serve(stdio = true)`. See the [MCP tutorial](https://refactorful.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
 
 ## Application Context
 

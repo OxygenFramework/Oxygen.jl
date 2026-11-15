@@ -2,7 +2,7 @@ name = "Oxygen"
 uuid = "df9a0d86-3283-4920-82dc-4555fc0d1d8b"
 version = "1.11.0"
 authors = ["Nathan Ortega <nate.ortega95@gmail.com>"]
-repo = "https://github.com/OxygenFramework/Oxygen.jl.git"
+repo = "https://github.com/Refactorful/Oxygen.jl.git"
 
 [deps]
 Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"

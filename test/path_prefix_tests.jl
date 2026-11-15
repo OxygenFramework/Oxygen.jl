@@ -24,6 +24,9 @@ serve(prefix="/custom-api", port=PORT, host=HOST, async=true,  show_errors=false
 
     r = internalrequest(HTTP.Request("GET", "/custom-api/docs/metrics"))
     @test r.status == 200
+    
+    # the dashboard host page points at the prefixed metrics api
+    @test occursin("endpoint: \"/custom-api/docs/metrics/data\"", text(r))
 
 end
 

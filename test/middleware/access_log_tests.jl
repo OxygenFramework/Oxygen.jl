@@ -328,4 +328,38 @@ module ServeKwargValidationTests
 
 end
 
+module BodyByteCountTests
+
+    using Test
+    using HTTP
+    using Oxygen
+
+    const ALM = Oxygen.Core.AccessLogMiddleware
+
+    @testset "body byte counts when Content-Length is unknown" begin
+        # a known length is used directly, whatever the body holds
+        known = HTTP.Response(200, "hello")
+        @test ALM.body_bytes_sent(known) == 5
+
+        # unknown length: count the body by kind (string, bytes, otherwise zero)
+        string_body = HTTP.Response(200, "hello")
+        string_body.content_length = -1
+        @test ALM.body_bytes_sent(string_body) == 5
+
+        byte_body = HTTP.Response(200, Vector{UInt8}(codeunits("hello")))
+        byte_body.content_length = -1
+        @test ALM.body_bytes_sent(byte_body) == 5
+
+        codeunit_body = HTTP.Response(200, codeunits("hello"))
+        codeunit_body.content_length = -1
+        @test ALM.body_bytes_sent(codeunit_body) == 5
+
+        # an empty body reports zero even with an unknown length
+        empty_body = HTTP.Response(200)
+        empty_body.content_length = -1
+        @test ALM.body_bytes_sent(empty_body) == 0
+    end
+
+end
+
 end

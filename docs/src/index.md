@@ -50,6 +50,7 @@ Need Help? Feel free to reach out on our social media channels.
 - Protocol Buffer Support
 - Route tagging
 - Repeat tasks
+- Model Context Protocol (MCP) server support
 
 ## Installation
 
@@ -71,6 +72,7 @@ end
 # start the web server
 serve()
 ```
+
 ## Handlers
 
 Handlers are used to connect your code to the server in a clean & straightforward way. 
@@ -442,6 +444,95 @@ end
     return newperson.payload
 end
 ```
+
+## Server-Sent Events
+
+Any handler can return a stream. `sse_stream` runs a do-block in a producer
+task and writes each yielded value as a `data:` frame on a live connection:
+
+```julia
+@get "/events" function()
+    return sse_stream() do stream
+        for i in 1:10
+            put!(stream, Dict("tick" => i))
+            sleep(1)
+        end
+    end
+end
+```
+
+A handler may also return a `Channel` directly; its values are streamed the
+same way. Call `result(value)` to end the stream:
+
+```julia
+@get "/events/raw" function()
+    return Channel{Any}(0) do channel
+        put!(channel, Dict("tick" => 1))
+        put!(channel, result(Dict("done" => true)))
+    end
+end
+```
+
+Strings are written as-is and everything else is JSON-encoded; `SSEEvent`
+controls the frame's `event:`, `id:` and `retry:` fields:
+
+```julia
+put!(stream, SSEEvent(Dict("progress" => 0.5); event="update", id="7", retry=1000))
+```
+
+You normally don't need this API, since plain values already stream as
+`data:` frames, but it's here whenever you want direct control over the frame.
+
+## Model Context Protocol (MCP) support
+
+Oxygen has built-in support for the [Model Context Protocol](https://modelcontextprotocol.io) and has utils for exposing functions as tools, prompts, and resources.
+
+It also ships with a swagger-like UI for interacting with the mcp server [@refactorful/mcp-explorer](https://github.com/Refactorful/mcp-explorer).
+
+### Tools, prompts & resources
+
+```julia
+using Oxygen
+
+@tool "Add two integers" Dict(:a => "first number", :b => "second number") function add(a::Int, b::Int)
+    return a + b
+end
+
+serve() # exposes POST /mcp
+```
+
+Prompts are registered the same way, with the handler signature doubling as the argument list. Resources use a URI with `{var}` placeholders:
+
+```julia
+@prompt "Report on a city" function city_report(city::String)
+    return "Write a report about $city"
+end
+
+@resource "oxygen://docs/{page}" "Look up a docs page" function docs(page::String)
+    return read("docs/$page.md", String)
+end
+```
+
+### Streaming progress
+
+Long-running tools can stream progress with `mcp_stream()`; the do-block's return value is still the final result:
+
+```julia
+@tool "Import a catalog" Dict(:urls => "catalog URLs") function import_catalog(urls::Vector{String})
+    return mcp_stream() do stream
+        for url in urls
+            put!(stream, "imported $url")  # auto-numbered progress notification
+        end
+        return "Imported $(length(urls)) records"
+    end
+end
+```
+
+Clients opt in with `_meta.progressToken` and `Accept: text/event-stream`; otherwise notifications are dropped and the call returns plain JSON.
+
+### The MCP endpoint
+
+Tools, prompts, and resources are registered per application instance (`@oxidize` modules and `instance()` apps included), and `/mcp` is exposed automatically as soon as one exists. Mount it elsewhere with `serve(mcp_path = "/custom/mcp")` or additionally speak the stdio transport with `serve(stdio = true)`. See the [MCP tutorial](https://oxygenframework.github.io/Oxygen.jl/stable/tutorial/mcp/) for details.
 
 ## Application Context
 

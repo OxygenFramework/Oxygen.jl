@@ -20,6 +20,14 @@ end
     return text("Hello World")
 end
 
+# A single positional argument (the injected request) plus both injected
+# keyword arguments selects the request+context invoker.
+@get "/mixedarg" function(req; request, context)
+    @test isa(req, HTTP.Request)
+    @test isa(request, HTTP.Request)
+    return text(isnothing(context) ? "missing context" : "has context")
+end
+
 serve(port=PORT, host=HOST, async=true,  show_errors=false, show_banner=false, access_log=nothing)
 
 @testset "Handler request Injection Tests" begin
@@ -40,6 +48,12 @@ serve(port=PORT, host=HOST, async=true,  show_errors=false, show_banner=false, a
         response = HTTP.get("$localhost/singlearg")
         @test response.status == 200
         @test text(response) == "Hello World"
+    end
+
+    @testset "Inject request and context into function with single arg" begin
+        response = HTTP.get("$localhost/mixedarg")
+        @test response.status == 200
+        @test text(response) == "missing context"
     end
 end
 

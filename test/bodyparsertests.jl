@@ -3,6 +3,7 @@ module BodyParserTests
 using Test
 
 using Oxygen
+using HTTP
 using Oxygen: set_content_size!
 
 struct rank
@@ -22,6 +23,25 @@ json(req)
 
     @test queryparams(Response(200; body="", request=with_params)) == Dict("q" => "123", "l" => "345")
     @test isnothing(queryparams(Response(200; body="")))
+
+    # anything else delegates to URIs (a raw query string here)
+    @test queryparams("q=123&l=345") == Dict("q" => "123", "l" => "345")
+end
+
+@testset "streaming response bodies" begin
+    # a non-materialized HTTP body (e.g. a streamed file response) is drained
+    # incrementally instead of being read as one buffer
+    payload = Vector{UInt8}("streamed payload")
+    text_response = Response(200, HTTP.FixedLengthBody(IOBuffer(payload), length(payload)))
+    @test text(text_response) == "streamed payload"
+
+    json_payload = Vector{UInt8}("{\"a\":1}")
+    json_response = Response(200, HTTP.FixedLengthBody(IOBuffer(json_payload), length(json_payload)))
+    @test json(json_response)["a"] == 1
+
+    # the raw-bytes accessor drains the same kind of body
+    bytes_response = Response(200, HTTP.FixedLengthBody(IOBuffer(copy(payload)), length(payload)))
+    @test Oxygen.Core.Util.response_bytes(bytes_response) == payload
 end
 
 @testset "formdata() Request struct keyword tests" begin 
@@ -142,7 +162,7 @@ end
 
         # test invalid json
         req = Request("GET","/", [],"""{}""")
-        @test_throws TypeError json(req, rank) 
+        @test_throws Union{TypeError, ArgumentError} json(req, rank) 
 
         # test extra key
         req = Request("GET","/", [],"""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")
@@ -223,7 +243,7 @@ end
 
         # test invalid json
         req = Response("""{}""")
-        @test_throws TypeError json(req, rank) 
+        @test_throws Union{TypeError, ArgumentError} json(req, rank) 
 
         # test extra key
         req = Response("""{"title": "viscount", "power": 9000.1, "extra": "hi"}""")

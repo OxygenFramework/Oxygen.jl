@@ -58,7 +58,7 @@ function startcronjobs(cron::CronContext)
     filtered_jobs = filter(cron.registered_jobs) do cronjob
         # (job_id, expression, name, func) = cronjob
         if cronjob.id in running_tasks
-            printstyled("[ Cron: $(cronjob.name) is already running\n", color = :yellow)
+            printstyled(stderr, "[ Cron: $(cronjob.name) is already running\n", color = :yellow)
             return false
         else
             return true
@@ -70,8 +70,8 @@ function startcronjobs(cron::CronContext)
         return
     end
 
-    println()
-    printstyled("[ Starting $(length(filtered_jobs)) Cron Job(s)\n", color = :green, bold = true)  
+    println(stderr)
+    printstyled(stderr, "[ Starting $(length(filtered_jobs)) Cron Job(s)\n", color = :green, bold = true)  
 
     for job in filtered_jobs
 
@@ -80,8 +80,8 @@ function startcronjobs(cron::CronContext)
         # add job it to set of running jobs
         push!(cron.active_jobs, ActiveCron(job_id, job))
 
-        printstyled("[ Cron: ", color = :green, bold = true)  
-        println("{ expr: $expression, name: $name }")
+        printstyled(stderr, "[ Cron: ", color = :green, bold = true)  
+        println(stderr, "{ expr: $expression, name: $name }")
         # Assuming name and expression are your variables
         Threads.@spawn begin
             try 

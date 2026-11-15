@@ -380,10 +380,22 @@ r = internalrequest(HTTP.Request("GET", "/anyparams/hello"))
 r = internalrequest(HTTP.Request("GET", "/fruit/1"))
 @test r.status == 200
 
+# instance names are the wire form here too, and serialize back by name
+r = internalrequest(HTTP.Request("GET", "/fruit/apple"))
+@test r.status == 200
+@test text(r) == "\"apple\""
+
+r = internalrequest(HTTP.Request("GET", "/fruit/orange"))
+@test r.status == 200
+@test text(r) == "\"orange\""
+
 @suppress global r = internalrequest(HTTP.Request("GET", "/fruit/4"))
 @test r.status == 500
 
 @suppress global r = internalrequest(HTTP.Request("GET", "/fruit/-3"))
+@test r.status == 500
+
+@suppress global r = internalrequest(HTTP.Request("GET", "/fruit/grape"))
 @test r.status == 500
 
 # date
@@ -697,6 +709,9 @@ r = internalrequest(HTTP.Request("GET", "/docs/schema"))
 
 r = internalrequest(HTTP.Request("GET", "/docs/metrics"), metrics=true)
 @test r.status == 200
+
+# the dashboard host page points at this server's metrics api
+@test occursin("endpoint: \"/docs/metrics/data\"", text(r))
 
 r = internalrequest(HTTP.Request("GET", "/docs/metrics/data/15/null"), metrics=true)
 @test r.status == 200

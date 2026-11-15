@@ -6,7 +6,7 @@ using HTTP
 using Dates
 
 using ..Util: text, json, formdata, parseparam
-using ..Reflection: struct_builder, extract_struct_info
+using ..Reflection: struct_builder, extract_struct_info, Param
 using ..Errors: ValidationError
 using ..Types
 

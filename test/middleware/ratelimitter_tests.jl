@@ -295,6 +295,21 @@ serve(middleware=[RateLimiter(rate_limit=10, window=Second(1), exempt_paths=["/e
     end
 end
 
+@testset "set_rate_headers preserves existing rate limit headers" begin
+    # A response already carrying all four rate limit headers (e.g. from a
+    # route-level limiter answering before an outer router-level limiter) is
+    # left untouched; the scan stops as soon as every header is accounted for.
+    resp = HTTP.Response(200,
+        ["X-RateLimit-Limit" => "7", "Retry-After" => "3",
+         "X-RateLimit-Remaining" => "1", "X-RateLimit-Reset" => "3",
+         "Content-Type" => "text/plain"], "ok")
+    Oxygen.Core.RateLimiterMiddleware.set_rate_headers!(resp, 25, 24, 30)
+    @test HTTP.header(resp, "X-RateLimit-Limit") == "7"
+    @test HTTP.header(resp, "Retry-After") == "3"
+    @test HTTP.header(resp, "X-RateLimit-Remaining") == "1"
+    @test HTTP.header(resp, "X-RateLimit-Reset") == "3"
+end
+
 terminate()
 
 end

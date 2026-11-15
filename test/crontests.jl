@@ -82,6 +82,15 @@ using ..Constants
 
         # Test with n as a day in the middle of the month and the day, the day before and the day after are weekends
         @test nthweekdayofmonth(DateTime(2022, 12, 25), 25) == DateTime(2022, 12, 26)
+
+        # No weekday left in the month (June 2024 ends on a Sunday): the search
+        # runs off the end of the month and returns nothing
+        @test nthweekdayofmonth(DateTime(2024, 6, 15), 30) === nothing
+    end
+
+    @testset "whole-expression mismatch" begin
+        # every field matches except the minutes: the expression is not a match
+        @test !iscronmatch("* 30 * * * *", DateTime(2022, 1, 1, 1, 0, 0))
     end
 
     @testset "sleep_until" begin

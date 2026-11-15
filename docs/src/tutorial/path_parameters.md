@@ -55,7 +55,10 @@ and passed to your request handlers.
 In most cases, Oxygen uses the built-in `parse()` function to parse incoming parameters. 
 But when the parameter types start getting more complex (eg. `Vector{Int64}` or a custom struct),
 then Oxygen assumes the parameter is a JSON string and uses the JSON library 
-to serialize the parameter into the corresponding type
+to serialize the parameter into the corresponding type.
+
+Enum parameters accept either the instance name (`/fruit/apple`) or its integer value
+(`/fruit/1`), matching the string form JSON bodies already use.
 
 ```julia
 using Dates

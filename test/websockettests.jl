@@ -68,6 +68,11 @@ serve(port=PORT, host=HOST, async=true,  show_errors=false, show_banner=false, a
         end
     end
 
+    @testset "non-upgrade requests are rejected" begin
+        r = HTTP.get("$localhost/ws"; status_exception=false)
+        @test r.status == 400
+    end
+
     @testset "/router/ws route" begin
         WebSockets.open("ws://$HOST:$PORT/router/ws") do ws
             HTTP.WebSockets.send(ws, "Test message")
